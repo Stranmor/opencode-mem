@@ -1,0 +1,590 @@
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+    Blocking waiting for file lock on package cache
+   0.210908604s  INFO prepare_target{force=false package_id=opencode-mem-cli v0.1.0 (/home/stranmor/projects/opencode-mem/crates/cli) target="opencode-mem"}: cargo::core::compiler::fingerprint: dependency on `opencode_mem_core` is newer than we are 1770051973.716765872s > 1770051148.017839836s "/home/stranmor/projects/opencode-mem/crates/storage"
+   0.225435477s  INFO prepare_target{force=false package_id=opencode-mem-cli v0.1.0 (/home/stranmor/projects/opencode-mem/crates/cli) target="opencode-mem"}: cargo::core::compiler::fingerprint: dependency on `opencode_mem_core` is newer than we are 1770051973.716765872s > 1770051148.136508921s "/home/stranmor/projects/opencode-mem/crates/mcp"
+   0.225835010s  INFO prepare_target{force=false package_id=opencode-mem-cli v0.1.0 (/home/stranmor/projects/opencode-mem/crates/cli) target="opencode-mem"}: cargo::core::compiler::fingerprint: fingerprint error for opencode-mem-cli v0.1.0 (/home/stranmor/projects/opencode-mem/crates/cli)/Check { test: false }/TargetInner { name: "opencode-mem", doc: true, ..: with_path("/home/stranmor/projects/opencode-mem/crates/cli/src/main.rs", Edition2021) }
+   0.225857890s  INFO prepare_target{force=false package_id=opencode-mem-cli v0.1.0 (/home/stranmor/projects/opencode-mem/crates/cli) target="opencode-mem"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/stranmor/projects/opencode-mem/target/debug/.fingerprint/opencode-mem-cli-b505d7441b6de490/bin-opencode-mem`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: <cargo::cli::Exec>::exec
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  13: std::rt::lang_start::<()>::{closure#0}
+  14: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/ops/function.rs:287:21
+  15: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  16: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  17: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  18: std::rt::lang_start_internal::{{closure}}
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:175:24
+  19: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  20: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  21: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  22: std::rt::lang_start_internal
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:171:5
+  23: main
+  24: <unknown>
+  25: __libc_start_main
+  26: <unknown>
+   0.239862957s  INFO prepare_target{force=false package_id=opencode-mem-http v0.1.0 (/home/stranmor/projects/opencode-mem/crates/http) target="opencode_mem_http"}: cargo::core::compiler::fingerprint: fingerprint error for opencode-mem-http v0.1.0 (/home/stranmor/projects/opencode-mem/crates/http)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("opencode_mem_http", ["lib"], "/home/stranmor/projects/opencode-mem/crates/http/src/lib.rs", Edition2021) }
+   0.239887469s  INFO prepare_target{force=false package_id=opencode-mem-http v0.1.0 (/home/stranmor/projects/opencode-mem/crates/http) target="opencode_mem_http"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/stranmor/projects/opencode-mem/target/debug/.fingerprint/opencode-mem-http-402327fc07463e62/lib-opencode_mem_http`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   7: cargo::ops::cargo_compile::compile_ws
+   8: cargo::ops::cargo_compile::compile_with_exec
+   9: cargo::ops::cargo_compile::compile
+  10: cargo::commands::check::exec
+  11: <cargo::cli::Exec>::exec
+  12: cargo::main
+  13: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  14: std::rt::lang_start::<()>::{closure#0}
+  15: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/ops/function.rs:287:21
+  16: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  17: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  18: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  19: std::rt::lang_start_internal::{{closure}}
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:175:24
+  20: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  21: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  22: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  23: std::rt::lang_start_internal
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:171:5
+  24: main
+  25: <unknown>
+  26: __libc_start_main
+  27: <unknown>
+   0.240776504s  INFO prepare_target{force=false package_id=axum v0.8.8 target="axum"}: cargo::core::compiler::fingerprint: fingerprint error for axum v0.8.8/Check { test: false }/TargetInner { ..: lib_target("axum", ["lib"], "/home/stranmor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/axum-0.8.8/src/lib.rs", Edition2021) }
+   0.240788454s  INFO prepare_target{force=false package_id=axum v0.8.8 target="axum"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/stranmor/projects/opencode-mem/target/debug/.fingerprint/axum-3bdcf38213b0d8bd/lib-axum`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: <cargo::cli::Exec>::exec
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  15: std::rt::lang_start::<()>::{closure#0}
+  16: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/ops/function.rs:287:21
+  17: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  18: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  19: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  20: std::rt::lang_start_internal::{{closure}}
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:175:24
+  21: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  22: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  23: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  24: std::rt::lang_start_internal
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:171:5
+  25: main
+  26: <unknown>
+  27: __libc_start_main
+  28: <unknown>
+   0.243935761s  INFO prepare_target{force=false package_id=hyper-util v0.1.20 target="hyper_util"}: cargo::core::compiler::fingerprint: fingerprint error for hyper-util v0.1.20/Check { test: false }/TargetInner { ..: lib_target("hyper_util", ["lib"], "/home/stranmor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-util-0.1.20/src/lib.rs", Edition2021) }
+   0.243957399s  INFO prepare_target{force=false package_id=hyper-util v0.1.20 target="hyper_util"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/stranmor/projects/opencode-mem/target/debug/.fingerprint/hyper-util-8cda9f7362ed7767/lib-hyper_util`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   9: cargo::ops::cargo_compile::compile_ws
+  10: cargo::ops::cargo_compile::compile_with_exec
+  11: cargo::ops::cargo_compile::compile
+  12: cargo::commands::check::exec
+  13: <cargo::cli::Exec>::exec
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  16: std::rt::lang_start::<()>::{closure#0}
+  17: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/ops/function.rs:287:21
+  18: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  19: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  20: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  21: std::rt::lang_start_internal::{{closure}}
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:175:24
+  22: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  23: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  24: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  25: std::rt::lang_start_internal
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:171:5
+  26: main
+  27: <unknown>
+  28: __libc_start_main
+  29: <unknown>
+   0.244853055s  INFO prepare_target{force=false package_id=tower v0.5.3 target="tower"}: cargo::core::compiler::fingerprint: fingerprint error for tower v0.5.3/Check { test: false }/TargetInner { ..: lib_target("tower", ["lib"], "/home/stranmor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tower-0.5.3/src/lib.rs", Edition2018) }
+   0.244865546s  INFO prepare_target{force=false package_id=tower v0.5.3 target="tower"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/stranmor/projects/opencode-mem/target/debug/.fingerprint/tower-7c154ae4da6acb87/lib-tower`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   9: cargo::ops::cargo_compile::compile_ws
+  10: cargo::ops::cargo_compile::compile_with_exec
+  11: cargo::ops::cargo_compile::compile
+  12: cargo::commands::check::exec
+  13: <cargo::cli::Exec>::exec
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  16: std::rt::lang_start::<()>::{closure#0}
+  17: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/ops/function.rs:287:21
+  18: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  19: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  20: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  21: std::rt::lang_start_internal::{{closure}}
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:175:24
+  22: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  23: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  24: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  25: std::rt::lang_start_internal
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:171:5
+  26: main
+  27: <unknown>
+  28: __libc_start_main
+  29: <unknown>
+   0.245344368s  INFO prepare_target{force=false package_id=opencode-mem-llm v0.1.0 (/home/stranmor/projects/opencode-mem/crates/llm) target="opencode_mem_llm"}: cargo::core::compiler::fingerprint: fingerprint error for opencode-mem-llm v0.1.0 (/home/stranmor/projects/opencode-mem/crates/llm)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("opencode_mem_llm", ["lib"], "/home/stranmor/projects/opencode-mem/crates/llm/src/lib.rs", Edition2021) }
+   0.245355297s  INFO prepare_target{force=false package_id=opencode-mem-llm v0.1.0 (/home/stranmor/projects/opencode-mem/crates/llm) target="opencode_mem_llm"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/stranmor/projects/opencode-mem/target/debug/.fingerprint/opencode-mem-llm-269fe883063d5ea5/lib-opencode_mem_llm`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   8: cargo::ops::cargo_compile::compile_ws
+   9: cargo::ops::cargo_compile::compile_with_exec
+  10: cargo::ops::cargo_compile::compile
+  11: cargo::commands::check::exec
+  12: <cargo::cli::Exec>::exec
+  13: cargo::main
+  14: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  15: std::rt::lang_start::<()>::{closure#0}
+  16: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/ops/function.rs:287:21
+  17: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  18: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  19: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  20: std::rt::lang_start_internal::{{closure}}
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:175:24
+  21: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  22: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  23: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  24: std::rt::lang_start_internal
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:171:5
+  25: main
+  26: <unknown>
+  27: __libc_start_main
+  28: <unknown>
+   0.245845839s  INFO prepare_target{force=false package_id=reqwest v0.12.28 target="reqwest"}: cargo::core::compiler::fingerprint: fingerprint error for reqwest v0.12.28/Check { test: false }/TargetInner { ..: lib_target("reqwest", ["lib"], "/home/stranmor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/reqwest-0.12.28/src/lib.rs", Edition2021) }
+   0.245872736s  INFO prepare_target{force=false package_id=reqwest v0.12.28 target="reqwest"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/stranmor/projects/opencode-mem/target/debug/.fingerprint/reqwest-624e2db661bcf995/lib-reqwest`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   9: cargo::ops::cargo_compile::compile_ws
+  10: cargo::ops::cargo_compile::compile_with_exec
+  11: cargo::ops::cargo_compile::compile
+  12: cargo::commands::check::exec
+  13: <cargo::cli::Exec>::exec
+  14: cargo::main
+  15: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  16: std::rt::lang_start::<()>::{closure#0}
+  17: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/ops/function.rs:287:21
+  18: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  19: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  20: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  21: std::rt::lang_start_internal::{{closure}}
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:175:24
+  22: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  23: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  24: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  25: std::rt::lang_start_internal
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:171:5
+  26: main
+  27: <unknown>
+  28: __libc_start_main
+  29: <unknown>
+   0.246642853s  INFO prepare_target{force=false package_id=hyper-tls v0.6.0 target="hyper_tls"}: cargo::core::compiler::fingerprint: fingerprint error for hyper-tls v0.6.0/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("hyper_tls", ["lib"], "/home/stranmor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/hyper-tls-0.6.0/src/lib.rs", Edition2018) }
+   0.246663790s  INFO prepare_target{force=false package_id=hyper-tls v0.6.0 target="hyper_tls"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/stranmor/projects/opencode-mem/target/debug/.fingerprint/hyper-tls-b4ed3f0233b9a045/lib-hyper_tls`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: cargo::core::compiler::compile
+   9: <cargo::core::compiler::build_runner::BuildRunner>::compile
+  10: cargo::ops::cargo_compile::compile_ws
+  11: cargo::ops::cargo_compile::compile_with_exec
+  12: cargo::ops::cargo_compile::compile
+  13: cargo::commands::check::exec
+  14: <cargo::cli::Exec>::exec
+  15: cargo::main
+  16: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  17: std::rt::lang_start::<()>::{closure#0}
+  18: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/ops/function.rs:287:21
+  19: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  20: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  21: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  22: std::rt::lang_start_internal::{{closure}}
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:175:24
+  23: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  24: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  25: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  26: std::rt::lang_start_internal
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:171:5
+  27: main
+  28: <unknown>
+  29: __libc_start_main
+  30: <unknown>
+   0.248071946s  INFO prepare_target{force=false package_id=tower-http v0.6.8 target="tower_http"}: cargo::core::compiler::fingerprint: fingerprint error for tower-http v0.6.8/Check { test: false }/TargetInner { ..: lib_target("tower_http", ["lib"], "/home/stranmor/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/tower-http-0.6.8/src/lib.rs", Edition2018) }
+   0.248087232s  INFO prepare_target{force=false package_id=tower-http v0.6.8 target="tower_http"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/stranmor/projects/opencode-mem/target/debug/.fingerprint/tower-http-e2c08331570fe77d/lib-tower_http`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: cargo::core::compiler::compile
+   6: cargo::core::compiler::compile
+   7: cargo::core::compiler::compile
+   8: cargo::core::compiler::compile
+   9: <cargo::core::compiler::build_runner::BuildRunner>::compile
+  10: cargo::ops::cargo_compile::compile_ws
+  11: cargo::ops::cargo_compile::compile_with_exec
+  12: cargo::ops::cargo_compile::compile
+  13: cargo::commands::check::exec
+  14: <cargo::cli::Exec>::exec
+  15: cargo::main
+  16: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  17: std::rt::lang_start::<()>::{closure#0}
+  18: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/ops/function.rs:287:21
+  19: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  20: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  21: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  22: std::rt::lang_start_internal::{{closure}}
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:175:24
+  23: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  24: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  25: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  26: std::rt::lang_start_internal
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:171:5
+  27: main
+  28: <unknown>
+  29: __libc_start_main
+  30: <unknown>
+   0.250120845s  INFO prepare_target{force=false package_id=opencode-mem-storage v0.1.0 (/home/stranmor/projects/opencode-mem/crates/storage) target="opencode_mem_storage"}: cargo::core::compiler::fingerprint: fingerprint dirty for opencode-mem-storage v0.1.0 (/home/stranmor/projects/opencode-mem/crates/storage)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("opencode_mem_storage", ["lib"], "/home/stranmor/projects/opencode-mem/crates/storage/src/lib.rs", Edition2021) }
+   0.250141500s  INFO prepare_target{force=false package_id=opencode-mem-storage v0.1.0 (/home/stranmor/projects/opencode-mem/crates/storage) target="opencode_mem_storage"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDependency { name: "opencode_mem_core", dep_mtime: FileTime { seconds: 1770051973, nanos: 716765872 }, max_mtime: FileTime { seconds: 1770051148, nanos: 17839836 } })
+   0.250856352s  INFO prepare_target{force=false package_id=opencode-mem-mcp v0.1.0 (/home/stranmor/projects/opencode-mem/crates/mcp) target="opencode_mem_mcp"}: cargo::core::compiler::fingerprint: fingerprint dirty for opencode-mem-mcp v0.1.0 (/home/stranmor/projects/opencode-mem/crates/mcp)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("opencode_mem_mcp", ["lib"], "/home/stranmor/projects/opencode-mem/crates/mcp/src/lib.rs", Edition2021) }
+   0.250872590s  INFO prepare_target{force=false package_id=opencode-mem-mcp v0.1.0 (/home/stranmor/projects/opencode-mem/crates/mcp) target="opencode_mem_mcp"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDependency { name: "opencode_mem_core", dep_mtime: FileTime { seconds: 1770051973, nanos: 716765872 }, max_mtime: FileTime { seconds: 1770051148, nanos: 136508921 } })
+   0.251653717s  INFO prepare_target{force=false package_id=opencode-mem-cli v0.1.0 (/home/stranmor/projects/opencode-mem/crates/cli) target="opencode-mem"}: cargo::core::compiler::fingerprint: fingerprint error for opencode-mem-cli v0.1.0 (/home/stranmor/projects/opencode-mem/crates/cli)/Check { test: true }/TargetInner { name: "opencode-mem", doc: true, ..: with_path("/home/stranmor/projects/opencode-mem/crates/cli/src/main.rs", Edition2021) }
+   0.251664326s  INFO prepare_target{force=false package_id=opencode-mem-cli v0.1.0 (/home/stranmor/projects/opencode-mem/crates/cli) target="opencode-mem"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/stranmor/projects/opencode-mem/target/debug/.fingerprint/opencode-mem-cli-f135e01fb526bcdd/test-bin-opencode-mem`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: <cargo::cli::Exec>::exec
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  13: std::rt::lang_start::<()>::{closure#0}
+  14: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/ops/function.rs:287:21
+  15: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  16: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  17: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  18: std::rt::lang_start_internal::{{closure}}
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:175:24
+  19: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  20: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  21: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  22: std::rt::lang_start_internal
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:171:5
+  23: main
+  24: <unknown>
+  25: __libc_start_main
+  26: <unknown>
+   0.252485562s  INFO prepare_target{force=false package_id=opencode-mem-core v0.1.0 (/home/stranmor/projects/opencode-mem/crates/core) target="opencode_mem_core"}: cargo::core::compiler::fingerprint: stale: changed "/home/stranmor/projects/opencode-mem/crates/core/src/observation.rs"
+   0.252497182s  INFO prepare_target{force=false package_id=opencode-mem-core v0.1.0 (/home/stranmor/projects/opencode-mem/crates/core) target="opencode_mem_core"}: cargo::core::compiler::fingerprint:           (vs) "/home/stranmor/projects/opencode-mem/target/debug/.fingerprint/opencode-mem-core-44f23b7b6bec14d5/dep-test-lib-opencode_mem_core"
+   0.252501229s  INFO prepare_target{force=false package_id=opencode-mem-core v0.1.0 (/home/stranmor/projects/opencode-mem/crates/core) target="opencode_mem_core"}: cargo::core::compiler::fingerprint:                FileTime { seconds: 1770051147, nanos: 497310379 } < FileTime { seconds: 1770051962, nanos: 397272426 }
+   0.252609597s  INFO prepare_target{force=false package_id=opencode-mem-core v0.1.0 (/home/stranmor/projects/opencode-mem/crates/core) target="opencode_mem_core"}: cargo::core::compiler::fingerprint: fingerprint dirty for opencode-mem-core v0.1.0 (/home/stranmor/projects/opencode-mem/crates/core)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("opencode_mem_core", ["lib"], "/home/stranmor/projects/opencode-mem/crates/core/src/lib.rs", Edition2021) }
+   0.252624123s  INFO prepare_target{force=false package_id=opencode-mem-core v0.1.0 (/home/stranmor/projects/opencode-mem/crates/core) target="opencode_mem_core"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleItem(ChangedFile { reference: "/home/stranmor/projects/opencode-mem/target/debug/.fingerprint/opencode-mem-core-44f23b7b6bec14d5/dep-test-lib-opencode_mem_core", reference_mtime: FileTime { seconds: 1770051147, nanos: 497310379 }, stale: "/home/stranmor/projects/opencode-mem/crates/core/src/observation.rs", stale_mtime: FileTime { seconds: 1770051962, nanos: 397272426 } }))
+   0.252969893s  INFO prepare_target{force=false package_id=opencode-mem-embeddings v0.1.0 (/home/stranmor/projects/opencode-mem/crates/embeddings) target="opencode_mem_embeddings"}: cargo::core::compiler::fingerprint: dependency on `opencode_mem_core` is newer than we are 1770051973.716765872s > 1770051147.842316160s "/home/stranmor/projects/opencode-mem/crates/embeddings"
+   0.253061823s  INFO prepare_target{force=false package_id=opencode-mem-embeddings v0.1.0 (/home/stranmor/projects/opencode-mem/crates/embeddings) target="opencode_mem_embeddings"}: cargo::core::compiler::fingerprint: fingerprint dirty for opencode-mem-embeddings v0.1.0 (/home/stranmor/projects/opencode-mem/crates/embeddings)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("opencode_mem_embeddings", ["lib"], "/home/stranmor/projects/opencode-mem/crates/embeddings/src/lib.rs", Edition2021) }
+   0.253072952s  INFO prepare_target{force=false package_id=opencode-mem-embeddings v0.1.0 (/home/stranmor/projects/opencode-mem/crates/embeddings) target="opencode_mem_embeddings"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDependency { name: "opencode_mem_core", dep_mtime: FileTime { seconds: 1770051973, nanos: 716765872 }, max_mtime: FileTime { seconds: 1770051147, nanos: 842316160 } })
+   0.253394521s  INFO prepare_target{force=false package_id=opencode-mem-embeddings v0.1.0 (/home/stranmor/projects/opencode-mem/crates/embeddings) target="opencode_mem_embeddings"}: cargo::core::compiler::fingerprint: dependency on `opencode_mem_core` is newer than we are 1770051973.716765872s > 1770051147.848262154s "/home/stranmor/projects/opencode-mem/crates/embeddings"
+   0.253472647s  INFO prepare_target{force=false package_id=opencode-mem-embeddings v0.1.0 (/home/stranmor/projects/opencode-mem/crates/embeddings) target="opencode_mem_embeddings"}: cargo::core::compiler::fingerprint: fingerprint dirty for opencode-mem-embeddings v0.1.0 (/home/stranmor/projects/opencode-mem/crates/embeddings)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("opencode_mem_embeddings", ["lib"], "/home/stranmor/projects/opencode-mem/crates/embeddings/src/lib.rs", Edition2021) }
+   0.253481452s  INFO prepare_target{force=false package_id=opencode-mem-embeddings v0.1.0 (/home/stranmor/projects/opencode-mem/crates/embeddings) target="opencode_mem_embeddings"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDependency { name: "opencode_mem_core", dep_mtime: FileTime { seconds: 1770051973, nanos: 716765872 }, max_mtime: FileTime { seconds: 1770051147, nanos: 848262154 } })
+   0.253874384s  INFO prepare_target{force=false package_id=opencode-mem-http v0.1.0 (/home/stranmor/projects/opencode-mem/crates/http) target="opencode_mem_http"}: cargo::core::compiler::fingerprint: fingerprint error for opencode-mem-http v0.1.0 (/home/stranmor/projects/opencode-mem/crates/http)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("opencode_mem_http", ["lib"], "/home/stranmor/projects/opencode-mem/crates/http/src/lib.rs", Edition2021) }
+   0.253884883s  INFO prepare_target{force=false package_id=opencode-mem-http v0.1.0 (/home/stranmor/projects/opencode-mem/crates/http) target="opencode_mem_http"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/stranmor/projects/opencode-mem/target/debug/.fingerprint/opencode-mem-http-acae4a47e88b5b23/test-lib-opencode_mem_http`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: <cargo::cli::Exec>::exec
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  13: std::rt::lang_start::<()>::{closure#0}
+  14: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/ops/function.rs:287:21
+  15: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  16: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  17: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  18: std::rt::lang_start_internal::{{closure}}
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:175:24
+  19: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  20: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  21: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  22: std::rt::lang_start_internal
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:171:5
+  23: main
+  24: <unknown>
+  25: __libc_start_main
+  26: <unknown>
+   0.254736021s  INFO prepare_target{force=false package_id=opencode-mem-llm v0.1.0 (/home/stranmor/projects/opencode-mem/crates/llm) target="opencode_mem_llm"}: cargo::core::compiler::fingerprint: fingerprint error for opencode-mem-llm v0.1.0 (/home/stranmor/projects/opencode-mem/crates/llm)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("opencode_mem_llm", ["lib"], "/home/stranmor/projects/opencode-mem/crates/llm/src/lib.rs", Edition2021) }
+   0.254748212s  INFO prepare_target{force=false package_id=opencode-mem-llm v0.1.0 (/home/stranmor/projects/opencode-mem/crates/llm) target="opencode_mem_llm"}: cargo::core::compiler::fingerprint:     err: failed to read `/home/stranmor/projects/opencode-mem/target/debug/.fingerprint/opencode-mem-llm-723c1fc5b3a17f46/test-lib-opencode_mem_llm`
+
+Caused by:
+    No such file or directory (os error 2)
+
+Stack backtrace:
+   0: cargo_util::paths::read_bytes
+   1: cargo_util::paths::read
+   2: cargo::core::compiler::fingerprint::_compare_old_fingerprint
+   3: cargo::core::compiler::fingerprint::prepare_target
+   4: cargo::core::compiler::compile
+   5: <cargo::core::compiler::build_runner::BuildRunner>::compile
+   6: cargo::ops::cargo_compile::compile_ws
+   7: cargo::ops::cargo_compile::compile_with_exec
+   8: cargo::ops::cargo_compile::compile
+   9: cargo::commands::check::exec
+  10: <cargo::cli::Exec>::exec
+  11: cargo::main
+  12: std::sys::backtrace::__rust_begin_short_backtrace::<fn(), ()>
+  13: std::rt::lang_start::<()>::{closure#0}
+  14: core::ops::function::impls::<impl core::ops::function::FnOnce<A> for &F>::call_once
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/core/src/ops/function.rs:287:21
+  15: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  16: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  17: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  18: std::rt::lang_start_internal::{{closure}}
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:175:24
+  19: std::panicking::catch_unwind::do_call
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:590:40
+  20: std::panicking::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panicking.rs:553:19
+  21: std::panic::catch_unwind
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/panic.rs:359:14
+  22: std::rt::lang_start_internal
+             at /rustc/ded5c06cf21d2b93bffd5d884aa6e96934ee4234/library/std/src/rt.rs:171:5
+  23: main
+  24: <unknown>
+  25: __libc_start_main
+  26: <unknown>
+   0.255411404s  INFO prepare_target{force=false package_id=opencode-mem-mcp v0.1.0 (/home/stranmor/projects/opencode-mem/crates/mcp) target="opencode_mem_mcp"}: cargo::core::compiler::fingerprint: dependency on `opencode_mem_core` is newer than we are 1770051973.716765872s > 1770051148.134222859s "/home/stranmor/projects/opencode-mem/crates/mcp"
+   0.255536722s  INFO prepare_target{force=false package_id=opencode-mem-mcp v0.1.0 (/home/stranmor/projects/opencode-mem/crates/mcp) target="opencode_mem_mcp"}: cargo::core::compiler::fingerprint: fingerprint dirty for opencode-mem-mcp v0.1.0 (/home/stranmor/projects/opencode-mem/crates/mcp)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("opencode_mem_mcp", ["lib"], "/home/stranmor/projects/opencode-mem/crates/mcp/src/lib.rs", Edition2021) }
+   0.255547450s  INFO prepare_target{force=false package_id=opencode-mem-mcp v0.1.0 (/home/stranmor/projects/opencode-mem/crates/mcp) target="opencode_mem_mcp"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDependency { name: "opencode_mem_core", dep_mtime: FileTime { seconds: 1770051973, nanos: 716765872 }, max_mtime: FileTime { seconds: 1770051148, nanos: 134222859 } })
+   0.255879437s  INFO prepare_target{force=false package_id=opencode-mem-plugin v0.1.0 (/home/stranmor/projects/opencode-mem/crates/plugin) target="opencode_mem_plugin"}: cargo::core::compiler::fingerprint: dependency on `opencode_mem_core` is newer than we are 1770051973.716765872s > 1770051147.844546946s "/home/stranmor/projects/opencode-mem/crates/plugin"
+   0.255968081s  INFO prepare_target{force=false package_id=opencode-mem-plugin v0.1.0 (/home/stranmor/projects/opencode-mem/crates/plugin) target="opencode_mem_plugin"}: cargo::core::compiler::fingerprint: fingerprint dirty for opencode-mem-plugin v0.1.0 (/home/stranmor/projects/opencode-mem/crates/plugin)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("opencode_mem_plugin", ["lib"], "/home/stranmor/projects/opencode-mem/crates/plugin/src/lib.rs", Edition2021) }
+   0.255979631s  INFO prepare_target{force=false package_id=opencode-mem-plugin v0.1.0 (/home/stranmor/projects/opencode-mem/crates/plugin) target="opencode_mem_plugin"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDependency { name: "opencode_mem_core", dep_mtime: FileTime { seconds: 1770051973, nanos: 716765872 }, max_mtime: FileTime { seconds: 1770051147, nanos: 844546946 } })
+   0.256210542s  INFO prepare_target{force=false package_id=opencode-mem-plugin v0.1.0 (/home/stranmor/projects/opencode-mem/crates/plugin) target="opencode_mem_plugin"}: cargo::core::compiler::fingerprint: dependency on `opencode_mem_core` is newer than we are 1770051973.716765872s > 1770051147.845262566s "/home/stranmor/projects/opencode-mem/crates/plugin"
+   0.256280153s  INFO prepare_target{force=false package_id=opencode-mem-plugin v0.1.0 (/home/stranmor/projects/opencode-mem/crates/plugin) target="opencode_mem_plugin"}: cargo::core::compiler::fingerprint: fingerprint dirty for opencode-mem-plugin v0.1.0 (/home/stranmor/projects/opencode-mem/crates/plugin)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("opencode_mem_plugin", ["lib"], "/home/stranmor/projects/opencode-mem/crates/plugin/src/lib.rs", Edition2021) }
+   0.256288948s  INFO prepare_target{force=false package_id=opencode-mem-plugin v0.1.0 (/home/stranmor/projects/opencode-mem/crates/plugin) target="opencode_mem_plugin"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDependency { name: "opencode_mem_core", dep_mtime: FileTime { seconds: 1770051973, nanos: 716765872 }, max_mtime: FileTime { seconds: 1770051147, nanos: 845262566 } })
+   0.256685978s  INFO prepare_target{force=false package_id=opencode-mem-search v0.1.0 (/home/stranmor/projects/opencode-mem/crates/search) target="opencode_mem_search"}: cargo::core::compiler::fingerprint: fingerprint dirty for opencode-mem-search v0.1.0 (/home/stranmor/projects/opencode-mem/crates/search)/Check { test: false }/TargetInner { name_inferred: true, ..: lib_target("opencode_mem_search", ["lib"], "/home/stranmor/projects/opencode-mem/crates/search/src/lib.rs", Edition2021) }
+   0.256697698s  INFO prepare_target{force=false package_id=opencode-mem-search v0.1.0 (/home/stranmor/projects/opencode-mem/crates/search) target="opencode_mem_search"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "opencode_mem_embeddings" })
+   0.256989255s  INFO prepare_target{force=false package_id=opencode-mem-search v0.1.0 (/home/stranmor/projects/opencode-mem/crates/search) target="opencode_mem_search"}: cargo::core::compiler::fingerprint: fingerprint dirty for opencode-mem-search v0.1.0 (/home/stranmor/projects/opencode-mem/crates/search)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("opencode_mem_search", ["lib"], "/home/stranmor/projects/opencode-mem/crates/search/src/lib.rs", Edition2021) }
+   0.256999943s  INFO prepare_target{force=false package_id=opencode-mem-search v0.1.0 (/home/stranmor/projects/opencode-mem/crates/search) target="opencode_mem_search"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDepFingerprint { name: "opencode_mem_embeddings" })
+   0.257225615s  INFO prepare_target{force=false package_id=opencode-mem-storage v0.1.0 (/home/stranmor/projects/opencode-mem/crates/storage) target="opencode_mem_storage"}: cargo::core::compiler::fingerprint: dependency on `opencode_mem_core` is newer than we are 1770051973.716765872s > 1770051148.007240308s "/home/stranmor/projects/opencode-mem/crates/storage"
+   0.257299754s  INFO prepare_target{force=false package_id=opencode-mem-storage v0.1.0 (/home/stranmor/projects/opencode-mem/crates/storage) target="opencode_mem_storage"}: cargo::core::compiler::fingerprint: fingerprint dirty for opencode-mem-storage v0.1.0 (/home/stranmor/projects/opencode-mem/crates/storage)/Check { test: true }/TargetInner { name_inferred: true, ..: lib_target("opencode_mem_storage", ["lib"], "/home/stranmor/projects/opencode-mem/crates/storage/src/lib.rs", Edition2021) }
+   0.257315041s  INFO prepare_target{force=false package_id=opencode-mem-storage v0.1.0 (/home/stranmor/projects/opencode-mem/crates/storage) target="opencode_mem_storage"}: cargo::core::compiler::fingerprint:     dirty: FsStatusOutdated(StaleDependency { name: "opencode_mem_core", dep_mtime: FileTime { seconds: 1770051973, nanos: 716765872 }, max_mtime: FileTime { seconds: 1770051148, nanos: 7240308 } })
+    Checking tower v0.5.3
+    Checking opencode-mem-storage v0.1.0 (/home/stranmor/projects/opencode-mem/crates/storage)
+    Checking hyper-util v0.1.20
+    Checking opencode-mem-embeddings v0.1.0 (/home/stranmor/projects/opencode-mem/crates/embeddings)
+    Checking opencode-mem-plugin v0.1.0 (/home/stranmor/projects/opencode-mem/crates/plugin)
+    Checking opencode-mem-core v0.1.0 (/home/stranmor/projects/opencode-mem/crates/core)
+    Checking tower-http v0.6.8
+    Checking opencode-mem-mcp v0.1.0 (/home/stranmor/projects/opencode-mem/crates/mcp)
+    Checking opencode-mem-search v0.1.0 (/home/stranmor/projects/opencode-mem/crates/search)
+    Checking hyper-tls v0.6.0
+    Checking axum v0.8.8
+    Checking reqwest v0.12.28
+    Checking opencode-mem-llm v0.1.0 (/home/stranmor/projects/opencode-mem/crates/llm)
+    Checking opencode-mem-http v0.1.0 (/home/stranmor/projects/opencode-mem/crates/http)
+    Checking opencode-mem-cli v0.1.0 (/home/stranmor/projects/opencode-mem/crates/cli)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 12.79s

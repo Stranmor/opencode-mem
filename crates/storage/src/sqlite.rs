@@ -494,4 +494,13 @@ impl Storage {
         )?;
         Ok(())
     }
+
+    pub fn update_session_summary(&self, session_id: &str, summary: &str) -> Result<()> {
+        let conn = lock_conn(&self.conn)?;
+        conn.execute(
+            "UPDATE sessions SET summary = ?1 WHERE id = ?2",
+            params![summary, session_id],
+        )?;
+        Ok(())
+    }
 }

@@ -95,6 +95,16 @@ pub enum Concept {
 
 /// Input for creating a new observation (from tool call)
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub tool: String,
+    pub session_id: String,
+    pub call_id: String,
+    pub input: serde_json::Value,
+    pub output: String,
+}
+
+/// Input for creating a new observation (compressed version)
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ObservationInput {
     pub tool: String,
     pub session_id: String,
