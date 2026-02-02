@@ -57,7 +57,9 @@ struct ObservationJson {
     #[serde(default)]
     concepts: Vec<String>,
     #[serde(default)]
-    files: Vec<String>,
+    files_read: Vec<String>,
+    #[serde(default)]
+    files_modified: Vec<String>,
     #[serde(default)]
     keywords: Vec<String>,
 }
@@ -104,7 +106,8 @@ Return JSON with these fields:
 - narrative: optional 2-3 sentence explanation of what happened and why
 - facts: array of specific facts learned (file paths, function names, decisions)
 - concepts: array from ["how-it-works", "why-it-exists", "what-changed", "problem-solution", "gotcha", "pattern", "trade-off"]
-- files: array of file paths mentioned
+- files_read: array of file paths that were read or searched
+- files_modified: array of file paths that were created or modified
 - keywords: array of 5-10 semantic keywords for search (technologies, patterns, concepts)"#,
             input.tool,
             input.output.title,
@@ -174,8 +177,8 @@ Return JSON with these fields:
             narrative: obs_json.narrative,
             facts: obs_json.facts,
             concepts,
-            files_read: obs_json.files.clone(),
-            files_modified: obs_json.files,
+            files_read: obs_json.files_read,
+            files_modified: obs_json.files_modified,
             keywords: obs_json.keywords,
             prompt_number: None,
             discovery_tokens: None,
@@ -268,12 +271,12 @@ fn parse_concept(s: &str) -> Result<Concept> {
         "how-it-works" => Ok(Concept::HowItWorks),
         "why-it-exists" => Ok(Concept::WhyItExists),
         "what-changed" => Ok(Concept::WhatChanged),
-        "problem-solution" => Ok(Ok(Concept::ProblemSolution)),
+        "problem-solution" => Ok(Concept::ProblemSolution),
         "gotcha" => Ok(Concept::Gotcha),
         "pattern" => Ok(Concept::Pattern),
         "trade-off" => Ok(Concept::TradeOff),
         _ => Err(Error::InvalidInput(format!("Invalid concept: {}", s))),
-    }.and_then(|x| x)
+    }
 }
 
 fn truncate(s: &str, max_len: usize) -> &str {
