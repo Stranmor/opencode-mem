@@ -1,0 +1,68 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/storage",
+    "crates/embeddings",
+    "crates/search",
+    "crates/llm",
+    "crates/http",
+    "crates/mcp",
+    "crates/plugin",
+    "crates/cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["Stranmor <stranmor@gmail.com>"]
+repository = "https://github.com/Stranmor/opencode-mem"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+async-stream = "0.3"
+futures-util = "0.3"
+
+# Web framework
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+# Utils
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Internal crates
+opencode-mem-core = { path = "crates/core" }
+opencode-mem-storage = { path = "crates/storage" }
+opencode-mem-embeddings = { path = "crates/embeddings" }
+opencode-mem-search = { path = "crates/search" }
+opencode-mem-llm = { path = "crates/llm" }
+opencode-mem-http = { path = "crates/http" }
+opencode-mem-mcp = { path = "crates/mcp" }
+opencode-mem-plugin = { path = "crates/plugin" }
+
+[profile.release]
+lto = true
+strip = true

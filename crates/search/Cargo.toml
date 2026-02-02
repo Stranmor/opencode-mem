@@ -1,0 +1,11 @@
+[package]
+name = "opencode-mem-search"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+opencode-mem-core = { workspace = true }
+opencode-mem-storage = { workspace = true }
+opencode-mem-embeddings = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }

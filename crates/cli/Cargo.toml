@@ -1,0 +1,20 @@
+[package]
+name = "opencode-mem-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "opencode-mem"
+path = "src/main.rs"
+
+[dependencies]
+opencode-mem-core = { workspace = true }
+opencode-mem-storage = { workspace = true }
+opencode-mem-llm = { workspace = true }
+opencode-mem-http = { workspace = true }
+opencode-mem-mcp = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+dirs = { workspace = true }

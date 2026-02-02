@@ -1,0 +1,11 @@
+[package]
+name = "opencode-mem-mcp"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+opencode-mem-core = { workspace = true }
+opencode-mem-storage = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }

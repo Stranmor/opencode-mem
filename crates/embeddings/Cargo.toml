@@ -1,0 +1,10 @@
+[package]
+name = "opencode-mem-embeddings"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+opencode-mem-core = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+# TODO: Add candle or ort for local embeddings
