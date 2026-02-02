@@ -111,7 +111,6 @@ async fn observe(
 }
 
 async fn process_observation(state: &AppState, id: &str, tool_call: ToolCall) -> anyhow::Result<()> {
-    // Note: LlmClient methods might need adjustment based on its actual implementation in the crate
     let observation = state.llm.compress_to_observation(id, &tool_call).await?;
     state.storage.save_observation(&observation)?;
     tracing::info!("Saved observation: {} - {}", observation.id, observation.title);
@@ -166,7 +165,6 @@ async fn generate_summary(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let summary = state.llm.generate_session_summary(&observations).await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    // Use Storage method for updating summary
     state.storage.update_session_summary(&req.session_id, &summary)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(serde_json::json!({"session_id": req.session_id, "summary": summary})))
