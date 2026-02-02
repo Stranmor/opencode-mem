@@ -58,8 +58,8 @@ impl Storage {
                 session.memory_session_id,
                 session.project,
                 session.user_prompt,
-                session.started_at.to_rfc3339(),
-                session.ended_at.map(|d| d.to_rfc3339()),
+                session.started_at.with_timezone(&Utc).to_rfc3339(),
+                session.ended_at.map(|d| d.with_timezone(&Utc).to_rfc3339()),
                 serde_json::to_string(&session.status)?,
                 session.prompt_counter,
             ],
@@ -75,20 +75,31 @@ impl Storage {
         )?;
         let mut rows = stmt.query(params![id])?;
         if let Some(row) = rows.next()? {
+            let started_at_str: String = row.get(5)?;
+            let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
+                .with_timezone(&Utc);
+
+            let ended_at_str: Option<String> = row.get(6)?;
+            let ended_at = ended_at_str
+                .map(|s| chrono::DateTime::parse_from_rfc3339(&s))
+                .transpose()
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
+                .map(|d| d.with_timezone(&Utc));
+
+            let status_str: String = row.get(7)?;
+            let status = serde_json::from_str(&status_str)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
             Ok(Some(Session {
                 id: row.get(0)?,
                 content_session_id: row.get(1)?,
                 memory_session_id: row.get(2)?,
                 project: row.get(3)?,
                 user_prompt: row.get(4)?,
-                started_at: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(5)?)?
-                    .with_timezone(&Utc),
-                ended_at: row
-                    .get::<_, Option<String>>(6)?
-                    .map(|s| chrono::DateTime::parse_from_rfc3339(&s))
-                    .transpose()?
-                    .map(|d| d.with_timezone(&Utc)),
-                status: serde_json::from_str(&row.get::<_, String>(7)?)?,
+                started_at,
+                ended_at,
+                status,
                 prompt_counter: row.get(8)?,
             }))
         } else {
@@ -134,7 +145,7 @@ impl Storage {
                 serde_json::to_string(&obs.keywords)?,
                 obs.prompt_number,
                 obs.discovery_tokens,
-                obs.created_at.to_rfc3339(),
+                obs.created_at.with_timezone(&Utc).to_rfc3339(),
             ],
         )?;
         Ok(())
@@ -153,6 +164,22 @@ impl Storage {
             let obs_type: ObservationType = serde_json::from_str(&obs_type_str)
                 .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
+            let facts: Vec<String> = serde_json::from_str(&row.get::<_, String>(6)?)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+            let concepts: Vec<opencode_mem_core::Concept> =
+                serde_json::from_str(&row.get::<_, String>(7)?)
+                    .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+            let files_read: Vec<String> = serde_json::from_str(&row.get::<_, String>(8)?)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+            let files_modified: Vec<String> = serde_json::from_str(&row.get::<_, String>(9)?)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+            let keywords: Vec<String> = serde_json::from_str(&row.get::<_, String>(10)?)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
             let created_at_str: String = row.get(13)?;
             let created_at = chrono::DateTime::parse_from_rfc3339(&created_at_str)
                 .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
@@ -165,11 +192,11 @@ impl Storage {
                 title: row.get(3)?,
                 subtitle: row.get(4)?,
                 narrative: row.get(5)?,
-                facts: serde_json::from_str(&row.get::<_, String>(6)?).unwrap_or_default(),
-                concepts: serde_json::from_str(&row.get::<_, String>(7)?).unwrap_or_default(),
-                files_read: serde_json::from_str(&row.get::<_, String>(8)?).unwrap_or_default(),
-                files_modified: serde_json::from_str(&row.get::<_, String>(9)?).unwrap_or_default(),
-                keywords: serde_json::from_str(&row.get::<_, String>(10)?).unwrap_or_default(),
+                facts,
+                concepts,
+                files_read,
+                files_modified,
+                keywords,
                 prompt_number: row.get(11)?,
                 discovery_tokens: row.get(12)?,
                 created_at,
