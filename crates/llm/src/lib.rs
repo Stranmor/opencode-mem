@@ -1,13 +1,14 @@
 //! LLM client for observation compression and summary generation
-use anyhow::Result;
 use chrono::Utc;
-use opencode_mem_core::{Concept, Observation, ObservationInput, ObservationType};
+use opencode_mem_core::{Concept, Error, Observation, ObservationInput, ObservationType, Result};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
 pub struct LlmClient {
     client: reqwest::Client,
     api_key: String,
     base_url: String,
+    model: String,
 }
 
 #[derive(Serialize)]
@@ -61,13 +62,27 @@ struct ObservationJson {
     keywords: Vec<String>,
 }
 
+#[derive(Deserialize)]
+struct SummaryJson {
+    summary: String,
+}
+
+const MAX_OUTPUT_LEN: usize = 2000;
+const DEFAULT_MODEL: &str = "gemini-3-pro-high";
+
 impl LlmClient {
     pub fn new(api_key: String, base_url: String) -> Self {
         Self {
             client: reqwest::Client::new(),
             api_key,
             base_url,
+            model: DEFAULT_MODEL.to_string(),
         }
+    }
+
+    pub fn with_model(mut self, model: String) -> Self {
+        self.model = model;
+        self
     }
 
     pub async fn compress_to_observation(
@@ -93,11 +108,11 @@ Return JSON with these fields:
 - keywords: array of 5-10 semantic keywords for search (technologies, patterns, concepts)"#,
             input.tool,
             input.output.title,
-            truncate(&input.output.output, 2000),
+            truncate(&input.output.output, MAX_OUTPUT_LEN),
         );
 
         let request = ChatRequest {
-            model: "gemini-3-pro-high".to_string(),
+            model: self.model.clone(),
             messages: vec![Message {
                 role: "user".to_string(),
                 content: prompt,
@@ -113,48 +128,52 @@ Return JSON with these fields:
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&request)
             .send()
-            .await?;
+            .await
+            .map_err(|e| Error::LlmApi(e.to_string()))?;
 
         let status = response.status();
-        let body = response.text().await?;
+        let body = response.text().await.map_err(|e| Error::LlmApi(e.to_string()))?;
 
         if !status.is_success() {
-            anyhow::bail!("API error {}: {}", status, body);
+            return Err(Error::LlmApi(format!("API error {}: {}", status, body)));
         }
 
         let chat_response: ChatResponse = serde_json::from_str(&body).map_err(|e| {
-            anyhow::anyhow!(
+            Error::LlmApi(format!(
                 "Failed to parse response: {} - body: {}",
                 e,
                 &body[..body.len().min(500)]
-            )
+            ))
         })?;
 
         let first_choice = chat_response
             .choices
             .first()
-            .ok_or_else(|| anyhow::anyhow!("API returned empty choices array"))?;
+            .ok_or_else(|| Error::LlmApi("API returned empty choices array".to_string()))?;
 
-        let content = strip_markdown_json(&first_choice.message.content);
-        let obs_json: ObservationJson = serde_json::from_str(content).map_err(|e| {
-            anyhow::anyhow!(
+        let obs_json: ObservationJson = serde_json::from_str(&first_choice.message.content).map_err(|e| {
+            Error::LlmApi(format!(
                 "Failed to parse observation JSON: {} - content: {}",
                 e,
-                &content[..content.len().min(300)]
-            )
+                &first_choice.message.content[..first_choice.message.content.len().min(300)]
+            ))
         })?;
 
-        // Adapt Observation construction
-        // Use 'files' for both read and modified as we don't distinguish them in the prompt yet
+        let mut concepts = Vec::new();
+        for s in &obs_json.concepts {
+            concepts.push(parse_concept(s)?);
+        }
+
         Ok(Observation {
             id: id.to_string(),
             session_id: input.session_id.clone(),
-            observation_type: parse_observation_type(&obs_json.observation_type),
+            observation_type: ObservationType::from_str(&obs_json.observation_type)
+                .map_err(|_| Error::InvalidInput(format!("Invalid observation type: {}", obs_json.observation_type)))?,
             title: obs_json.title,
             subtitle: obs_json.subtitle,
             narrative: obs_json.narrative,
             facts: obs_json.facts,
-            concepts: obs_json.concepts.iter().map(|s| parse_concept(s)).collect(),
+            concepts,
             files_read: obs_json.files.clone(),
             files_modified: obs_json.files,
             keywords: obs_json.keywords,
@@ -194,7 +213,7 @@ Return JSON: {{"summary": "..."}}"#,
         );
 
         let request = ChatRequest {
-            model: "gemini-3-pro-high".to_string(),
+            model: self.model.clone(),
             messages: vec![Message {
                 role: "user".to_string(),
                 content: prompt,
@@ -210,47 +229,51 @@ Return JSON: {{"summary": "..."}}"#,
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&request)
             .send()
-            .await?;
+            .await
+            .map_err(|e| Error::LlmApi(e.to_string()))?;
 
-        let body = response.text().await?;
-        let chat_response: ChatResponse = serde_json::from_str(&body)?;
+        let status = response.status();
+        let body = response.text().await.map_err(|e| Error::LlmApi(e.to_string()))?;
+
+        if !status.is_success() {
+            return Err(Error::LlmApi(format!("API error {}: {}", status, body)));
+        }
+
+        let chat_response: ChatResponse = serde_json::from_str(&body).map_err(|e| {
+            Error::LlmApi(format!(
+                "Failed to parse response: {} - body: {}",
+                e,
+                &body[..body.len().min(500)]
+            ))
+        })?;
+
         let first_choice = chat_response
             .choices
             .first()
-            .ok_or_else(|| anyhow::anyhow!("API returned empty choices array for session summary"))?;
-        let content = strip_markdown_json(&first_choice.message.content);
+            .ok_or_else(|| Error::LlmApi("API returned empty choices array for session summary".to_string()))?;
 
-        #[derive(Deserialize)]
-        struct SummaryJson {
-            summary: String,
-        }
-        let summary: SummaryJson = serde_json::from_str(content).map_err(|e| {
-            anyhow::anyhow!(
+        let summary: SummaryJson = serde_json::from_str(&first_choice.message.content).map_err(|e| {
+            Error::LlmApi(format!(
                 "Failed to parse session summary: {} - content: {}",
                 e,
-                &content[..content.len().min(300)]
-            )
+                &first_choice.message.content[..first_choice.message.content.len().min(300)]
+            ))
         })?;
         Ok(summary.summary)
     }
 }
 
-fn parse_observation_type(s: &str) -> ObservationType {
-    use std::str::FromStr;
-    ObservationType::from_str(s).unwrap_or(ObservationType::Change)
-}
-
-fn parse_concept(s: &str) -> Concept {
+fn parse_concept(s: &str) -> Result<Concept> {
     match s.to_lowercase().as_str() {
-        "how-it-works" => Concept::HowItWorks,
-        "why-it-exists" => Concept::WhyItExists,
-        "what-changed" => Concept::WhatChanged,
-        "problem-solution" => Concept::ProblemSolution,
-        "gotcha" => Concept::Gotcha,
-        "pattern" => Concept::Pattern,
-        "trade-off" => Concept::TradeOff,
-        _ => Concept::WhatChanged,
-    }
+        "how-it-works" => Ok(Concept::HowItWorks),
+        "why-it-exists" => Ok(Concept::WhyItExists),
+        "what-changed" => Ok(Concept::WhatChanged),
+        "problem-solution" => Ok(Ok(Concept::ProblemSolution)),
+        "gotcha" => Ok(Concept::Gotcha),
+        "pattern" => Ok(Concept::Pattern),
+        "trade-off" => Ok(Concept::TradeOff),
+        _ => Err(Error::InvalidInput(format!("Invalid concept: {}", s))),
+    }.and_then(|x| x)
 }
 
 fn truncate(s: &str, max_len: usize) -> &str {
@@ -262,24 +285,5 @@ fn truncate(s: &str, max_len: usize) -> &str {
             end -= 1;
         }
         &s[..end]
-    }
-}
-
-fn strip_markdown_json(content: &str) -> &str {
-    let trimmed = content.trim();
-    if trimmed.starts_with("```json") {
-        trimmed
-            .strip_prefix("```json")
-            .and_then(|s| s.strip_suffix("```"))
-            .map(|s| s.trim())
-            .unwrap_or(trimmed)
-    } else if trimmed.starts_with("```") {
-        trimmed
-            .strip_prefix("```")
-            .and_then(|s| s.strip_suffix("```"))
-            .map(|s| s.trim())
-            .unwrap_or(trimmed)
-    } else {
-        trimmed
     }
 }
