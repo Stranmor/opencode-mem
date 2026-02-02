@@ -154,17 +154,23 @@ Return JSON with these fields:
             .first()
             .ok_or_else(|| Error::LlmApi("API returned empty choices array".to_string()))?;
 
-        let obs_json: ObservationJson = serde_json::from_str(&first_choice.message.content).map_err(|e| {
+        let content = strip_markdown_json(&first_choice.message.content);
+        let obs_json: ObservationJson = serde_json::from_str(content).map_err(|e| {
             Error::LlmApi(format!(
                 "Failed to parse observation JSON: {} - content: {}",
                 e,
-                &first_choice.message.content[..first_choice.message.content.len().min(300)]
+                &content[..content.len().min(300)]
             ))
         })?;
 
         let mut concepts = Vec::new();
         for s in &obs_json.concepts {
-            concepts.push(parse_concept(s)?);
+            if let Some(concept) = parse_concept(s) {
+                concepts.push(concept);
+            } else {
+                // Log invalid concept if we had tracing, but skip to remain robust
+                // while not fabricating data.
+            }
         }
 
         Ok(Observation {
@@ -255,27 +261,28 @@ Return JSON: {{"summary": "..."}}"#,
             .first()
             .ok_or_else(|| Error::LlmApi("API returned empty choices array for session summary".to_string()))?;
 
-        let summary: SummaryJson = serde_json::from_str(&first_choice.message.content).map_err(|e| {
+        let content = strip_markdown_json(&first_choice.message.content);
+        let summary: SummaryJson = serde_json::from_str(content).map_err(|e| {
             Error::LlmApi(format!(
                 "Failed to parse session summary: {} - content: {}",
                 e,
-                &first_choice.message.content[..first_choice.message.content.len().min(300)]
+                &content[..content.len().min(300)]
             ))
         })?;
         Ok(summary.summary)
     }
 }
 
-fn parse_concept(s: &str) -> Result<Concept> {
+fn parse_concept(s: &str) -> Option<Concept> {
     match s.to_lowercase().as_str() {
-        "how-it-works" => Ok(Concept::HowItWorks),
-        "why-it-exists" => Ok(Concept::WhyItExists),
-        "what-changed" => Ok(Concept::WhatChanged),
-        "problem-solution" => Ok(Concept::ProblemSolution),
-        "gotcha" => Ok(Concept::Gotcha),
-        "pattern" => Ok(Concept::Pattern),
-        "trade-off" => Ok(Concept::TradeOff),
-        _ => Err(Error::InvalidInput(format!("Invalid concept: {}", s))),
+        "how-it-works" => Some(Concept::HowItWorks),
+        "why-it-exists" => Some(Concept::WhyItExists),
+        "what-changed" => Some(Concept::WhatChanged),
+        "problem-solution" => Some(Concept::ProblemSolution),
+        "gotcha" => Some(Concept::Gotcha),
+        "pattern" => Some(Concept::Pattern),
+        "trade-off" => Some(Concept::TradeOff),
+        _ => None,
     }
 }
 
@@ -288,5 +295,24 @@ fn truncate(s: &str, max_len: usize) -> &str {
             end -= 1;
         }
         &s[..end]
+    }
+}
+
+fn strip_markdown_json(content: &str) -> &str {
+    let trimmed = content.trim();
+    if trimmed.starts_with("```json") {
+        trimmed
+            .strip_prefix("```json")
+            .and_then(|s| s.strip_suffix("```"))
+            .map(|s| s.trim())
+            .unwrap_or(trimmed)
+    } else if trimmed.starts_with("```") {
+        trimmed
+            .strip_prefix("```")
+            .and_then(|s| s.strip_suffix("```"))
+            .map(|s| s.trim())
+            .unwrap_or(trimmed)
+    } else {
+        trimmed
     }
 }
