@@ -303,7 +303,7 @@ impl Storage {
             .split_whitespace()
             .map(|word| format!("\"{}\"*", word.replace('"', "")))
             .collect::<Vec<_>>()
-            .join(" OR ");
+            .join(" AND ");
 
         if fts_query.is_empty() {
             return self.get_recent(limit);
