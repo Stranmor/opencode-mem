@@ -3,7 +3,11 @@
 //! SQLite-based storage with FTS5 for full-text search.
 //! Designed for future sqlite-vec integration for vector search.
 
-mod sqlite;
 mod migrations;
+mod sqlite_monolith;
+#[cfg(test)]
+mod tests;
+mod types;
 
-pub use sqlite::Storage;
+pub use sqlite_monolith::Storage;
+pub use types::{PaginatedResult, StorageStats};

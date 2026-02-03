@@ -2,7 +2,38 @@
 
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: i32 = 3;
+pub const SCHEMA_VERSION: i32 = 6;
+
+fn column_exists(conn: &Connection, table: &str, column: &str) -> bool {
+    let sql = format!("PRAGMA table_info({})", table);
+    let mut stmt = match conn.prepare(&sql) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let rows = match stmt.query_map([], |row| row.get::<_, String>(1)) {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+    for name in rows.flatten() {
+        if name == column {
+            return true;
+        }
+    }
+    false
+}
+
+fn add_column_if_not_exists(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    col_type: &str,
+) -> Result<(), rusqlite::Error> {
+    if !column_exists(conn, table, column) {
+        let sql = format!("ALTER TABLE {} ADD COLUMN {} {}", table, column, col_type);
+        conn.execute(&sql, [])?;
+    }
+    Ok(())
+}
 
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     let current_version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
@@ -123,6 +154,48 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             INSERT INTO summaries_fts(rowid, request, investigated, learned, completed, next_steps, notes)
             SELECT id, request, investigated, learned, completed, next_steps, notes FROM session_summaries;
             "#,
+        )?;
+    }
+
+    if current_version < 4 {
+        tracing::info!("Running migration v4: pending_messages table");
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS pending_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                status TEXT NOT NULL CHECK(status IN ('pending', 'processing', 'processed', 'failed')) DEFAULT 'pending',
+                tool_name TEXT,
+                tool_input TEXT,
+                tool_response TEXT,
+                created_at_epoch INTEGER NOT NULL,
+                completed_at_epoch INTEGER
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_pending_status ON pending_messages(status);
+            CREATE INDEX IF NOT EXISTS idx_pending_session ON pending_messages(session_id);
+            "#,
+        )?;
+    }
+
+    if current_version < 5 {
+        tracing::info!("Running migration v5: project column on observations");
+        add_column_if_not_exists(conn, "observations", "project", "TEXT")?;
+        conn.execute_batch(
+            "CREATE INDEX IF NOT EXISTS idx_observations_project ON observations(project);",
+        )?;
+    }
+
+    if current_version < 6 {
+        tracing::info!(
+            "Running migration v6: files_read/files_edited columns on session_summaries"
+        );
+        add_column_if_not_exists(conn, "session_summaries", "files_read", "TEXT DEFAULT '[]'")?;
+        add_column_if_not_exists(
+            conn,
+            "session_summaries",
+            "files_edited",
+            "TEXT DEFAULT '[]'",
         )?;
     }
 
