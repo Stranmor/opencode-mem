@@ -2,6 +2,7 @@
 //!
 //! TODO: Implement local embedding model (all-MiniLM-L6-v2)
 
+#[derive(Default)]
 pub struct EmbeddingModel;
 
 impl EmbeddingModel {

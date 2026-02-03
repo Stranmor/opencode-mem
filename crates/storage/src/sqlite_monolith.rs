@@ -530,24 +530,41 @@ impl Storage {
                 session_id
             ],
         )?;
+
+        // If summary provided, fetch session project and save summary inline
+        // (avoid calling self.get_session/self.save_summary to prevent deadlock)
         if let Some(s) = summary {
-            if let Ok(Some(sess)) = self.get_session(session_id) {
-                let sum = SessionSummary {
-                    session_id: session_id.to_string(),
-                    project: sess.project,
-                    request: None,
-                    investigated: None,
-                    learned: Some(s.to_string()),
-                    completed: None,
-                    next_steps: None,
-                    notes: None,
-                    files_read: Vec::new(),
-                    files_edited: Vec::new(),
-                    prompt_number: None,
-                    discovery_tokens: None,
-                    created_at: Utc::now(),
-                };
-                self.save_summary(&sum)?;
+            let project: Option<String> = conn
+                .query_row(
+                    "SELECT project FROM sessions WHERE id = ?1",
+                    params![session_id],
+                    |row| row.get(0),
+                )
+                .ok();
+
+            if let Some(proj) = project {
+                let now = Utc::now();
+                conn.execute(
+                    r#"INSERT OR REPLACE INTO session_summaries 
+                       (session_id, project, request, investigated, learned, completed, next_steps, notes, 
+                        files_read, files_edited, prompt_number, discovery_tokens, created_at)
+                       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"#,
+                    params![
+                        session_id,
+                        proj,
+                        Option::<String>::None,
+                        Option::<String>::None,
+                        Some(s),
+                        Option::<String>::None,
+                        Option::<String>::None,
+                        Option::<String>::None,
+                        "[]",
+                        "[]",
+                        Option::<i32>::None,
+                        Option::<i32>::None,
+                        now.to_rfc3339(),
+                    ],
+                )?;
             }
         }
         Ok(())

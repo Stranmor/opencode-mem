@@ -54,6 +54,8 @@ pub struct Observation {
     pub id: String,
     /// Session this observation belongs to
     pub session_id: String,
+    /// Project this observation belongs to
+    pub project: Option<String>,
     /// Type of observation
     pub observation_type: ObservationType,
     /// Concise title (max 100 chars)
@@ -99,6 +101,7 @@ pub struct ToolCall {
     pub tool: String,
     pub session_id: String,
     pub call_id: String,
+    pub project: Option<String>,
     pub input: serde_json::Value,
     pub output: String,
 }

@@ -30,6 +30,12 @@ struct McpError {
     message: String,
 }
 
+const WORKFLOW_DOCS: &str = r#"3-LAYER WORKFLOW (ALWAYS FOLLOW):
+1. search(query) → Get index with IDs (~50-100 tokens/result)
+2. timeline(from/to) → Get context around interesting results  
+3. get_observations([IDs]) → Fetch full details ONLY for filtered IDs
+NEVER fetch full details without filtering first. 10x token savings."#;
+
 pub fn run_mcp_server(storage: Arc<Storage>) {
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
@@ -77,15 +83,50 @@ fn handle_request(storage: &Storage, req: &McpRequest) -> McpResponse {
             result: Some(json!({
                 "tools": [
                     {
-                        "name": "memory_search",
-                        "description": "Search through past session memories",
+                        "name": "__IMPORTANT",
+                        "description": WORKFLOW_DOCS,
+                        "inputSchema": { "type": "object", "properties": {} }
+                    },
+                    {
+                        "name": "search",
+                        "description": "Step 1: Search memory. Returns index with IDs. Params: query, limit, project, type, dateStart, dateEnd",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
                                 "query": { "type": "string", "description": "Search query" },
-                                "limit": { "type": "integer", "default": 10 }
+                                "limit": { "type": "integer", "default": 50 },
+                                "project": { "type": "string", "description": "Filter by project" },
+                                "type": { "type": "string", "description": "Filter by observation type (bugfix, feature, refactor, discovery, decision, change)" },
+                                "dateStart": { "type": "string", "description": "Filter from date (ISO 8601)" },
+                                "dateEnd": { "type": "string", "description": "Filter until date (ISO 8601)" }
+                            }
+                        }
+                    },
+                    {
+                        "name": "timeline",
+                        "description": "Step 2: Get chronological context. Params: from, to, limit",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "from": { "type": "string", "description": "Start date (ISO 8601)" },
+                                "to": { "type": "string", "description": "End date (ISO 8601)" },
+                                "limit": { "type": "integer", "default": 50 }
+                            }
+                        }
+                    },
+                    {
+                        "name": "get_observations",
+                        "description": "Step 3: Fetch full details for filtered IDs. Always batch multiple IDs.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "ids": {
+                                    "type": "array",
+                                    "items": { "type": "string" },
+                                    "description": "Array of observation IDs to fetch (required)"
+                                }
                             },
-                            "required": ["query"]
+                            "required": ["ids"]
                         }
                     },
                     {
@@ -116,21 +157,9 @@ fn handle_request(storage: &Storage, req: &McpRequest) -> McpResponse {
                             "type": "object",
                             "properties": {
                                 "query": { "type": "string", "description": "Search query (supports multiple words)" },
-                                "limit": { "type": "integer", "default": 10 }
+                                "limit": { "type": "integer", "default": 20 }
                             },
                             "required": ["query"]
-                        }
-                    },
-                    {
-                        "name": "memory_timeline",
-                        "description": "Get observations within a time range",
-                        "inputSchema": {
-                            "type": "object",
-                            "properties": {
-                                "from": { "type": "string", "description": "Start date (ISO 8601)" },
-                                "to": { "type": "string", "description": "End date (ISO 8601)" },
-                                "limit": { "type": "integer", "default": 50 }
-                            }
                         }
                     }
                 ]
@@ -156,10 +185,47 @@ fn handle_tool_call(
     let args = params.get("arguments").cloned().unwrap_or(json!({}));
 
     let result = match tool_name {
-        "memory_search" => {
-            let query = args.get("query").and_then(|q| q.as_str()).unwrap_or("");
-            let limit = args.get("limit").and_then(|l| l.as_u64()).unwrap_or(10) as usize;
-            match storage.search(query, limit) {
+        "__IMPORTANT" => {
+            json!({ "content": [{ "type": "text", "text": WORKFLOW_DOCS }] })
+        }
+        "search" => {
+            let query = args.get("query").and_then(|q| q.as_str());
+            let limit = args.get("limit").and_then(|l| l.as_u64()).unwrap_or(50) as usize;
+            let project = args.get("project").and_then(|p| p.as_str());
+            let obs_type = args.get("type").and_then(|t| t.as_str());
+            match storage.search_with_filters(query, project, obs_type, limit) {
+                Ok(results) => {
+                    json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&results).unwrap() }] })
+                }
+                Err(e) => {
+                    json!({ "content": [{ "type": "text", "text": format!("Error: {}", e) }], "isError": true })
+                }
+            }
+        }
+        "timeline" => {
+            let from = args.get("from").and_then(|f| f.as_str());
+            let to = args.get("to").and_then(|t| t.as_str());
+            let limit = args.get("limit").and_then(|l| l.as_u64()).unwrap_or(50) as usize;
+            match storage.get_timeline(from, to, limit) {
+                Ok(results) => {
+                    json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&results).unwrap() }] })
+                }
+                Err(e) => {
+                    json!({ "content": [{ "type": "text", "text": format!("Error: {}", e) }], "isError": true })
+                }
+            }
+        }
+        "get_observations" => {
+            let ids: Vec<String> = args
+                .get("ids")
+                .and_then(|i| i.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            match storage.get_observations_by_ids(&ids) {
                 Ok(results) => {
                     json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&results).unwrap() }] })
                 }
@@ -169,13 +235,13 @@ fn handle_tool_call(
             }
         }
         "memory_get" => {
-            let obs_id = args.get("id").and_then(|i| i.as_str()).unwrap_or("");
-            match storage.get_by_id(obs_id) {
+            let id = args.get("id").and_then(|i| i.as_str()).unwrap_or("");
+            match storage.get_by_id(id) {
                 Ok(Some(obs)) => {
                     json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&obs).unwrap() }] })
                 }
                 Ok(None) => {
-                    json!({ "content": [{ "type": "text", "text": "Observation not found" }] })
+                    json!({ "content": [{ "type": "text", "text": format!("Observation not found: {}", id) }] })
                 }
                 Err(e) => {
                     json!({ "content": [{ "type": "text", "text": format!("Error: {}", e) }], "isError": true })
@@ -195,21 +261,8 @@ fn handle_tool_call(
         }
         "memory_hybrid_search" => {
             let query = args.get("query").and_then(|q| q.as_str()).unwrap_or("");
-            let limit = args.get("limit").and_then(|l| l.as_u64()).unwrap_or(10) as usize;
+            let limit = args.get("limit").and_then(|l| l.as_u64()).unwrap_or(20) as usize;
             match storage.hybrid_search(query, limit) {
-                Ok(results) => {
-                    json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&results).unwrap() }] })
-                }
-                Err(e) => {
-                    json!({ "content": [{ "type": "text", "text": format!("Error: {}", e) }], "isError": true })
-                }
-            }
-        }
-        "memory_timeline" => {
-            let from = args.get("from").and_then(|f| f.as_str());
-            let to = args.get("to").and_then(|t| t.as_str());
-            let limit = args.get("limit").and_then(|l| l.as_u64()).unwrap_or(50) as usize;
-            match storage.get_timeline(from, to, limit) {
                 Ok(results) => {
                     json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&results).unwrap() }] })
                 }

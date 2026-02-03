@@ -91,6 +91,7 @@ impl LlmClient {
         &self,
         id: &str,
         input: &ObservationInput,
+        project: Option<&str>,
     ) -> Result<Observation> {
         let prompt = format!(
             r#"Analyze this tool execution and extract a structured observation.
@@ -176,6 +177,7 @@ Return JSON with these fields:
         Ok(Observation {
             id: id.to_string(),
             session_id: input.session_id.clone(),
+            project: project.map(|s| s.to_string()),
             observation_type: ObservationType::from_str(&obs_json.observation_type)
                 .map_err(|_| Error::InvalidInput(format!("Invalid observation type: {}", obs_json.observation_type)))?,
             title: obs_json.title,
