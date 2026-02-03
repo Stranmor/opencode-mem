@@ -243,12 +243,16 @@ fn handle_tool_call(
                         .collect()
                 })
                 .unwrap_or_default();
-            match storage.get_observations_by_ids(&ids) {
-                Ok(results) => {
-                    json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&results).unwrap() }] })
-                }
-                Err(e) => {
-                    json!({ "content": [{ "type": "text", "text": format!("Error: {}", e) }], "isError": true })
+            if ids.is_empty() {
+                json!({ "content": [{ "type": "text", "text": "Error: ids array is required and must not be empty" }], "isError": true })
+            } else {
+                match storage.get_observations_by_ids(&ids) {
+                    Ok(results) => {
+                        json!({ "content": [{ "type": "text", "text": serde_json::to_string_pretty(&results).unwrap() }] })
+                    }
+                    Err(e) => {
+                        json!({ "content": [{ "type": "text", "text": format!("Error: {}", e) }], "isError": true })
+                    }
                 }
             }
         }

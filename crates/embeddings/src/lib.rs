@@ -6,7 +6,6 @@ use anyhow::Result;
 
 const EMBEDDING_DIMENSION: usize = 384;
 
-#[derive(Default)]
 pub struct EmbeddingModel;
 
 impl EmbeddingModel {
