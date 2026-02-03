@@ -38,6 +38,12 @@ fn log_row_error<T>(result: rusqlite::Result<T>) -> Option<T> {
     }
 }
 
+fn escape_like_pattern(s: &str) -> String {
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
 impl Storage {
     pub fn new(db_path: &Path) -> Result<Self> {
         let conn = Connection::open(db_path)?;
@@ -1067,7 +1073,7 @@ impl Storage {
                       s.next_steps, s.notes, s.files_read, s.files_edited, s.prompt_number, 
                       s.discovery_tokens, s.created_at
                FROM summaries_fts f
-               JOIN session_summaries s ON s.id = f.rowid
+               JOIN session_summaries s ON s.rowid = f.rowid
                WHERE summaries_fts MATCH ?1
                ORDER BY bm25(summaries_fts)
                LIMIT ?2"#,
@@ -1098,26 +1104,22 @@ impl Storage {
     }
 
     pub fn search_prompts(&self, query: &str, limit: usize) -> Result<Vec<UserPrompt>> {
-        let conn = lock_conn(&self.conn)?;
-        let fts_query = query
-            .split_whitespace()
-            .map(|word| format!("\"{}\"*", word.replace('"', "")))
-            .collect::<Vec<_>>()
-            .join(" AND ");
-
-        if fts_query.is_empty() {
+        if query.trim().is_empty() {
             return Ok(Vec::new());
         }
 
+        let conn = lock_conn(&self.conn)?;
+        let escaped_query = escape_like_pattern(query);
+        let pattern = format!("%{}%", escaped_query);
         let mut stmt = conn.prepare(
             r#"SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
                FROM user_prompts
-               WHERE prompt_text LIKE '%' || ?1 || '%'
+               WHERE prompt_text LIKE ?1 ESCAPE '\'
                ORDER BY created_at DESC
                LIMIT ?2"#,
         )?;
         let results = stmt
-            .query_map(params![query, limit], |row| {
+            .query_map(params![pattern, limit], |row| {
                 Ok(UserPrompt {
                     id: row.get(0)?,
                     content_session_id: row.get(1)?,
@@ -1136,11 +1138,12 @@ impl Storage {
 
     pub fn search_by_file(&self, file_path: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let conn = lock_conn(&self.conn)?;
-        let pattern = format!("%{}%", file_path);
+        let escaped = escape_like_pattern(file_path);
+        let pattern = format!("%{}%", escaped);
         let mut stmt = conn.prepare(
             r#"SELECT id, title, subtitle, observation_type
                FROM observations
-               WHERE files_read LIKE ?1 OR files_modified LIKE ?1
+               WHERE files_read LIKE ?1 ESCAPE '\' OR files_modified LIKE ?1 ESCAPE '\'
                ORDER BY created_at DESC
                LIMIT ?2"#,
         )?;
