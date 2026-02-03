@@ -53,7 +53,24 @@ pub fn run_mcp_server(storage: Arc<Storage>) {
 
         let request: McpRequest = match serde_json::from_str(&line) {
             Ok(r) => r,
-            Err(_) => continue,
+            Err(e) => {
+                let error_response = McpResponse {
+                    jsonrpc: "2.0".to_string(),
+                    id: json!(null),
+                    result: None,
+                    error: Some(McpError {
+                        code: -32700,
+                        message: format!("Parse error: {}", e),
+                    }),
+                };
+                let _ = writeln!(
+                    stdout,
+                    "{}",
+                    serde_json::to_string(&error_response).unwrap()
+                );
+                let _ = stdout.flush();
+                continue;
+            }
         };
 
         let response = handle_request(&storage, &request);
@@ -89,16 +106,14 @@ fn handle_request(storage: &Storage, req: &McpRequest) -> McpResponse {
                     },
                     {
                         "name": "search",
-                        "description": "Step 1: Search memory. Returns index with IDs. Params: query, limit, project, type, dateStart, dateEnd",
+                        "description": "Step 1: Search memory. Returns index with IDs. Params: query, limit, project, type",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
                                 "query": { "type": "string", "description": "Search query" },
                                 "limit": { "type": "integer", "default": 50 },
                                 "project": { "type": "string", "description": "Filter by project" },
-                                "type": { "type": "string", "description": "Filter by observation type (bugfix, feature, refactor, discovery, decision, change)" },
-                                "dateStart": { "type": "string", "description": "Filter from date (ISO 8601)" },
-                                "dateEnd": { "type": "string", "description": "Filter until date (ISO 8601)" }
+                                "type": { "type": "string", "description": "Filter by observation type (bugfix, feature, refactor, discovery, decision, change)" }
                             }
                         }
                     },
@@ -170,8 +185,11 @@ fn handle_request(storage: &Storage, req: &McpRequest) -> McpResponse {
         _ => McpResponse {
             jsonrpc: "2.0".to_string(),
             id,
-            result: Some(json!({})),
-            error: None,
+            result: None,
+            error: Some(McpError {
+                code: -32601,
+                message: format!("Method not found: {}", req.method),
+            }),
         },
     }
 }

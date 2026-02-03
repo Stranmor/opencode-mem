@@ -33,16 +33,17 @@ impl ObservationType {
 }
 
 impl std::str::FromStr for ObservationType {
-    type Err = ();
+    type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "bugfix" => Ok(Self::Bugfix),
             "feature" => Ok(Self::Feature),
             "refactor" => Ok(Self::Refactor),
+            "change" => Ok(Self::Change),
             "discovery" => Ok(Self::Discovery),
             "decision" => Ok(Self::Decision),
-            _ => Ok(Self::Change),
+            other => Err(format!("unknown observation type: {}", other)),
         }
     }
 }

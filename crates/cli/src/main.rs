@@ -4,7 +4,6 @@ use opencode_mem_http::{create_router, AppState};
 use opencode_mem_llm::LlmClient;
 use opencode_mem_mcp::run_mcp_server;
 use opencode_mem_storage::Storage;
-use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{broadcast, Semaphore};
@@ -91,13 +90,16 @@ async fn main() -> Result<()> {
                 event_tx,
             });
             let router = create_router(state);
-            let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
+            let addr = format!("{}:{}", host, port);
             tracing::info!("Starting HTTP server on {}", addr);
-            let listener = tokio::net::TcpListener::bind(addr).await?;
+            let listener = tokio::net::TcpListener::bind(&addr).await?;
             axum::serve(listener, router).await?;
         }
         Commands::Mcp => {
-            run_mcp_server(Arc::new(storage));
+            tokio::task::spawn_blocking(move || {
+                run_mcp_server(Arc::new(storage));
+            })
+            .await?;
         }
         Commands::Search { query, limit, project, obs_type } => {
             let results = storage.search_with_filters(
