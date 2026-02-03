@@ -51,8 +51,8 @@ pub fn run_mcp_server(storage: Arc<Storage>) {
             continue;
         }
 
-        let request: McpRequest = match serde_json::from_str(&line) {
-            Ok(r) => r,
+        let json_value: serde_json::Value = match serde_json::from_str(&line) {
+            Ok(v) => v,
             Err(e) => {
                 let error_response = McpResponse {
                     jsonrpc: "2.0".to_string(),
@@ -63,27 +63,50 @@ pub fn run_mcp_server(storage: Arc<Storage>) {
                         message: format!("Parse error: {}", e),
                     }),
                 };
-                let _ = writeln!(
-                    stdout,
-                    "{}",
-                    serde_json::to_string(&error_response).unwrap()
-                );
-                let _ = stdout.flush();
+                if let Ok(json) = serde_json::to_string(&error_response) {
+                    let _ = writeln!(stdout, "{}", json);
+                    let _ = stdout.flush();
+                }
                 continue;
             }
         };
 
-        let response = handle_request(&storage, &request);
-        let response_json = serde_json::to_string(&response).unwrap();
-        writeln!(stdout, "{}", response_json).ok();
-        stdout.flush().ok();
+        let request: McpRequest = match serde_json::from_value(json_value.clone()) {
+            Ok(r) => r,
+            Err(e) => {
+                let error_response = McpResponse {
+                    jsonrpc: "2.0".to_string(),
+                    id: json_value.get("id").cloned().unwrap_or(json!(null)),
+                    result: None,
+                    error: Some(McpError {
+                        code: -32600,
+                        message: format!("Invalid Request: {}", e),
+                    }),
+                };
+                if let Ok(json) = serde_json::to_string(&error_response) {
+                    let _ = writeln!(stdout, "{}", json);
+                    let _ = stdout.flush();
+                }
+                continue;
+            }
+        };
+
+        if let Some(response) = handle_request(&storage, &request) {
+            if let Ok(response_json) = serde_json::to_string(&response) {
+                writeln!(stdout, "{}", response_json).ok();
+                stdout.flush().ok();
+            }
+        }
     }
 }
 
-fn handle_request(storage: &Storage, req: &McpRequest) -> McpResponse {
-    let id = req.id.clone().unwrap_or(json!(null));
+fn handle_request(storage: &Storage, req: &McpRequest) -> Option<McpResponse> {
+    let id = match &req.id {
+        Some(id) => id.clone(),
+        None => return None,
+    };
 
-    match req.method.as_str() {
+    Some(match req.method.as_str() {
         "initialize" => McpResponse {
             jsonrpc: "2.0".to_string(),
             id,
@@ -106,7 +129,7 @@ fn handle_request(storage: &Storage, req: &McpRequest) -> McpResponse {
                     },
                     {
                         "name": "search",
-                        "description": "Step 1: Search memory. Returns index with IDs. Params: query, limit, project, type",
+                        "description": "Step 1: Search memory. Returns index with IDs. Params: query (required), limit, project, type",
                         "inputSchema": {
                             "type": "object",
                             "properties": {
@@ -114,7 +137,8 @@ fn handle_request(storage: &Storage, req: &McpRequest) -> McpResponse {
                                 "limit": { "type": "integer", "default": 50 },
                                 "project": { "type": "string", "description": "Filter by project" },
                                 "type": { "type": "string", "description": "Filter by observation type (bugfix, feature, refactor, discovery, decision, change)" }
-                            }
+                            },
+                            "required": ["query"]
                         }
                     },
                     {
@@ -191,7 +215,7 @@ fn handle_request(storage: &Storage, req: &McpRequest) -> McpResponse {
                 message: format!("Method not found: {}", req.method),
             }),
         },
-    }
+    })
 }
 
 fn handle_tool_call(
