@@ -1,4 +1,5 @@
 mod api_types;
+mod blocking;
 mod handlers;
 mod query_types;
 mod response_types;

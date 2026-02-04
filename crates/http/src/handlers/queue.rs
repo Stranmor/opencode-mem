@@ -15,10 +15,9 @@ use crate::api_types::{
     ClearQueueResponse, PendingQueueResponse, ProcessQueueResponse, ProcessingStatusResponse,
     SearchQuery, SetProcessingRequest, SetProcessingResponse,
 };
+use crate::blocking::blocking_result;
 use crate::AppState;
 
-/// Maximum number of concurrent workers for queue processing.
-/// This bounds memory usage and prevents visibility timeout race conditions.
 const MAX_QUEUE_WORKERS: usize = 10;
 
 pub async fn get_pending_queue(
@@ -27,29 +26,12 @@ pub async fn get_pending_queue(
 ) -> Result<Json<PendingQueueResponse>, StatusCode> {
     let storage = state.storage.clone();
     let limit = query.limit;
-    let messages = tokio::task::spawn_blocking({
+    let messages = blocking_result({
         let storage = storage.clone();
         move || storage.get_all_pending_messages(limit)
     })
-    .await
-    .map_err(|e| {
-        tracing::error!("Get pending queue join error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .map_err(|e| {
-        tracing::error!("Get pending queue failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    let stats = tokio::task::spawn_blocking(move || storage.get_queue_stats())
-        .await
-        .map_err(|e| {
-            tracing::error!("Get queue stats join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map_err(|e| {
-            tracing::error!("Get queue stats failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    .await?;
+    let stats = blocking_result(move || storage.get_queue_stats()).await?;
     Ok(Json(PendingQueueResponse { messages, stats }))
 }
 
@@ -57,18 +39,10 @@ pub async fn process_pending_queue(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ProcessQueueResponse>, StatusCode> {
     let storage = state.storage.clone();
-    let messages = tokio::task::spawn_blocking(move || {
+    let messages = blocking_result(move || {
         storage.claim_pending_messages(MAX_QUEUE_WORKERS, DEFAULT_VISIBILITY_TIMEOUT_SECS)
     })
-    .await
-    .map_err(|e| {
-        tracing::error!("Claim pending messages join error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .map_err(|e| {
-        tracing::error!("Claim pending messages failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    .await?;
 
     if messages.is_empty() {
         return Ok(Json(ProcessQueueResponse {
@@ -86,10 +60,13 @@ pub async fn process_pending_queue(
             .clone()
             .acquire_owned()
             .await
-            .expect("semaphore closed unexpectedly");
+            .map_err(|_| {
+                tracing::error!("Semaphore closed unexpectedly");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
         let state_clone = state.clone();
         let handle = tokio::spawn(async move {
-            let _permit = permit; // Hold permit until task completes
+            let _permit = permit;
             let result = process_pending_message(&state_clone, &msg).await;
             match result {
                 Ok(()) => {
@@ -195,16 +172,7 @@ pub async fn clear_failed_queue(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ClearQueueResponse>, StatusCode> {
     let storage = state.storage.clone();
-    let cleared = tokio::task::spawn_blocking(move || storage.clear_failed_messages())
-        .await
-        .map_err(|e| {
-            tracing::error!("Clear failed messages join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map_err(|e| {
-            tracing::error!("Clear failed messages failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let cleared = blocking_result(move || storage.clear_failed_messages()).await?;
     Ok(Json(ClearQueueResponse { cleared }))
 }
 
@@ -212,16 +180,7 @@ pub async fn clear_all_queue(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ClearQueueResponse>, StatusCode> {
     let storage = state.storage.clone();
-    let cleared = tokio::task::spawn_blocking(move || storage.clear_all_pending_messages())
-        .await
-        .map_err(|e| {
-            tracing::error!("Clear all pending messages join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map_err(|e| {
-            tracing::error!("Clear all pending messages failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let cleared = blocking_result(move || storage.clear_all_pending_messages()).await?;
     Ok(Json(ClearQueueResponse { cleared }))
 }
 
@@ -230,16 +189,7 @@ pub async fn get_processing_status(
 ) -> Result<Json<ProcessingStatusResponse>, StatusCode> {
     let active = state.processing_active.load(Ordering::SeqCst);
     let storage = state.storage.clone();
-    let pending_count = tokio::task::spawn_blocking(move || storage.get_pending_count())
-        .await
-        .map_err(|e| {
-            tracing::error!("Get pending count join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map_err(|e| {
-            tracing::error!("Get pending count failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let pending_count = blocking_result(move || storage.get_pending_count()).await?;
     Ok(Json(ProcessingStatusResponse {
         active,
         pending_count,

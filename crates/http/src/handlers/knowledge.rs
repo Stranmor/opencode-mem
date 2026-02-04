@@ -8,6 +8,7 @@ use std::sync::Arc;
 use opencode_mem_core::{GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType};
 
 use crate::api_types::{KnowledgeQuery, KnowledgeUsageResponse, SaveKnowledgeRequest};
+use crate::blocking::{blocking_json, blocking_result};
 use crate::AppState;
 
 pub async fn list_knowledge(
@@ -20,17 +21,7 @@ pub async fn list_knowledge(
         .and_then(|s| s.parse::<KnowledgeType>().ok());
     let storage = state.storage.clone();
     let limit = query.limit;
-    tokio::task::spawn_blocking(move || storage.list_knowledge(knowledge_type, limit))
-        .await
-        .map_err(|e| {
-            tracing::error!("List knowledge join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("List knowledge failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    blocking_json(move || storage.list_knowledge(knowledge_type, limit)).await
 }
 
 pub async fn search_knowledge(
@@ -40,17 +31,7 @@ pub async fn search_knowledge(
     let storage = state.storage.clone();
     let q = query.q.clone();
     let limit = query.limit;
-    tokio::task::spawn_blocking(move || storage.search_knowledge(&q, limit))
-        .await
-        .map_err(|e| {
-            tracing::error!("Search knowledge join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Search knowledge failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    blocking_json(move || storage.search_knowledge(&q, limit)).await
 }
 
 pub async fn get_knowledge_by_id(
@@ -58,17 +39,7 @@ pub async fn get_knowledge_by_id(
     Path(id): Path<String>,
 ) -> Result<Json<Option<GlobalKnowledge>>, StatusCode> {
     let storage = state.storage.clone();
-    tokio::task::spawn_blocking(move || storage.get_knowledge(&id))
-        .await
-        .map_err(|e| {
-            tracing::error!("Get knowledge join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get knowledge failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    blocking_json(move || storage.get_knowledge(&id)).await
 }
 
 pub async fn save_knowledge(
@@ -91,17 +62,7 @@ pub async fn save_knowledge(
     };
 
     let storage = state.storage.clone();
-    tokio::task::spawn_blocking(move || storage.save_knowledge(input))
-        .await
-        .map_err(|e| {
-            tracing::error!("Save knowledge join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Save knowledge failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    blocking_json(move || storage.save_knowledge(input)).await
 }
 
 pub async fn record_knowledge_usage(
@@ -110,20 +71,9 @@ pub async fn record_knowledge_usage(
 ) -> Result<Json<KnowledgeUsageResponse>, StatusCode> {
     let storage = state.storage.clone();
     let id_clone = id.clone();
-    tokio::task::spawn_blocking(move || storage.update_knowledge_usage(&id_clone))
-        .await
-        .map_err(|e| {
-            tracing::error!("Record knowledge usage join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map(|_| {
-            Json(KnowledgeUsageResponse {
-                success: true,
-                id: id.clone(),
-            })
-        })
-        .map_err(|e| {
-            tracing::error!("Record knowledge usage failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    blocking_result(move || storage.update_knowledge_usage(&id_clone)).await?;
+    Ok(Json(KnowledgeUsageResponse {
+        success: true,
+        id,
+    }))
 }

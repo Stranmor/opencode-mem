@@ -15,6 +15,7 @@ use crate::api_types::{
     ContextPreview, ContextPreviewQuery, ContextQuery, SearchHelpResponse, SearchQuery,
     TimelineResult, UnifiedTimelineQuery,
 };
+use crate::blocking::{blocking_json, blocking_result};
 use crate::AppState;
 
 use super::api_docs::get_search_help;
@@ -27,51 +28,21 @@ pub async fn get_context_recent(
     let storage = state.storage.clone();
     let project = query.project.clone();
     let limit = query.limit;
-    tokio::task::spawn_blocking(move || storage.get_context_for_project(&project, limit))
-        .await
-        .map_err(|e| {
-            tracing::error!("Get context recent join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get context recent failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    blocking_json(move || storage.get_context_for_project(&project, limit)).await
 }
 
 pub async fn get_projects(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<String>>, StatusCode> {
     let storage = state.storage.clone();
-    tokio::task::spawn_blocking(move || storage.get_all_projects())
-        .await
-        .map_err(|e| {
-            tracing::error!("Get projects join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get projects failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    blocking_json(move || storage.get_all_projects()).await
 }
 
 pub async fn get_stats(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<StorageStats>, StatusCode> {
     let storage = state.storage.clone();
-    tokio::task::spawn_blocking(move || storage.get_stats())
-        .await
-        .map_err(|e| {
-            tracing::error!("Get stats join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get stats failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    blocking_json(move || storage.get_stats()).await
 }
 
 pub async fn get_context_inject(
@@ -81,17 +52,7 @@ pub async fn get_context_inject(
     let storage = state.storage.clone();
     let project = query.project.clone();
     let limit = query.limit;
-    tokio::task::spawn_blocking(move || storage.get_context_for_project(&project, limit))
-        .await
-        .map_err(|e| {
-            tracing::error!("Get context inject join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get context inject failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    blocking_json(move || storage.get_context_for_project(&project, limit)).await
 }
 
 pub async fn sse_events(
@@ -125,19 +86,10 @@ pub async fn get_decisions(
     let storage = state.storage.clone();
     let project = query.project.clone();
     let limit = query.limit;
-    tokio::task::spawn_blocking(move || {
+    blocking_json(move || {
         storage.search_with_filters(q.as_deref(), project.as_deref(), Some("decision"), limit)
     })
     .await
-    .map_err(|e| {
-        tracing::error!("Get decisions join error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .map(Json)
-    .map_err(|e| {
-        tracing::error!("Get decisions failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
 }
 
 pub async fn get_changes(
@@ -152,19 +104,10 @@ pub async fn get_changes(
     let storage = state.storage.clone();
     let project = query.project.clone();
     let limit = query.limit;
-    tokio::task::spawn_blocking(move || {
+    blocking_json(move || {
         storage.search_with_filters(q.as_deref(), project.as_deref(), Some("change"), limit)
     })
     .await
-    .map_err(|e| {
-        tracing::error!("Get changes join error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .map(Json)
-    .map_err(|e| {
-        tracing::error!("Get changes failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
 }
 
 pub async fn get_how_it_works(
@@ -178,17 +121,7 @@ pub async fn get_how_it_works(
     };
     let storage = state.storage.clone();
     let limit = query.limit;
-    tokio::task::spawn_blocking(move || storage.hybrid_search(&search_query, limit))
-        .await
-        .map_err(|e| {
-            tracing::error!("Get how-it-works join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get how-it-works failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    blocking_json(move || storage.hybrid_search(&search_query, limit)).await
 }
 
 pub async fn context_timeline(
@@ -205,18 +138,7 @@ pub async fn context_preview(
     let storage = state.storage.clone();
     let project = query.project.clone();
     let limit = query.limit;
-    let observations = tokio::task::spawn_blocking(move || {
-        storage.get_context_for_project(&project, limit)
-    })
-    .await
-    .map_err(|e| {
-        tracing::error!("Context preview join error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .map_err(|e| {
-        tracing::error!("Context preview failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let observations = blocking_result(move || storage.get_context_for_project(&project, limit)).await?;
     let preview = if query.format == "full" {
         observations
             .iter()

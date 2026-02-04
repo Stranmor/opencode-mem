@@ -5,6 +5,25 @@ use rusqlite::params;
 use super::{get_conn, log_row_error, Storage};
 use crate::pending_queue::{PendingMessage, PendingMessageStatus, QueueStats, MAX_RETRY_COUNT};
 
+fn row_to_pending_message(row: &rusqlite::Row) -> rusqlite::Result<PendingMessage> {
+    let status_str: String = row.get(2)?;
+    let status = status_str
+        .parse::<PendingMessageStatus>()
+        .unwrap_or(PendingMessageStatus::Pending);
+    Ok(PendingMessage {
+        id: row.get(0)?,
+        session_id: row.get(1)?,
+        status,
+        tool_name: row.get(3)?,
+        tool_input: row.get(4)?,
+        tool_response: row.get(5)?,
+        retry_count: row.get(6)?,
+        created_at_epoch: row.get(7)?,
+        claimed_at_epoch: row.get(8)?,
+        completed_at_epoch: row.get(9)?,
+    })
+}
+
 impl Storage {
     pub fn queue_message(
         &self,
@@ -48,24 +67,7 @@ impl Storage {
         )?;
 
         let messages: Vec<PendingMessage> = stmt
-            .query_map(params![now, stale_threshold, limit], |row| {
-                let status_str: String = row.get(2)?;
-                let status = status_str
-                    .parse::<PendingMessageStatus>()
-                    .unwrap_or(PendingMessageStatus::Processing);
-                Ok(PendingMessage {
-                    id: row.get(0)?,
-                    session_id: row.get(1)?,
-                    status,
-                    tool_name: row.get(3)?,
-                    tool_input: row.get(4)?,
-                    tool_response: row.get(5)?,
-                    retry_count: row.get(6)?,
-                    created_at_epoch: row.get(7)?,
-                    claimed_at_epoch: row.get(8)?,
-                    completed_at_epoch: row.get(9)?,
-                })
-            })?
+            .query_map(params![now, stale_threshold, limit], row_to_pending_message)?
             .filter_map(log_row_error)
             .collect();
 
@@ -141,24 +143,7 @@ impl Storage {
                LIMIT ?1"#,
         )?;
         let results = stmt
-            .query_map(params![limit], |row| {
-                let status_str: String = row.get(2)?;
-                let status = status_str
-                    .parse::<PendingMessageStatus>()
-                    .unwrap_or(PendingMessageStatus::Failed);
-                Ok(PendingMessage {
-                    id: row.get(0)?,
-                    session_id: row.get(1)?,
-                    status,
-                    tool_name: row.get(3)?,
-                    tool_input: row.get(4)?,
-                    tool_response: row.get(5)?,
-                    retry_count: row.get(6)?,
-                    created_at_epoch: row.get(7)?,
-                    claimed_at_epoch: row.get(8)?,
-                    completed_at_epoch: row.get(9)?,
-                })
-            })?
+            .query_map(params![limit], row_to_pending_message)?
             .filter_map(log_row_error)
             .collect();
         Ok(results)
@@ -174,24 +159,7 @@ impl Storage {
                LIMIT ?1"#,
         )?;
         let results = stmt
-            .query_map(params![limit], |row| {
-                let status_str: String = row.get(2)?;
-                let status = status_str
-                    .parse::<PendingMessageStatus>()
-                    .unwrap_or(PendingMessageStatus::Pending);
-                Ok(PendingMessage {
-                    id: row.get(0)?,
-                    session_id: row.get(1)?,
-                    status,
-                    tool_name: row.get(3)?,
-                    tool_input: row.get(4)?,
-                    tool_response: row.get(5)?,
-                    retry_count: row.get(6)?,
-                    created_at_epoch: row.get(7)?,
-                    claimed_at_epoch: row.get(8)?,
-                    completed_at_epoch: row.get(9)?,
-                })
-            })?
+            .query_map(params![limit], row_to_pending_message)?
             .filter_map(log_row_error)
             .collect();
         Ok(results)

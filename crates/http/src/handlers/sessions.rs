@@ -12,6 +12,7 @@ use crate::api_types::{
     SessionObservationsRequest, SessionObservationsResponse, SessionStatusResponse,
     SessionSummaryRequest,
 };
+use crate::blocking::blocking_result;
 use crate::AppState;
 
 pub async fn generate_summary(
@@ -120,27 +121,14 @@ pub async fn session_status(
 ) -> Result<Json<SessionStatusResponse>, StatusCode> {
     let storage = state.storage.clone();
     let id = session_db_id.clone();
-    let session = tokio::task::spawn_blocking(move || storage.get_session(&id))
-        .await
-        .map_err(|e| {
-            tracing::error!("Get session join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map_err(|e| {
-            tracing::error!("Get session failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let session = blocking_result(move || storage.get_session(&id)).await?;
     match session {
         Some(s) => {
             let storage = state.storage.clone();
             let id = session_db_id.clone();
-            let obs_count = tokio::task::spawn_blocking(move || {
-                storage.get_session_observation_count(&id)
-            })
-            .await
-            .ok()
-            .and_then(|r| r.ok())
-            .unwrap_or(0);
+            let obs_count = blocking_result(move || storage.get_session_observation_count(&id))
+                .await
+                .unwrap_or(0);
             Ok(Json(SessionStatusResponse {
                 session_id: s.id,
                 status: s.status,
@@ -159,16 +147,7 @@ pub async fn session_delete(
 ) -> Result<Json<SessionDeleteResponse>, StatusCode> {
     let storage = state.storage.clone();
     let id = session_db_id.clone();
-    let deleted = tokio::task::spawn_blocking(move || storage.delete_session(&id))
-        .await
-        .map_err(|e| {
-            tracing::error!("Delete session join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map_err(|e| {
-            tracing::error!("Delete session failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let deleted = blocking_result(move || storage.delete_session(&id)).await?;
     Ok(Json(SessionDeleteResponse {
         deleted,
         session_id: session_db_id,

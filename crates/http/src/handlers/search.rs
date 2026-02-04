@@ -11,6 +11,7 @@ use opencode_mem_embeddings::EmbeddingProvider;
 use crate::api_types::{
     FileSearchQuery, SearchQuery, TimelineResult, UnifiedSearchResult, UnifiedTimelineQuery,
 };
+use crate::blocking::{blocking_json, blocking_result};
 use crate::AppState;
 
 pub async fn search(
@@ -26,19 +27,10 @@ pub async fn search(
     let project = query.project.clone();
     let obs_type = query.obs_type.clone();
     let limit = query.limit;
-    tokio::task::spawn_blocking(move || {
+    blocking_json(move || {
         storage.search_with_filters(q.as_deref(), project.as_deref(), obs_type.as_deref(), limit)
     })
     .await
-    .map_err(|e| {
-        tracing::error!("Search join error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .map(Json)
-    .map_err(|e| {
-        tracing::error!("Search failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
 }
 
 pub async fn hybrid_search(
@@ -48,17 +40,7 @@ pub async fn hybrid_search(
     let storage = state.storage.clone();
     let q = query.q.clone();
     let limit = query.limit;
-    tokio::task::spawn_blocking(move || storage.hybrid_search(&q, limit))
-        .await
-        .map_err(|e| {
-            tracing::error!("Hybrid search join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Hybrid search failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    blocking_json(move || storage.hybrid_search(&q, limit)).await
 }
 
 pub async fn semantic_search(
@@ -74,34 +56,15 @@ pub async fn semantic_search(
             Ok(query_vec) => {
                 let storage = state.storage.clone();
                 let limit = query.limit;
-                match tokio::task::spawn_blocking(move || storage.semantic_search(&query_vec, limit))
-                    .await
-                    .map_err(|e| {
-                        tracing::error!("Semantic search join error: {}", e);
-                        StatusCode::INTERNAL_SERVER_ERROR
-                    })?
-                {
+                match blocking_result(move || storage.semantic_search(&query_vec, limit)).await {
                     Ok(results) if !results.is_empty() => Ok(Json(results)),
                     Ok(_) => {
                         let storage = state.storage.clone();
                         let q = query.q.clone();
                         let limit = query.limit;
-                        tokio::task::spawn_blocking(move || storage.hybrid_search(&q, limit))
-                            .await
-                            .map_err(|e| {
-                                tracing::error!("Fallback hybrid search join error: {}", e);
-                                StatusCode::INTERNAL_SERVER_ERROR
-                            })?
-                            .map(Json)
-                            .map_err(|e| {
-                                tracing::error!("Fallback hybrid search failed: {}", e);
-                                StatusCode::INTERNAL_SERVER_ERROR
-                            })
+                        blocking_json(move || storage.hybrid_search(&q, limit)).await
                     }
-                    Err(e) => {
-                        tracing::error!("Semantic search failed: {}", e);
-                        Err(StatusCode::INTERNAL_SERVER_ERROR)
-                    }
+                    Err(e) => Err(e),
                 }
             }
             Err(e) => {
@@ -109,34 +72,14 @@ pub async fn semantic_search(
                 let storage = state.storage.clone();
                 let q = query.q.clone();
                 let limit = query.limit;
-                tokio::task::spawn_blocking(move || storage.hybrid_search(&q, limit))
-                    .await
-                    .map_err(|e| {
-                        tracing::error!("Fallback hybrid search join error: {}", e);
-                        StatusCode::INTERNAL_SERVER_ERROR
-                    })?
-                    .map(Json)
-                    .map_err(|e| {
-                        tracing::error!("Fallback hybrid search failed: {}", e);
-                        StatusCode::INTERNAL_SERVER_ERROR
-                    })
+                blocking_json(move || storage.hybrid_search(&q, limit)).await
             }
         },
         None => {
             let storage = state.storage.clone();
             let q = query.q.clone();
             let limit = query.limit;
-            tokio::task::spawn_blocking(move || storage.hybrid_search(&q, limit))
-                .await
-                .map_err(|e| {
-                    tracing::error!("Hybrid search (no embeddings) join error: {}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })?
-                .map(Json)
-                .map_err(|e| {
-                    tracing::error!("Hybrid search (no embeddings) failed: {}", e);
-                    StatusCode::INTERNAL_SERVER_ERROR
-                })
+            blocking_json(move || storage.hybrid_search(&q, limit)).await
         }
     }
 }
@@ -153,19 +96,8 @@ pub async fn search_observations(
     let storage = state.storage.clone();
     let project = query.project.clone();
     let limit = query.limit;
-    tokio::task::spawn_blocking(move || {
-        storage.search_with_filters(q.as_deref(), project.as_deref(), None, limit)
-    })
-    .await
-    .map_err(|e| {
-        tracing::error!("Search observations join error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .map(Json)
-    .map_err(|e| {
-        tracing::error!("Search observations failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    blocking_json(move || storage.search_with_filters(q.as_deref(), project.as_deref(), None, limit))
+        .await
 }
 
 pub async fn search_by_type(
@@ -176,19 +108,10 @@ pub async fn search_by_type(
     let project = query.project.clone();
     let obs_type = query.obs_type.clone();
     let limit = query.limit;
-    tokio::task::spawn_blocking(move || {
+    blocking_json(move || {
         storage.search_with_filters(None, project.as_deref(), obs_type.as_deref(), limit)
     })
     .await
-    .map_err(|e| {
-        tracing::error!("Search by type join error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .map(Json)
-    .map_err(|e| {
-        tracing::error!("Search by type failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
 }
 
 pub async fn search_by_concept(
@@ -203,19 +126,8 @@ pub async fn search_by_concept(
     let storage = state.storage.clone();
     let project = query.project.clone();
     let limit = query.limit;
-    tokio::task::spawn_blocking(move || {
-        storage.search_with_filters(q.as_deref(), project.as_deref(), None, limit)
-    })
-    .await
-    .map_err(|e| {
-        tracing::error!("Search by concept join error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .map(Json)
-    .map_err(|e| {
-        tracing::error!("Search by concept failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    blocking_json(move || storage.search_with_filters(q.as_deref(), project.as_deref(), None, limit))
+        .await
 }
 
 pub async fn search_sessions(
@@ -228,17 +140,7 @@ pub async fn search_sessions(
     let storage = state.storage.clone();
     let q = query.q.clone();
     let limit = query.limit;
-    tokio::task::spawn_blocking(move || storage.search_sessions(&q, limit))
-        .await
-        .map_err(|e| {
-            tracing::error!("Search sessions join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Search sessions failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    blocking_json(move || storage.search_sessions(&q, limit)).await
 }
 
 pub async fn search_prompts(
@@ -251,17 +153,7 @@ pub async fn search_prompts(
     let storage = state.storage.clone();
     let q = query.q.clone();
     let limit = query.limit;
-    tokio::task::spawn_blocking(move || storage.search_prompts(&q, limit))
-        .await
-        .map_err(|e| {
-            tracing::error!("Search prompts join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Search prompts failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    blocking_json(move || storage.search_prompts(&q, limit)).await
 }
 
 pub async fn search_by_file(
@@ -271,17 +163,7 @@ pub async fn search_by_file(
     let storage = state.storage.clone();
     let file_path = query.file_path.clone();
     let limit = query.limit;
-    tokio::task::spawn_blocking(move || storage.search_by_file(&file_path, limit))
-        .await
-        .map_err(|e| {
-            tracing::error!("Search by file join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Search by file failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    blocking_json(move || storage.search_by_file(&file_path, limit)).await
 }
 
 pub async fn unified_search(

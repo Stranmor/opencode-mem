@@ -6,8 +6,8 @@ use rusqlite::params;
 use std::collections::HashSet;
 
 use crate::storage::{
-    get_conn, log_row_error, map_search_result, map_search_result_default_score, parse_json,
-    Storage,
+    build_fts_query, get_conn, log_row_error, map_search_result, map_search_result_default_score,
+    parse_json, Storage,
 };
 
 impl Storage {
@@ -32,11 +32,7 @@ impl Storage {
         let keywords: HashSet<String> =
             query.split_whitespace().map(|s| s.to_lowercase()).collect();
 
-        let fts_query = query
-            .split_whitespace()
-            .map(|word| format!("\"{}\"*", word.replace('"', "")))
-            .collect::<Vec<_>>()
-            .join(" AND ");
+        let fts_query = build_fts_query(query);
 
         if fts_query.is_empty() {
             return self.get_recent(limit);
@@ -116,11 +112,7 @@ impl Storage {
         }
 
         if let Some(q) = query {
-            let fts_query = q
-                .split_whitespace()
-                .map(|word| format!("\"{}\"*", word.replace('"', "")))
-                .collect::<Vec<_>>()
-                .join(" AND ");
+            let fts_query = build_fts_query(q);
 
             if !fts_query.is_empty() {
                 let where_clause = if conditions.is_empty() {

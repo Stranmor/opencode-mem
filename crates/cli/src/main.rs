@@ -45,6 +45,12 @@ enum Commands {
         #[arg(short, long, default_value = "100")]
         batch_size: usize,
     },
+    ImportInsights {
+        #[arg(short, long)]
+        file: Option<String>,
+        #[arg(short, long)]
+        dir: Option<String>,
+    },
     #[command(subcommand)]
     Hook(HookCommands),
 }
@@ -116,6 +122,9 @@ async fn main() -> Result<()> {
         }
         Commands::BackfillEmbeddings { batch_size } => {
             commands::search::run_backfill_embeddings(batch_size)?;
+        }
+        Commands::ImportInsights { file, dir } => {
+            commands::import_insights::run(file, dir)?;
         }
         Commands::Hook(hook_cmd) => {
             commands::hook::run(hook_cmd).await?;

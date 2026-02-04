@@ -5,7 +5,9 @@ use opencode_mem_core::SearchResult;
 use rusqlite::params;
 use std::collections::HashMap;
 
-use crate::storage::{get_conn, log_row_error, map_search_result, parse_json, Storage};
+use crate::storage::{
+    build_fts_query, get_conn, log_row_error, map_search_result, parse_json, Storage,
+};
 
 impl Storage {
     pub fn semantic_search(&self, query_vec: &[f32], limit: usize) -> Result<Vec<SearchResult>> {
@@ -74,11 +76,7 @@ impl Storage {
             return self.hybrid_search(query, limit);
         }
 
-        let fts_query = query
-            .split_whitespace()
-            .map(|word| format!("\"{}\"*", word.replace('"', "")))
-            .collect::<Vec<_>>()
-            .join(" AND ");
+        let fts_query = build_fts_query(query);
 
         let mut fts_scores: HashMap<String, f64> = HashMap::new();
         let mut max_fts_score: f64 = 0.0;

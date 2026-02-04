@@ -87,6 +87,16 @@ pub(crate) fn escape_like_pattern(s: &str) -> String {
         .replace('_', "\\_")
 }
 
+/// Build FTS5 query from whitespace-separated words
+/// Each word becomes a quoted prefix match, joined with AND
+pub(crate) fn build_fts_query(query: &str) -> String {
+    query
+        .split_whitespace()
+        .map(|word| format!("\"{}\"*", word.replace('"', "")))
+        .collect::<Vec<_>>()
+        .join(" AND ")
+}
+
 /// Custom connection initializer for sqlite-vec
 fn init_connection(_conn: &mut Connection) -> Result<(), rusqlite::Error> {
     init_sqlite_vec();

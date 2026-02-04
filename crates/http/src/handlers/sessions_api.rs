@@ -7,6 +7,7 @@ use crate::api_types::{
     SessionInitRequest, SessionInitResponse, SessionObservationsRequest,
     SessionObservationsResponse, SessionSummarizeRequest,
 };
+use crate::blocking::blocking_result;
 use crate::AppState;
 
 pub async fn api_session_init(
@@ -43,16 +44,7 @@ pub async fn api_session_observations(
     let content_session_id = req.content_session_id.ok_or(StatusCode::BAD_REQUEST)?;
     let storage = state.storage.clone();
     let cid = content_session_id.clone();
-    let session = tokio::task::spawn_blocking(move || storage.get_session_by_content_id(&cid))
-        .await
-        .map_err(|e| {
-            tracing::error!("Get session by content id join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map_err(|e| {
-            tracing::error!("Get session by content id failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let session = blocking_result(move || storage.get_session_by_content_id(&cid)).await?;
     let session_id = session.map(|s| s.id).ok_or(StatusCode::NOT_FOUND)?;
     let count = req.observations.len();
     for tool_call in req.observations {
@@ -91,16 +83,7 @@ pub async fn api_session_summarize(
     let content_session_id = req.content_session_id.ok_or(StatusCode::BAD_REQUEST)?;
     let storage = state.storage.clone();
     let cid = content_session_id.clone();
-    let session = tokio::task::spawn_blocking(move || storage.get_session_by_content_id(&cid))
-        .await
-        .map_err(|e| {
-            tracing::error!("Get session by content id join error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .map_err(|e| {
-            tracing::error!("Get session by content id failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let session = blocking_result(move || storage.get_session_by_content_id(&cid)).await?;
     let session_id = session.map(|s| s.id).ok_or(StatusCode::NOT_FOUND)?;
     let summary = state
         .session_service

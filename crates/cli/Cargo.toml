@@ -26,4 +26,5 @@ clap = { version = "4", features = ["derive"] }
 serde_json = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
+regex = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
