@@ -11,7 +11,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::migrations;
-use crate::types::{PaginatedResult, StorageStats};
+use crate::types::{PaginatedResult, PendingMessage, PendingMessageStatus, StorageStats};
 
 pub struct Storage {
     conn: Arc<Mutex<Connection>>,
@@ -1177,5 +1177,315 @@ impl Storage {
             .filter_map(log_row_error)
             .collect();
         Ok(results)
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Pending Queue Methods
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Queue a new message for processing
+    pub fn queue_message(
+        &self,
+        session_id: &str,
+        tool_name: Option<&str>,
+        tool_input: Option<&str>,
+        tool_response: Option<&str>,
+    ) -> Result<i64> {
+        let conn = lock_conn(&self.conn)?;
+        let now = Utc::now().timestamp();
+        conn.execute(
+            r#"INSERT INTO pending_messages 
+               (session_id, status, tool_name, tool_input, tool_response, retry_count, created_at_epoch)
+               VALUES (?1, 'pending', ?2, ?3, ?4, 0, ?5)"#,
+            params![session_id, tool_name, tool_input, tool_response, now],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    /// Claim pending messages for processing (visibility timeout pattern)
+    pub fn claim_pending_messages(
+        &self,
+        limit: usize,
+        visibility_timeout_secs: i64,
+    ) -> Result<Vec<PendingMessage>> {
+        let conn = lock_conn(&self.conn)?;
+        let now = Utc::now().timestamp();
+        let stale_threshold = now - visibility_timeout_secs;
+
+        // Find messages that are pending OR processing but stale (claimed too long ago)
+        let mut stmt = conn.prepare(
+            r#"SELECT id, session_id, status, tool_name, tool_input, tool_response,
+                      retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch
+               FROM pending_messages
+               WHERE status = 'pending'
+                  OR (status = 'processing' AND claimed_at_epoch < ?1)
+               ORDER BY created_at_epoch ASC
+               LIMIT ?2"#,
+        )?;
+
+        let messages: Vec<PendingMessage> = stmt
+            .query_map(params![stale_threshold, limit], |row| {
+                let status_str: String = row.get(2)?;
+                let status = status_str
+                    .parse::<PendingMessageStatus>()
+                    .unwrap_or(PendingMessageStatus::Pending);
+                Ok(PendingMessage {
+                    id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    status,
+                    tool_name: row.get(3)?,
+                    tool_input: row.get(4)?,
+                    tool_response: row.get(5)?,
+                    retry_count: row.get(6)?,
+                    created_at_epoch: row.get(7)?,
+                    claimed_at_epoch: row.get(8)?,
+                    completed_at_epoch: row.get(9)?,
+                })
+            })?
+            .filter_map(log_row_error)
+            .collect();
+
+        // Mark claimed messages as processing
+        for msg in &messages {
+            conn.execute(
+                r#"UPDATE pending_messages 
+                   SET status = 'processing', claimed_at_epoch = ?1
+                   WHERE id = ?2"#,
+                params![now, msg.id],
+            )?;
+        }
+
+        Ok(messages)
+    }
+
+    /// Mark a message as completed
+    pub fn complete_message(&self, id: i64) -> Result<()> {
+        let conn = lock_conn(&self.conn)?;
+        let now = Utc::now().timestamp();
+        conn.execute(
+            r#"UPDATE pending_messages 
+               SET status = 'processed', completed_at_epoch = ?1
+               WHERE id = ?2"#,
+            params![now, id],
+        )?;
+        Ok(())
+    }
+
+    /// Mark a message as failed, optionally incrementing retry count.
+    /// If retry count reaches MAX_RETRY_COUNT, status becomes 'failed'.
+    /// Otherwise, status goes back to 'pending' for retry.
+    pub fn fail_message(&self, id: i64, increment_retry: bool) -> Result<()> {
+        let conn = lock_conn(&self.conn)?;
+        if increment_retry {
+            // Increment retry count and set status based on whether max retries reached
+            conn.execute(
+                r#"UPDATE pending_messages 
+                   SET retry_count = retry_count + 1,
+                       status = CASE 
+                           WHEN retry_count + 1 >= ?1 THEN 'failed'
+                           ELSE 'pending'
+                       END,
+                       claimed_at_epoch = NULL
+                   WHERE id = ?2"#,
+                params![crate::types::MAX_RETRY_COUNT, id],
+            )?;
+        } else {
+            conn.execute(
+                r#"UPDATE pending_messages SET status = 'failed' WHERE id = ?1"#,
+                params![id],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Get count of pending messages
+    pub fn get_pending_count(&self) -> Result<usize> {
+        let conn = lock_conn(&self.conn)?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM pending_messages WHERE status = 'pending'",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count as usize)
+    }
+
+    /// Release stale messages (processing for too long) back to pending
+    pub fn release_stale_messages(&self, visibility_timeout_secs: i64) -> Result<usize> {
+        let conn = lock_conn(&self.conn)?;
+        let now = Utc::now().timestamp();
+        let stale_threshold = now - visibility_timeout_secs;
+        let affected = conn.execute(
+            r#"UPDATE pending_messages 
+               SET status = 'pending', claimed_at_epoch = NULL
+               WHERE status = 'processing' AND claimed_at_epoch <= ?1"#,
+            params![stale_threshold],
+        )?;
+        Ok(affected)
+    }
+
+    /// Get failed messages for inspection/retry
+    pub fn get_failed_messages(&self, limit: usize) -> Result<Vec<PendingMessage>> {
+        let conn = lock_conn(&self.conn)?;
+        let mut stmt = conn.prepare(
+            r#"SELECT id, session_id, status, tool_name, tool_input, tool_response,
+                      retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch
+               FROM pending_messages
+               WHERE status = 'failed'
+               ORDER BY created_at_epoch DESC
+               LIMIT ?1"#,
+        )?;
+        let results = stmt
+            .query_map(params![limit], |row| {
+                let status_str: String = row.get(2)?;
+                let status = status_str
+                    .parse::<PendingMessageStatus>()
+                    .unwrap_or(PendingMessageStatus::Failed);
+                Ok(PendingMessage {
+                    id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    status,
+                    tool_name: row.get(3)?,
+                    tool_input: row.get(4)?,
+                    tool_response: row.get(5)?,
+                    retry_count: row.get(6)?,
+                    created_at_epoch: row.get(7)?,
+                    claimed_at_epoch: row.get(8)?,
+                    completed_at_epoch: row.get(9)?,
+                })
+            })?
+            .filter_map(log_row_error)
+            .collect();
+        Ok(results)
+    }
+
+    pub fn get_all_pending_messages(&self, limit: usize) -> Result<Vec<PendingMessage>> {
+        let conn = lock_conn(&self.conn)?;
+        let mut stmt = conn.prepare(
+            r#"SELECT id, session_id, status, tool_name, tool_input, tool_response,
+                      retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch
+               FROM pending_messages
+               ORDER BY created_at_epoch DESC
+               LIMIT ?1"#,
+        )?;
+        let results = stmt
+            .query_map(params![limit], |row| {
+                let status_str: String = row.get(2)?;
+                let status = status_str
+                    .parse::<PendingMessageStatus>()
+                    .unwrap_or(PendingMessageStatus::Pending);
+                Ok(PendingMessage {
+                    id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    status,
+                    tool_name: row.get(3)?,
+                    tool_input: row.get(4)?,
+                    tool_response: row.get(5)?,
+                    retry_count: row.get(6)?,
+                    created_at_epoch: row.get(7)?,
+                    claimed_at_epoch: row.get(8)?,
+                    completed_at_epoch: row.get(9)?,
+                })
+            })?
+            .filter_map(log_row_error)
+            .collect();
+        Ok(results)
+    }
+
+    pub fn get_queue_stats(&self) -> Result<crate::types::QueueStats> {
+        let conn = lock_conn(&self.conn)?;
+        let pending: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM pending_messages WHERE status = 'pending'",
+            [],
+            |row| row.get(0),
+        )?;
+        let processing: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM pending_messages WHERE status = 'processing'",
+            [],
+            |row| row.get(0),
+        )?;
+        let failed: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM pending_messages WHERE status = 'failed'",
+            [],
+            |row| row.get(0),
+        )?;
+        let processed: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM pending_messages WHERE status = 'processed'",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(crate::types::QueueStats {
+            pending: pending as u64,
+            processing: processing as u64,
+            failed: failed as u64,
+            processed: processed as u64,
+        })
+    }
+
+    pub fn clear_failed_messages(&self) -> Result<usize> {
+        let conn = lock_conn(&self.conn)?;
+        let affected = conn.execute("DELETE FROM pending_messages WHERE status = 'failed'", [])?;
+        Ok(affected)
+    }
+
+    pub fn clear_all_pending_messages(&self) -> Result<usize> {
+        let conn = lock_conn(&self.conn)?;
+        let affected = conn.execute("DELETE FROM pending_messages", [])?;
+        Ok(affected)
+    }
+
+    pub fn get_session_observation_count(&self, session_id: &str) -> Result<usize> {
+        let conn = lock_conn(&self.conn)?;
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM observations WHERE session_id = ?1",
+            params![session_id],
+            |row| row.get(0),
+        )?;
+        Ok(count as usize)
+    }
+
+    pub fn delete_session(&self, session_id: &str) -> Result<bool> {
+        let conn = lock_conn(&self.conn)?;
+        let affected = conn.execute("DELETE FROM sessions WHERE id = ?1", params![session_id])?;
+        Ok(affected > 0)
+    }
+
+    pub fn get_session_by_content_id(&self, content_session_id: &str) -> Result<Option<Session>> {
+        let conn = lock_conn(&self.conn)?;
+        let mut stmt = conn.prepare(
+            r#"SELECT id, content_session_id, memory_session_id, project, user_prompt, started_at, ended_at, status, prompt_counter
+               FROM sessions WHERE content_session_id = ?1"#,
+        )?;
+        let mut rows = stmt.query(params![content_session_id])?;
+        if let Some(row) = rows.next()? {
+            let started_at_str: String = row.get(5)?;
+            let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
+                .with_timezone(&Utc);
+
+            let ended_at_str: Option<String> = row.get(6)?;
+            let ended_at = ended_at_str
+                .map(|s| chrono::DateTime::parse_from_rfc3339(&s))
+                .transpose()
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
+                .map(|d| d.with_timezone(&Utc));
+
+            let status_str: String = row.get(7)?;
+            let status = serde_json::from_str(&status_str)
+                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+            Ok(Some(Session {
+                id: row.get(0)?,
+                content_session_id: row.get(1)?,
+                memory_session_id: row.get(2)?,
+                project: row.get(3)?,
+                user_prompt: row.get(4)?,
+                started_at,
+                ended_at,
+                status,
+                prompt_counter: row.get(8)?,
+            }))
+        } else {
+            Ok(None)
+        }
     }
 }

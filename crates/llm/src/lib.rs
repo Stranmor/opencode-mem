@@ -1,6 +1,6 @@
 //! LLM client for observation compression and summary generation
 use chrono::Utc;
-use opencode_mem_core::{Concept, Error, Observation, ObservationInput, ObservationType, Result};
+use opencode_mem_core::{Concept, Error, Observation, ObservationInput, ObservationType, Result, filter_private_content};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -93,6 +93,9 @@ impl LlmClient {
         input: &ObservationInput,
         project: Option<&str>,
     ) -> Result<Observation> {
+        let filtered_output = filter_private_content(&input.output.output);
+        let filtered_title = filter_private_content(&input.output.title);
+        
         let prompt = format!(
             r#"Analyze this tool execution and extract a structured observation.
 
@@ -111,8 +114,8 @@ Return JSON with these fields:
 - files_modified: array of file paths that were created or modified
 - keywords: array of 5-10 semantic keywords for search (technologies, patterns, concepts)"#,
             input.tool,
-            input.output.title,
-            truncate(&input.output.output, MAX_OUTPUT_LEN),
+            filtered_title,
+            truncate(&filtered_output, MAX_OUTPUT_LEN),
         );
 
         let request = ChatRequest {

@@ -2,7 +2,7 @@
 
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: i32 = 6;
+pub const SCHEMA_VERSION: i32 = 7;
 
 fn column_exists(conn: &Connection, table: &str, column: &str) -> bool {
     let sql = format!("PRAGMA table_info({})", table);
@@ -197,6 +197,12 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             "files_edited",
             "TEXT DEFAULT '[]'",
         )?;
+    }
+
+    if current_version < 7 {
+        tracing::info!("Running migration v7: retry_count and claimed_at for pending_messages");
+        add_column_if_not_exists(conn, "pending_messages", "retry_count", "INTEGER DEFAULT 0")?;
+        add_column_if_not_exists(conn, "pending_messages", "claimed_at_epoch", "INTEGER")?;
     }
 
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;

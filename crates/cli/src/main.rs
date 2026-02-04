@@ -1,12 +1,13 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use opencode_mem_http::{create_router, AppState};
+use opencode_mem_http::{create_router, AppState, Settings};
 use opencode_mem_llm::LlmClient;
 use opencode_mem_mcp::run_mcp_server;
 use opencode_mem_storage::Storage;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::{broadcast, Semaphore};
+use std::sync::atomic::AtomicBool;
+use tokio::sync::{broadcast, Semaphore, RwLock};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
@@ -88,6 +89,8 @@ async fn main() -> Result<()> {
                 llm,
                 semaphore: Arc::new(Semaphore::new(10)),
                 event_tx,
+                processing_active: AtomicBool::new(true),
+                settings: RwLock::new(Settings::default()),
             });
             let router = create_router(state);
             let addr = format!("{}:{}", host, port);

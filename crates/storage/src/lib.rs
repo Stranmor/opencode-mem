@@ -10,4 +10,7 @@ mod tests;
 mod types;
 
 pub use sqlite_monolith::Storage;
-pub use types::{PaginatedResult, StorageStats};
+pub use types::{
+    PaginatedResult, PendingMessage, PendingMessageStatus, QueueStats, StorageStats,
+    DEFAULT_VISIBILITY_TIMEOUT_SECS, MAX_RETRY_COUNT,
+};

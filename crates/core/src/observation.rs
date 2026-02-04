@@ -1,5 +1,16 @@
 use chrono::{DateTime, Utc};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::sync::LazyLock;
+
+static PRIVATE_TAG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?is)<private>.*?</private>").expect("Invalid privacy tag regex")
+});
+
+/// Filters out content wrapped in `<private>...</private>` tags.
+pub fn filter_private_content(text: &str) -> String {
+    PRIVATE_TAG_REGEX.replace_all(text, "").into_owned()
+}
 
 /// Type of observation captured during a coding session
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -143,4 +154,51 @@ pub struct SearchResult {
     pub subtitle: Option<String>,
     pub observation_type: ObservationType,
     pub score: f64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn filter_private_simple() {
+        let input = "Hello <private>secret</private> world";
+        assert_eq!(filter_private_content(input), "Hello  world");
+    }
+
+    #[test]
+    fn filter_private_multiline() {
+        let input = "Start\n<private>\nSecret data\n</private>\nEnd";
+        assert_eq!(filter_private_content(input), "Start\n\nEnd");
+    }
+
+    #[test]
+    fn filter_private_case_insensitive() {
+        let input = "Hello <PRIVATE>secret</PRIVATE> world";
+        assert_eq!(filter_private_content(input), "Hello  world");
+    }
+
+    #[test]
+    fn filter_private_multiple_tags() {
+        let input = "A <private>x</private> B <private>y</private> C";
+        assert_eq!(filter_private_content(input), "A  B  C");
+    }
+
+    #[test]
+    fn filter_private_no_tags() {
+        let input = "No private content here";
+        assert_eq!(filter_private_content(input), "No private content here");
+    }
+
+    #[test]
+    fn filter_private_empty_tag() {
+        let input = "Hello <private></private> world";
+        assert_eq!(filter_private_content(input), "Hello  world");
+    }
+
+    #[test]
+    fn filter_private_nested_content() {
+        let input = "Data <private>API_KEY=sk-12345\nPASSWORD=hunter2</private> end";
+        assert_eq!(filter_private_content(input), "Data  end");
+    }
 }

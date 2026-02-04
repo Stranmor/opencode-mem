@@ -1,14 +1,17 @@
 //! HTTP API server (Axum)
 use axum::{
     Router,
-    routing::{get, post},
-    extract::{Path, Query, State},
+    routing::{delete, get, post},
+    extract::{Path, Query, State, ConnectInfo},
     http::StatusCode,
     Json,
     response::sse::{Event, Sse},
 };
 use std::sync::Arc;
-use tokio::sync::{broadcast, Semaphore};
+use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::collections::HashMap;
+use tokio::sync::{broadcast, Semaphore, RwLock};
 use tower_http::cors::CorsLayer;
 use futures_util::stream::Stream;
 use std::convert::Infallible;
@@ -16,9 +19,11 @@ use serde::{Deserialize, Serialize};
 
 use opencode_mem_core::{
     Observation, SearchResult, ObservationInput, ToolOutput, ToolCall, SessionSummary, UserPrompt,
+    Session, SessionStatus,
 };
-use opencode_mem_storage::{PaginatedResult, Storage, StorageStats};
+use opencode_mem_storage::{PaginatedResult, PendingMessage, QueueStats, Storage, StorageStats, DEFAULT_VISIBILITY_TIMEOUT_SECS};
 use opencode_mem_llm::LlmClient;
+use chrono::Utc;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ObserveResponse {
@@ -71,6 +76,62 @@ pub struct SessionSummaryRequest {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct SessionInitRequest {
+    #[serde(rename = "contentSessionId")]
+    pub content_session_id: Option<String>,
+    pub project: Option<String>,
+    #[serde(rename = "userPrompt")]
+    pub user_prompt: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionInitResponse {
+    pub session_id: String,
+    pub status: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SessionObservationsRequest {
+    #[serde(rename = "contentSessionId")]
+    pub content_session_id: Option<String>,
+    pub observations: Vec<ToolCall>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionObservationsResponse {
+    pub queued: usize,
+    pub session_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SessionSummarizeRequest {
+    #[serde(rename = "contentSessionId")]
+    pub content_session_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionStatusResponse {
+    pub session_id: String,
+    pub status: SessionStatus,
+    pub observation_count: usize,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionDeleteResponse {
+    pub deleted: bool,
+    pub session_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionCompleteResponse {
+    pub session_id: String,
+    pub status: SessionStatus,
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct PaginationQuery {
     #[serde(default)]
     pub offset: usize,
@@ -91,11 +152,26 @@ pub struct VersionResponse {
     pub version: &'static str,
 }
 
+/// In-memory settings storage
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Settings {
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+    #[serde(default)]
+    pub mcp_enabled: bool,
+    #[serde(default)]
+    pub current_branch: String,
+    #[serde(default)]
+    pub log_path: Option<String>,
+}
+
 pub struct AppState {
     pub storage: Storage,
     pub llm: LlmClient,
     pub semaphore: Arc<Semaphore>,
     pub event_tx: broadcast::Sender<String>,
+    pub processing_active: AtomicBool,
+    pub settings: RwLock<Settings>,
 }
 
 pub fn create_router(state: Arc<AppState>) -> Router {
@@ -127,6 +203,34 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/context/inject", get(get_context_inject))
         .route("/session/summary", post(generate_summary))
         .route("/events", get(sse_events))
+        .route("/sessions/{sessionDbId}/init", post(session_init_legacy))
+        .route("/sessions/{sessionDbId}/observations", post(session_observations_legacy))
+        .route("/sessions/{sessionDbId}/summarize", post(session_summarize_legacy))
+        .route("/sessions/{sessionDbId}/status", get(session_status))
+        .route("/sessions/{sessionDbId}", delete(session_delete))
+        .route("/sessions/{sessionDbId}/complete", post(session_complete))
+        .route("/api/sessions/init", post(api_session_init))
+        .route("/api/sessions/observations", post(api_session_observations))
+        .route("/api/sessions/summarize", post(api_session_summarize))
+        // Pending queue management
+        .route("/api/pending-queue", get(get_pending_queue))
+        .route("/api/pending-queue/process", post(process_pending_queue))
+        .route("/api/pending-queue/failed", delete(clear_failed_queue))
+        .route("/api/pending-queue/all", delete(clear_all_queue))
+        .route("/api/processing-status", get(get_processing_status))
+        .route("/api/processing", post(set_processing_status))
+        // Settings and MCP management
+        .route("/api/settings", get(get_settings))
+        .route("/api/settings", post(update_settings))
+        .route("/api/mcp/status", get(get_mcp_status))
+        .route("/api/mcp/toggle", post(toggle_mcp))
+        .route("/api/branch/status", get(get_branch_status))
+        .route("/api/branch/switch", post(switch_branch))
+        .route("/api/branch/update", post(update_branch))
+        // Instructions and admin
+        .route("/api/instructions", get(get_instructions))
+        .route("/api/admin/restart", post(admin_restart))
+        .route("/api/admin/shutdown", post(admin_shutdown))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -403,6 +507,75 @@ pub struct FileSearchQuery {
     pub limit: usize,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct UnifiedTimelineQuery {
+    pub anchor: Option<String>,
+    pub q: Option<String>,
+    #[serde(default = "default_timeline_count")]
+    pub before: usize,
+    #[serde(default = "default_timeline_count")]
+    pub after: usize,
+    pub project: Option<String>,
+}
+
+fn default_timeline_count() -> usize {
+    5
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ContextPreviewQuery {
+    pub project: String,
+    #[serde(default = "default_context_limit")]
+    pub limit: usize,
+    #[serde(default = "default_preview_format")]
+    pub format: String,
+}
+
+fn default_preview_format() -> String {
+    "compact".to_string()
+}
+
+#[derive(Debug, Serialize)]
+pub struct UnifiedSearchResult {
+    pub observations: Vec<SearchResult>,
+    pub sessions: Vec<SessionSummary>,
+    pub prompts: Vec<UserPrompt>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TimelineResult {
+    pub anchor: Option<Observation>,
+    pub before: Vec<Observation>,
+    pub after: Vec<Observation>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ContextPreview {
+    pub project: String,
+    pub observation_count: usize,
+    pub preview: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SearchHelpResponse {
+    pub endpoints: Vec<EndpointDoc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EndpointDoc {
+    pub path: &'static str,
+    pub method: &'static str,
+    pub description: &'static str,
+    pub params: Vec<ParamDoc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ParamDoc {
+    pub name: &'static str,
+    pub required: bool,
+    pub description: &'static str,
+}
+
 async fn search_by_file(
     State(state): State<Arc<AppState>>,
     Query(query): Query<FileSearchQuery>,
@@ -500,4 +673,628 @@ async fn sse_events(
         }
     };
     Sse::new(stream)
+}
+
+async fn session_init_legacy(
+    State(state): State<Arc<AppState>>,
+    Path(session_db_id): Path<String>,
+    Json(req): Json<SessionInitRequest>,
+) -> Result<Json<SessionInitResponse>, StatusCode> {
+    let session = Session {
+        id: session_db_id.clone(),
+        content_session_id: req.content_session_id.unwrap_or_else(|| session_db_id.clone()),
+        memory_session_id: None,
+        project: req.project.unwrap_or_default(),
+        user_prompt: req.user_prompt,
+        started_at: chrono::Utc::now(),
+        ended_at: None,
+        status: SessionStatus::Active,
+        prompt_counter: 0,
+    };
+    state.storage.save_session(&session).map_err(|e| {
+        tracing::error!("Session init failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(SessionInitResponse {
+        session_id: session.id,
+        status: "active".to_string(),
+    }))
+}
+
+async fn session_observations_legacy(
+    State(state): State<Arc<AppState>>,
+    Path(session_db_id): Path<String>,
+    Json(req): Json<SessionObservationsRequest>,
+) -> Result<Json<SessionObservationsResponse>, StatusCode> {
+    let count = req.observations.len();
+    for tool_call in req.observations {
+        let id = uuid::Uuid::new_v4().to_string();
+        let state_clone = state.clone();
+        let session_id = session_db_id.clone();
+        tokio::spawn(async move {
+            let permit = match state_clone.semaphore.acquire().await {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::error!("Semaphore closed: {}", e);
+                    return;
+                }
+            };
+            if let Err(e) = process_observation_for_session(&state_clone, &id, &session_id, tool_call).await {
+                tracing::error!("Failed to process observation: {}", e);
+            }
+            drop(permit);
+        });
+    }
+    Ok(Json(SessionObservationsResponse {
+        queued: count,
+        session_id: session_db_id,
+    }))
+}
+
+async fn process_observation_for_session(
+    state: &AppState,
+    id: &str,
+    session_id: &str,
+    tool_call: ToolCall,
+) -> anyhow::Result<()> {
+    let input = ObservationInput {
+        tool: tool_call.tool.clone(),
+        session_id: session_id.to_string(),
+        call_id: tool_call.call_id.clone(),
+        output: ToolOutput {
+            title: format!("Observation from {}", tool_call.tool),
+            output: tool_call.output,
+            metadata: tool_call.input,
+        },
+    };
+    let observation = state.llm.compress_to_observation(id, &input, tool_call.project.as_deref()).await?;
+    state.storage.save_observation(&observation)?;
+    tracing::info!("Saved observation: {} - {}", observation.id, observation.title);
+    let _ = state.event_tx.send(serde_json::to_string(&observation)?);
+    Ok(())
+}
+
+async fn session_summarize_legacy(
+    State(state): State<Arc<AppState>>,
+    Path(session_db_id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let observations = state.storage.get_session_observations(&session_db_id).map_err(|e| {
+        tracing::error!("Get session observations failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let summary = state.llm.generate_session_summary(&observations).await.map_err(|e| {
+        tracing::error!("Generate summary failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    state.storage.update_session_status_with_summary(&session_db_id, SessionStatus::Completed, Some(&summary)).map_err(|e| {
+        tracing::error!("Update session summary failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(serde_json::json!({"session_id": session_db_id, "summary": summary, "queued": true})))
+}
+
+async fn session_status(
+    State(state): State<Arc<AppState>>,
+    Path(session_db_id): Path<String>,
+) -> Result<Json<SessionStatusResponse>, StatusCode> {
+    let session = state.storage.get_session(&session_db_id).map_err(|e| {
+        tracing::error!("Get session failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    match session {
+        Some(s) => {
+            let obs_count = state.storage.get_session_observation_count(&session_db_id).unwrap_or(0);
+            Ok(Json(SessionStatusResponse {
+                session_id: s.id,
+                status: s.status,
+                observation_count: obs_count,
+                started_at: s.started_at.to_rfc3339(),
+                ended_at: s.ended_at.map(|d| d.to_rfc3339()),
+            }))
+        }
+        None => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+async fn session_delete(
+    State(state): State<Arc<AppState>>,
+    Path(session_db_id): Path<String>,
+) -> Result<Json<SessionDeleteResponse>, StatusCode> {
+    let deleted = state.storage.delete_session(&session_db_id).map_err(|e| {
+        tracing::error!("Delete session failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(SessionDeleteResponse {
+        deleted,
+        session_id: session_db_id,
+    }))
+}
+
+async fn session_complete(
+    State(state): State<Arc<AppState>>,
+    Path(session_db_id): Path<String>,
+) -> Result<Json<SessionCompleteResponse>, StatusCode> {
+    let observations = state.storage.get_session_observations(&session_db_id).map_err(|e| {
+        tracing::error!("Get session observations failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let summary = if observations.is_empty() {
+        None
+    } else {
+        Some(state.llm.generate_session_summary(&observations).await.map_err(|e| {
+            tracing::error!("Generate summary failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?)
+    };
+    state.storage.update_session_status_with_summary(&session_db_id, SessionStatus::Completed, summary.as_deref()).map_err(|e| {
+        tracing::error!("Update session status failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(SessionCompleteResponse {
+        session_id: session_db_id,
+        status: SessionStatus::Completed,
+        summary,
+    }))
+}
+
+async fn api_session_init(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<SessionInitRequest>,
+) -> Result<Json<SessionInitResponse>, StatusCode> {
+    let content_session_id = req.content_session_id.ok_or(StatusCode::BAD_REQUEST)?;
+    let session_id = uuid::Uuid::new_v4().to_string();
+    let session = Session {
+        id: session_id.clone(),
+        content_session_id,
+        memory_session_id: None,
+        project: req.project.unwrap_or_default(),
+        user_prompt: req.user_prompt,
+        started_at: chrono::Utc::now(),
+        ended_at: None,
+        status: SessionStatus::Active,
+        prompt_counter: 0,
+    };
+    state.storage.save_session(&session).map_err(|e| {
+        tracing::error!("API session init failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(SessionInitResponse {
+        session_id: session.id,
+        status: "active".to_string(),
+    }))
+}
+
+async fn api_session_observations(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<SessionObservationsRequest>,
+) -> Result<Json<SessionObservationsResponse>, StatusCode> {
+    let content_session_id = req.content_session_id.ok_or(StatusCode::BAD_REQUEST)?;
+    let session = state.storage.get_session_by_content_id(&content_session_id).map_err(|e| {
+        tracing::error!("Get session by content id failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let session_id = session.map(|s| s.id).ok_or(StatusCode::NOT_FOUND)?;
+    let count = req.observations.len();
+    for tool_call in req.observations {
+        let id = uuid::Uuid::new_v4().to_string();
+        let state_clone = state.clone();
+        let sid = session_id.clone();
+        tokio::spawn(async move {
+            let permit = match state_clone.semaphore.acquire().await {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::error!("Semaphore closed: {}", e);
+                    return;
+                }
+            };
+            if let Err(e) = process_observation_for_session(&state_clone, &id, &sid, tool_call).await {
+                tracing::error!("Failed to process observation: {}", e);
+            }
+            drop(permit);
+        });
+    }
+    Ok(Json(SessionObservationsResponse {
+        queued: count,
+        session_id,
+    }))
+}
+
+async fn api_session_summarize(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<SessionSummarizeRequest>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let content_session_id = req.content_session_id.ok_or(StatusCode::BAD_REQUEST)?;
+    let session = state.storage.get_session_by_content_id(&content_session_id).map_err(|e| {
+        tracing::error!("Get session by content id failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let session_id = session.map(|s| s.id).ok_or(StatusCode::NOT_FOUND)?;
+    let observations = state.storage.get_session_observations(&session_id).map_err(|e| {
+        tracing::error!("Get session observations failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let summary = state.llm.generate_session_summary(&observations).await.map_err(|e| {
+        tracing::error!("Generate summary failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    state.storage.update_session_status_with_summary(&session_id, SessionStatus::Completed, Some(&summary)).map_err(|e| {
+        tracing::error!("Update session summary failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(serde_json::json!({"session_id": session_id, "summary": summary, "queued": true})))
+}
+
+#[derive(Debug, Serialize)]
+pub struct PendingQueueResponse {
+    pub messages: Vec<PendingMessage>,
+    pub stats: QueueStats,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProcessQueueResponse {
+    pub processed: usize,
+    pub failed: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ClearQueueResponse {
+    pub cleared: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProcessingStatusResponse {
+    pub active: bool,
+    pub pending_count: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SetProcessingRequest {
+    pub active: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SetProcessingResponse {
+    pub active: bool,
+}
+
+async fn get_pending_queue(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<SearchQuery>,
+) -> Result<Json<PendingQueueResponse>, StatusCode> {
+    let messages = state.storage.get_all_pending_messages(query.limit).map_err(|e| {
+        tracing::error!("Get pending queue failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let stats = state.storage.get_queue_stats().map_err(|e| {
+        tracing::error!("Get queue stats failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(PendingQueueResponse { messages, stats }))
+}
+
+async fn process_pending_queue(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ProcessQueueResponse>, StatusCode> {
+    let messages = state.storage.claim_pending_messages(10, DEFAULT_VISIBILITY_TIMEOUT_SECS).map_err(|e| {
+        tracing::error!("Claim pending messages failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    let mut processed = 0;
+    let mut failed = 0;
+    for msg in messages {
+        match state.storage.complete_message(msg.id) {
+            Ok(()) => processed += 1,
+            Err(e) => {
+                tracing::error!("Complete message {} failed: {}", msg.id, e);
+                let _ = state.storage.fail_message(msg.id, true);
+                failed += 1;
+            }
+        }
+    }
+    Ok(Json(ProcessQueueResponse { processed, failed }))
+}
+
+async fn clear_failed_queue(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ClearQueueResponse>, StatusCode> {
+    let cleared = state.storage.clear_failed_messages().map_err(|e| {
+        tracing::error!("Clear failed messages failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(ClearQueueResponse { cleared }))
+}
+
+async fn clear_all_queue(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ClearQueueResponse>, StatusCode> {
+    let cleared = state.storage.clear_all_pending_messages().map_err(|e| {
+        tracing::error!("Clear all pending messages failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(ClearQueueResponse { cleared }))
+}
+
+async fn get_processing_status(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ProcessingStatusResponse>, StatusCode> {
+    let active = state.processing_active.load(Ordering::SeqCst);
+    let pending_count = state.storage.get_pending_count().unwrap_or(0);
+    Ok(Json(ProcessingStatusResponse { active, pending_count }))
+}
+
+async fn set_processing_status(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<SetProcessingRequest>,
+) -> Result<Json<SetProcessingResponse>, StatusCode> {
+    state.processing_active.store(req.active, Ordering::SeqCst);
+    Ok(Json(SetProcessingResponse { active: req.active }))
+}
+
+pub fn run_startup_recovery(state: &AppState) -> anyhow::Result<usize> {
+    let released = state.storage.release_stale_messages(DEFAULT_VISIBILITY_TIMEOUT_SECS)?;
+    if released > 0 {
+        tracing::info!("Startup recovery: released {} stale messages back to pending", released);
+    }
+    Ok(released)
+}
+
+#[derive(Debug, Serialize)]
+pub struct SettingsResponse {
+    pub settings: Settings,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateSettingsRequest {
+    #[serde(default)]
+    pub env: Option<HashMap<String, String>>,
+    #[serde(default)]
+    pub log_path: Option<String>,
+}
+
+async fn get_settings(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<SettingsResponse>, StatusCode> {
+    let settings = state.settings.read().await.clone();
+    Ok(Json(SettingsResponse { settings }))
+}
+
+async fn update_settings(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<UpdateSettingsRequest>,
+) -> Result<Json<SettingsResponse>, StatusCode> {
+    let mut settings = state.settings.write().await;
+    if let Some(env) = req.env {
+        settings.env = env;
+    }
+    if let Some(log_path) = req.log_path {
+        settings.log_path = Some(log_path);
+    }
+    Ok(Json(SettingsResponse { settings: settings.clone() }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct McpStatusResponse {
+    pub enabled: bool,
+}
+
+async fn get_mcp_status(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<McpStatusResponse>, StatusCode> {
+    let settings = state.settings.read().await;
+    Ok(Json(McpStatusResponse { enabled: settings.mcp_enabled }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ToggleMcpRequest {
+    pub enabled: bool,
+}
+
+async fn toggle_mcp(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<ToggleMcpRequest>,
+) -> Result<Json<McpStatusResponse>, StatusCode> {
+    let mut settings = state.settings.write().await;
+    settings.mcp_enabled = req.enabled;
+    Ok(Json(McpStatusResponse { enabled: settings.mcp_enabled }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct BranchStatusResponse {
+    pub current_branch: String,
+    pub is_dirty: bool,
+}
+
+async fn get_branch_status(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<BranchStatusResponse>, StatusCode> {
+    let settings = state.settings.read().await;
+    Ok(Json(BranchStatusResponse {
+        current_branch: settings.current_branch.clone(),
+        is_dirty: false,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SwitchBranchRequest {
+    pub branch: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SwitchBranchResponse {
+    pub success: bool,
+    pub branch: String,
+    pub message: String,
+}
+
+async fn switch_branch(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<SwitchBranchRequest>,
+) -> Result<Json<SwitchBranchResponse>, StatusCode> {
+    let mut settings = state.settings.write().await;
+    settings.current_branch = req.branch.clone();
+    Ok(Json(SwitchBranchResponse {
+        success: true,
+        branch: req.branch,
+        message: "Branch switch stubbed".to_string(),
+    }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct UpdateBranchResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+async fn update_branch(
+    State(_state): State<Arc<AppState>>,
+) -> Result<Json<UpdateBranchResponse>, StatusCode> {
+    Ok(Json(UpdateBranchResponse {
+        success: true,
+        message: "Branch update stubbed".to_string(),
+    }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct InstructionsResponse {
+    pub sections: Vec<String>,
+    pub content: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InstructionsQuery {
+    #[serde(default)]
+    pub section: Option<String>,
+}
+
+async fn get_instructions(
+    Query(query): Query<InstructionsQuery>,
+) -> Result<Json<InstructionsResponse>, StatusCode> {
+    let skill_path = std::path::Path::new("SKILL.md");
+    let content = if skill_path.exists() {
+        std::fs::read_to_string(skill_path).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let sections: Vec<String> = content
+        .lines()
+        .filter(|l| l.starts_with("## "))
+        .map(|l| l.trim_start_matches("## ").to_string())
+        .collect();
+    let filtered_content = if let Some(section) = query.section {
+        extract_section(&content, &section)
+    } else {
+        content
+    };
+    Ok(Json(InstructionsResponse {
+        sections,
+        content: filtered_content,
+    }))
+}
+
+fn extract_section(content: &str, section: &str) -> String {
+    let marker = format!("## {}", section);
+    let mut in_section = false;
+    let mut result = Vec::new();
+    for line in content.lines() {
+        if line.starts_with("## ") {
+            if line == marker {
+                in_section = true;
+                result.push(line);
+            } else if in_section {
+                break;
+            }
+        } else if in_section {
+            result.push(line);
+        }
+    }
+    result.join("\n")
+}
+
+fn is_localhost(addr: &SocketAddr) -> bool {
+    addr.ip().is_loopback()
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdminResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+async fn admin_restart(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> Result<Json<AdminResponse>, StatusCode> {
+    if !is_localhost(&addr) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    Ok(Json(AdminResponse {
+        success: true,
+        message: "Restart signal sent (stubbed)".to_string(),
+    }))
+}
+
+async fn admin_shutdown(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+) -> Result<Json<AdminResponse>, StatusCode> {
+    if !is_localhost(&addr) {
+        return Err(StatusCode::FORBIDDEN);
+    }
+    Ok(Json(AdminResponse {
+        success: true,
+        message: "Shutdown signal sent (stubbed)".to_string(),
+    }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct LogsResponse {
+    pub date: String,
+    pub content: String,
+    pub size_bytes: usize,
+}
+
+#[allow(dead_code)]
+async fn get_logs(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<LogsResponse>, StatusCode> {
+    let settings = state.settings.read().await;
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let content = if let Some(ref log_path) = settings.log_path {
+        let path = std::path::Path::new(log_path);
+        if path.exists() {
+            std::fs::read_to_string(path).unwrap_or_default()
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+    let size_bytes = content.len();
+    Ok(Json(LogsResponse { date: today, content, size_bytes }))
+}
+
+#[derive(Debug, Serialize)]
+pub struct ClearLogsResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+async fn clear_logs(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ClearLogsResponse>, StatusCode> {
+    let settings = state.settings.read().await;
+    if let Some(ref log_path) = settings.log_path {
+        let path = std::path::Path::new(log_path);
+        if path.exists() {
+            if let Err(e) = std::fs::write(path, "") {
+                tracing::error!("Failed to clear logs: {}", e);
+                return Ok(Json(ClearLogsResponse {
+                    success: false,
+                    message: format!("Failed to clear: {}", e),
+                }));
+            }
+        }
+    }
+    Ok(Json(ClearLogsResponse {
+        success: true,
+        message: "Logs cleared".to_string(),
+    }))
 }

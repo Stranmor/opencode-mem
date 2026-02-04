@@ -10,3 +10,5 @@ serde_json = { workspace = true }
 chrono = { workspace = true }
 thiserror = { workspace = true }
 rusqlite = { workspace = true }
+regex = { workspace = true }
+anyhow = { workspace = true }
