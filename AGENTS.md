@@ -15,7 +15,7 @@ Last reviewed commit: `1341e93fcab15b9caf48bc947d8521b4a97515d8`
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| MCP Tools | ✅ 6 tools | search, timeline, get_observations, memory_get, memory_recent, memory_hybrid_search |
+| MCP Tools | ✅ 16 tools | search, timeline, get_observations, memory_*, knowledge_*, infinite_* |
 | Database | ✅ | SQLite + FTS5, migrations v1-v10, r2d2 pool |
 | CLI | ✅ 100% | serve, mcp, search, stats, projects, recent, get, hook (context, session-init, observe, summarize) |
 | HTTP API | ✅ 100% | 64 endpoints (upstream has 56) |
@@ -38,7 +38,7 @@ Last reviewed commit: `1341e93fcab15b9caf48bc947d8521b4a97515d8`
 |---------|--------|-------|
 | **Infinite Memory** | ✅ Ready | PostgreSQL + pgvector backend for long-term AGI memory. Session isolation, hierarchical summaries (5min→hour→day), content truncation. Enabled via INFINITE_MEMORY_URL. **Raw events are NEVER deleted** — drill-down API allows zooming from any summary back to original events. |
 | **Dynamic Memory** | ✅ Ready | Solves "static summaries" problem. **Deep Zoom:** 4 HTTP endpoints (`/api/infinite/expand_summary/:id`, `/time_range`, `/drill_hour/:id`, `/drill_day/:id`) for drilling down from summaries to raw events. **Structured Metadata:** `SummaryEntities` (files, functions, libraries, errors, decisions) extracted via `response_format: json_object`. Enables fact-based search even when text summary is vague. |
-| **Semantic Search** | 🚧 WIP | Vector embeddings (fastembed-rs) + sqlite-vec for cosine similarity. Hybrid search combines FTS5 (text) + semantic (meaning). Solves: "проблема с потоками" → finds "race condition". |
+| **Semantic Search** | ✅ Ready | fastembed-rs (AllMiniLML6V2, 384d) + sqlite-vec for cosine similarity. Hybrid search: FTS5 BM25 (50%) + vector similarity (50%). HTTP endpoint: `/semantic-search`. |
 
 ## Upstream Sync
 
@@ -53,7 +53,7 @@ Last reviewed commit: `1341e93fcab15b9caf48bc947d8521b4a97515d8`
 crates/
 ├── core/        # Domain types (Observation, Session, etc.)
 ├── storage/     # SQLite + FTS5 + migrations
-├── embeddings/  # Vector embeddings (stub, optional)
+├── embeddings/  # Vector embeddings (fastembed AllMiniLML6V2)
 ├── search/      # Hybrid search (FTS + keyword)
 ├── llm/         # LLM compression (Antigravity API)
 ├── http/        # HTTP API (Axum)
