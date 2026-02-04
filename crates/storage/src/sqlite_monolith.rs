@@ -677,13 +677,13 @@ impl Storage {
         }
 
         if let Some(q) = query {
-            if !q.is_empty() {
-                let fts_query = q
-                    .split_whitespace()
-                    .map(|word| format!("\"{}\"*", word.replace('"', "")))
-                    .collect::<Vec<_>>()
-                    .join(" AND ");
+            let fts_query = q
+                .split_whitespace()
+                .map(|word| format!("\"{}\"*", word.replace('"', "")))
+                .collect::<Vec<_>>()
+                .join(" AND ");
 
+            if !fts_query.is_empty() {
                 let where_clause = if conditions.is_empty() {
                     String::new()
                 } else {

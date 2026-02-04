@@ -1280,9 +1280,6 @@ async fn update_settings(
     if let Some(env) = req.env {
         settings.env = env;
     }
-    if let Some(log_path) = req.log_path {
-        settings.log_path = Some(log_path);
-    }
     Ok(Json(SettingsResponse {
         settings: settings.clone(),
     }))
