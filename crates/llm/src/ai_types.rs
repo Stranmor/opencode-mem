@@ -38,12 +38,17 @@ fn default_true() -> bool {
     true
 }
 
+fn default_empty_string() -> String {
+    String::new()
+}
+
 #[derive(Deserialize)]
 pub(crate) struct ObservationJson {
     #[serde(default = "default_true")]
     pub should_save: bool,
-    #[serde(rename = "type")]
+    #[serde(rename = "type", default = "default_empty_string")]
     pub observation_type: String,
+    #[serde(default = "default_empty_string")]
     pub title: String,
     pub subtitle: Option<String>,
     pub narrative: Option<String>,

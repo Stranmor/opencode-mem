@@ -2,11 +2,13 @@ mod handlers;
 mod tools;
 
 use opencode_mem_embeddings::EmbeddingService;
+use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_storage::Storage;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::io::{BufRead, BufReader, Write};
 use std::sync::Arc;
+use tokio::runtime::Handle;
 
 pub use tools::McpTool;
 
@@ -39,7 +41,12 @@ pub struct McpError {
     pub message: String,
 }
 
-pub fn run_mcp_server(storage: Arc<Storage>, embeddings: Option<Arc<EmbeddingService>>) {
+pub fn run_mcp_server(
+    storage: Arc<Storage>,
+    embeddings: Option<Arc<EmbeddingService>>,
+    infinite_mem: Option<Arc<InfiniteMemory>>,
+    handle: Handle,
+) {
     tracing::info!("MCP server starting on stdio");
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
@@ -95,7 +102,13 @@ pub fn run_mcp_server(storage: Arc<Storage>, embeddings: Option<Arc<EmbeddingSer
             }
         };
 
-        if let Some(response) = handle_request(&storage, embeddings.as_deref(), &request) {
+        if let Some(response) = handle_request(
+            &storage,
+            embeddings.as_deref(),
+            infinite_mem.as_deref(),
+            &handle,
+            &request,
+        ) {
             if let Ok(response_json) = serde_json::to_string(&response) {
                 writeln!(stdout, "{}", response_json).ok();
                 stdout.flush().ok();
@@ -107,6 +120,8 @@ pub fn run_mcp_server(storage: Arc<Storage>, embeddings: Option<Arc<EmbeddingSer
 fn handle_request(
     storage: &Storage,
     embeddings: Option<&EmbeddingService>,
+    infinite_mem: Option<&InfiniteMemory>,
+    handle: &Handle,
     req: &McpRequest,
 ) -> Option<McpResponse> {
     let id = match &req.id {
@@ -131,7 +146,9 @@ fn handle_request(
             result: Some(get_tools_json()),
             error: None,
         },
-        "tools/call" => handle_tool_call(storage, embeddings, &req.params, id),
+        "tools/call" => {
+            handle_tool_call(storage, embeddings, infinite_mem, handle, &req.params, id)
+        }
         _ => McpResponse {
             jsonrpc: "2.0".to_string(),
             id,

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use opencode_mem_embeddings::EmbeddingService;
-use opencode_mem_http::{create_router, AppState, Settings};
+use opencode_mem_http::{create_router, run_startup_recovery, AppState, Settings};
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_service::{ObservationService, SessionService};
@@ -69,6 +69,11 @@ pub async fn run(port: u16, host: String) -> Result<()> {
         session_service,
         embeddings,
     });
+
+    if let Err(e) = run_startup_recovery(&state) {
+        tracing::warn!("Startup recovery failed: {}", e);
+    }
+
     let router = create_router(state);
     let addr = format!("{}:{}", host, port);
     tracing::info!("Starting HTTP server on {}", addr);

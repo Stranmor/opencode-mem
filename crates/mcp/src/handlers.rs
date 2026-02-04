@@ -1,8 +1,10 @@
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
+use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_storage::Storage;
 use serde::Serialize;
 use serde_json::json;
 use std::fmt::Display;
+use tokio::runtime::Handle;
 
 use crate::tools::{McpTool, WORKFLOW_DOCS};
 use crate::{McpError, McpResponse};
@@ -27,6 +29,8 @@ pub(crate) fn mcp_err(msg: impl Display) -> serde_json::Value {
 pub fn handle_tool_call(
     storage: &Storage,
     embeddings: Option<&EmbeddingService>,
+    infinite_mem: Option<&InfiniteMemory>,
+    handle: &Handle,
     params: &serde_json::Value,
     id: serde_json::Value,
 ) -> McpResponse {
@@ -179,18 +183,74 @@ pub fn handle_tool_call(
                 Err(e) => mcp_err(e),
             }
         }
-        McpTool::InfiniteExpand => {
-            mcp_err("Infinite Memory not connected to MCP server. Use HTTP API at /api/infinite/expand_summary/:id")
-        }
-        McpTool::InfiniteTimeRange => {
-            mcp_err("Infinite Memory not connected to MCP server. Use HTTP API at /api/infinite/time_range")
-        }
-        McpTool::InfiniteDrillHour => {
-            mcp_err("Infinite Memory not connected to MCP server. Use HTTP API at /api/infinite/drill_hour/:id")
-        }
-        McpTool::InfiniteDrillDay => {
-            mcp_err("Infinite Memory not connected to MCP server. Use HTTP API at /api/infinite/drill_day/:id")
-        }
+        McpTool::InfiniteExpand => match infinite_mem {
+            Some(mem) => {
+                let summary_id = args.get("summary_id").and_then(|i| i.as_i64()).unwrap_or(0);
+                let limit = args.get("limit").and_then(|l| l.as_i64()).unwrap_or(1000);
+                match handle.block_on(mem.get_events_by_summary_id(summary_id, limit)) {
+                    Ok(events) => mcp_ok(&events),
+                    Err(e) => mcp_err(e),
+                }
+            }
+            None => mcp_err("Infinite Memory not configured (INFINITE_MEMORY_URL not set)"),
+        },
+        McpTool::InfiniteTimeRange => match infinite_mem {
+            Some(mem) => {
+                let from = args.get("from").and_then(|f| f.as_str()).unwrap_or("");
+                let to = args.get("to").and_then(|t| t.as_str()).unwrap_or("");
+                let session_id = args.get("session_id").and_then(|s| s.as_str());
+                let limit = args.get("limit").and_then(|l| l.as_i64()).unwrap_or(1000);
+                let start = match chrono::DateTime::parse_from_rfc3339(from) {
+                    Ok(dt) => dt.with_timezone(&chrono::Utc),
+                    Err(_) => {
+                        return McpResponse {
+                            jsonrpc: "2.0".to_string(),
+                            id,
+                            result: Some(mcp_err("Invalid 'from' datetime format (use RFC3339)")),
+                            error: None,
+                        }
+                    }
+                };
+                let end = match chrono::DateTime::parse_from_rfc3339(to) {
+                    Ok(dt) => dt.with_timezone(&chrono::Utc),
+                    Err(_) => {
+                        return McpResponse {
+                            jsonrpc: "2.0".to_string(),
+                            id,
+                            result: Some(mcp_err("Invalid 'to' datetime format (use RFC3339)")),
+                            error: None,
+                        }
+                    }
+                };
+                match handle.block_on(mem.get_events_by_time_range(start, end, session_id, limit)) {
+                    Ok(events) => mcp_ok(&events),
+                    Err(e) => mcp_err(e),
+                }
+            }
+            None => mcp_err("Infinite Memory not configured (INFINITE_MEMORY_URL not set)"),
+        },
+        McpTool::InfiniteDrillHour => match infinite_mem {
+            Some(mem) => {
+                let hour_id = args.get("hour_id").and_then(|i| i.as_i64()).unwrap_or(0);
+                let limit = args.get("limit").and_then(|l| l.as_i64()).unwrap_or(100);
+                match handle.block_on(mem.get_5min_summaries_by_hour_id(hour_id, limit)) {
+                    Ok(summaries) => mcp_ok(&summaries),
+                    Err(e) => mcp_err(e),
+                }
+            }
+            None => mcp_err("Infinite Memory not configured (INFINITE_MEMORY_URL not set)"),
+        },
+        McpTool::InfiniteDrillDay => match infinite_mem {
+            Some(mem) => {
+                let day_id = args.get("day_id").and_then(|i| i.as_i64()).unwrap_or(0);
+                let limit = args.get("limit").and_then(|l| l.as_i64()).unwrap_or(100);
+                match handle.block_on(mem.get_hour_summaries_by_day_id(day_id, limit)) {
+                    Ok(summaries) => mcp_ok(&summaries),
+                    Err(e) => mcp_err(e),
+                }
+            }
+            None => mcp_err("Infinite Memory not configured (INFINITE_MEMORY_URL not set)"),
+        },
     };
 
     McpResponse {

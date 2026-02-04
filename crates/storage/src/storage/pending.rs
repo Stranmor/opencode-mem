@@ -74,15 +74,11 @@ impl Storage {
         Ok(messages)
     }
 
+    /// Delete message after successful processing.
+    /// Raw tool outputs may contain secrets - we don't keep them after processing.
     pub fn complete_message(&self, id: i64) -> Result<()> {
         let conn = get_conn(&self.pool)?;
-        let now = Utc::now().timestamp();
-        conn.execute(
-            r#"UPDATE pending_messages 
-               SET status = 'processed', completed_at_epoch = ?1
-               WHERE id = ?2"#,
-            params![now, id],
-        )?;
+        conn.execute("DELETE FROM pending_messages WHERE id = ?1", params![id])?;
         Ok(())
     }
 

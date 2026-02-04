@@ -2221,18 +2221,24 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+ "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
 name = "opencode-mem-mcp"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "opencode-mem-core",
  "opencode-mem-embeddings",
+ "opencode-mem-infinite",
+ "opencode-mem-llm",
  "opencode-mem-storage",
  "serde",
  "serde_json",
+ "tokio",
  "tracing",
 ]
 
