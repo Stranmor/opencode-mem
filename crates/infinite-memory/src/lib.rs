@@ -228,8 +228,8 @@ impl InfiniteMemory {
             return Ok(0);
         }
 
-        let ts_start = events.first().map(|e| e.ts).unwrap();
-        let ts_end = events.last().map(|e| e.ts).unwrap();
+        let ts_start = events.first().expect("BUG: create_5min_summary called with empty events after is_empty check").ts;
+        let ts_end = events.last().expect("BUG: create_5min_summary called with empty events after is_empty check").ts;
         let session_id = events.first().map(|e| e.session_id.clone());
         let project = events.first().and_then(|e| e.project.clone());
 
