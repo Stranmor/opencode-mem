@@ -1,0 +1,18 @@
+[package]
+name = "opencode-mem-service"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+opencode-mem-core = { workspace = true }
+opencode-mem-storage = { workspace = true }
+opencode-mem-llm = { workspace = true }
+opencode-mem-infinite = { workspace = true }
+opencode-mem-embeddings = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }

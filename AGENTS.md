@@ -36,7 +36,9 @@ Last reviewed commit: `1341e93fcab15b9caf48bc947d8521b4a97515d8`
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| **Infinite Memory** | ✅ Ready | PostgreSQL + pgvector backend for long-term AGI memory. Session isolation, hierarchical summaries (5min→hour→day), content truncation. Enabled via INFINITE_MEMORY_URL. |
+| **Infinite Memory** | ✅ Ready | PostgreSQL + pgvector backend for long-term AGI memory. Session isolation, hierarchical summaries (5min→hour→day), content truncation. Enabled via INFINITE_MEMORY_URL. **Raw events are NEVER deleted** — drill-down API allows zooming from any summary back to original events. |
+| **Dynamic Memory** | ✅ Ready | Solves "static summaries" problem. **Deep Zoom:** 4 HTTP endpoints (`/api/infinite/expand_summary/:id`, `/time_range`, `/drill_hour/:id`, `/drill_day/:id`) for drilling down from summaries to raw events. **Structured Metadata:** `SummaryEntities` (files, functions, libraries, errors, decisions) extracted via `response_format: json_object`. Enables fact-based search even when text summary is vague. |
+| **Semantic Search** | 🚧 WIP | Vector embeddings (fastembed-rs) + sqlite-vec for cosine similarity. Hybrid search combines FTS5 (text) + semantic (meaning). Solves: "проблема с потоками" → finds "race condition". |
 
 ## Upstream Sync
 

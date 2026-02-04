@@ -1,16 +1,9 @@
+mod commands;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use opencode_mem_core::{ObservationHookRequest, SessionInitHookRequest, SummarizeHookRequest};
-use opencode_mem_http::{create_router, AppState, Settings};
-use opencode_mem_infinite::InfiniteMemory;
-use opencode_mem_llm::LlmClient;
-use opencode_mem_mcp::run_mcp_server;
-use opencode_mem_storage::Storage;
-use std::io::{IsTerminal, Read};
+use commands::hook::HookCommands;
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock, Semaphore};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
@@ -48,60 +41,22 @@ enum Commands {
     Get {
         id: String,
     },
+    BackfillEmbeddings {
+        #[arg(short, long, default_value = "100")]
+        batch_size: usize,
+    },
     #[command(subcommand)]
     Hook(HookCommands),
 }
 
-#[derive(Subcommand)]
-enum HookCommands {
-    Context {
-        #[arg(short, long)]
-        project: Option<String>,
-        #[arg(short, long, default_value = "50")]
-        limit: usize,
-        #[arg(long, default_value = "http://127.0.0.1:37777")]
-        endpoint: String,
-    },
-    SessionInit {
-        #[arg(long)]
-        content_session_id: Option<String>,
-        #[arg(short, long)]
-        project: Option<String>,
-        #[arg(long)]
-        user_prompt: Option<String>,
-        #[arg(long, default_value = "http://127.0.0.1:37777")]
-        endpoint: String,
-    },
-    Observe {
-        #[arg(short, long)]
-        tool: Option<String>,
-        #[arg(long)]
-        session_id: Option<String>,
-        #[arg(short, long)]
-        project: Option<String>,
-        #[arg(short, long, help = "Tool input arguments as JSON string")]
-        input: Option<String>,
-        #[arg(long, default_value = "http://127.0.0.1:37777")]
-        endpoint: String,
-    },
-    Summarize {
-        #[arg(long)]
-        content_session_id: Option<String>,
-        #[arg(long)]
-        session_id: Option<String>,
-        #[arg(long, default_value = "http://127.0.0.1:37777")]
-        endpoint: String,
-    },
-}
-
-fn get_db_path() -> PathBuf {
+pub fn get_db_path() -> PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("opencode-memory")
         .join("memory.db")
 }
 
-fn get_api_key() -> Result<String> {
+pub fn get_api_key() -> Result<String> {
     std::env::var("OPENCODE_MEM_API_KEY")
         .or_else(|_| std::env::var("ANTIGRAVITY_API_KEY"))
         .map_err(|_| {
@@ -111,9 +66,16 @@ fn get_api_key() -> Result<String> {
         })
 }
 
-fn get_base_url() -> String {
+pub fn get_base_url() -> String {
     std::env::var("OPENCODE_MEM_API_URL")
         .unwrap_or_else(|_| "https://antigravity.quantumind.ru".to_string())
+}
+
+pub fn ensure_db_dir(db_path: &std::path::Path) -> Result<()> {
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    Ok(())
 }
 
 #[tokio::main]
@@ -127,57 +89,10 @@ async fn main() -> Result<()> {
 
     match cli.command {
         Commands::Serve { port, host } => {
-            let db_path = get_db_path();
-            ensure_db_dir(&db_path)?;
-            let storage = Storage::new(&db_path)?;
-            
-            let api_key = get_api_key()?;
-            let llm = LlmClient::new(api_key.clone(), get_base_url());
-            let (event_tx, _) = broadcast::channel(100);
-            
-            // Initialize infinite memory (PostgreSQL + pgvector)
-            let infinite_mem = match std::env::var("INFINITE_MEMORY_URL") {
-                Ok(url) => {
-                    match InfiniteMemory::new(&url, &api_key).await {
-                        Ok(mem) => {
-                            tracing::info!("Connected to infinite memory: {}", url);
-                            Some(Arc::new(mem))
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to connect to infinite memory: {}", e);
-                            None
-                        }
-                    }
-                }
-                Err(_) => {
-                    tracing::info!("INFINITE_MEMORY_URL not set, infinite memory disabled");
-                    None
-                }
-            };
-            
-            let state = Arc::new(AppState {
-                storage,
-                llm,
-                semaphore: Arc::new(Semaphore::new(10)),
-                event_tx,
-                processing_active: AtomicBool::new(true),
-                settings: RwLock::new(Settings::default()),
-                infinite_mem,
-            });
-            let router = create_router(state);
-            let addr = format!("{}:{}", host, port);
-            tracing::info!("Starting HTTP server on {}", addr);
-            let listener = tokio::net::TcpListener::bind(&addr).await?;
-            axum::serve(listener, router).await?;
+            commands::serve::run(port, host).await?;
         }
         Commands::Mcp => {
-            let db_path = get_db_path();
-            ensure_db_dir(&db_path)?;
-            let storage = Storage::new(&db_path)?;
-            tokio::task::spawn_blocking(move || {
-                run_mcp_server(Arc::new(storage));
-            })
-            .await?;
+            commands::mcp::run().await?;
         }
         Commands::Search {
             query,
@@ -185,182 +100,27 @@ async fn main() -> Result<()> {
             project,
             obs_type,
         } => {
-            let db_path = get_db_path();
-            ensure_db_dir(&db_path)?;
-            let storage = Storage::new(&db_path)?;
-            let results = storage.search_with_filters(
-                Some(&query),
-                project.as_deref(),
-                obs_type.as_deref(),
-                limit,
-            )?;
-            println!("{}", serde_json::to_string_pretty(&results)?);
+            commands::search::run_search(query, limit, project, obs_type)?;
         }
         Commands::Stats => {
-            let db_path = get_db_path();
-            ensure_db_dir(&db_path)?;
-            let storage = Storage::new(&db_path)?;
-            let stats = storage.get_stats()?;
-            println!("{}", serde_json::to_string_pretty(&stats)?);
+            commands::search::run_stats()?;
         }
         Commands::Projects => {
-            let db_path = get_db_path();
-            ensure_db_dir(&db_path)?;
-            let storage = Storage::new(&db_path)?;
-            let projects = storage.get_all_projects()?;
-            println!("{}", serde_json::to_string_pretty(&projects)?);
+            commands::search::run_projects()?;
         }
         Commands::Recent { limit } => {
-            let db_path = get_db_path();
-            ensure_db_dir(&db_path)?;
-            let storage = Storage::new(&db_path)?;
-            let results = storage.get_recent(limit)?;
-            println!("{}", serde_json::to_string_pretty(&results)?);
+            commands::search::run_recent(limit)?;
         }
         Commands::Get { id } => {
-            let db_path = get_db_path();
-            ensure_db_dir(&db_path)?;
-            let storage = Storage::new(&db_path)?;
-            match storage.get_by_id(&id)? {
-                Some(obs) => println!("{}", serde_json::to_string_pretty(&obs)?),
-                None => println!("Observation not found: {}", id),
-            }
+            commands::search::run_get(id)?;
+        }
+        Commands::BackfillEmbeddings { batch_size } => {
+            commands::search::run_backfill_embeddings(batch_size)?;
         }
         Commands::Hook(hook_cmd) => {
-            // Hook commands use HTTP API, no direct Storage access needed
-            handle_hook_command(hook_cmd).await?;
+            commands::hook::run(hook_cmd).await?;
         }
     }
 
     Ok(())
 }
-
-fn ensure_db_dir(db_path: &std::path::Path) -> Result<()> {
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    Ok(())
-}
-
-fn get_project_from_stdin() -> Option<String> {
-    if std::io::stdin().is_terminal() {
-        return None;
-    }
-    let mut input = String::new();
-    std::io::stdin().read_to_string(&mut input).ok()?;
-    let json: serde_json::Value = serde_json::from_str(&input).ok()?;
-    json.get("project")
-        .or_else(|| json.get("project_path"))
-        .and_then(|v| v.as_str())
-        .map(String::from)
-}
-
-fn build_session_init_request(
-    content_session_id: Option<String>,
-    project: Option<String>,
-    user_prompt: Option<String>,
-) -> Result<SessionInitHookRequest> {
-    let session_id = content_session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    Ok(SessionInitHookRequest {
-        content_session_id: session_id,
-        project,
-        user_prompt,
-    })
-}
-
-fn build_observation_request(
-    tool: Option<String>,
-    session_id: Option<String>,
-    project: Option<String>,
-    input_json: Option<String>,
-) -> Result<ObservationHookRequest> {
-    let mut output_str = String::new();
-    if !std::io::stdin().is_terminal() {
-        std::io::stdin().read_to_string(&mut output_str)?;
-    }
-    let tool_name = tool.unwrap_or_else(|| "unknown".to_string());
-    let input: Option<serde_json::Value> = input_json
-        .as_ref()
-        .and_then(|s| serde_json::from_str(s).ok());
-    Ok(ObservationHookRequest {
-        tool: tool_name,
-        session_id,
-        call_id: None,
-        project,
-        input,
-        output: output_str,
-    })
-}
-
-fn build_summarize_request(
-    content_session_id: Option<String>,
-    session_id: Option<String>,
-) -> Result<SummarizeHookRequest> {
-    Ok(SummarizeHookRequest {
-        content_session_id,
-        session_id,
-    })
-}
-
-async fn handle_hook_command(cmd: HookCommands) -> Result<()> {
-    let client = reqwest::Client::new();
-
-    match cmd {
-        HookCommands::Context {
-            project,
-            limit,
-            endpoint,
-        } => {
-            let project = project.or_else(get_project_from_stdin).ok_or_else(|| {
-                anyhow::anyhow!("Project required: use --project or pipe JSON with 'project' field")
-            })?;
-            let url = format!("{}/context/inject", endpoint);
-            let resp = client
-                .get(&url)
-                .query(&[("project", &project), ("limit", &limit.to_string())])
-                .send()
-                .await?;
-            let body: serde_json::Value = resp.json().await?;
-            println!("{}", serde_json::to_string_pretty(&body)?);
-        }
-        HookCommands::SessionInit {
-            content_session_id,
-            project,
-            user_prompt,
-            endpoint,
-        } => {
-            let req = build_session_init_request(content_session_id, project, user_prompt)?;
-            let url = format!("{}/api/sessions/init", endpoint);
-            let resp = client.post(&url).json(&req).send().await?;
-            let body: serde_json::Value = resp.json().await?;
-            println!("{}", serde_json::to_string_pretty(&body)?);
-        }
-        HookCommands::Observe {
-            tool,
-            session_id,
-            project,
-            input,
-            endpoint,
-        } => {
-            let req = build_observation_request(tool, session_id, project, input)?;
-            let url = format!("{}/observe", endpoint);
-            let resp = client.post(&url).json(&req).send().await?;
-            let body: serde_json::Value = resp.json().await?;
-            println!("{}", serde_json::to_string_pretty(&body)?);
-        }
-        HookCommands::Summarize {
-            content_session_id,
-            session_id,
-            endpoint,
-        } => {
-            let req = build_summarize_request(content_session_id, session_id)?;
-            let url = format!("{}/api/sessions/summarize", endpoint);
-            let resp = client.post(&url).json(&req).send().await?;
-            let body: serde_json::Value = resp.json().await?;
-            println!("{}", serde_json::to_string_pretty(&body)?);
-        }
-    }
-
-    Ok(())
-}
-

@@ -7,4 +7,4 @@ edition.workspace = true
 opencode-mem-core = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
-# TODO: Add candle or ort for local embeddings
+fastembed = "5"

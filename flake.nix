@@ -1,0 +1,54 @@
+{
+  description = "opencode-mem - Rust port of claude-mem for OpenCode";
+
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    rust-overlay = {
+      url = "github:oxalica/rust-overlay";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    flake-utils.url = "github:numtide/flake-utils";
+  };
+
+  outputs = { self, nixpkgs, rust-overlay, flake-utils }:
+    flake-utils.lib.eachDefaultSystem (system:
+      let
+        overlays = [ (import rust-overlay) ];
+        pkgs = import nixpkgs { inherit system overlays; };
+        
+        rustToolchain = pkgs.rust-bin.stable.latest.default.override {
+          extensions = [ "rust-src" "rust-analyzer" ];
+        };
+      in
+      {
+        devShells.default = pkgs.mkShell {
+          buildInputs = with pkgs; [
+            rustToolchain
+            pkg-config
+            openssl
+            sqlite
+          ];
+
+          RUST_BACKTRACE = "1";
+          RUST_LOG = "info";
+        };
+
+        packages.default = pkgs.rustPlatform.buildRustPackage {
+          pname = "opencode-mem";
+          version = "0.1.0";
+          src = ./.;
+          cargoLock.lockFile = ./Cargo.lock;
+          
+          nativeBuildInputs = with pkgs; [ pkg-config ];
+          buildInputs = with pkgs; [ openssl sqlite ];
+          
+          meta = with pkgs.lib; {
+            description = "Memory system for OpenCode - Rust port of claude-mem";
+            homepage = "https://github.com/Stranmor/opencode-mem";
+            license = licenses.mit;
+            maintainers = [ ];
+          };
+        };
+      }
+    );
+}

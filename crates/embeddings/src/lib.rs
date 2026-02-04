@@ -1,24 +1,81 @@
-//! Embedding generation for semantic search
+//! Embedding generation for semantic search using fastembed-rs
 //!
-//! TODO: Implement local embedding model (all-MiniLM-L6-v2)
+//! Provides local embedding generation using AllMiniLML6V2 model (384 dimensions).
 
 use anyhow::Result;
+use fastembed::{InitOptions, TextEmbedding};
+use std::sync::Mutex;
 
-const EMBEDDING_DIMENSION: usize = 384;
+/// Embedding dimension for AllMiniLML6V2 model
+pub const EMBEDDING_DIMENSION: usize = 384;
 
-pub struct EmbeddingModel;
+/// Trait for embedding providers
+pub trait EmbeddingProvider: Send + Sync {
+    /// Generate embedding for a single text
+    fn embed(&self, text: &str) -> Result<Vec<f32>>;
 
-impl EmbeddingModel {
+    /// Generate embeddings for multiple texts
+    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>>;
+
+    /// Get the embedding dimension
+    fn dimension(&self) -> usize;
+}
+
+/// Embedding service using fastembed with AllMiniLML6V2 model
+pub struct EmbeddingService {
+    model: Mutex<TextEmbedding>,
+}
+
+impl EmbeddingService {
+    /// Create a new embedding service
+    ///
+    /// Downloads the model on first use if not cached.
     pub fn new() -> Result<Self> {
-        Ok(Self)
+        let options = InitOptions::new(fastembed::EmbeddingModel::AllMiniLML6V2)
+            .with_show_download_progress(true);
+
+        let model = TextEmbedding::try_new(options)?;
+
+        Ok(Self {
+            model: Mutex::new(model),
+        })
+    }
+}
+
+impl EmbeddingProvider for EmbeddingService {
+    fn embed(&self, text: &str) -> Result<Vec<f32>> {
+        let mut model = self
+            .model
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+        let embeddings = model.embed(vec![text], None)?;
+        embeddings
+            .into_iter()
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("No embedding returned"))
     }
 
-    pub fn embed(&self, _text: &str) -> Result<Vec<f32>> {
-        // TODO: Implement with candle or onnxruntime
-        Ok(vec![0.0; EMBEDDING_DIMENSION])
+    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
+        let mut model = self
+            .model
+            .lock()
+            .map_err(|e| anyhow::anyhow!("Lock poisoned: {}", e))?;
+        let embeddings = model.embed(texts, None)?;
+        Ok(embeddings)
     }
 
-    pub fn dimension(&self) -> usize {
+    fn dimension(&self) -> usize {
         EMBEDDING_DIMENSION
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_embedding_dimension() {
+        let service = EmbeddingService::new().expect("Failed to create service");
+        assert_eq!(service.dimension(), 384);
     }
 }

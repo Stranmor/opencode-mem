@@ -6,6 +6,7 @@ members = [
     "crates/embeddings",
     "crates/search",
     "crates/llm",
+    "crates/service",
     "crates/http",
     "crates/mcp",
     "crates/plugin",
@@ -33,6 +34,8 @@ tower-http = { version = "0.6", features = ["cors"] }
 
 # Database
 rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
+r2d2 = "0.8"
+r2d2_sqlite = "0.25"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -51,6 +54,9 @@ regex = "1"
 anyhow = "1"
 thiserror = "2"
 
+# Testing
+tempfile = "3"
+
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -65,6 +71,7 @@ opencode-mem-http = { path = "crates/http" }
 opencode-mem-mcp = { path = "crates/mcp" }
 opencode-mem-plugin = { path = "crates/plugin" }
 opencode-mem-infinite = { path = "crates/infinite-memory" }
+opencode-mem-service = { path = "crates/service" }
 
 [profile.release]
 lto = true

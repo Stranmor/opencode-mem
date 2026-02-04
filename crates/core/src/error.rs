@@ -7,7 +7,7 @@ pub enum Error {
     Storage(String),
 
     #[error("Database error: {0}")]
-    Database(#[from] rusqlite::Error),
+    Database(String),
 
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
