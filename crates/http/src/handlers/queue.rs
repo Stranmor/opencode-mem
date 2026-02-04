@@ -5,7 +5,7 @@ use axum::{
 };
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::Semaphore;
 
 use opencode_mem_core::{ObservationInput, ToolOutput};
 use opencode_mem_infinite::tool_event;
@@ -58,17 +58,18 @@ pub async fn process_pending_queue(
     }
 
     let count = messages.len();
-    let (tx, mut rx) = mpsc::channel::<PendingMessage>(MAX_QUEUE_WORKERS);
+    let semaphore = Arc::new(Semaphore::new(MAX_QUEUE_WORKERS));
+    let mut handles = Vec::with_capacity(count);
 
     for msg in messages {
-        let _ = tx.send(msg).await;
-    }
-    drop(tx);
-
-    let mut handles = Vec::with_capacity(count);
-    while let Some(msg) = rx.recv().await {
+        let permit = semaphore
+            .clone()
+            .acquire_owned()
+            .await
+            .expect("semaphore closed unexpectedly");
         let state_clone = state.clone();
         let handle = tokio::spawn(async move {
+            let _permit = permit; // Hold permit until task completes
             let result = process_pending_message(&state_clone, &msg).await;
             match result {
                 Ok(()) => {

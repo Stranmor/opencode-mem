@@ -16,7 +16,7 @@ Last reviewed commit: `1341e93fcab15b9caf48bc947d8521b4a97515d8`
 | Component | Status | Details |
 |-----------|--------|---------|
 | MCP Tools | ✅ 6 tools | search, timeline, get_observations, memory_get, memory_recent, memory_hybrid_search |
-| Database | ✅ | SQLite + FTS5, migrations v1-v7 |
+| Database | ✅ | SQLite + FTS5, migrations v1-v10, r2d2 pool |
 | CLI | ✅ 100% | serve, mcp, search, stats, projects, recent, get, hook (context, session-init, observe, summarize) |
 | HTTP API | ✅ 100% | 64 endpoints (upstream has 56) |
 | Storage | ✅ 100% | Core tables, session_summaries, pending queue, 1481 lines |
@@ -64,11 +64,9 @@ crates/
 
 ## Key Files
 
-- `crates/storage/src/sqlite_monolith.rs` — main storage implementation (1481 lines)
-- `crates/storage/src/tests.rs` — 14 unit tests (231 lines)
-- `crates/storage/src/types.rs` — shared types (22 lines)
-- `crates/storage/src/migrations.rs` — schema migrations v1-v7
-- `crates/mcp/src/lib.rs` — MCP server with 6 tools
-- `crates/http/src/lib.rs` — HTTP API endpoints (64 routes)
-- `crates/http/src/viewer.rs` — Web Viewer UI module
-- `crates/http/src/viewer.html` — Dark theme viewer template
+- `crates/storage/src/storage/` — modular storage (mod.rs + 10 domain modules)
+- `crates/storage/src/migrations/` — schema migrations v1-v10 (12 files)
+- `crates/mcp/src/` — MCP server: lib.rs + tools.rs + handlers.rs
+- `crates/http/src/handlers/` — HTTP handlers (10 modules)
+- `crates/llm/src/` — AI agent: client, observation, summary, knowledge
+- `crates/infinite-memory/src/` — PostgreSQL + pgvector backend

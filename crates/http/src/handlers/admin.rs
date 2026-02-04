@@ -64,10 +64,36 @@ pub async fn get_branch_status(
     }))
 }
 
+/// Validates branch name to prevent command injection.
+/// Only allows alphanumeric, `/`, `-`, `_`, `.` and must not start with `-`.
+fn validate_branch_name(branch: &str) -> Result<(), &'static str> {
+    if branch.is_empty() {
+        return Err("Branch name cannot be empty");
+    }
+    if branch.starts_with('-') {
+        return Err("Branch name cannot start with dash");
+    }
+    if !branch
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '/' || c == '-' || c == '_' || c == '.')
+    {
+        return Err("Branch name contains invalid characters");
+    }
+    Ok(())
+}
+
 pub async fn switch_branch(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SwitchBranchRequest>,
 ) -> Result<Json<SwitchBranchResponse>, StatusCode> {
+    if let Err(msg) = validate_branch_name(&req.branch) {
+        return Ok(Json(SwitchBranchResponse {
+            success: false,
+            branch: req.branch,
+            message: msg.to_string(),
+        }));
+    }
+
     let branch = req.branch.clone();
     let result = tokio::task::spawn_blocking(move || {
         Command::new("git").args(["checkout", &branch]).output()
