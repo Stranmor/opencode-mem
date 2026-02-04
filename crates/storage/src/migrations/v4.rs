@@ -1,6 +1,6 @@
-//! Migration v4: pending_messages table
+//! Migration v4: `pending_messages` table
 
-pub const SQL: &str = r#"
+pub(super) const SQL: &str = "
 CREATE TABLE IF NOT EXISTS pending_messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id TEXT NOT NULL,
@@ -14,4 +14,4 @@ CREATE TABLE IF NOT EXISTS pending_messages (
 
 CREATE INDEX IF NOT EXISTS idx_pending_status ON pending_messages(status);
 CREATE INDEX IF NOT EXISTS idx_pending_session ON pending_messages(session_id);
-"#;
+";

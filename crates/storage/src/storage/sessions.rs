@@ -6,12 +6,16 @@ use rusqlite::params;
 use super::{get_conn, Storage};
 
 impl Storage {
+    /// Save session.
+    ///
+    /// # Errors
+    /// Returns error if database insert fails.
     pub fn save_session(&self, session: &Session) -> Result<()> {
         let conn = get_conn(&self.pool)?;
         conn.execute(
-            r#"INSERT OR REPLACE INTO sessions 
+            "INSERT OR REPLACE INTO sessions 
                (id, content_session_id, memory_session_id, project, user_prompt, started_at, ended_at, status, prompt_counter)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)"#,
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 session.id,
                 session.content_session_id,
@@ -27,11 +31,15 @@ impl Storage {
         Ok(())
     }
 
+    /// Get session by ID.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_session(&self, id: &str) -> Result<Option<Session>> {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
-            r#"SELECT id, content_session_id, memory_session_id, project, user_prompt, started_at, ended_at, status, prompt_counter
-               FROM sessions WHERE id = ?1"#,
+            "SELECT id, content_session_id, memory_session_id, project, user_prompt, started_at, ended_at, status, prompt_counter
+               FROM sessions WHERE id = ?1",
         )?;
         let mut rows = stmt.query(params![id])?;
         if let Some(row) = rows.next()? {
@@ -41,11 +49,15 @@ impl Storage {
         }
     }
 
+    /// Get session by content session ID.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_session_by_content_id(&self, content_session_id: &str) -> Result<Option<Session>> {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
-            r#"SELECT id, content_session_id, memory_session_id, project, user_prompt, started_at, ended_at, status, prompt_counter
-               FROM sessions WHERE content_session_id = ?1"#,
+            "SELECT id, content_session_id, memory_session_id, project, user_prompt, started_at, ended_at, status, prompt_counter
+               FROM sessions WHERE content_session_id = ?1",
         )?;
         let mut rows = stmt.query(params![content_session_id])?;
         if let Some(row) = rows.next()? {
@@ -55,30 +67,34 @@ impl Storage {
         }
     }
 
+    /// Update session status.
+    ///
+    /// # Errors
+    /// Returns error if database update fails.
     pub fn update_session_status(&self, id: &str, status: SessionStatus) -> Result<()> {
         let conn = get_conn(&self.pool)?;
         conn.execute(
             "UPDATE sessions SET status = ?1, ended_at = ?2 WHERE id = ?3",
             params![
                 serde_json::to_string(&status)?,
-                if status != SessionStatus::Active {
-                    Some(Utc::now().to_rfc3339())
-                } else {
-                    None
-                },
+                (status != SessionStatus::Active).then(|| Utc::now().to_rfc3339()),
                 id
             ],
         )?;
         Ok(())
     }
 
+    /// Delete session.
+    ///
+    /// # Errors
+    /// Returns error if database delete fails.
     pub fn delete_session(&self, session_id: &str) -> Result<bool> {
         let conn = get_conn(&self.pool)?;
         let affected = conn.execute("DELETE FROM sessions WHERE id = ?1", params![session_id])?;
         Ok(affected > 0)
     }
 
-    fn row_to_session(row: &rusqlite::Row) -> rusqlite::Result<Session> {
+    fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<Session> {
         let started_at_str: String = row.get(5)?;
         let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?

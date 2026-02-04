@@ -7,13 +7,17 @@ use super::{get_conn, log_row_error, parse_json, Storage};
 use crate::pending_queue::PaginatedResult;
 
 impl Storage {
+    /// Save session summary.
+    ///
+    /// # Errors
+    /// Returns error if database insert fails.
     pub fn save_summary(&self, summary: &SessionSummary) -> Result<()> {
         let conn = get_conn(&self.pool)?;
         conn.execute(
-            r#"INSERT OR REPLACE INTO session_summaries 
+            "INSERT OR REPLACE INTO session_summaries 
                (session_id, project, request, investigated, learned, completed, next_steps, notes, 
                 files_read, files_edited, prompt_number, discovery_tokens, created_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"#,
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 summary.session_id,
                 summary.project,
@@ -33,12 +37,16 @@ impl Storage {
         Ok(())
     }
 
+    /// Get session summary by session ID.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_session_summary(&self, session_id: &str) -> Result<Option<SessionSummary>> {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
-            r#"SELECT session_id, project, request, investigated, learned, completed, next_steps, notes, 
+            "SELECT session_id, project, request, investigated, learned, completed, next_steps, notes, 
                       files_read, files_edited, prompt_number, discovery_tokens, created_at
-               FROM session_summaries WHERE session_id = ?1"#,
+               FROM session_summaries WHERE session_id = ?1",
         )?;
         let mut rows = stmt.query(params![session_id])?;
         if let Some(row) = rows.next()? {
@@ -48,6 +56,10 @@ impl Storage {
         }
     }
 
+    /// Set session status and optionally save summary text.
+    ///
+    /// # Errors
+    /// Returns error if database operation fails.
     pub fn update_session_status_with_summary(
         &self,
         session_id: &str,
@@ -59,11 +71,7 @@ impl Storage {
             "UPDATE sessions SET status = ?1, ended_at = ?2 WHERE id = ?3",
             params![
                 serde_json::to_string(&status)?,
-                if status != SessionStatus::Active {
-                    Some(Utc::now().to_rfc3339())
-                } else {
-                    None
-                },
+                (status != SessionStatus::Active).then(|| Utc::now().to_rfc3339()),
                 session_id
             ],
         )?;
@@ -80,10 +88,10 @@ impl Storage {
             if let Some(proj) = project {
                 let now = Utc::now();
                 conn.execute(
-                    r#"INSERT OR REPLACE INTO session_summaries 
+                    "INSERT OR REPLACE INTO session_summaries 
                        (session_id, project, request, investigated, learned, completed, next_steps, notes, 
                         files_read, files_edited, prompt_number, discovery_tokens, created_at)
-                       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)"#,
+                       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                     params![
                         session_id,
                         proj,
@@ -105,6 +113,10 @@ impl Storage {
         Ok(())
     }
 
+    /// Get summaries with pagination.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_summaries_paginated(
         &self,
         offset: usize,
@@ -120,19 +132,17 @@ impl Storage {
                 |row| row.get(0),
             )?
         } else {
-            conn.query_row("SELECT COUNT(*) FROM session_summaries", [], |row| {
-                row.get(0)
-            })?
+            conn.query_row("SELECT COUNT(*) FROM session_summaries", [], |row| row.get(0))?
         };
 
         let sql = if project.is_some() {
-            r#"SELECT session_id, project, request, investigated, learned, completed, next_steps, notes, 
+            "SELECT session_id, project, request, investigated, learned, completed, next_steps, notes, 
                       files_read, files_edited, prompt_number, discovery_tokens, created_at
-               FROM session_summaries WHERE project = ?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"#
+               FROM session_summaries WHERE project = ?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
         } else {
-            r#"SELECT session_id, project, request, investigated, learned, completed, next_steps, notes, 
+            "SELECT session_id, project, request, investigated, learned, completed, next_steps, notes, 
                       files_read, files_edited, prompt_number, discovery_tokens, created_at
-               FROM session_summaries ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"#
+               FROM session_summaries ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"
         };
 
         let mut stmt = conn.prepare(sql)?;
@@ -154,6 +164,10 @@ impl Storage {
         })
     }
 
+    /// Search sessions using FTS.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn search_sessions(&self, query: &str, limit: usize) -> Result<Vec<SessionSummary>> {
         let conn = get_conn(&self.pool)?;
         let fts_query = query
@@ -167,14 +181,14 @@ impl Storage {
         }
 
         let mut stmt = conn.prepare(
-            r#"SELECT s.session_id, s.project, s.request, s.investigated, s.learned, s.completed, 
+            "SELECT s.session_id, s.project, s.request, s.investigated, s.learned, s.completed, 
                       s.next_steps, s.notes, s.files_read, s.files_edited, s.prompt_number, 
                       s.discovery_tokens, s.created_at
                FROM summaries_fts f
                JOIN session_summaries s ON s.rowid = f.rowid
                WHERE summaries_fts MATCH ?1
                ORDER BY bm25(summaries_fts)
-               LIMIT ?2"#,
+               LIMIT ?2",
         )?;
         let results = stmt
             .query_map(params![fts_query, limit], Self::row_to_summary)?
@@ -183,7 +197,7 @@ impl Storage {
         Ok(results)
     }
 
-    pub(crate) fn row_to_summary(row: &rusqlite::Row) -> rusqlite::Result<SessionSummary> {
+    pub(crate) fn row_to_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionSummary> {
         Ok(SessionSummary {
             session_id: row.get(0)?,
             project: row.get(1)?,

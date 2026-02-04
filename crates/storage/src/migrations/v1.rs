@@ -1,6 +1,6 @@
 //! Migration v1: Initial schema
 
-pub const SQL: &str = r#"
+pub(super) const SQL: &str = "
 CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     content_session_id TEXT NOT NULL,
@@ -58,4 +58,4 @@ CREATE INDEX IF NOT EXISTS idx_observations_session ON observations(session_id);
 CREATE INDEX IF NOT EXISTS idx_observations_created ON observations(created_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_content ON sessions(content_session_id);
 CREATE INDEX IF NOT EXISTS idx_summaries_session ON session_summaries(session_id);
-"#;
+";

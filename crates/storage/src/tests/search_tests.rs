@@ -4,16 +4,10 @@ use super::{create_test_observation, create_test_storage};
 fn test_search_with_filters() {
     let (storage, _temp_dir) = create_test_storage();
 
-    storage
-        .save_observation(&create_test_observation("obs-1", "project-a"))
-        .unwrap();
-    storage
-        .save_observation(&create_test_observation("obs-2", "project-b"))
-        .unwrap();
+    storage.save_observation(&create_test_observation("obs-1", "project-a")).unwrap();
+    storage.save_observation(&create_test_observation("obs-2", "project-b")).unwrap();
 
-    let results = storage
-        .search_with_filters(None, Some("project-a"), None, 10)
-        .unwrap();
+    let results = storage.search_with_filters(None, Some("project-a"), None, 10).unwrap();
     assert_eq!(results.len(), 1);
 }
 
@@ -23,10 +17,7 @@ fn test_get_context_for_project() {
 
     for i in 1..=5 {
         storage
-            .save_observation(&create_test_observation(
-                &format!("obs-{}", i),
-                "my-project",
-            ))
+            .save_observation(&create_test_observation(&format!("obs-{}", i), "my-project"))
             .unwrap();
     }
 
@@ -38,9 +29,7 @@ fn test_get_context_for_project() {
 fn test_search_by_file() {
     let (storage, _temp_dir) = create_test_storage();
 
-    storage
-        .save_observation(&create_test_observation("obs-1", "project-a"))
-        .unwrap();
+    storage.save_observation(&create_test_observation("obs-1", "project-a")).unwrap();
 
     let results = storage.search_by_file("file1.rs", 10).unwrap();
     assert_eq!(results.len(), 1);

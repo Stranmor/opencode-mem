@@ -1,6 +1,6 @@
 //! Migration v2: FTS5 for observations
 
-pub const SQL: &str = r#"
+pub(super) const SQL: &str = "
 DROP TABLE IF EXISTS observations_fts;
 
 CREATE VIRTUAL TABLE observations_fts USING fts5(
@@ -17,4 +17,4 @@ END;
 
 INSERT INTO observations_fts(rowid, title, subtitle, narrative, facts, keywords)
 SELECT rowid, title, subtitle, narrative, facts, keywords FROM observations;
-"#;
+";

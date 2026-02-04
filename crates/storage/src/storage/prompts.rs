@@ -7,12 +7,16 @@ use super::{escape_like_pattern, get_conn, log_row_error, Storage};
 use crate::pending_queue::PaginatedResult;
 
 impl Storage {
+    /// Save user prompt.
+    ///
+    /// # Errors
+    /// Returns error if database insert fails.
     pub fn save_user_prompt(&self, prompt: &UserPrompt) -> Result<()> {
         let conn = get_conn(&self.pool)?;
         conn.execute(
-            r#"INSERT OR REPLACE INTO user_prompts 
+            "INSERT OR REPLACE INTO user_prompts 
                (id, content_session_id, prompt_number, prompt_text, project, created_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6)"#,
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 prompt.id,
                 prompt.content_session_id,
@@ -25,6 +29,10 @@ impl Storage {
         Ok(())
     }
 
+    /// Get prompts with pagination.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_prompts_paginated(
         &self,
         offset: usize,
@@ -44,11 +52,11 @@ impl Storage {
         };
 
         let sql = if project.is_some() {
-            r#"SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
-               FROM user_prompts WHERE project = ?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"#
+            "SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
+               FROM user_prompts WHERE project = ?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
         } else {
-            r#"SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
-               FROM user_prompts ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"#
+            "SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
+               FROM user_prompts ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"
         };
 
         let mut stmt = conn.prepare(sql)?;
@@ -70,11 +78,15 @@ impl Storage {
         })
     }
 
+    /// Get prompt by ID.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_prompt_by_id(&self, id: &str) -> Result<Option<UserPrompt>> {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
-            r#"SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
-               FROM user_prompts WHERE id = ?1"#,
+            "SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
+               FROM user_prompts WHERE id = ?1",
         )?;
         let mut rows = stmt.query(params![id])?;
         if let Some(row) = rows.next()? {
@@ -84,6 +96,10 @@ impl Storage {
         }
     }
 
+    /// Search prompts by text.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn search_prompts(&self, query: &str, limit: usize) -> Result<Vec<UserPrompt>> {
         if query.trim().is_empty() {
             return Ok(Vec::new());
@@ -91,13 +107,13 @@ impl Storage {
 
         let conn = get_conn(&self.pool)?;
         let escaped_query = escape_like_pattern(query);
-        let pattern = format!("%{}%", escaped_query);
+        let pattern = format!("%{escaped_query}%");
         let mut stmt = conn.prepare(
-            r#"SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
+            r"SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
                FROM user_prompts
                WHERE prompt_text LIKE ?1 ESCAPE '\'
                ORDER BY created_at DESC
-               LIMIT ?2"#,
+               LIMIT ?2",
         )?;
         let results = stmt
             .query_map(params![pattern, limit], Self::row_to_prompt)?
@@ -106,7 +122,7 @@ impl Storage {
         Ok(results)
     }
 
-    pub(crate) fn row_to_prompt(row: &rusqlite::Row) -> rusqlite::Result<UserPrompt> {
+    pub(crate) fn row_to_prompt(row: &rusqlite::Row<'_>) -> rusqlite::Result<UserPrompt> {
         Ok(UserPrompt {
             id: row.get(0)?,
             content_session_id: row.get(1)?,

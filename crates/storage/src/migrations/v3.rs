@@ -1,6 +1,6 @@
 //! Migration v3: FTS5 for session summaries
 
-pub const SQL: &str = r#"
+pub(super) const SQL: &str = "
 DROP TABLE IF EXISTS summaries_fts;
 
 CREATE VIRTUAL TABLE summaries_fts USING fts5(
@@ -17,4 +17,4 @@ END;
 
 INSERT INTO summaries_fts(rowid, request, investigated, learned, completed, next_steps, notes)
 SELECT id, request, investigated, learned, completed, next_steps, notes FROM session_summaries;
-"#;
+";

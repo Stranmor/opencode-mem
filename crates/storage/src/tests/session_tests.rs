@@ -21,9 +21,7 @@ fn test_update_session_status() {
     let session = create_test_session("session-2");
     storage.save_session(&session).unwrap();
 
-    storage
-        .update_session_status("session-2", SessionStatus::Completed)
-        .unwrap();
+    storage.update_session_status("session-2", SessionStatus::Completed).unwrap();
 
     let retrieved = storage.get_session("session-2").unwrap().unwrap();
     assert_eq!(retrieved.status, SessionStatus::Completed);

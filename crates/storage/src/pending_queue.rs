@@ -1,9 +1,11 @@
 //! Storage types shared across modules
 
 use serde::{Deserialize, Serialize};
+use std::env;
+use std::str::FromStr;
 
 /// Statistics about storage contents
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct StorageStats {
     pub observation_count: u64,
     pub session_count: u64,
@@ -31,8 +33,9 @@ pub enum PendingMessageStatus {
 }
 
 impl PendingMessageStatus {
-    pub fn as_str(&self) -> &'static str {
-        match self {
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match *self {
             Self::Pending => "pending",
             Self::Processing => "processing",
             Self::Processed => "processed",
@@ -41,7 +44,7 @@ impl PendingMessageStatus {
     }
 }
 
-impl std::str::FromStr for PendingMessageStatus {
+impl FromStr for PendingMessageStatus {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -50,7 +53,7 @@ impl std::str::FromStr for PendingMessageStatus {
             "processing" => Ok(Self::Processing),
             "processed" => Ok(Self::Processed),
             "failed" => Ok(Self::Failed),
-            _ => Err(anyhow::anyhow!("Invalid pending message status: {}", s)),
+            _ => Err(anyhow::anyhow!("Invalid pending message status: {s}")),
         }
     }
 }
@@ -69,21 +72,17 @@ pub struct PendingMessage {
     pub completed_at_epoch: Option<i64>,
 }
 
+#[must_use]
 pub fn max_retry_count() -> i32 {
-    std::env::var("OPENCODE_MEM_MAX_RETRY")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(3)
+    env::var("OPENCODE_MEM_MAX_RETRY").ok().and_then(|v| v.parse().ok()).unwrap_or(3i32)
 }
 
+#[must_use]
 pub fn default_visibility_timeout_secs() -> i64 {
-    std::env::var("OPENCODE_MEM_VISIBILITY_TIMEOUT")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(300)
+    env::var("OPENCODE_MEM_VISIBILITY_TIMEOUT").ok().and_then(|v| v.parse().ok()).unwrap_or(300i64)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct QueueStats {
     pub pending: u64,
     pub processing: u64,

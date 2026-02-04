@@ -6,6 +6,10 @@ use crate::pending_queue::{PaginatedResult, StorageStats};
 use opencode_mem_core::Observation;
 
 impl Storage {
+    /// Get storage statistics.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_stats(&self) -> Result<StorageStats> {
         let conn = get_conn(&self.pool)?;
         let observation_count: i64 =
@@ -13,9 +17,7 @@ impl Storage {
         let session_count: i64 =
             conn.query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))?;
         let summary_count: i64 =
-            conn.query_row("SELECT COUNT(*) FROM session_summaries", [], |row| {
-                row.get(0)
-            })?;
+            conn.query_row("SELECT COUNT(*) FROM session_summaries", [], |row| row.get(0))?;
         let prompt_count: i64 =
             conn.query_row("SELECT COUNT(*) FROM user_prompts", [], |row| row.get(0))?;
         let project_count: i64 = conn.query_row(
@@ -32,18 +34,23 @@ impl Storage {
         })
     }
 
+    /// Get all distinct projects.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_all_projects(&self) -> Result<Vec<String>> {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
             "SELECT DISTINCT project FROM observations WHERE project IS NOT NULL ORDER BY project",
         )?;
-        let results = stmt
-            .query_map([], |row| row.get(0))?
-            .filter_map(log_row_error)
-            .collect();
+        let results = stmt.query_map([], |row| row.get(0))?.filter_map(log_row_error).collect();
         Ok(results)
     }
 
+    /// Get observations with pagination.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_observations_paginated(
         &self,
         offset: usize,
@@ -63,13 +70,13 @@ impl Storage {
         };
 
         let sql = if project.is_some() {
-            r#"SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
+            "SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
                       files_read, files_modified, keywords, prompt_number, discovery_tokens, created_at
-               FROM observations WHERE project = ?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"#
+               FROM observations WHERE project = ?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
         } else {
-            r#"SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
+            "SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
                       files_read, files_modified, keywords, prompt_number, discovery_tokens, created_at
-               FROM observations ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"#
+               FROM observations ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"
         };
 
         let mut stmt = conn.prepare(sql)?;

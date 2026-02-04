@@ -6,20 +6,20 @@ use rusqlite::params;
 use std::collections::HashSet;
 
 use crate::storage::{
-    build_fts_query, get_conn, log_row_error, map_search_result, map_search_result_default_score,
-    parse_json, Storage,
+    build_fts_query, coerce_to_sql, get_conn, log_row_error, map_search_result,
+    map_search_result_default_score, parse_json, Storage,
 };
 
 impl Storage {
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
-            r#"SELECT o.id, o.title, o.subtitle, o.observation_type, bm25(observations_fts) as score
+            "SELECT o.id, o.title, o.subtitle, o.observation_type, bm25(observations_fts) as score
                FROM observations_fts f
                JOIN observations o ON o.rowid = f.rowid
                WHERE observations_fts MATCH ?1
                ORDER BY score
-               LIMIT ?2"#,
+               LIMIT ?2",
         )?;
         let results = stmt
             .query_map(params![query, limit], map_search_result)?
@@ -29,8 +29,7 @@ impl Storage {
     }
 
     pub fn hybrid_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        let keywords: HashSet<String> =
-            query.split_whitespace().map(|s| s.to_lowercase()).collect();
+        let keywords: HashSet<String> = query.split_whitespace().map(str::to_lowercase).collect();
 
         let fts_query = build_fts_query(query);
 
@@ -40,12 +39,12 @@ impl Storage {
 
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
-            r#"SELECT o.id, o.title, o.subtitle, o.observation_type, o.keywords,
+            "SELECT o.id, o.title, o.subtitle, o.observation_type, o.keywords,
                       bm25(observations_fts) as fts_score
                FROM observations_fts f
                JOIN observations o ON o.rowid = f.rowid
                WHERE observations_fts MATCH ?1
-               LIMIT ?2"#,
+               LIMIT ?2",
         )?;
 
         // First pass: collect raw results with FTS scores and keywords
@@ -72,33 +71,25 @@ impl Storage {
                     Err(e) => {
                         tracing::warn!("Failed to parse keywords JSON: {}", e);
                         return None;
-                    }
+                    },
                 };
                 Some((result, fts_score, obs_kw))
             })
             .collect();
 
         // Find max FTS score for normalization (BM25 is unbounded, keyword score is 0-1)
-        let max_fts_score: f64 = raw_results
-            .iter()
-            .map(|(_, fts, _)| fts.abs())
-            .fold(0.0, f64::max);
+        let max_fts_score: f64 =
+            raw_results.iter().map(|(_, fts, _)| fts.abs()).fold(0.0, f64::max);
 
         // Second pass: normalize FTS scores and combine with keyword scores
         let mut results: Vec<(SearchResult, f64)> = raw_results
             .into_iter()
             .map(|(mut result, fts_score, obs_kw)| {
-                let fts_normalized = if max_fts_score > 0.0 {
-                    fts_score.abs() / max_fts_score
-                } else {
-                    0.0
-                };
+                let fts_normalized =
+                    if max_fts_score > 0.0 { fts_score.abs() / max_fts_score } else { 0.0 };
                 let keyword_overlap = keywords.intersection(&obs_kw).count() as f64;
-                let keyword_score = if keywords.is_empty() {
-                    0.0
-                } else {
-                    keyword_overlap / keywords.len() as f64
-                };
+                let keyword_score =
+                    if keywords.is_empty() { 0.0 } else { keyword_overlap / keywords.len() as f64 };
                 result.score = (fts_normalized * 0.7) + (keyword_score * 0.3);
                 let score = result.score;
                 (result, score)
@@ -122,12 +113,12 @@ impl Storage {
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(p) = project {
-            conditions.push("o.project = ?".to_string());
-            params_vec.push(Box::new(p.to_string()));
+            conditions.push("o.project = ?".to_owned());
+            params_vec.push(Box::new(p.to_owned()));
         }
         if let Some(t) = obs_type {
-            conditions.push("o.observation_type = ?".to_string());
-            params_vec.push(Box::new(format!("\"{}\"", t)));
+            conditions.push("o.observation_type = ?".to_owned());
+            params_vec.push(Box::new(format!("\"{t}\"")));
         }
 
         if let Some(q) = query {
@@ -141,18 +132,16 @@ impl Storage {
                 };
 
                 let sql = format!(
-                    r#"SELECT o.id, o.title, o.subtitle, o.observation_type, bm25(observations_fts) as score
+                    "SELECT o.id, o.title, o.subtitle, o.observation_type, bm25(observations_fts) as score
                        FROM observations_fts f
                        JOIN observations o ON o.rowid = f.rowid
-                       WHERE observations_fts MATCH ? {}
+                       WHERE observations_fts MATCH ? {where_clause}
                        ORDER BY score
-                       LIMIT ?"#,
-                    where_clause
+                       LIMIT ?"
                 );
 
                 let mut stmt = conn.prepare(&sql)?;
-                let mut all_params: Vec<&dyn rusqlite::ToSql> =
-                    vec![&fts_query as &dyn rusqlite::ToSql];
+                let mut all_params: Vec<&dyn rusqlite::ToSql> = vec![coerce_to_sql(&fts_query)];
                 for p in &params_vec {
                     all_params.push(p.as_ref());
                 }
@@ -173,9 +162,8 @@ impl Storage {
         };
 
         let sql = format!(
-            r#"SELECT id, title, subtitle, observation_type
-               FROM observations o {} ORDER BY created_at DESC LIMIT ?"#,
-            where_clause
+            "SELECT id, title, subtitle, observation_type
+               FROM observations o {where_clause} ORDER BY created_at DESC LIMIT ?"
         );
 
         let mut stmt = conn.prepare(&sql)?;

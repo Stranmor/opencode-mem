@@ -25,7 +25,7 @@ impl Storage {
                     .filter_map(log_row_error)
                     .collect();
                 res
-            }
+            },
             (Some(f), None) => {
                 let mut stmt = conn.prepare(
                     "SELECT id, title, subtitle, observation_type FROM observations WHERE created_at >= ?1 ORDER BY created_at DESC LIMIT ?2"
@@ -35,7 +35,7 @@ impl Storage {
                     .filter_map(log_row_error)
                     .collect();
                 res
-            }
+            },
             (None, Some(t)) => {
                 let mut stmt = conn.prepare(
                     "SELECT id, title, subtitle, observation_type FROM observations WHERE created_at <= ?1 ORDER BY created_at DESC LIMIT ?2"
@@ -45,7 +45,7 @@ impl Storage {
                     .filter_map(log_row_error)
                     .collect();
                 res
-            }
+            },
             (None, None) => {
                 let mut stmt = conn.prepare(
                     "SELECT id, title, subtitle, observation_type FROM observations ORDER BY created_at DESC LIMIT ?1"
@@ -55,7 +55,7 @@ impl Storage {
                     .filter_map(log_row_error)
                     .collect();
                 res
-            }
+            },
         };
 
         Ok(results)

@@ -1,6 +1,6 @@
 //! Migration v8: Global Knowledge Layer
 
-pub const SQL: &str = r#"
+pub(super) const SQL: &str = "
 CREATE TABLE IF NOT EXISTS global_knowledge (
     id TEXT PRIMARY KEY,
     knowledge_type TEXT NOT NULL,
@@ -45,4 +45,4 @@ CREATE TRIGGER IF NOT EXISTS global_knowledge_au AFTER UPDATE ON global_knowledg
     INSERT INTO global_knowledge_fts(rowid, title, description, instructions, triggers)
     VALUES (NEW.rowid, NEW.title, NEW.description, NEW.instructions, NEW.triggers);
 END;
-"#;
+";

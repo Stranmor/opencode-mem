@@ -3,16 +3,20 @@ use chrono::Utc;
 use opencode_mem_core::{Observation, ObservationType, SearchResult};
 use rusqlite::params;
 
-use super::{escape_like_pattern, get_conn, log_row_error, parse_json, Storage};
+use super::{coerce_to_sql, escape_like_pattern, get_conn, log_row_error, parse_json, Storage};
 
 impl Storage {
+    /// Save observation to database.
+    ///
+    /// # Errors
+    /// Returns error if database insert fails.
     pub fn save_observation(&self, obs: &Observation) -> Result<()> {
         let conn = get_conn(&self.pool)?;
         conn.execute(
-            r#"INSERT OR REPLACE INTO observations 
+            "INSERT OR REPLACE INTO observations 
                (id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
                 files_read, files_modified, keywords, prompt_number, discovery_tokens, created_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)"#,
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 obs.id,
                 obs.session_id,
@@ -34,12 +38,16 @@ impl Storage {
         Ok(())
     }
 
+    /// Get observation by ID.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_by_id(&self, id: &str) -> Result<Option<Observation>> {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
-            r#"SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
+            "SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
                       files_read, files_modified, keywords, prompt_number, discovery_tokens, created_at
-               FROM observations WHERE id = ?1"#,
+               FROM observations WHERE id = ?1",
         )?;
         let mut rows = stmt.query(params![id])?;
         if let Some(row) = rows.next()? {
@@ -49,11 +57,15 @@ impl Storage {
         }
     }
 
+    /// Get recent observations.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_recent(&self, limit: usize) -> Result<Vec<SearchResult>> {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
-            r#"SELECT id, title, subtitle, observation_type
-               FROM observations ORDER BY created_at DESC LIMIT ?1"#,
+            "SELECT id, title, subtitle, observation_type
+               FROM observations ORDER BY created_at DESC LIMIT ?1",
         )?;
         let results = stmt
             .query_map(params![limit], |row| {
@@ -70,12 +82,16 @@ impl Storage {
         Ok(results)
     }
 
+    /// Get all observations for a session.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_session_observations(&self, session_id: &str) -> Result<Vec<Observation>> {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
-            r#"SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
+            "SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
                       files_read, files_modified, keywords, prompt_number, discovery_tokens, created_at
-               FROM observations WHERE session_id = ?1 ORDER BY created_at"#,
+               FROM observations WHERE session_id = ?1 ORDER BY created_at",
         )?;
         let results = stmt
             .query_map(params![session_id], Self::row_to_observation)?
@@ -84,6 +100,10 @@ impl Storage {
         Ok(results)
     }
 
+    /// Get observations by IDs.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_observations_by_ids(&self, ids: &[String]) -> Result<Vec<Observation>> {
         if ids.is_empty() {
             return Ok(Vec::new());
@@ -91,14 +111,12 @@ impl Storage {
         let conn = get_conn(&self.pool)?;
         let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let sql = format!(
-            r#"SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
+            "SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
                       files_read, files_modified, keywords, prompt_number, discovery_tokens, created_at
-               FROM observations WHERE id IN ({}) ORDER BY created_at DESC"#,
-            placeholders
+               FROM observations WHERE id IN ({placeholders}) ORDER BY created_at DESC"
         );
         let mut stmt = conn.prepare(&sql)?;
-        let params: Vec<&dyn rusqlite::ToSql> =
-            ids.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+        let params: Vec<&dyn rusqlite::ToSql> = ids.iter().map(coerce_to_sql).collect();
         let results = stmt
             .query_map(params.as_slice(), Self::row_to_observation)?
             .filter_map(log_row_error)
@@ -106,12 +124,16 @@ impl Storage {
         Ok(results)
     }
 
+    /// Get observations for a project.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_context_for_project(&self, project: &str, limit: usize) -> Result<Vec<Observation>> {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
-            r#"SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
+            "SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
                       files_read, files_modified, keywords, prompt_number, discovery_tokens, created_at
-               FROM observations WHERE project = ?1 ORDER BY created_at DESC LIMIT ?2"#,
+               FROM observations WHERE project = ?1 ORDER BY created_at DESC LIMIT ?2",
         )?;
         let results = stmt
             .query_map(params![project, limit], Self::row_to_observation)?
@@ -120,6 +142,10 @@ impl Storage {
         Ok(results)
     }
 
+    /// Count observations in a session.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_session_observation_count(&self, session_id: &str) -> Result<usize> {
         let conn = get_conn(&self.pool)?;
         let count: i64 = conn.query_row(
@@ -130,16 +156,20 @@ impl Storage {
         Ok(count as usize)
     }
 
+    /// Search observations by file path.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn search_by_file(&self, file_path: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let conn = get_conn(&self.pool)?;
         let escaped = escape_like_pattern(file_path);
-        let pattern = format!("%{}%", escaped);
+        let pattern = format!("%{escaped}%");
         let mut stmt = conn.prepare(
-            r#"SELECT id, title, subtitle, observation_type
+            r"SELECT id, title, subtitle, observation_type
                FROM observations
                WHERE files_read LIKE ?1 ESCAPE '\' OR files_modified LIKE ?1 ESCAPE '\'
                ORDER BY created_at DESC
-               LIMIT ?2"#,
+               LIMIT ?2",
         )?;
         let results = stmt
             .query_map(params![pattern, limit], |row| {
@@ -156,7 +186,7 @@ impl Storage {
         Ok(results)
     }
 
-    pub(crate) fn row_to_observation(row: &rusqlite::Row) -> rusqlite::Result<Observation> {
+    pub(crate) fn row_to_observation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Observation> {
         let obs_type_str: String = row.get(3)?;
         let obs_type: ObservationType = serde_json::from_str(&obs_type_str)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;

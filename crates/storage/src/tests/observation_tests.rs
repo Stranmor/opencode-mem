@@ -39,15 +39,9 @@ fn test_get_recent() {
 fn test_get_all_projects() {
     let (storage, _temp_dir) = create_test_storage();
 
-    storage
-        .save_observation(&create_test_observation("obs-1", "project-a"))
-        .unwrap();
-    storage
-        .save_observation(&create_test_observation("obs-2", "project-b"))
-        .unwrap();
-    storage
-        .save_observation(&create_test_observation("obs-3", "project-a"))
-        .unwrap();
+    storage.save_observation(&create_test_observation("obs-1", "project-a")).unwrap();
+    storage.save_observation(&create_test_observation("obs-2", "project-b")).unwrap();
+    storage.save_observation(&create_test_observation("obs-3", "project-a")).unwrap();
 
     let projects = storage.get_all_projects().unwrap();
     assert_eq!(projects.len(), 2);
@@ -59,12 +53,8 @@ fn test_get_all_projects() {
 fn test_get_stats() {
     let (storage, _temp_dir) = create_test_storage();
 
-    storage
-        .save_observation(&create_test_observation("obs-1", "project-a"))
-        .unwrap();
-    storage
-        .save_session(&super::create_test_session("session-1"))
-        .unwrap();
+    storage.save_observation(&create_test_observation("obs-1", "project-a")).unwrap();
+    storage.save_session(&super::create_test_session("session-1")).unwrap();
 
     let stats = storage.get_stats().unwrap();
     assert_eq!(stats.observation_count, 1);
@@ -98,24 +88,16 @@ fn test_get_observations_paginated_with_project_filter() {
 
     for i in 1..=5 {
         storage
-            .save_observation(&create_test_observation(
-                &format!("obs-a-{}", i),
-                "project-a",
-            ))
+            .save_observation(&create_test_observation(&format!("obs-a-{}", i), "project-a"))
             .unwrap();
     }
     for i in 1..=3 {
         storage
-            .save_observation(&create_test_observation(
-                &format!("obs-b-{}", i),
-                "project-b",
-            ))
+            .save_observation(&create_test_observation(&format!("obs-b-{}", i), "project-b"))
             .unwrap();
     }
 
-    let result = storage
-        .get_observations_paginated(0, 10, Some("project-a"))
-        .unwrap();
+    let result = storage.get_observations_paginated(0, 10, Some("project-a")).unwrap();
     assert_eq!(result.total, 5);
     assert_eq!(result.items.len(), 5);
 }
