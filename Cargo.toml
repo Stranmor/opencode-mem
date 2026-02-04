@@ -73,6 +73,9 @@ opencode-mem-plugin = { path = "crates/plugin" }
 opencode-mem-infinite = { path = "crates/infinite-memory" }
 opencode-mem-service = { path = "crates/service" }
 
+[workspace.lints.rust]
+forbidden_lint_groups = "allow"
+
 [profile.release]
 lto = true
 strip = true

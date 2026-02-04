@@ -7,6 +7,10 @@ use crate::ai_types::{ChatRequest, ChatResponse, Message, ResponseFormat};
 use crate::client::LlmClient;
 
 impl LlmClient {
+    /// Extract generalizable knowledge from an observation.
+    ///
+    /// # Errors
+    /// Returns `Error::LlmApi` if the API call fails or response parsing fails.
     pub async fn maybe_extract_knowledge(
         &self,
         observation: &Observation,
@@ -21,12 +25,8 @@ impl LlmClient {
         }
 
         let facts_str = observation.facts.join("\n- ");
-        let concepts_str = observation
-            .concepts
-            .iter()
-            .map(|c| format!("{:?}", c))
-            .collect::<Vec<_>>()
-            .join(", ");
+        let concepts_str =
+            observation.concepts.iter().map(|c| format!("{c:?}")).collect::<Vec<_>>().join(", ");
 
         let prompt = format!(
             r#"Analyze this observation and decide if it contains generalizable knowledge that would help in OTHER projects (not just this one).
@@ -53,13 +53,8 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
 
         let request = ChatRequest {
             model: self.model.clone(),
-            messages: vec![Message {
-                role: "user".to_string(),
-                content: prompt,
-            }],
-            response_format: ResponseFormat {
-                format_type: "json_object".to_string(),
-            },
+            messages: vec![Message { role: "user".to_owned(), content: prompt }],
+            response_format: ResponseFormat { format_type: "json_object".to_owned() },
         };
 
         let response = self
@@ -72,34 +67,29 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
             .map_err(|e| Error::LlmApi(e.to_string()))?;
 
         let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| Error::LlmApi(e.to_string()))?;
+        let body = response.text().await.map_err(|e| Error::LlmApi(e.to_string()))?;
 
         if !status.is_success() {
-            return Err(Error::LlmApi(format!("API error {}: {}", status, body)));
+            return Err(Error::LlmApi(format!("API error {status}: {body}")));
         }
 
         let chat_response: ChatResponse = serde_json::from_str(&body).map_err(|e| {
             Error::LlmApi(format!(
-                "Failed to parse response: {} - body: {}",
-                e,
-                &body[..body.len().min(500)]
+                "Failed to parse response: {e} - body: {}",
+                body.get(..500).unwrap_or(&body)
             ))
         })?;
 
         let first_choice = chat_response
             .choices
             .first()
-            .ok_or_else(|| Error::LlmApi("API returned empty choices array".to_string()))?;
+            .ok_or_else(|| Error::LlmApi("API returned empty choices array".to_owned()))?;
 
         let content = strip_markdown_json(&first_choice.message.content);
         let extraction: KnowledgeExtractionResult = serde_json::from_str(content).map_err(|e| {
             Error::LlmApi(format!(
-                "Failed to parse extraction JSON: {} - content: {}",
-                e,
-                &content[..content.len().min(300)]
+                "Failed to parse extraction JSON: {e} - content: {}",
+                content.get(..300).unwrap_or(content)
             ))
         })?;
 
@@ -107,18 +97,13 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
             return Ok(None);
         }
 
-        let knowledge_type_str = extraction
-            .knowledge_type
-            .unwrap_or_else(|| "skill".to_string());
-        let knowledge_type = knowledge_type_str
-            .parse::<KnowledgeType>()
-            .unwrap_or(KnowledgeType::Skill);
+        let knowledge_type_str = extraction.knowledge_type.unwrap_or_else(|| "skill".to_owned());
+        let knowledge_type =
+            knowledge_type_str.parse::<KnowledgeType>().unwrap_or(KnowledgeType::Skill);
 
         Ok(Some(KnowledgeInput {
             knowledge_type,
-            title: extraction
-                .title
-                .unwrap_or_else(|| observation.title.clone()),
+            title: extraction.title.unwrap_or_else(|| observation.title.clone()),
             description: extraction
                 .description
                 .unwrap_or_else(|| observation.narrative.clone().unwrap_or_default()),

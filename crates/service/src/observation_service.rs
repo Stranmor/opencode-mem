@@ -16,23 +16,22 @@ pub struct ObservationService {
 }
 
 impl ObservationService {
-    pub fn new(
+    #[must_use]
+    pub const fn new(
         storage: Arc<Storage>,
         llm: Arc<LlmClient>,
         infinite_mem: Option<Arc<InfiniteMemory>>,
         event_tx: broadcast::Sender<String>,
         embeddings: Option<Arc<EmbeddingService>>,
     ) -> Self {
-        Self {
-            storage,
-            llm,
-            infinite_mem,
-            event_tx,
-            embeddings,
-        }
+        Self { storage, llm, infinite_mem, event_tx, embeddings }
     }
 
-    pub async fn process(&self, id: &str, tool_call: ToolCall) -> anyhow::Result<Option<Observation>> {
+    pub async fn process(
+        &self,
+        id: &str,
+        tool_call: ToolCall,
+    ) -> anyhow::Result<Option<Observation>> {
         if let Some(observation) = self.compress_and_save(id, &tool_call).await? {
             self.extract_knowledge(&observation).await;
             self.store_infinite_memory(&tool_call, &observation).await;
@@ -57,16 +56,13 @@ impl ObservationService {
                 metadata: tool_call.input.clone(),
             },
         };
-        let observation = match self
-            .llm
-            .compress_to_observation(id, &input, tool_call.project.as_deref())
-            .await?
+        let observation = if let Some(obs) =
+            self.llm.compress_to_observation(id, &input, tool_call.project.as_deref()).await?
         {
-            Some(obs) => obs,
-            None => {
-                tracing::debug!("Observation filtered as trivial");
-                return Ok(None);
-            }
+            obs
+        } else {
+            tracing::debug!("Observation filtered as trivial");
+            return Ok(None);
         };
         self.storage.save_observation(&observation)?;
 
@@ -85,18 +81,14 @@ impl ObservationService {
                     } else {
                         tracing::info!("Stored embedding for {}", observation.id);
                     }
-                }
+                },
                 Err(e) => {
                     tracing::warn!("Failed to generate embedding for {}: {}", observation.id, e);
-                }
+                },
             }
         }
 
-        tracing::info!(
-            "Saved observation: {} - {}",
-            observation.id,
-            observation.title
-        );
+        tracing::info!("Saved observation: {} - {}", observation.id, observation.title);
         let _ = self.event_tx.send(serde_json::to_string(&observation)?);
         Ok(Some(observation))
     }
@@ -110,15 +102,15 @@ impl ObservationService {
                         knowledge.id,
                         knowledge.title
                     );
-                }
+                },
                 Err(e) => {
                     tracing::warn!("Failed to save extracted knowledge: {}", e);
-                }
+                },
             },
-            Ok(None) => {}
+            Ok(None) => {},
             Err(e) => {
                 tracing::debug!("Knowledge extraction skipped: {}", e);
-            }
+            },
         }
     }
 

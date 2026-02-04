@@ -147,11 +147,7 @@ pub async fn search_by_entity(
 ) -> Result<Vec<Summary>> {
     const ALLOWED_TYPES: &[&str] = &["files", "functions", "libraries", "errors", "decisions"];
     if !ALLOWED_TYPES.contains(&entity_type) {
-        anyhow::bail!(
-            "Invalid entity_type '{}'. Allowed: {:?}",
-            entity_type,
-            ALLOWED_TYPES
-        );
+        anyhow::bail!("Invalid entity_type '{}'. Allowed: {:?}", entity_type, ALLOWED_TYPES);
     }
 
     let json_array = serde_json::json!([value]);

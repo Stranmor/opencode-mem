@@ -10,6 +10,8 @@ mod observation;
 mod session;
 mod storage_trait;
 
+/// Alias for backward compatibility
+pub use error::MemoryError as Error;
 pub use error::*;
 pub use hook::*;
 pub use json_utils::*;

@@ -11,21 +11,13 @@ pub fn get_search_help() -> SearchHelpResponse {
                 method: "GET",
                 description: "Unified search across observations, sessions, and prompts",
                 params: vec![
-                    ParamDoc {
-                        name: "q",
-                        required: true,
-                        description: "Search query",
-                    },
+                    ParamDoc { name: "q", required: true, description: "Search query" },
                     ParamDoc {
                         name: "limit",
                         required: false,
                         description: "Max results (default 20)",
                     },
-                    ParamDoc {
-                        name: "project",
-                        required: false,
-                        description: "Filter by project",
-                    },
+                    ParamDoc { name: "project", required: false, description: "Filter by project" },
                     ParamDoc {
                         name: "type",
                         required: false,
@@ -65,16 +57,8 @@ pub fn get_search_help() -> SearchHelpResponse {
                 method: "GET",
                 description: "Get observations of type 'decision'",
                 params: vec![
-                    ParamDoc {
-                        name: "q",
-                        required: false,
-                        description: "Optional search filter",
-                    },
-                    ParamDoc {
-                        name: "limit",
-                        required: false,
-                        description: "Max results",
-                    },
+                    ParamDoc { name: "q", required: false, description: "Optional search filter" },
+                    ParamDoc { name: "limit", required: false, description: "Max results" },
                 ],
             },
             EndpointDoc {
@@ -82,16 +66,8 @@ pub fn get_search_help() -> SearchHelpResponse {
                 method: "GET",
                 description: "Get observations of type 'change'",
                 params: vec![
-                    ParamDoc {
-                        name: "q",
-                        required: false,
-                        description: "Optional search filter",
-                    },
-                    ParamDoc {
-                        name: "limit",
-                        required: false,
-                        description: "Max results",
-                    },
+                    ParamDoc { name: "q", required: false, description: "Optional search filter" },
+                    ParamDoc { name: "limit", required: false, description: "Max results" },
                 ],
             },
             EndpointDoc {
@@ -99,16 +75,8 @@ pub fn get_search_help() -> SearchHelpResponse {
                 method: "GET",
                 description: "Search for 'how-it-works' concept observations",
                 params: vec![
-                    ParamDoc {
-                        name: "q",
-                        required: false,
-                        description: "Additional search terms",
-                    },
-                    ParamDoc {
-                        name: "limit",
-                        required: false,
-                        description: "Max results",
-                    },
+                    ParamDoc { name: "q", required: false, description: "Additional search terms" },
+                    ParamDoc { name: "limit", required: false, description: "Max results" },
                 ],
             },
             EndpointDoc {
@@ -116,16 +84,8 @@ pub fn get_search_help() -> SearchHelpResponse {
                 method: "GET",
                 description: "Generate context preview for a project",
                 params: vec![
-                    ParamDoc {
-                        name: "project",
-                        required: true,
-                        description: "Project path",
-                    },
-                    ParamDoc {
-                        name: "limit",
-                        required: false,
-                        description: "Max observations",
-                    },
+                    ParamDoc { name: "project", required: true, description: "Project path" },
+                    ParamDoc { name: "limit", required: false, description: "Max observations" },
                     ParamDoc {
                         name: "format",
                         required: false,

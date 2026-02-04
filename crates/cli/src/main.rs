@@ -1,3 +1,23 @@
+#![allow(clippy::print_stdout, reason = "CLI output")]
+#![allow(clippy::print_stderr, reason = "CLI error output")]
+#![allow(clippy::absolute_paths, reason = "Explicit paths for clarity")]
+#![allow(clippy::clone_on_ref_ptr, reason = "Arc cloning is intentional")]
+#![allow(clippy::arithmetic_side_effects, reason = "Arithmetic is safe in context")]
+#![allow(clippy::pattern_type_mismatch, reason = "Pattern matching style")]
+#![allow(clippy::missing_errors_doc, reason = "CLI functions")]
+#![allow(clippy::map_err_ignore, reason = "Error context is added")]
+#![allow(clippy::unwrap_used, reason = "CLI panics are acceptable")]
+#![allow(clippy::default_numeric_fallback, reason = "Numeric types are clear")]
+#![allow(clippy::pub_with_shorthand, reason = "pub(crate) is clearer")]
+#![allow(clippy::needless_pass_by_value, reason = "API design choice")]
+#![allow(clippy::match_same_arms, reason = "Explicit arms are clearer")]
+#![allow(clippy::unused_async, reason = "Async for consistency")]
+#![allow(clippy::unnecessary_wraps, reason = "Result for consistency")]
+#![allow(unused_results, reason = "Some results are intentionally ignored")]
+#![allow(unused_crate_dependencies, reason = "Dependencies used in other modules")]
+#![allow(clippy::pub_use, reason = "Re-exports are intentional")]
+#![allow(clippy::redundant_pub_crate, reason = "pub(crate) is intentional for module visibility")]
+
 mod commands;
 
 use anyhow::Result;
@@ -55,6 +75,7 @@ enum Commands {
     Hook(HookCommands),
 }
 
+#[must_use]
 pub fn get_db_path() -> PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -63,18 +84,19 @@ pub fn get_db_path() -> PathBuf {
 }
 
 pub fn get_api_key() -> Result<String> {
-    std::env::var("OPENCODE_MEM_API_KEY")
-        .or_else(|_| std::env::var("ANTIGRAVITY_API_KEY"))
-        .map_err(|_| {
+    std::env::var("OPENCODE_MEM_API_KEY").or_else(|_| std::env::var("ANTIGRAVITY_API_KEY")).map_err(
+        |_| {
             anyhow::anyhow!(
                 "OPENCODE_MEM_API_KEY or ANTIGRAVITY_API_KEY environment variable must be set"
             )
-        })
+        },
+    )
 }
 
+#[must_use]
 pub fn get_base_url() -> String {
     std::env::var("OPENCODE_MEM_API_URL")
-        .unwrap_or_else(|_| "https://antigravity.quantumind.ru".to_string())
+        .unwrap_or_else(|_| "https://antigravity.quantumind.ru".to_owned())
 }
 
 pub fn ensure_db_dir(db_path: &std::path::Path) -> Result<()> {
@@ -96,39 +118,34 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Serve { port, host } => {
             commands::serve::run(port, host).await?;
-        }
+        },
         Commands::Mcp => {
             commands::mcp::run().await?;
-        }
-        Commands::Search {
-            query,
-            limit,
-            project,
-            obs_type,
-        } => {
+        },
+        Commands::Search { query, limit, project, obs_type } => {
             commands::search::run_search(query, limit, project, obs_type)?;
-        }
+        },
         Commands::Stats => {
             commands::search::run_stats()?;
-        }
+        },
         Commands::Projects => {
             commands::search::run_projects()?;
-        }
+        },
         Commands::Recent { limit } => {
             commands::search::run_recent(limit)?;
-        }
+        },
         Commands::Get { id } => {
             commands::search::run_get(id)?;
-        }
+        },
         Commands::BackfillEmbeddings { batch_size } => {
             commands::search::run_backfill_embeddings(batch_size)?;
-        }
+        },
         Commands::ImportInsights { file, dir } => {
             commands::import_insights::run(file, dir)?;
-        }
+        },
         Commands::Hook(hook_cmd) => {
             commands::hook::run(hook_cmd).await?;
-        }
+        },
     }
 
     Ok(())

@@ -7,6 +7,7 @@ use axum::{
 use futures_util::stream::Stream;
 use std::convert::Infallible;
 use std::sync::Arc;
+use tokio::sync::broadcast::error::RecvError;
 
 use opencode_mem_core::{Observation, SearchResult};
 use opencode_mem_storage::StorageStats;
@@ -25,7 +26,7 @@ pub async fn get_context_recent(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextQuery>,
 ) -> Result<Json<Vec<Observation>>, StatusCode> {
-    let storage = state.storage.clone();
+    let storage = Arc::clone(&state.storage);
     let project = query.project.clone();
     let limit = query.limit;
     blocking_json(move || storage.get_context_for_project(&project, limit)).await
@@ -34,14 +35,14 @@ pub async fn get_context_recent(
 pub async fn get_projects(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<String>>, StatusCode> {
-    let storage = state.storage.clone();
+    let storage = Arc::clone(&state.storage);
     blocking_json(move || storage.get_all_projects()).await
 }
 
 pub async fn get_stats(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<StorageStats>, StatusCode> {
-    let storage = state.storage.clone();
+    let storage = Arc::clone(&state.storage);
     blocking_json(move || storage.get_stats()).await
 }
 
@@ -49,7 +50,7 @@ pub async fn get_context_inject(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextQuery>,
 ) -> Result<Json<Vec<Observation>>, StatusCode> {
-    let storage = state.storage.clone();
+    let storage = Arc::clone(&state.storage);
     let project = query.project.clone();
     let limit = query.limit;
     blocking_json(move || storage.get_context_for_project(&project, limit)).await
@@ -63,11 +64,10 @@ pub async fn sse_events(
         loop {
             match rx.recv().await {
                 Ok(msg) => yield Ok(Event::default().data(msg)),
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                Err(RecvError::Lagged(n)) => {
                     tracing::warn!("SSE client lagged by {} messages", n);
-                    continue;
                 }
-                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                Err(RecvError::Closed) => break,
             }
         }
     };
@@ -78,12 +78,8 @@ pub async fn get_decisions(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    let q = if query.q.is_empty() {
-        None
-    } else {
-        Some(query.q.clone())
-    };
-    let storage = state.storage.clone();
+    let q = if query.q.is_empty() { None } else { Some(query.q.clone()) };
+    let storage = Arc::clone(&state.storage);
     let project = query.project.clone();
     let limit = query.limit;
     blocking_json(move || {
@@ -96,12 +92,8 @@ pub async fn get_changes(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    let q = if query.q.is_empty() {
-        None
-    } else {
-        Some(query.q.clone())
-    };
-    let storage = state.storage.clone();
+    let q = if query.q.is_empty() { None } else { Some(query.q.clone()) };
+    let storage = Arc::clone(&state.storage);
     let project = query.project.clone();
     let limit = query.limit;
     blocking_json(move || {
@@ -115,11 +107,11 @@ pub async fn get_how_it_works(
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
     let search_query = if query.q.is_empty() {
-        "how-it-works".to_string()
+        "how-it-works".to_owned()
     } else {
         format!("{} how-it-works", query.q)
     };
-    let storage = state.storage.clone();
+    let storage = Arc::clone(&state.storage);
     let limit = query.limit;
     blocking_json(move || storage.hybrid_search(&search_query, limit)).await
 }
@@ -135,10 +127,11 @@ pub async fn context_preview(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextPreviewQuery>,
 ) -> Result<Json<ContextPreview>, StatusCode> {
-    let storage = state.storage.clone();
+    let storage = Arc::clone(&state.storage);
     let project = query.project.clone();
     let limit = query.limit;
-    let observations = blocking_result(move || storage.get_context_for_project(&project, limit)).await?;
+    let observations =
+        blocking_result(move || storage.get_context_for_project(&project, limit)).await?;
     let preview = if query.format == "full" {
         observations
             .iter()
@@ -153,11 +146,7 @@ pub async fn context_preview(
             .collect::<Vec<_>>()
             .join("\n\n")
     } else {
-        observations
-            .iter()
-            .map(|o| format!("• {}", o.title))
-            .collect::<Vec<_>>()
-            .join("\n")
+        observations.iter().map(|o| format!("\u{2022} {}", o.title)).collect::<Vec<_>>().join("\n")
     };
     Ok(Json(ContextPreview {
         project: query.project,

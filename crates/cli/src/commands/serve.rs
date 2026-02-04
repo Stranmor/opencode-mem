@@ -11,41 +11,41 @@ use tokio::sync::{broadcast, RwLock, Semaphore};
 
 use crate::{ensure_db_dir, get_api_key, get_base_url, get_db_path};
 
-pub async fn run(port: u16, host: String) -> Result<()> {
+pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     let db_path = get_db_path();
     ensure_db_dir(&db_path)?;
     let storage = Arc::new(Storage::new(&db_path)?);
 
     let api_key = get_api_key()?;
     let llm = Arc::new(LlmClient::new(api_key.clone(), get_base_url()));
-    let (event_tx, _) = broadcast::channel(100);
+    // Initial receiver dropped - subscribers use event_tx.subscribe()
+    let (event_tx, _initial_rx) = broadcast::channel(100);
 
-    let infinite_mem = match std::env::var("INFINITE_MEMORY_URL") {
-        Ok(url) => match InfiniteMemory::new(&url, llm.clone()).await {
+    let infinite_mem = if let Ok(url) = std::env::var("INFINITE_MEMORY_URL") {
+        match InfiniteMemory::new(&url, llm.clone()).await {
             Ok(mem) => {
                 tracing::info!("Connected to infinite memory: {}", url);
                 Some(Arc::new(mem))
-            }
+            },
             Err(e) => {
                 tracing::warn!("Failed to connect to infinite memory: {}", e);
                 None
-            }
-        },
-        Err(_) => {
-            tracing::info!("INFINITE_MEMORY_URL not set, infinite memory disabled");
-            None
+            },
         }
+    } else {
+        tracing::info!("INFINITE_MEMORY_URL not set, infinite memory disabled");
+        None
     };
 
     let embeddings = match EmbeddingService::new() {
         Ok(emb) => {
             tracing::info!("Embedding service initialized (384 dimensions)");
             Some(Arc::new(emb))
-        }
+        },
         Err(e) => {
             tracing::warn!("Failed to initialize embeddings: {}", e);
             None
-        }
+        },
     };
 
     let observation_service = Arc::new(ObservationService::new(
@@ -75,7 +75,7 @@ pub async fn run(port: u16, host: String) -> Result<()> {
     }
 
     let router = create_router(state);
-    let addr = format!("{}:{}", host, port);
+    let addr = format!("{host}:{port}");
     tracing::info!("Starting HTTP server on {}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, router).await?;

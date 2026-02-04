@@ -40,7 +40,7 @@ fn test_complete_message() {
     let (storage, _temp_dir) = create_test_storage();
 
     let id = storage.queue_message("s1", Some("tool"), None, None).unwrap();
-    let _ = storage.claim_pending_messages(1, 300).unwrap();
+    let _claimed = storage.claim_pending_messages(1, 300).unwrap();
 
     storage.complete_message(id).unwrap();
 
@@ -53,18 +53,18 @@ fn test_fail_message_with_retry() {
     let (storage, _temp_dir) = create_test_storage();
 
     let id = storage.queue_message("s1", Some("tool"), None, None).unwrap();
-    let _ = storage.claim_pending_messages(1, 300).unwrap();
+    let _claimed = storage.claim_pending_messages(1, 300).unwrap();
 
     storage.fail_message(id, true).unwrap();
     let pending = storage.get_pending_count().unwrap();
     assert_eq!(pending, 1);
 
-    let _ = storage.claim_pending_messages(1, 300).unwrap();
+    let _claimed = storage.claim_pending_messages(1, 300).unwrap();
     storage.fail_message(id, true).unwrap();
     let pending = storage.get_pending_count().unwrap();
     assert_eq!(pending, 1);
 
-    let _ = storage.claim_pending_messages(1, 300).unwrap();
+    let _claimed = storage.claim_pending_messages(1, 300).unwrap();
     storage.fail_message(id, true).unwrap();
     let pending = storage.get_pending_count().unwrap();
     assert_eq!(pending, 0);
@@ -79,7 +79,7 @@ fn test_release_stale_messages() {
     let (storage, _temp_dir) = create_test_storage();
 
     storage.queue_message("s1", Some("tool"), None, None).unwrap();
-    let _ = storage.claim_pending_messages(1, 300).unwrap();
+    let _claimed = storage.claim_pending_messages(1, 300).unwrap();
 
     let released = storage.release_stale_messages(0).unwrap();
     assert_eq!(released, 1);

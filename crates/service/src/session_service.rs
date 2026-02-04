@@ -10,7 +10,8 @@ pub struct SessionService {
 }
 
 impl SessionService {
-    pub fn new(storage: Arc<Storage>, llm: Arc<LlmClient>) -> Self {
+    #[must_use]
+    pub const fn new(storage: Arc<Storage>, llm: Arc<LlmClient>) -> Self {
         Self { storage, llm }
     }
 

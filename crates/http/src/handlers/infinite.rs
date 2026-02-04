@@ -23,17 +23,13 @@ pub async fn infinite_expand_summary(
             })),
         )
     })?;
-    infinite_mem
-        .get_events_by_summary_id(id, 1000)
-        .await
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("infinite_expand_summary failed: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "internal_error", "message": e.to_string()})),
-            )
-        })
+    infinite_mem.get_events_by_summary_id(id, 1000).await.map(Json).map_err(|e| {
+        tracing::error!("infinite_expand_summary failed: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": "internal_error", "message": e.to_string()})),
+        )
+    })
 }
 
 pub async fn infinite_time_range(
@@ -91,17 +87,13 @@ pub async fn infinite_drill_hour(
             })),
         )
     })?;
-    infinite_mem
-        .get_5min_summaries_by_hour_id(id, 100)
-        .await
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("infinite_drill_hour failed: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "internal_error", "message": e.to_string()})),
-            )
-        })
+    infinite_mem.get_5min_summaries_by_hour_id(id, 100).await.map(Json).map_err(|e| {
+        tracing::error!("infinite_drill_hour failed: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": "internal_error", "message": e.to_string()})),
+        )
+    })
 }
 
 pub async fn infinite_drill_day(
@@ -117,17 +109,13 @@ pub async fn infinite_drill_day(
             })),
         )
     })?;
-    infinite_mem
-        .get_hour_summaries_by_day_id(id, 100)
-        .await
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("infinite_drill_day failed: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({"error": "internal_error", "message": e.to_string()})),
-            )
-        })
+    infinite_mem.get_hour_summaries_by_day_id(id, 100).await.map(Json).map_err(|e| {
+        tracing::error!("infinite_drill_day failed: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": "internal_error", "message": e.to_string()})),
+        )
+    })
 }
 
 pub async fn infinite_search_entities(

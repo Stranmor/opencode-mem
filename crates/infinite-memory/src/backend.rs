@@ -21,12 +21,7 @@ impl StorageBackend for InfiniteMemory {
                 "concepts": obs.concepts,
                 "keywords": obs.keywords,
             }),
-            files: obs
-                .files_read
-                .iter()
-                .chain(obs.files_modified.iter())
-                .cloned()
-                .collect(),
+            files: obs.files_read.iter().chain(obs.files_modified.iter()).cloned().collect(),
             tools: vec!["observation".to_string()],
         };
         self.store_event(event).await?;
@@ -92,18 +87,11 @@ fn stored_event_to_observation(event: &StoredEvent) -> Observation {
         observation_type: extract_observation_type(content),
         title: extract_title(content),
         subtitle: extract_subtitle(content),
-        narrative: content
-            .get("narrative")
-            .and_then(|v| v.as_str())
-            .map(|s| s.to_string()),
+        narrative: content.get("narrative").and_then(|v| v.as_str()).map(|s| s.to_string()),
         facts: content
             .get("facts")
             .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
             .unwrap_or_default(),
         concepts: vec![],
         files_read: event.files.clone(),
@@ -111,11 +99,7 @@ fn stored_event_to_observation(event: &StoredEvent) -> Observation {
         keywords: content
             .get("keywords")
             .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
             .unwrap_or_default(),
         prompt_number: None,
         discovery_tokens: None,
@@ -135,10 +119,7 @@ fn extract_title(content: &serde_json::Value) -> String {
 }
 
 fn extract_subtitle(content: &serde_json::Value) -> Option<String> {
-    content
-        .get("subtitle")
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
+    content.get("subtitle").and_then(|v| v.as_str()).map(|s| s.to_string())
 }
 
 fn extract_observation_type(content: &serde_json::Value) -> ObservationType {

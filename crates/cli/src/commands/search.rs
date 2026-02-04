@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 use crate::{ensure_db_dir, get_db_path};
 
-pub fn run_search(
+pub(crate) fn run_search(
     query: String,
     limit: usize,
     project: Option<String>,
@@ -24,7 +24,7 @@ pub fn run_search(
     Ok(())
 }
 
-pub fn run_stats() -> Result<()> {
+pub(crate) fn run_stats() -> Result<()> {
     let db_path = get_db_path();
     ensure_db_dir(&db_path)?;
     let storage = Storage::new(&db_path)?;
@@ -33,7 +33,7 @@ pub fn run_stats() -> Result<()> {
     Ok(())
 }
 
-pub fn run_projects() -> Result<()> {
+pub(crate) fn run_projects() -> Result<()> {
     let db_path = get_db_path();
     ensure_db_dir(&db_path)?;
     let storage = Storage::new(&db_path)?;
@@ -42,7 +42,7 @@ pub fn run_projects() -> Result<()> {
     Ok(())
 }
 
-pub fn run_recent(limit: usize) -> Result<()> {
+pub(crate) fn run_recent(limit: usize) -> Result<()> {
     let db_path = get_db_path();
     ensure_db_dir(&db_path)?;
     let storage = Storage::new(&db_path)?;
@@ -51,18 +51,18 @@ pub fn run_recent(limit: usize) -> Result<()> {
     Ok(())
 }
 
-pub fn run_get(id: String) -> Result<()> {
+pub(crate) fn run_get(id: String) -> Result<()> {
     let db_path = get_db_path();
     ensure_db_dir(&db_path)?;
     let storage = Storage::new(&db_path)?;
     match storage.get_by_id(&id)? {
         Some(obs) => println!("{}", serde_json::to_string_pretty(&obs)?),
-        None => println!("Observation not found: {}", id),
+        None => println!("Observation not found: {id}"),
     }
     Ok(())
 }
 
-pub fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
+pub(crate) fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
     init_sqlite_vec();
 
     let db_path = get_db_path();
@@ -76,10 +76,8 @@ pub fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
     let mut failed_ids: HashSet<String> = HashSet::new();
     loop {
         let observations = storage.get_observations_without_embeddings(batch_size)?;
-        let observations: Vec<_> = observations
-            .into_iter()
-            .filter(|obs| !failed_ids.contains(&obs.id))
-            .collect();
+        let observations: Vec<_> =
+            observations.into_iter().filter(|obs| !failed_ids.contains(&obs.id)).collect();
         if observations.is_empty() {
             break;
         }
@@ -100,27 +98,21 @@ pub fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
                     } else {
                         total += 1;
                         if total % 10 == 0 {
-                            println!("Processed {} observations...", total);
+                            println!("Processed {total} observations...");
                         }
                     }
-                }
+                },
                 Err(e) => {
                     eprintln!("Failed to generate embedding for {}: {}", obs.id, e);
                     failed_ids.insert(obs.id.clone());
-                }
+                },
             }
         }
     }
 
     if !failed_ids.is_empty() {
-        eprintln!(
-            "Warning: {} observations failed to process",
-            failed_ids.len()
-        );
+        eprintln!("Warning: {} observations failed to process", failed_ids.len());
     }
-    println!(
-        "Backfill complete. Generated embeddings for {} observations.",
-        total
-    );
+    println!("Backfill complete. Generated embeddings for {total} observations.");
     Ok(())
 }

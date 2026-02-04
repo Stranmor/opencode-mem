@@ -3,12 +3,14 @@ name = "opencode-mem-search"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 opencode-mem-core = { workspace = true }
 opencode-mem-storage = { workspace = true }
 opencode-mem-embeddings = { workspace = true }
 anyhow = { workspace = true }
-thiserror = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3"

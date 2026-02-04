@@ -1,3 +1,21 @@
+#![allow(clippy::as_conversions, reason = "u64 to usize conversions are safe")]
+#![allow(clippy::cast_possible_truncation, reason = "Sizes are within bounds")]
+#![allow(clippy::option_if_let_else, reason = "if let is clearer")]
+#![allow(clippy::needless_pass_by_value, reason = "API design choice")]
+#![allow(clippy::let_underscore_must_use, reason = "Intentionally ignoring results")]
+#![allow(let_underscore_drop, reason = "Intentionally dropping values")]
+#![allow(unreachable_pub, reason = "pub items are re-exported")]
+#![allow(clippy::redundant_pub_crate, reason = "Explicit visibility")]
+#![allow(unused_results, reason = "Some results are intentionally ignored")]
+#![allow(missing_debug_implementations, reason = "Internal types")]
+#![allow(clippy::if_then_some_else_none, reason = "Style preference")]
+#![allow(clippy::let_underscore_untyped, reason = "Type is clear from context")]
+#![allow(clippy::absolute_paths, reason = "Explicit paths for clarity")]
+#![allow(clippy::pattern_type_mismatch, reason = "Pattern matching style")]
+#![allow(clippy::too_many_lines, reason = "Handler functions are complex")]
+#![allow(clippy::manual_let_else, reason = "if let is clearer")]
+#![allow(clippy::or_fun_call, reason = "unwrap_or with function is acceptable")]
+
 mod handlers;
 mod tools;
 
@@ -17,7 +35,7 @@ use tools::get_tools_json;
 
 #[derive(Deserialize)]
 struct McpRequest {
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "Required by JSON-RPC protocol but not used")]
     jsonrpc: String,
     id: Option<serde_json::Value>,
     method: String,
@@ -66,40 +84,37 @@ pub fn run_mcp_server(
             Ok(v) => v,
             Err(e) => {
                 let error_response = McpResponse {
-                    jsonrpc: "2.0".to_string(),
+                    jsonrpc: "2.0".to_owned(),
                     id: json!(null),
                     result: None,
-                    error: Some(McpError {
-                        code: -32700,
-                        message: format!("Parse error: {}", e),
-                    }),
+                    error: Some(McpError { code: -32700, message: format!("Parse error: {e}") }),
                 };
                 if let Ok(json) = serde_json::to_string(&error_response) {
-                    let _ = writeln!(stdout, "{}", json);
+                    let _ = writeln!(stdout, "{json}");
                     let _ = stdout.flush();
                 }
                 continue;
-            }
+            },
         };
 
         let request: McpRequest = match serde_json::from_value(json_value.clone()) {
             Ok(r) => r,
             Err(e) => {
                 let error_response = McpResponse {
-                    jsonrpc: "2.0".to_string(),
+                    jsonrpc: "2.0".to_owned(),
                     id: json_value.get("id").cloned().unwrap_or(json!(null)),
                     result: None,
                     error: Some(McpError {
                         code: -32600,
-                        message: format!("Invalid Request: {}", e),
+                        message: format!("Invalid Request: {e}"),
                     }),
                 };
                 if let Ok(json) = serde_json::to_string(&error_response) {
-                    let _ = writeln!(stdout, "{}", json);
+                    let _ = writeln!(stdout, "{json}");
                     let _ = stdout.flush();
                 }
                 continue;
-            }
+            },
         };
 
         if let Some(response) = handle_request(
@@ -110,7 +125,7 @@ pub fn run_mcp_server(
             &request,
         ) {
             if let Ok(response_json) = serde_json::to_string(&response) {
-                writeln!(stdout, "{}", response_json).ok();
+                writeln!(stdout, "{response_json}").ok();
                 stdout.flush().ok();
             }
         }
@@ -131,7 +146,7 @@ fn handle_request(
 
     Some(match req.method.as_str() {
         "initialize" => McpResponse {
-            jsonrpc: "2.0".to_string(),
+            jsonrpc: "2.0".to_owned(),
             id,
             result: Some(json!({
                 "protocolVersion": "2024-11-05",
@@ -141,16 +156,16 @@ fn handle_request(
             error: None,
         },
         "tools/list" => McpResponse {
-            jsonrpc: "2.0".to_string(),
+            jsonrpc: "2.0".to_owned(),
             id,
             result: Some(get_tools_json()),
             error: None,
         },
         "tools/call" => {
             handle_tool_call(storage, embeddings, infinite_mem, handle, &req.params, id)
-        }
+        },
         _ => McpResponse {
-            jsonrpc: "2.0".to_string(),
+            jsonrpc: "2.0".to_owned(),
             id,
             result: None,
             error: Some(McpError {
@@ -170,50 +185,20 @@ mod tests {
     fn test_mcp_tool_parse_valid() {
         assert_eq!(McpTool::parse("search"), Some(McpTool::Search));
         assert_eq!(McpTool::parse("timeline"), Some(McpTool::Timeline));
-        assert_eq!(
-            McpTool::parse("get_observations"),
-            Some(McpTool::GetObservations)
-        );
+        assert_eq!(McpTool::parse("get_observations"), Some(McpTool::GetObservations));
         assert_eq!(McpTool::parse("memory_get"), Some(McpTool::MemoryGet));
         assert_eq!(McpTool::parse("memory_recent"), Some(McpTool::MemoryRecent));
-        assert_eq!(
-            McpTool::parse("memory_hybrid_search"),
-            Some(McpTool::MemoryHybridSearch)
-        );
-        assert_eq!(
-            McpTool::parse("memory_semantic_search"),
-            Some(McpTool::MemorySemanticSearch)
-        );
+        assert_eq!(McpTool::parse("memory_hybrid_search"), Some(McpTool::MemoryHybridSearch));
+        assert_eq!(McpTool::parse("memory_semantic_search"), Some(McpTool::MemorySemanticSearch));
         assert_eq!(McpTool::parse("__IMPORTANT"), Some(McpTool::Important));
-        assert_eq!(
-            McpTool::parse("knowledge_search"),
-            Some(McpTool::KnowledgeSearch)
-        );
-        assert_eq!(
-            McpTool::parse("knowledge_save"),
-            Some(McpTool::KnowledgeSave)
-        );
+        assert_eq!(McpTool::parse("knowledge_search"), Some(McpTool::KnowledgeSearch));
+        assert_eq!(McpTool::parse("knowledge_save"), Some(McpTool::KnowledgeSave));
         assert_eq!(McpTool::parse("knowledge_get"), Some(McpTool::KnowledgeGet));
-        assert_eq!(
-            McpTool::parse("knowledge_list"),
-            Some(McpTool::KnowledgeList)
-        );
-        assert_eq!(
-            McpTool::parse("infinite_expand"),
-            Some(McpTool::InfiniteExpand)
-        );
-        assert_eq!(
-            McpTool::parse("infinite_time_range"),
-            Some(McpTool::InfiniteTimeRange)
-        );
-        assert_eq!(
-            McpTool::parse("infinite_drill_hour"),
-            Some(McpTool::InfiniteDrillHour)
-        );
-        assert_eq!(
-            McpTool::parse("infinite_drill_day"),
-            Some(McpTool::InfiniteDrillDay)
-        );
+        assert_eq!(McpTool::parse("knowledge_list"), Some(McpTool::KnowledgeList));
+        assert_eq!(McpTool::parse("infinite_expand"), Some(McpTool::InfiniteExpand));
+        assert_eq!(McpTool::parse("infinite_time_range"), Some(McpTool::InfiniteTimeRange));
+        assert_eq!(McpTool::parse("infinite_drill_hour"), Some(McpTool::InfiniteDrillHour));
+        assert_eq!(McpTool::parse("infinite_drill_day"), Some(McpTool::InfiniteDrillDay));
     }
 
     #[test]

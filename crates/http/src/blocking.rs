@@ -8,6 +8,7 @@
 
 use axum::{http::StatusCode, Json};
 use serde::Serialize;
+use tokio::task::spawn_blocking;
 
 /// Runs a blocking closure and returns `Result<Json<T>, StatusCode>`.
 ///
@@ -27,7 +28,7 @@ where
     F: FnOnce() -> anyhow::Result<T> + Send + 'static,
     T: Send + 'static + Serialize,
 {
-    tokio::task::spawn_blocking(f)
+    spawn_blocking(f)
         .await
         .map_err(|e| {
             tracing::error!("Join error: {}", e);
@@ -49,13 +50,12 @@ where
 /// let session = blocking_result(move || storage.get_session(&id)).await?;
 /// // Now use session for further logic
 /// ```
-#[allow(dead_code)]
 pub async fn blocking_result<T, F>(f: F) -> Result<T, StatusCode>
 where
     F: FnOnce() -> anyhow::Result<T> + Send + 'static,
     T: Send + 'static,
 {
-    tokio::task::spawn_blocking(f)
+    spawn_blocking(f)
         .await
         .map_err(|e| {
             tracing::error!("Join error: {}", e);

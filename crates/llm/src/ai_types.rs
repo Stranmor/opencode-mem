@@ -1,54 +1,50 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize)]
-pub(crate) struct ChatRequest {
+pub struct ChatRequest {
     pub model: String,
     pub messages: Vec<Message>,
     pub response_format: ResponseFormat,
 }
 
 #[derive(Serialize)]
-pub(crate) struct ResponseFormat {
+pub struct ResponseFormat {
     #[serde(rename = "type")]
     pub format_type: String,
 }
 
 #[derive(Serialize)]
-pub(crate) struct Message {
+pub struct Message {
     pub role: String,
     pub content: String,
 }
 
 #[derive(Deserialize)]
-pub(crate) struct ChatResponse {
+pub struct ChatResponse {
     pub choices: Vec<Choice>,
 }
 
 #[derive(Deserialize)]
-pub(crate) struct Choice {
+pub struct Choice {
     pub message: ResponseMessage,
 }
 
 #[derive(Deserialize)]
-pub(crate) struct ResponseMessage {
+pub struct ResponseMessage {
     pub content: String,
 }
 
-fn default_true() -> bool {
+const fn default_true() -> bool {
     true
 }
 
-fn default_empty_string() -> String {
-    String::new()
-}
-
 #[derive(Deserialize)]
-pub(crate) struct ObservationJson {
+pub struct ObservationJson {
     #[serde(default = "default_true")]
     pub should_save: bool,
-    #[serde(rename = "type", default = "default_empty_string")]
+    #[serde(rename = "type", default)]
     pub observation_type: String,
-    #[serde(default = "default_empty_string")]
+    #[serde(default)]
     pub title: String,
     pub subtitle: Option<String>,
     pub narrative: Option<String>,
@@ -65,6 +61,6 @@ pub(crate) struct ObservationJson {
 }
 
 #[derive(Deserialize)]
-pub(crate) struct SummaryJson {
+pub struct SummaryJson {
     pub summary: String,
 }

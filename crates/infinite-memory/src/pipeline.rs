@@ -81,14 +81,8 @@ pub async fn create_hour_summary(
         return Ok(0);
     }
 
-    let ts_start = summaries
-        .first()
-        .expect("BUG: empty summaries after check")
-        .ts_start;
-    let ts_end = summaries
-        .last()
-        .expect("BUG: empty summaries after check")
-        .ts_end;
+    let ts_start = summaries.first().expect("BUG: empty summaries after check").ts_start;
+    let ts_end = summaries.last().expect("BUG: empty summaries after check").ts_end;
     let session_id = summaries.first().and_then(|s| s.session_id.clone());
     let project = summaries.first().and_then(|s| s.project.clone());
     let total_events: i32 = summaries.iter().map(|s| s.event_count).sum();
@@ -135,14 +129,8 @@ pub async fn create_day_summary(
         return Ok(0);
     }
 
-    let ts_start = summaries
-        .first()
-        .expect("BUG: empty summaries after check")
-        .ts_start;
-    let ts_end = summaries
-        .last()
-        .expect("BUG: empty summaries after check")
-        .ts_end;
+    let ts_start = summaries.first().expect("BUG: empty summaries after check").ts_start;
+    let ts_end = summaries.last().expect("BUG: empty summaries after check").ts_end;
     let session_id = summaries.first().and_then(|s| s.session_id.clone());
     let project = summaries.first().and_then(|s| s.project.clone());
     let total_events: i32 = summaries.iter().map(|s| s.event_count).sum();
@@ -203,11 +191,7 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
             continue;
         }
 
-        tracing::info!(
-            "Compressing {} events for session {}",
-            session_events.len(),
-            session_id
-        );
+        tracing::info!("Compressing {} events for session {}", session_events.len(), session_id);
 
         let owned_events: Vec<StoredEvent> = session_events.iter().map(|e| (*e).clone()).collect();
 
@@ -247,10 +231,8 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
 
     let mut hours_created = 0u32;
     for session_id in seen_sessions_5min {
-        let session_summaries: Vec<&Summary> = summaries_5min
-            .iter()
-            .filter(|s| s.session_id == session_id)
-            .collect();
+        let session_summaries: Vec<&Summary> =
+            summaries_5min.iter().filter(|s| s.session_id == session_id).collect();
 
         if session_summaries.len() >= MIN_5MIN_SUMMARIES_FOR_HOUR {
             let owned: Vec<Summary> = session_summaries.iter().map(|s| (*s).clone()).collect();
@@ -274,10 +256,8 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
 
     let mut days_created = 0u32;
     for session_id in seen_sessions_hour {
-        let session_summaries: Vec<&Summary> = summaries_hour
-            .iter()
-            .filter(|s| s.session_id == session_id)
-            .collect();
+        let session_summaries: Vec<&Summary> =
+            summaries_hour.iter().filter(|s| s.session_id == session_id).collect();
 
         if session_summaries.len() >= MIN_HOUR_SUMMARIES_FOR_DAY {
             let owned: Vec<Summary> = session_summaries.iter().map(|s| (*s).clone()).collect();

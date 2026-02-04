@@ -31,10 +31,7 @@ pub async fn api_session_init(
         tracing::error!("API session init failed: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
-    Ok(Json(SessionInitResponse {
-        session_id,
-        status: "active".to_string(),
-    }))
+    Ok(Json(SessionInitResponse { session_id, status: "active".to_owned() }))
 }
 
 pub async fn api_session_observations(
@@ -58,22 +55,16 @@ pub async fn api_session_observations(
                 Err(e) => {
                     tracing::error!("Semaphore closed: {}", e);
                     return;
-                }
+                },
             };
-            let tool_call_with_session = ToolCall {
-                session_id: sid.clone(),
-                ..tool_call
-            };
+            let tool_call_with_session = ToolCall { session_id: sid.clone(), ..tool_call };
             if let Err(e) = service.process(&id, tool_call_with_session).await {
                 tracing::error!("Failed to process observation: {}", e);
             }
             drop(permit);
         });
     }
-    Ok(Json(SessionObservationsResponse {
-        queued: count,
-        session_id,
-    }))
+    Ok(Json(SessionObservationsResponse { queued: count, session_id }))
 }
 
 pub async fn api_session_summarize(
@@ -85,15 +76,9 @@ pub async fn api_session_summarize(
     let cid = content_session_id.clone();
     let session = blocking_result(move || storage.get_session_by_content_id(&cid)).await?;
     let session_id = session.map(|s| s.id).ok_or(StatusCode::NOT_FOUND)?;
-    let summary = state
-        .session_service
-        .summarize_session(&session_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Generate summary failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    Ok(Json(
-        serde_json::json!({"session_id": session_id, "summary": summary, "queued": true}),
-    ))
+    let summary = state.session_service.summarize_session(&session_id).await.map_err(|e| {
+        tracing::error!("Generate summary failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(serde_json::json!({"session_id": session_id, "summary": summary, "queued": true})))
 }

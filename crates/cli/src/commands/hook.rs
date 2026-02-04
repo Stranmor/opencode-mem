@@ -4,7 +4,7 @@ use opencode_mem_core::{ObservationHookRequest, SessionInitHookRequest, Summariz
 use std::io::{IsTerminal, Read};
 
 #[derive(Subcommand)]
-pub enum HookCommands {
+pub(crate) enum HookCommands {
     Context {
         #[arg(short, long)]
         project: Option<String>,
@@ -64,11 +64,7 @@ fn build_session_init_request(
     user_prompt: Option<String>,
 ) -> Result<SessionInitHookRequest> {
     let session_id = content_session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    Ok(SessionInitHookRequest {
-        content_session_id: session_id,
-        project,
-        user_prompt,
-    })
+    Ok(SessionInitHookRequest { content_session_id: session_id, project, user_prompt })
 }
 
 fn build_observation_request(
@@ -81,10 +77,9 @@ fn build_observation_request(
     if !std::io::stdin().is_terminal() {
         std::io::stdin().read_to_string(&mut output_str)?;
     }
-    let tool_name = tool.unwrap_or_else(|| "unknown".to_string());
-    let input: Option<serde_json::Value> = input_json
-        .as_ref()
-        .and_then(|s| serde_json::from_str(s).ok());
+    let tool_name = tool.unwrap_or_else(|| "unknown".to_owned());
+    let input: Option<serde_json::Value> =
+        input_json.as_ref().and_then(|s| serde_json::from_str(s).ok());
     Ok(ObservationHookRequest {
         tool: tool_name,
         session_id,
@@ -95,29 +90,22 @@ fn build_observation_request(
     })
 }
 
-fn build_summarize_request(
+const fn build_summarize_request(
     content_session_id: Option<String>,
     session_id: Option<String>,
 ) -> Result<SummarizeHookRequest> {
-    Ok(SummarizeHookRequest {
-        content_session_id,
-        session_id,
-    })
+    Ok(SummarizeHookRequest { content_session_id, session_id })
 }
 
-pub async fn run(cmd: HookCommands) -> Result<()> {
+pub(crate) async fn run(cmd: HookCommands) -> Result<()> {
     let client = reqwest::Client::new();
 
     match cmd {
-        HookCommands::Context {
-            project,
-            limit,
-            endpoint,
-        } => {
+        HookCommands::Context { project, limit, endpoint } => {
             let project = project.or_else(get_project_from_stdin).ok_or_else(|| {
                 anyhow::anyhow!("Project required: use --project or pipe JSON with 'project' field")
             })?;
-            let url = format!("{}/context/inject", endpoint);
+            let url = format!("{endpoint}/context/inject");
             let resp = client
                 .get(&url)
                 .query(&[("project", &project), ("limit", &limit.to_string())])
@@ -125,43 +113,28 @@ pub async fn run(cmd: HookCommands) -> Result<()> {
                 .await?;
             let body: serde_json::Value = resp.json().await?;
             println!("{}", serde_json::to_string_pretty(&body)?);
-        }
-        HookCommands::SessionInit {
-            content_session_id,
-            project,
-            user_prompt,
-            endpoint,
-        } => {
+        },
+        HookCommands::SessionInit { content_session_id, project, user_prompt, endpoint } => {
             let req = build_session_init_request(content_session_id, project, user_prompt)?;
-            let url = format!("{}/api/sessions/init", endpoint);
+            let url = format!("{endpoint}/api/sessions/init");
             let resp = client.post(&url).json(&req).send().await?;
             let body: serde_json::Value = resp.json().await?;
             println!("{}", serde_json::to_string_pretty(&body)?);
-        }
-        HookCommands::Observe {
-            tool,
-            session_id,
-            project,
-            input,
-            endpoint,
-        } => {
+        },
+        HookCommands::Observe { tool, session_id, project, input, endpoint } => {
             let req = build_observation_request(tool, session_id, project, input)?;
-            let url = format!("{}/observe", endpoint);
+            let url = format!("{endpoint}/observe");
             let resp = client.post(&url).json(&req).send().await?;
             let body: serde_json::Value = resp.json().await?;
             println!("{}", serde_json::to_string_pretty(&body)?);
-        }
-        HookCommands::Summarize {
-            content_session_id,
-            session_id,
-            endpoint,
-        } => {
+        },
+        HookCommands::Summarize { content_session_id, session_id, endpoint } => {
             let req = build_summarize_request(content_session_id, session_id)?;
-            let url = format!("{}/api/sessions/summarize", endpoint);
+            let url = format!("{endpoint}/api/sessions/summarize");
             let resp = client.post(&url).json(&req).send().await?;
             let body: serde_json::Value = resp.json().await?;
             println!("{}", serde_json::to_string_pretty(&body)?);
-        }
+        },
     }
 
     Ok(())

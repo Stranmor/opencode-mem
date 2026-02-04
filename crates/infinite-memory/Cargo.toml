@@ -3,10 +3,12 @@ name = "opencode-mem-infinite"
 version = "0.1.0"
 edition = "2021"
 
+[lints]
+workspace = true
+
 [dependencies]
 opencode-mem-core = { workspace = true }
 opencode-mem-llm = { path = "../llm" }
-tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
@@ -14,5 +16,4 @@ tracing = { workspace = true }
 chrono = { workspace = true }
 async-trait = { workspace = true }
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono", "json"] }
-pgvector = { version = "0.4", features = ["sqlx"] }
 uuid = { version = "1", features = ["v4"] }

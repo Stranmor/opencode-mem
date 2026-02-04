@@ -3,7 +3,11 @@
 //! Implements 3-layer search pattern:
 //! 1. search(query) → Get lightweight index with IDs and scores
 //! 2. timeline(from/to) → Get context around interesting results
-//! 3. get_full(ids) → Fetch full observations ONLY for filtered IDs
+//! 3. `get_full(ids)` → Fetch full observations ONLY for filtered IDs
+
+#![allow(clippy::missing_errors_doc, reason = "Errors are self-explanatory from Result types")]
+#![allow(clippy::pattern_type_mismatch, reason = "Pattern matching style")]
+#![allow(missing_debug_implementations, reason = "Internal types")]
 
 use std::sync::Arc;
 
@@ -14,46 +18,44 @@ use opencode_mem_storage::Storage;
 
 /// High-level search facade combining FTS5 and vector similarity.
 ///
-/// Wraps Storage and optional EmbeddingService to provide unified search API.
-/// When embeddings are available, uses hybrid_search_v2 (FTS + vector).
-/// Otherwise falls back to text-only hybrid_search.
+/// Wraps Storage and optional `EmbeddingService` to provide unified search API.
+/// When embeddings are available, uses `hybrid_search_v2` (FTS + vector).
+/// Otherwise falls back to text-only `hybrid_search`.
 pub struct HybridSearch {
     storage: Arc<Storage>,
     embeddings: Option<Arc<EmbeddingService>>,
 }
 
 impl HybridSearch {
-    /// Create new HybridSearch instance.
+    /// Create new `HybridSearch` instance.
     ///
     /// # Arguments
     /// * `storage` - Storage backend for database operations
     /// * `embeddings` - Optional embedding service for semantic search
-    pub fn new(storage: Arc<Storage>, embeddings: Option<Arc<EmbeddingService>>) -> Self {
-        Self {
-            storage,
-            embeddings,
-        }
+    #[must_use]
+    pub const fn new(storage: Arc<Storage>, embeddings: Option<Arc<EmbeddingService>>) -> Self {
+        Self { storage, embeddings }
     }
 
     /// Step 1: Search and return lightweight index results.
     ///
-    /// Returns SearchResult with id, title, subtitle, type, and relevance score.
-    /// Use get_full() to fetch complete observations for selected results.
+    /// Returns `SearchResult` with id, title, subtitle, type, and relevance score.
+    /// Use `get_full()` to fetch complete observations for selected results.
     ///
     /// If embeddings are available, generates query embedding and uses
-    /// hybrid_search_v2 (50% FTS BM25 + 50% vector cosine similarity).
-    /// Otherwise falls back to text-only hybrid_search (70% FTS + 30% keyword overlap).
+    /// `hybrid_search_v2` (50% FTS BM25 + 50% vector cosine similarity).
+    /// Otherwise falls back to text-only `hybrid_search` (70% FTS + 30% keyword overlap).
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         match &self.embeddings {
             Some(emb) => {
                 // Generate query embedding for semantic search
                 let query_vec = emb.embed(query)?;
                 self.storage.hybrid_search_v2(query, &query_vec, limit)
-            }
+            },
             None => {
                 // Fall back to text-only hybrid search
                 self.storage.hybrid_search(query, limit)
-            }
+            },
         }
     }
 
@@ -107,27 +109,27 @@ impl HybridSearch {
         obs_type: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
-        self.storage
-            .search_with_filters(query, project, obs_type, limit)
+        self.storage.search_with_filters(query, project, obs_type, limit)
     }
 
     /// Pure semantic search using vector similarity only.
     ///
     /// Returns None if embeddings are not available.
-    /// Use search() for hybrid FTS + semantic search.
+    /// Use `search()` for hybrid FTS + semantic search.
     pub fn semantic_search(&self, query: &str, limit: usize) -> Result<Option<Vec<SearchResult>>> {
         match &self.embeddings {
             Some(emb) => {
                 let query_vec = emb.embed(query)?;
                 let results = self.storage.semantic_search(&query_vec, limit)?;
                 Ok(Some(results))
-            }
+            },
             None => Ok(None),
         }
     }
 
     /// Check if semantic search is available.
-    pub fn has_embeddings(&self) -> bool {
+    #[must_use]
+    pub const fn has_embeddings(&self) -> bool {
         self.embeddings.is_some()
     }
 
@@ -138,7 +140,7 @@ impl HybridSearch {
 
     /// Search by file path.
     ///
-    /// Finds observations that mention the given file path in files_read or files_modified.
+    /// Finds observations that mention the given file path in `files_read` or `files_modified`.
     pub fn search_by_file(&self, file_path: &str, limit: usize) -> Result<Vec<SearchResult>> {
         self.storage.search_by_file(file_path, limit)
     }
@@ -196,9 +198,7 @@ mod tests {
         let (_temp, storage) = create_test_storage();
         let search = HybridSearch::new(storage, None);
 
-        let result = search
-            .semantic_search("test", 10)
-            .expect("Semantic search failed");
+        let result = search.semantic_search("test", 10).expect("Semantic search failed");
         assert!(result.is_none());
     }
 }

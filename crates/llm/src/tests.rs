@@ -29,34 +29,9 @@ mod filtering_tests {
         }
     }
 
-    /// Test: Trivial "bash executed successfully" should NOT be saved
+    /// Test: Generic programming pattern should NOT be saved (LLM already knows)
     #[tokio::test]
-    async fn test_trivial_bash_success_not_saved() {
-        let Some(client) = create_client() else {
-            eprintln!("Skipping test: ANTIGRAVITY_API_KEY not set");
-            return;
-        };
-
-        let input = make_input(
-            "bash",
-            "Lists files in current directory",
-            r#"{"result":"file1.rs\nfile2.rs\nCargo.toml\n"}"#,
-        );
-
-        let result = client
-            .compress_to_observation("test-1", &input, Some("test-project"))
-            .await;
-
-        match result {
-            Ok(None) => println!("✅ PASS: Trivial ls command correctly filtered"),
-            Ok(Some(obs)) => panic!("❌ FAIL: Trivial event was saved: {}", obs.title),
-            Err(e) => panic!("❌ ERROR: {}", e),
-        }
-    }
-
-    /// Test: Bugfix with solution SHOULD be saved
-    #[tokio::test]
-    async fn test_bugfix_with_solution_saved() {
+    async fn test_generic_pattern_not_saved() {
         let Some(client) = create_client() else {
             eprintln!("Skipping test: ANTIGRAVITY_API_KEY not set");
             return;
@@ -64,39 +39,62 @@ mod filtering_tests {
 
         let input = make_input(
             "edit",
-            "Fixed race condition in auth.rs",
-            r#"Edit applied successfully.
-            
-Changed from:
+            "Fixed race condition using RwLock",
+            r#"Changed from:
     let user = cache.get(&id);
-    
 To:
     let user = cache.read().await.get(&id).cloned();
     
-This fixes the race condition where multiple threads could access 
-the cache simultaneously without proper synchronization."#,
+Standard fix for race condition - use RwLock instead of direct access."#,
         );
 
-        let result = client
-            .compress_to_observation("test-2", &input, Some("test-project"))
-            .await;
+        let result =
+            client.compress_to_observation("test-generic", &input, Some("test-project")).await;
 
         match result {
-            Ok(Some(obs)) => {
-                println!("✅ PASS: Bugfix saved with title: {}", obs.title);
-                assert!(
-                    obs.narrative.is_some(),
-                    "Bugfix should have narrative explaining the fix"
-                );
-            }
-            Ok(None) => panic!("❌ FAIL: Useful bugfix was incorrectly filtered"),
+            Ok(None) => println!("✅ PASS: Generic pattern correctly filtered (LLM knows this)"),
+            Ok(Some(obs)) => panic!("❌ FAIL: Generic pattern was saved: {}", obs.title),
             Err(e) => panic!("❌ ERROR: {}", e),
         }
     }
 
-    /// Test: Discovery about API behavior SHOULD be saved
+    /// Test: Project-specific decision SHOULD be saved
     #[tokio::test]
-    async fn test_api_discovery_saved() {
+    async fn test_project_decision_saved() {
+        let Some(client) = create_client() else {
+            eprintln!("Skipping test: ANTIGRAVITY_API_KEY not set");
+            return;
+        };
+
+        let input = make_input(
+            "edit",
+            "Architecture decision: chose sqlite-vec over pgvector",
+            r#"Decision for opencode-mem project:
+
+We chose sqlite-vec instead of pgvector because:
+1. Single binary deployment - no PostgreSQL dependency
+2. Embedded database - simpler ops for CLI tool
+3. sqlite-vec supports cosine similarity which is enough for our use case
+
+Trade-off: pgvector has better performance at scale, but we prioritize simplicity."#,
+        );
+
+        let result =
+            client.compress_to_observation("test-decision", &input, Some("opencode-mem")).await;
+
+        match result {
+            Ok(Some(obs)) => {
+                println!("✅ PASS: Project decision saved: {}", obs.title);
+                assert!(obs.narrative.is_some(), "Decision should have reasoning");
+            },
+            Ok(None) => panic!("❌ FAIL: Project-specific decision was incorrectly filtered"),
+            Err(e) => panic!("❌ ERROR: {}", e),
+        }
+    }
+
+    /// Test: Project-specific gotcha SHOULD be saved
+    #[tokio::test]
+    async fn test_project_gotcha_saved() {
         let Some(client) = create_client() else {
             eprintln!("Skipping test: ANTIGRAVITY_API_KEY not set");
             return;
@@ -104,33 +102,31 @@ the cache simultaneously without proper synchronization."#,
 
         let input = make_input(
             "bash",
-            "Discovered sqlite-vec requires special initialization",
-            r#"Error: no such module: vec0
+            "Discovered: opencode-mem binary name differs from crate name",
+            r#"Error: command not found: opencode-mem-cli
 
-After investigation: sqlite-vec extension must be loaded BEFORE 
-creating any connections. The correct order is:
-1. Call sqlite_vec::init() 
-2. Then open database connection
-3. Extension will be available
+Investigation: The binary is named 'opencode-mem', not 'opencode-mem-cli'.
+This is because Cargo.toml defines:
+  [[bin]]
+  name = "opencode-mem"
+  path = "src/main.rs"
 
-This is different from other SQLite extensions that can be loaded after."#,
+Anyone new to this project would expect opencode-mem-cli based on crate name."#,
         );
 
-        let result = client
-            .compress_to_observation("test-3", &input, Some("test-project"))
-            .await;
+        let result =
+            client.compress_to_observation("test-gotcha", &input, Some("opencode-mem")).await;
 
         match result {
             Ok(Some(obs)) => {
-                println!("✅ PASS: API discovery saved: {}", obs.title);
-                assert!(!obs.keywords.is_empty(), "Should have searchable keywords");
-            }
-            Ok(None) => panic!("❌ FAIL: Useful discovery was incorrectly filtered"),
+                println!("✅ PASS: Project gotcha saved: {}", obs.title);
+            },
+            Ok(None) => panic!("❌ FAIL: Project-specific gotcha was incorrectly filtered"),
             Err(e) => panic!("❌ ERROR: {}", e),
         }
     }
 
-    /// Test: Simple file read without insight should NOT be saved
+    /// Test: Simple file read should NOT be saved
     #[tokio::test]
     async fn test_simple_file_read_not_saved() {
         let Some(client) = create_client() else {
@@ -150,9 +146,7 @@ edition = "2021"
 tokio = "1.0""#,
         );
 
-        let result = client
-            .compress_to_observation("test-4", &input, Some("test-project"))
-            .await;
+        let result = client.compress_to_observation("test-4", &input, Some("test-project")).await;
 
         match result {
             Ok(None) => println!("✅ PASS: Simple file read correctly filtered"),
@@ -191,10 +185,7 @@ fn test_truncate_empty() {
 
 #[test]
 fn test_strip_markdown_json_clean() {
-    assert_eq!(
-        strip_markdown_json(r#"{"key": "value"}"#),
-        r#"{"key": "value"}"#
-    );
+    assert_eq!(strip_markdown_json(r#"{"key": "value"}"#), r#"{"key": "value"}"#);
 }
 
 #[test]

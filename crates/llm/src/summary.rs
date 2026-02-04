@@ -4,9 +4,13 @@ use crate::ai_types::{ChatRequest, ChatResponse, Message, ResponseFormat, Summar
 use crate::client::LlmClient;
 
 impl LlmClient {
+    /// Generate a summary of a coding session from observations.
+    ///
+    /// # Errors
+    /// Returns `Error::LlmApi` if the API call fails or response parsing fails.
     pub async fn generate_session_summary(&self, observations: &[Observation]) -> Result<String> {
         if observations.is_empty() {
-            return Ok("No observations in this session.".to_string());
+            return Ok("No observations in this session.".to_owned());
         }
 
         let obs_text: String = observations
@@ -27,21 +31,15 @@ impl LlmClient {
 Write 2-3 sentences highlighting key accomplishments and decisions.
 
 Observations:
-{}
+{obs_text}
 
-Return JSON: {{"summary": "..."}}"#,
-            obs_text
+Return JSON: {{"summary": "..."}}"#
         );
 
         let request = ChatRequest {
             model: self.model.clone(),
-            messages: vec![Message {
-                role: "user".to_string(),
-                content: prompt,
-            }],
-            response_format: ResponseFormat {
-                format_type: "json_object".to_string(),
-            },
+            messages: vec![Message { role: "user".to_owned(), content: prompt }],
+            response_format: ResponseFormat { format_type: "json_object".to_owned() },
         };
 
         let response = self
@@ -54,33 +52,28 @@ Return JSON: {{"summary": "..."}}"#,
             .map_err(|e| Error::LlmApi(e.to_string()))?;
 
         let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| Error::LlmApi(e.to_string()))?;
+        let body = response.text().await.map_err(|e| Error::LlmApi(e.to_string()))?;
 
         if !status.is_success() {
-            return Err(Error::LlmApi(format!("API error {}: {}", status, body)));
+            return Err(Error::LlmApi(format!("API error {status}: {body}")));
         }
 
         let chat_response: ChatResponse = serde_json::from_str(&body).map_err(|e| {
             Error::LlmApi(format!(
-                "Failed to parse response: {} - body: {}",
-                e,
-                &body[..body.len().min(500)]
+                "Failed to parse response: {e} - body: {}",
+                body.get(..500).unwrap_or(&body)
             ))
         })?;
 
         let first_choice = chat_response.choices.first().ok_or_else(|| {
-            Error::LlmApi("API returned empty choices array for session summary".to_string())
+            Error::LlmApi("API returned empty choices array for session summary".to_owned())
         })?;
 
         let content = strip_markdown_json(&first_choice.message.content);
         let summary: SummaryJson = serde_json::from_str(content).map_err(|e| {
             Error::LlmApi(format!(
-                "Failed to parse session summary: {} - content: {}",
-                e,
-                &content[..content.len().min(300)]
+                "Failed to parse session summary: {e} - content: {}",
+                content.get(..300).unwrap_or(content)
             ))
         })?;
         Ok(summary.summary)

@@ -3,9 +3,10 @@ name = "opencode-mem-embeddings"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
-opencode-mem-core = { workspace = true }
 anyhow = { workspace = true }
-thiserror = { workspace = true }
 tracing = { workspace = true }
 fastembed = "5"

@@ -3,6 +3,9 @@ name = "opencode-mem-cli"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [[bin]]
 name = "opencode-mem"
 path = "src/main.rs"

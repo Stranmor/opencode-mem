@@ -3,6 +3,9 @@ name = "opencode-mem-http"
 version.workspace = true
 edition.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 opencode-mem-core = { workspace = true }
 opencode-mem-storage = { workspace = true }

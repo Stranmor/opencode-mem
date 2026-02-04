@@ -3,23 +3,23 @@
 use serde::Deserialize;
 use std::collections::HashMap;
 
-fn default_limit() -> usize {
+const fn default_limit() -> usize {
     20
 }
 
-fn default_context_limit() -> usize {
+const fn default_context_limit() -> usize {
     50
 }
 
-fn default_timeline_count() -> usize {
+const fn default_timeline_count() -> usize {
     5
 }
 
 fn default_preview_format() -> String {
-    "compact".to_string()
+    "compact".to_owned()
 }
 
-pub fn default_infinite_limit() -> i64 {
+pub const fn default_infinite_limit() -> i64 {
     50
 }
 
@@ -106,7 +106,7 @@ pub struct UnifiedTimelineQuery {
     pub before: usize,
     #[serde(default = "default_timeline_count")]
     pub after: usize,
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "Reserved for future project filtering")]
     pub project: Option<String>,
 }
 
@@ -129,7 +129,7 @@ pub struct UpdateSettingsRequest {
     #[serde(default)]
     pub env: Option<HashMap<String, String>>,
     #[serde(default)]
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "Reserved for future log path configuration")]
     pub log_path: Option<String>,
 }
 
