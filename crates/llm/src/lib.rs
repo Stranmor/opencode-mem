@@ -1,6 +1,8 @@
 //! LLM client for observation compression and summary generation
 use chrono::Utc;
-use opencode_mem_core::{Concept, Error, Observation, ObservationInput, ObservationType, Result, filter_private_content};
+use opencode_mem_core::{
+    filter_private_content, Concept, Error, Observation, ObservationInput, ObservationType, Result,
+};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
@@ -95,7 +97,7 @@ impl LlmClient {
     ) -> Result<Observation> {
         let filtered_output = filter_private_content(&input.output.output);
         let filtered_title = filter_private_content(&input.output.title);
-        
+
         let prompt = format!(
             r#"Analyze this tool execution and extract a structured observation.
 
@@ -139,7 +141,10 @@ Return JSON with these fields:
             .map_err(|e| Error::LlmApi(e.to_string()))?;
 
         let status = response.status();
-        let body = response.text().await.map_err(|e| Error::LlmApi(e.to_string()))?;
+        let body = response
+            .text()
+            .await
+            .map_err(|e| Error::LlmApi(e.to_string()))?;
 
         if !status.is_success() {
             return Err(Error::LlmApi(format!("API error {}: {}", status, body)));
@@ -181,8 +186,14 @@ Return JSON with these fields:
             id: id.to_string(),
             session_id: input.session_id.clone(),
             project: project.map(|s| s.to_string()),
-            observation_type: ObservationType::from_str(&obs_json.observation_type)
-                .map_err(|_| Error::InvalidInput(format!("Invalid observation type: {}", obs_json.observation_type)))?,
+            observation_type: ObservationType::from_str(&obs_json.observation_type).map_err(
+                |_| {
+                    Error::InvalidInput(format!(
+                        "Invalid observation type: {}",
+                        obs_json.observation_type
+                    ))
+                },
+            )?,
             title: obs_json.title,
             subtitle: obs_json.subtitle,
             narrative: obs_json.narrative,
@@ -247,7 +258,10 @@ Return JSON: {{"summary": "..."}}"#,
             .map_err(|e| Error::LlmApi(e.to_string()))?;
 
         let status = response.status();
-        let body = response.text().await.map_err(|e| Error::LlmApi(e.to_string()))?;
+        let body = response
+            .text()
+            .await
+            .map_err(|e| Error::LlmApi(e.to_string()))?;
 
         if !status.is_success() {
             return Err(Error::LlmApi(format!("API error {}: {}", status, body)));
@@ -261,10 +275,9 @@ Return JSON: {{"summary": "..."}}"#,
             ))
         })?;
 
-        let first_choice = chat_response
-            .choices
-            .first()
-            .ok_or_else(|| Error::LlmApi("API returned empty choices array for session summary".to_string()))?;
+        let first_choice = chat_response.choices.first().ok_or_else(|| {
+            Error::LlmApi("API returned empty choices array for session summary".to_string())
+        })?;
 
         let content = strip_markdown_json(&first_choice.message.content);
         let summary: SummaryJson = serde_json::from_str(content).map_err(|e| {

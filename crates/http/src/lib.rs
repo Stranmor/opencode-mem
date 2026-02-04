@@ -1,29 +1,30 @@
 //! HTTP API server (Axum)
 use axum::{
-    Router,
-    routing::{delete, get, post},
-    extract::{Path, Query, State, ConnectInfo},
+    extract::{ConnectInfo, Path, Query, State},
     http::StatusCode,
-    Json,
     response::sse::{Event, Sse},
+    routing::{delete, get, post},
+    Json, Router,
 };
-use std::sync::Arc;
+use futures_util::stream::Stream;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::collections::HashMap;
-use tokio::sync::{broadcast, Semaphore, RwLock};
+use std::sync::Arc;
+use tokio::sync::{broadcast, RwLock, Semaphore};
 use tower_http::cors::CorsLayer;
-use futures_util::stream::Stream;
-use std::convert::Infallible;
-use serde::{Deserialize, Serialize};
 
 use opencode_mem_core::{
-    Observation, SearchResult, ObservationInput, ToolOutput, ToolCall, SessionSummary, UserPrompt,
-    Session, SessionStatus,
+    Observation, ObservationInput, SearchResult, Session, SessionStatus, SessionSummary, ToolCall,
+    ToolOutput, UserPrompt,
 };
-use opencode_mem_storage::{PaginatedResult, PendingMessage, QueueStats, Storage, StorageStats, DEFAULT_VISIBILITY_TIMEOUT_SECS};
 use opencode_mem_llm::LlmClient;
-use chrono::Utc;
+use opencode_mem_storage::{
+    PaginatedResult, PendingMessage, QueueStats, Storage, StorageStats,
+    DEFAULT_VISIBILITY_TIMEOUT_SECS,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ObserveResponse {
@@ -204,8 +205,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/session/summary", post(generate_summary))
         .route("/events", get(sse_events))
         .route("/sessions/{sessionDbId}/init", post(session_init_legacy))
-        .route("/sessions/{sessionDbId}/observations", post(session_observations_legacy))
-        .route("/sessions/{sessionDbId}/summarize", post(session_summarize_legacy))
+        .route(
+            "/sessions/{sessionDbId}/observations",
+            post(session_observations_legacy),
+        )
+        .route(
+            "/sessions/{sessionDbId}/summarize",
+            post(session_summarize_legacy),
+        )
         .route("/sessions/{sessionDbId}/status", get(session_status))
         .route("/sessions/{sessionDbId}", delete(session_delete))
         .route("/sessions/{sessionDbId}/complete", post(session_complete))
@@ -231,6 +238,18 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/instructions", get(get_instructions))
         .route("/api/admin/restart", post(admin_restart))
         .route("/api/admin/shutdown", post(admin_shutdown))
+        // Logs routes
+        .route("/api/logs", get(get_logs))
+        .route("/api/logs/clear", post(clear_logs))
+        .route("/api/unified-search", get(unified_search))
+        .route("/api/unified-timeline", get(unified_timeline))
+        .route("/api/decisions", get(get_decisions))
+        .route("/api/changes", get(get_changes))
+        .route("/api/how-it-works", get(get_how_it_works))
+        .route("/api/context/timeline", get(context_timeline))
+        .route("/api/context/preview", get(context_preview))
+        .route("/api/timeline/by-query", get(timeline_by_query))
+        .route("/api/search/help", get(search_help))
         .layer(CorsLayer::permissive())
         .with_state(state)
 }
@@ -240,10 +259,13 @@ async fn health() -> &'static str {
 }
 
 async fn readiness() -> (StatusCode, Json<ReadinessResponse>) {
-    (StatusCode::OK, Json(ReadinessResponse {
-        status: "ready",
-        message: None,
-    }))
+    (
+        StatusCode::OK,
+        Json(ReadinessResponse {
+            status: "ready",
+            message: None,
+        }),
+    )
 }
 
 async fn version() -> Json<VersionResponse> {
@@ -257,7 +279,7 @@ async fn observe(
     Json(tool_call): Json<ToolCall>,
 ) -> Result<Json<ObserveResponse>, StatusCode> {
     let id = uuid::Uuid::new_v4().to_string();
-    
+
     let state_clone = state.clone();
     let id_clone = id.clone();
     tokio::spawn(async move {
@@ -277,7 +299,11 @@ async fn observe(
     Ok(Json(ObserveResponse { id, queued: true }))
 }
 
-async fn process_observation(state: &AppState, id: &str, tool_call: ToolCall) -> anyhow::Result<()> {
+async fn process_observation(
+    state: &AppState,
+    id: &str,
+    tool_call: ToolCall,
+) -> anyhow::Result<()> {
     let input = ObservationInput {
         tool: tool_call.tool.clone(),
         session_id: tool_call.session_id.clone(),
@@ -288,9 +314,16 @@ async fn process_observation(state: &AppState, id: &str, tool_call: ToolCall) ->
             metadata: tool_call.input,
         },
     };
-    let observation = state.llm.compress_to_observation(id, &input, tool_call.project.as_deref()).await?;
+    let observation = state
+        .llm
+        .compress_to_observation(id, &input, tool_call.project.as_deref())
+        .await?;
     state.storage.save_observation(&observation)?;
-    tracing::info!("Saved observation: {} - {}", observation.id, observation.title);
+    tracing::info!(
+        "Saved observation: {} - {}",
+        observation.id,
+        observation.title
+    );
     let _ = state.event_tx.send(serde_json::to_string(&observation)?);
     Ok(())
 }
@@ -299,8 +332,19 @@ async fn search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
-    state.storage.search_with_filters(q, query.project.as_deref(), query.obs_type.as_deref(), query.limit)
+    let q = if query.q.is_empty() {
+        None
+    } else {
+        Some(query.q.as_str())
+    };
+    state
+        .storage
+        .search_with_filters(
+            q,
+            query.project.as_deref(),
+            query.obs_type.as_deref(),
+            query.limit,
+        )
         .map(Json)
         .map_err(|e| {
             tracing::error!("Search failed: {}", e);
@@ -312,7 +356,9 @@ async fn hybrid_search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    state.storage.hybrid_search(&query.q, query.limit)
+    state
+        .storage
+        .hybrid_search(&query.q, query.limit)
         .map(Json)
         .map_err(|e| {
             tracing::error!("Hybrid search failed: {}", e);
@@ -324,19 +370,19 @@ async fn get_observation(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Option<Observation>>, StatusCode> {
-    state.storage.get_by_id(&id)
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get observation failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    state.storage.get_by_id(&id).map(Json).map_err(|e| {
+        tracing::error!("Get observation failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 async fn get_recent(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    state.storage.get_recent(query.limit)
+    state
+        .storage
+        .get_recent(query.limit)
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get recent failed: {}", e);
@@ -348,7 +394,9 @@ async fn get_timeline(
     State(state): State<Arc<AppState>>,
     Query(query): Query<TimelineQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    state.storage.get_timeline(query.from.as_deref(), query.to.as_deref(), query.limit)
+    state
+        .storage
+        .get_timeline(query.from.as_deref(), query.to.as_deref(), query.limit)
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get timeline failed: {}", e);
@@ -360,7 +408,9 @@ async fn get_observations_batch(
     State(state): State<Arc<AppState>>,
     Json(req): Json<BatchRequest>,
 ) -> Result<Json<Vec<Observation>>, StatusCode> {
-    state.storage.get_observations_by_ids(&req.ids)
+    state
+        .storage
+        .get_observations_by_ids(&req.ids)
         .map(Json)
         .map_err(|e| {
             tracing::error!("Batch get observations failed: {}", e);
@@ -373,7 +423,9 @@ async fn get_observations_paginated(
     Query(query): Query<PaginationQuery>,
 ) -> Result<Json<PaginatedResult<Observation>>, StatusCode> {
     let limit = query.limit.min(100);
-    state.storage.get_observations_paginated(query.offset, limit, query.project.as_deref())
+    state
+        .storage
+        .get_observations_paginated(query.offset, limit, query.project.as_deref())
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get observations paginated failed: {}", e);
@@ -386,7 +438,9 @@ async fn get_summaries_paginated(
     Query(query): Query<PaginationQuery>,
 ) -> Result<Json<PaginatedResult<SessionSummary>>, StatusCode> {
     let limit = query.limit.min(100);
-    state.storage.get_summaries_paginated(query.offset, limit, query.project.as_deref())
+    state
+        .storage
+        .get_summaries_paginated(query.offset, limit, query.project.as_deref())
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get summaries paginated failed: {}", e);
@@ -399,7 +453,9 @@ async fn get_prompts_paginated(
     Query(query): Query<PaginationQuery>,
 ) -> Result<Json<PaginatedResult<UserPrompt>>, StatusCode> {
     let limit = query.limit.min(100);
-    state.storage.get_prompts_paginated(query.offset, limit, query.project.as_deref())
+    state
+        .storage
+        .get_prompts_paginated(query.offset, limit, query.project.as_deref())
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get prompts paginated failed: {}", e);
@@ -411,7 +467,9 @@ async fn get_session_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Option<SessionSummary>>, StatusCode> {
-    state.storage.get_session_summary(&id)
+    state
+        .storage
+        .get_session_summary(&id)
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get session by id failed: {}", e);
@@ -423,20 +481,24 @@ async fn get_prompt_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Option<UserPrompt>>, StatusCode> {
-    state.storage.get_prompt_by_id(&id)
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get prompt by id failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    state.storage.get_prompt_by_id(&id).map(Json).map_err(|e| {
+        tracing::error!("Get prompt by id failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 async fn search_observations(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
-    state.storage.search_with_filters(q, query.project.as_deref(), None, query.limit)
+    let q = if query.q.is_empty() {
+        None
+    } else {
+        Some(query.q.as_str())
+    };
+    state
+        .storage
+        .search_with_filters(q, query.project.as_deref(), None, query.limit)
         .map(Json)
         .map_err(|e| {
             tracing::error!("Search observations failed: {}", e);
@@ -448,7 +510,14 @@ async fn search_by_type(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    state.storage.search_with_filters(None, query.project.as_deref(), query.obs_type.as_deref(), query.limit)
+    state
+        .storage
+        .search_with_filters(
+            None,
+            query.project.as_deref(),
+            query.obs_type.as_deref(),
+            query.limit,
+        )
         .map(Json)
         .map_err(|e| {
             tracing::error!("Search by type failed: {}", e);
@@ -460,8 +529,14 @@ async fn search_by_concept(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
-    state.storage.search_with_filters(q, query.project.as_deref(), None, query.limit)
+    let q = if query.q.is_empty() {
+        None
+    } else {
+        Some(query.q.as_str())
+    };
+    state
+        .storage
+        .search_with_filters(q, query.project.as_deref(), None, query.limit)
         .map(Json)
         .map_err(|e| {
             tracing::error!("Search by concept failed: {}", e);
@@ -476,7 +551,9 @@ async fn search_sessions(
     if query.q.is_empty() {
         return Ok(Json(Vec::new()));
     }
-    state.storage.search_sessions(&query.q, query.limit)
+    state
+        .storage
+        .search_sessions(&query.q, query.limit)
         .map(Json)
         .map_err(|e| {
             tracing::error!("Search sessions failed: {}", e);
@@ -491,7 +568,9 @@ async fn search_prompts(
     if query.q.is_empty() {
         return Ok(Json(Vec::new()));
     }
-    state.storage.search_prompts(&query.q, query.limit)
+    state
+        .storage
+        .search_prompts(&query.q, query.limit)
         .map(Json)
         .map_err(|e| {
             tracing::error!("Search prompts failed: {}", e);
@@ -544,9 +623,9 @@ pub struct UnifiedSearchResult {
 
 #[derive(Debug, Serialize)]
 pub struct TimelineResult {
-    pub anchor: Option<Observation>,
-    pub before: Vec<Observation>,
-    pub after: Vec<Observation>,
+    pub anchor: Option<SearchResult>,
+    pub before: Vec<SearchResult>,
+    pub after: Vec<SearchResult>,
 }
 
 #[derive(Debug, Serialize)]
@@ -580,7 +659,9 @@ async fn search_by_file(
     State(state): State<Arc<AppState>>,
     Query(query): Query<FileSearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    state.storage.search_by_file(&query.file_path, query.limit)
+    state
+        .storage
+        .search_by_file(&query.file_path, query.limit)
         .map(Json)
         .map_err(|e| {
             tracing::error!("Search by file failed: {}", e);
@@ -592,7 +673,9 @@ async fn get_context_recent(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextQuery>,
 ) -> Result<Json<Vec<Observation>>, StatusCode> {
-    state.storage.get_context_for_project(&query.project, query.limit)
+    state
+        .storage
+        .get_context_for_project(&query.project, query.limit)
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get context recent failed: {}", e);
@@ -600,33 +683,27 @@ async fn get_context_recent(
         })
 }
 
-async fn get_projects(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<String>>, StatusCode> {
-    state.storage.get_all_projects()
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get projects failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+async fn get_projects(State(state): State<Arc<AppState>>) -> Result<Json<Vec<String>>, StatusCode> {
+    state.storage.get_all_projects().map(Json).map_err(|e| {
+        tracing::error!("Get projects failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
-async fn get_stats(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<StorageStats>, StatusCode> {
-    state.storage.get_stats()
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get stats failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+async fn get_stats(State(state): State<Arc<AppState>>) -> Result<Json<StorageStats>, StatusCode> {
+    state.storage.get_stats().map(Json).map_err(|e| {
+        tracing::error!("Get stats failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 async fn get_context_inject(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextQuery>,
 ) -> Result<Json<Vec<Observation>>, StatusCode> {
-    state.storage.get_context_for_project(&query.project, query.limit)
+    state
+        .storage
+        .get_context_for_project(&query.project, query.limit)
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get context inject failed: {}", e);
@@ -638,22 +715,35 @@ async fn generate_summary(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SessionSummaryRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let observations = state.storage.get_session_observations(&req.session_id)
+    let observations = state
+        .storage
+        .get_session_observations(&req.session_id)
         .map_err(|e| {
             tracing::error!("Get session observations failed: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
-    let summary = state.llm.generate_session_summary(&observations).await
+    let summary = state
+        .llm
+        .generate_session_summary(&observations)
+        .await
         .map_err(|e| {
             tracing::error!("Generate summary failed: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
-    state.storage.update_session_status_with_summary(&req.session_id, opencode_mem_core::SessionStatus::Completed, Some(&summary))
+    state
+        .storage
+        .update_session_status_with_summary(
+            &req.session_id,
+            opencode_mem_core::SessionStatus::Completed,
+            Some(&summary),
+        )
         .map_err(|e| {
             tracing::error!("Update session summary failed: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
-    Ok(Json(serde_json::json!({"session_id": req.session_id, "summary": summary})))
+    Ok(Json(
+        serde_json::json!({"session_id": req.session_id, "summary": summary}),
+    ))
 }
 
 async fn sse_events(
@@ -682,7 +772,9 @@ async fn session_init_legacy(
 ) -> Result<Json<SessionInitResponse>, StatusCode> {
     let session = Session {
         id: session_db_id.clone(),
-        content_session_id: req.content_session_id.unwrap_or_else(|| session_db_id.clone()),
+        content_session_id: req
+            .content_session_id
+            .unwrap_or_else(|| session_db_id.clone()),
         memory_session_id: None,
         project: req.project.unwrap_or_default(),
         user_prompt: req.user_prompt,
@@ -719,7 +811,9 @@ async fn session_observations_legacy(
                     return;
                 }
             };
-            if let Err(e) = process_observation_for_session(&state_clone, &id, &session_id, tool_call).await {
+            if let Err(e) =
+                process_observation_for_session(&state_clone, &id, &session_id, tool_call).await
+            {
                 tracing::error!("Failed to process observation: {}", e);
             }
             drop(permit);
@@ -747,9 +841,16 @@ async fn process_observation_for_session(
             metadata: tool_call.input,
         },
     };
-    let observation = state.llm.compress_to_observation(id, &input, tool_call.project.as_deref()).await?;
+    let observation = state
+        .llm
+        .compress_to_observation(id, &input, tool_call.project.as_deref())
+        .await?;
     state.storage.save_observation(&observation)?;
-    tracing::info!("Saved observation: {} - {}", observation.id, observation.title);
+    tracing::info!(
+        "Saved observation: {} - {}",
+        observation.id,
+        observation.title
+    );
     let _ = state.event_tx.send(serde_json::to_string(&observation)?);
     Ok(())
 }
@@ -758,19 +859,35 @@ async fn session_summarize_legacy(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let observations = state.storage.get_session_observations(&session_db_id).map_err(|e| {
-        tracing::error!("Get session observations failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    let summary = state.llm.generate_session_summary(&observations).await.map_err(|e| {
-        tracing::error!("Generate summary failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    state.storage.update_session_status_with_summary(&session_db_id, SessionStatus::Completed, Some(&summary)).map_err(|e| {
-        tracing::error!("Update session summary failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    Ok(Json(serde_json::json!({"session_id": session_db_id, "summary": summary, "queued": true})))
+    let observations = state
+        .storage
+        .get_session_observations(&session_db_id)
+        .map_err(|e| {
+            tracing::error!("Get session observations failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    let summary = state
+        .llm
+        .generate_session_summary(&observations)
+        .await
+        .map_err(|e| {
+            tracing::error!("Generate summary failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    state
+        .storage
+        .update_session_status_with_summary(
+            &session_db_id,
+            SessionStatus::Completed,
+            Some(&summary),
+        )
+        .map_err(|e| {
+            tracing::error!("Update session summary failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(Json(
+        serde_json::json!({"session_id": session_db_id, "summary": summary, "queued": true}),
+    ))
 }
 
 async fn session_status(
@@ -783,7 +900,10 @@ async fn session_status(
     })?;
     match session {
         Some(s) => {
-            let obs_count = state.storage.get_session_observation_count(&session_db_id).unwrap_or(0);
+            let obs_count = state
+                .storage
+                .get_session_observation_count(&session_db_id)
+                .unwrap_or(0);
             Ok(Json(SessionStatusResponse {
                 session_id: s.id,
                 status: s.status,
@@ -814,22 +934,38 @@ async fn session_complete(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
 ) -> Result<Json<SessionCompleteResponse>, StatusCode> {
-    let observations = state.storage.get_session_observations(&session_db_id).map_err(|e| {
-        tracing::error!("Get session observations failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let observations = state
+        .storage
+        .get_session_observations(&session_db_id)
+        .map_err(|e| {
+            tracing::error!("Get session observations failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     let summary = if observations.is_empty() {
         None
     } else {
-        Some(state.llm.generate_session_summary(&observations).await.map_err(|e| {
-            tracing::error!("Generate summary failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?)
+        Some(
+            state
+                .llm
+                .generate_session_summary(&observations)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Generate summary failed: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?,
+        )
     };
-    state.storage.update_session_status_with_summary(&session_db_id, SessionStatus::Completed, summary.as_deref()).map_err(|e| {
-        tracing::error!("Update session status failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    state
+        .storage
+        .update_session_status_with_summary(
+            &session_db_id,
+            SessionStatus::Completed,
+            summary.as_deref(),
+        )
+        .map_err(|e| {
+            tracing::error!("Update session status failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     Ok(Json(SessionCompleteResponse {
         session_id: session_db_id,
         status: SessionStatus::Completed,
@@ -869,10 +1005,13 @@ async fn api_session_observations(
     Json(req): Json<SessionObservationsRequest>,
 ) -> Result<Json<SessionObservationsResponse>, StatusCode> {
     let content_session_id = req.content_session_id.ok_or(StatusCode::BAD_REQUEST)?;
-    let session = state.storage.get_session_by_content_id(&content_session_id).map_err(|e| {
-        tracing::error!("Get session by content id failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let session = state
+        .storage
+        .get_session_by_content_id(&content_session_id)
+        .map_err(|e| {
+            tracing::error!("Get session by content id failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     let session_id = session.map(|s| s.id).ok_or(StatusCode::NOT_FOUND)?;
     let count = req.observations.len();
     for tool_call in req.observations {
@@ -887,7 +1026,9 @@ async fn api_session_observations(
                     return;
                 }
             };
-            if let Err(e) = process_observation_for_session(&state_clone, &id, &sid, tool_call).await {
+            if let Err(e) =
+                process_observation_for_session(&state_clone, &id, &sid, tool_call).await
+            {
                 tracing::error!("Failed to process observation: {}", e);
             }
             drop(permit);
@@ -904,24 +1045,39 @@ async fn api_session_summarize(
     Json(req): Json<SessionSummarizeRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let content_session_id = req.content_session_id.ok_or(StatusCode::BAD_REQUEST)?;
-    let session = state.storage.get_session_by_content_id(&content_session_id).map_err(|e| {
-        tracing::error!("Get session by content id failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let session = state
+        .storage
+        .get_session_by_content_id(&content_session_id)
+        .map_err(|e| {
+            tracing::error!("Get session by content id failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     let session_id = session.map(|s| s.id).ok_or(StatusCode::NOT_FOUND)?;
-    let observations = state.storage.get_session_observations(&session_id).map_err(|e| {
-        tracing::error!("Get session observations failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    let summary = state.llm.generate_session_summary(&observations).await.map_err(|e| {
-        tracing::error!("Generate summary failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    state.storage.update_session_status_with_summary(&session_id, SessionStatus::Completed, Some(&summary)).map_err(|e| {
-        tracing::error!("Update session summary failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    Ok(Json(serde_json::json!({"session_id": session_id, "summary": summary, "queued": true})))
+    let observations = state
+        .storage
+        .get_session_observations(&session_id)
+        .map_err(|e| {
+            tracing::error!("Get session observations failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    let summary = state
+        .llm
+        .generate_session_summary(&observations)
+        .await
+        .map_err(|e| {
+            tracing::error!("Generate summary failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    state
+        .storage
+        .update_session_status_with_summary(&session_id, SessionStatus::Completed, Some(&summary))
+        .map_err(|e| {
+            tracing::error!("Update session summary failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    Ok(Json(
+        serde_json::json!({"session_id": session_id, "summary": summary, "queued": true}),
+    ))
 }
 
 #[derive(Debug, Serialize)]
@@ -961,10 +1117,13 @@ async fn get_pending_queue(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<PendingQueueResponse>, StatusCode> {
-    let messages = state.storage.get_all_pending_messages(query.limit).map_err(|e| {
-        tracing::error!("Get pending queue failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let messages = state
+        .storage
+        .get_all_pending_messages(query.limit)
+        .map_err(|e| {
+            tracing::error!("Get pending queue failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     let stats = state.storage.get_queue_stats().map_err(|e| {
         tracing::error!("Get queue stats failed: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
@@ -975,23 +1134,64 @@ async fn get_pending_queue(
 async fn process_pending_queue(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ProcessQueueResponse>, StatusCode> {
-    let messages = state.storage.claim_pending_messages(10, DEFAULT_VISIBILITY_TIMEOUT_SECS).map_err(|e| {
-        tracing::error!("Claim pending messages failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    let mut processed = 0;
-    let mut failed = 0;
+    let messages = state
+        .storage
+        .claim_pending_messages(10, DEFAULT_VISIBILITY_TIMEOUT_SECS)
+        .map_err(|e| {
+            tracing::error!("Claim pending messages failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    let count = messages.len();
     for msg in messages {
-        match state.storage.complete_message(msg.id) {
-            Ok(()) => processed += 1,
-            Err(e) => {
-                tracing::error!("Complete message {} failed: {}", msg.id, e);
-                let _ = state.storage.fail_message(msg.id, true);
-                failed += 1;
+        let state_clone = state.clone();
+        tokio::spawn(async move {
+            let result = process_pending_message(&state_clone, &msg).await;
+            match result {
+                Ok(()) => {
+                    if let Err(e) = state_clone.storage.complete_message(msg.id) {
+                        tracing::error!("Complete message {} failed: {}", msg.id, e);
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Process message {} failed: {}", msg.id, e);
+                    let _ = state_clone.storage.fail_message(msg.id, true);
+                }
             }
-        }
+        });
     }
-    Ok(Json(ProcessQueueResponse { processed, failed }))
+    Ok(Json(ProcessQueueResponse { processed: count, failed: 0 }))
+}
+
+async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> anyhow::Result<()> {
+    use opencode_mem_core::{ObservationInput, ToolOutput};
+
+    let tool_name = msg.tool_name.as_deref().unwrap_or("unknown");
+    let tool_input = msg.tool_input.clone();
+    let tool_response = msg.tool_response.as_deref().unwrap_or("");
+
+    let input = ObservationInput {
+        tool: tool_name.to_string(),
+        session_id: msg.session_id.clone(),
+        call_id: String::new(),
+        output: ToolOutput {
+            title: format!("Observation from {}", tool_name),
+            output: tool_response.to_string(),
+            metadata: tool_input
+                .map(serde_json::Value::String)
+                .unwrap_or(serde_json::Value::Null),
+        },
+    };
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let observation = state.llm.compress_to_observation(&id, &input, None).await?;
+    state.storage.save_observation(&observation)?;
+    tracing::info!(
+        "Processed pending message {} -> observation {}",
+        msg.id,
+        observation.id
+    );
+    let _ = state.event_tx.send(serde_json::to_string(&observation)?);
+    Ok(())
 }
 
 async fn clear_failed_queue(
@@ -1018,8 +1218,14 @@ async fn get_processing_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ProcessingStatusResponse>, StatusCode> {
     let active = state.processing_active.load(Ordering::SeqCst);
-    let pending_count = state.storage.get_pending_count().unwrap_or(0);
-    Ok(Json(ProcessingStatusResponse { active, pending_count }))
+    let pending_count = state.storage.get_pending_count().map_err(|e| {
+        tracing::error!("Get pending count failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+    Ok(Json(ProcessingStatusResponse {
+        active,
+        pending_count,
+    }))
 }
 
 async fn set_processing_status(
@@ -1031,9 +1237,14 @@ async fn set_processing_status(
 }
 
 pub fn run_startup_recovery(state: &AppState) -> anyhow::Result<usize> {
-    let released = state.storage.release_stale_messages(DEFAULT_VISIBILITY_TIMEOUT_SECS)?;
+    let released = state
+        .storage
+        .release_stale_messages(DEFAULT_VISIBILITY_TIMEOUT_SECS)?;
     if released > 0 {
-        tracing::info!("Startup recovery: released {} stale messages back to pending", released);
+        tracing::info!(
+            "Startup recovery: released {} stale messages back to pending",
+            released
+        );
     }
     Ok(released)
 }
@@ -1069,7 +1280,9 @@ async fn update_settings(
     if let Some(log_path) = req.log_path {
         settings.log_path = Some(log_path);
     }
-    Ok(Json(SettingsResponse { settings: settings.clone() }))
+    Ok(Json(SettingsResponse {
+        settings: settings.clone(),
+    }))
 }
 
 #[derive(Debug, Serialize)]
@@ -1081,7 +1294,9 @@ async fn get_mcp_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<McpStatusResponse>, StatusCode> {
     let settings = state.settings.read().await;
-    Ok(Json(McpStatusResponse { enabled: settings.mcp_enabled }))
+    Ok(Json(McpStatusResponse {
+        enabled: settings.mcp_enabled,
+    }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1095,7 +1310,9 @@ async fn toggle_mcp(
 ) -> Result<Json<McpStatusResponse>, StatusCode> {
     let mut settings = state.settings.write().await;
     settings.mcp_enabled = req.enabled;
-    Ok(Json(McpStatusResponse { enabled: settings.mcp_enabled }))
+    Ok(Json(McpStatusResponse {
+        enabled: settings.mcp_enabled,
+    }))
 }
 
 #[derive(Debug, Serialize)]
@@ -1169,12 +1386,14 @@ pub struct InstructionsQuery {
 async fn get_instructions(
     Query(query): Query<InstructionsQuery>,
 ) -> Result<Json<InstructionsResponse>, StatusCode> {
-    let skill_path = std::path::Path::new("SKILL.md");
-    let content = if skill_path.exists() {
-        std::fs::read_to_string(skill_path).unwrap_or_default()
-    } else {
-        String::new()
-    };
+    let content = tokio::task::spawn_blocking(|| {
+        let skill_path = std::path::Path::new("SKILL.md");
+        if skill_path.exists() {
+            std::fs::read_to_string(skill_path).unwrap_or_default()
+        } else {
+            String::new()
+        }
+    }).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let sections: Vec<String> = content
         .lines()
         .filter(|l| l.starts_with("## "))
@@ -1252,23 +1471,29 @@ pub struct LogsResponse {
 }
 
 #[allow(dead_code)]
-async fn get_logs(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<LogsResponse>, StatusCode> {
+async fn get_logs(State(state): State<Arc<AppState>>) -> Result<Json<LogsResponse>, StatusCode> {
     let settings = state.settings.read().await;
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-    let content = if let Some(ref log_path) = settings.log_path {
-        let path = std::path::Path::new(log_path);
-        if path.exists() {
-            std::fs::read_to_string(path).unwrap_or_default()
-        } else {
-            String::new()
-        }
+    let log_path = settings.log_path.clone();
+    drop(settings);
+    let content = if let Some(log_path) = log_path {
+        tokio::task::spawn_blocking(move || {
+            let path = std::path::Path::new(&log_path);
+            if path.exists() {
+                std::fs::read_to_string(path).unwrap_or_default()
+            } else {
+                String::new()
+            }
+        }).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     } else {
         String::new()
     };
     let size_bytes = content.len();
-    Ok(Json(LogsResponse { date: today, content, size_bytes }))
+    Ok(Json(LogsResponse {
+        date: today,
+        content,
+        size_bytes,
+    }))
 }
 
 #[derive(Debug, Serialize)]
@@ -1277,24 +1502,231 @@ pub struct ClearLogsResponse {
     pub message: String,
 }
 
+#[allow(dead_code)]
 async fn clear_logs(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ClearLogsResponse>, StatusCode> {
     let settings = state.settings.read().await;
-    if let Some(ref log_path) = settings.log_path {
-        let path = std::path::Path::new(log_path);
-        if path.exists() {
-            if let Err(e) = std::fs::write(path, "") {
-                tracing::error!("Failed to clear logs: {}", e);
-                return Ok(Json(ClearLogsResponse {
-                    success: false,
-                    message: format!("Failed to clear: {}", e),
-                }));
+    let log_path = settings.log_path.clone();
+    drop(settings);
+    if let Some(log_path) = log_path {
+        let result = tokio::task::spawn_blocking(move || {
+            let path = std::path::Path::new(&log_path);
+            if path.exists() {
+                std::fs::write(path, "")
+            } else {
+                Ok(())
             }
+        }).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        if let Err(e) = result {
+            tracing::error!("Failed to clear logs: {}", e);
+            return Ok(Json(ClearLogsResponse {
+                success: false,
+                message: format!("Failed to clear: {}", e),
+            }));
         }
     }
     Ok(Json(ClearLogsResponse {
         success: true,
         message: "Logs cleared".to_string(),
     }))
+}
+
+async fn unified_search(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<SearchQuery>,
+) -> Result<Json<UnifiedSearchResult>, StatusCode> {
+    if query.q.is_empty() {
+        return Ok(Json(UnifiedSearchResult {
+            observations: Vec::new(),
+            sessions: Vec::new(),
+            prompts: Vec::new(),
+        }));
+    }
+    let observations = state.storage
+        .search_with_filters(Some(&query.q), query.project.as_deref(), query.obs_type.as_deref(), query.limit)
+        .unwrap_or_default();
+    let sessions = state.storage.search_sessions(&query.q, query.limit).unwrap_or_default();
+    let prompts = state.storage.search_prompts(&query.q, query.limit).unwrap_or_default();
+    Ok(Json(UnifiedSearchResult { observations, sessions, prompts }))
+}
+
+async fn unified_timeline(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<UnifiedTimelineQuery>,
+) -> Result<Json<TimelineResult>, StatusCode> {
+    let anchor_sr = if let Some(id) = &query.anchor {
+        state.storage.get_by_id(id).ok().flatten().map(|obs| SearchResult {
+            id: obs.id,
+            title: obs.title,
+            subtitle: obs.subtitle.clone(),
+            observation_type: obs.observation_type,
+            score: 1.0,
+        })
+    } else if let Some(q) = &query.q {
+        state.storage.hybrid_search(q, 1).ok().and_then(|r| r.into_iter().next())
+    } else {
+        None
+    };
+    let (before, after) = if let Some(ref anchor) = anchor_sr {
+        let all = state.storage.get_timeline(None, None, query.before + query.after + 50)
+            .unwrap_or_default();
+        let pos = all.iter().position(|o| o.id == anchor.id).unwrap_or(0);
+        let before_items: Vec<_> = all[..pos].iter().rev().take(query.before).cloned().collect();
+        let after_items: Vec<_> = all.get(pos + 1..).unwrap_or(&[]).iter().take(query.after).cloned().collect();
+        (before_items, after_items)
+    } else {
+        (Vec::new(), Vec::new())
+    };
+    Ok(Json(TimelineResult { anchor: anchor_sr, before, after }))
+}
+
+async fn get_decisions(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<SearchQuery>,
+) -> Result<Json<Vec<SearchResult>>, StatusCode> {
+    let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
+    state.storage.search_with_filters(q, query.project.as_deref(), Some("decision"), query.limit)
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Get decisions failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
+async fn get_changes(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<SearchQuery>,
+) -> Result<Json<Vec<SearchResult>>, StatusCode> {
+    let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
+    state.storage.search_with_filters(q, query.project.as_deref(), Some("change"), query.limit)
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Get changes failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
+async fn get_how_it_works(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<SearchQuery>,
+) -> Result<Json<Vec<SearchResult>>, StatusCode> {
+    let search_query = if query.q.is_empty() {
+        "how-it-works".to_string()
+    } else {
+        format!("{} how-it-works", query.q)
+    };
+    state.storage.hybrid_search(&search_query, query.limit)
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Get how-it-works failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
+}
+
+async fn context_timeline(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<UnifiedTimelineQuery>,
+) -> Result<Json<TimelineResult>, StatusCode> {
+    unified_timeline(State(state), Query(query)).await
+}
+
+async fn context_preview(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<ContextPreviewQuery>,
+) -> Result<Json<ContextPreview>, StatusCode> {
+    let observations = state.storage.get_context_for_project(&query.project, query.limit)
+        .map_err(|e| {
+            tracing::error!("Context preview failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    let preview = if query.format == "full" {
+        observations.iter()
+            .map(|o| format!("[{}] {}: {}", o.observation_type.as_str(), o.title, o.subtitle.as_deref().unwrap_or("")))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    } else {
+        observations.iter()
+            .map(|o| format!("• {}", o.title))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    Ok(Json(ContextPreview {
+        project: query.project,
+        observation_count: observations.len(),
+        preview,
+    }))
+}
+
+async fn timeline_by_query(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<UnifiedTimelineQuery>,
+) -> Result<Json<TimelineResult>, StatusCode> {
+    unified_timeline(State(state), Query(query)).await
+}
+
+async fn search_help() -> Json<SearchHelpResponse> {
+    Json(SearchHelpResponse {
+        endpoints: vec![
+            EndpointDoc {
+                path: "/api/unified-search",
+                method: "GET",
+                description: "Unified search across observations, sessions, and prompts",
+                params: vec![
+                    ParamDoc { name: "q", required: true, description: "Search query" },
+                    ParamDoc { name: "limit", required: false, description: "Max results (default 20)" },
+                    ParamDoc { name: "project", required: false, description: "Filter by project" },
+                    ParamDoc { name: "type", required: false, description: "Filter by observation type" },
+                ],
+            },
+            EndpointDoc {
+                path: "/api/unified-timeline",
+                method: "GET",
+                description: "Get timeline centered around an anchor observation",
+                params: vec![
+                    ParamDoc { name: "anchor", required: false, description: "Observation ID to center on" },
+                    ParamDoc { name: "q", required: false, description: "Search query to find anchor" },
+                    ParamDoc { name: "before", required: false, description: "Count before anchor (default 5)" },
+                    ParamDoc { name: "after", required: false, description: "Count after anchor (default 5)" },
+                ],
+            },
+            EndpointDoc {
+                path: "/api/decisions",
+                method: "GET",
+                description: "Get observations of type 'decision'",
+                params: vec![
+                    ParamDoc { name: "q", required: false, description: "Optional search filter" },
+                    ParamDoc { name: "limit", required: false, description: "Max results" },
+                ],
+            },
+            EndpointDoc {
+                path: "/api/changes",
+                method: "GET",
+                description: "Get observations of type 'change'",
+                params: vec![
+                    ParamDoc { name: "q", required: false, description: "Optional search filter" },
+                    ParamDoc { name: "limit", required: false, description: "Max results" },
+                ],
+            },
+            EndpointDoc {
+                path: "/api/how-it-works",
+                method: "GET",
+                description: "Search for 'how-it-works' concept observations",
+                params: vec![
+                    ParamDoc { name: "q", required: false, description: "Additional search terms" },
+                    ParamDoc { name: "limit", required: false, description: "Max results" },
+                ],
+            },
+            EndpointDoc {
+                path: "/api/context/preview",
+                method: "GET",
+                description: "Generate context preview for a project",
+                params: vec![
+                    ParamDoc { name: "project", required: true, description: "Project path" },
+                    ParamDoc { name: "limit", required: false, description: "Max observations" },
+                    ParamDoc { name: "format", required: false, description: "'compact' or 'full'" },
+                ],
+            },
+        ],
+    })
 }

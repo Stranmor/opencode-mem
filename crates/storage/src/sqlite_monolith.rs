@@ -1203,6 +1203,7 @@ impl Storage {
     }
 
     /// Claim pending messages for processing (visibility timeout pattern)
+    /// Uses atomic UPDATE with RETURNING to prevent race conditions
     pub fn claim_pending_messages(
         &self,
         limit: usize,
@@ -1212,23 +1213,27 @@ impl Storage {
         let now = Utc::now().timestamp();
         let stale_threshold = now - visibility_timeout_secs;
 
-        // Find messages that are pending OR processing but stale (claimed too long ago)
+        // Atomic claim: UPDATE and RETURN in single statement
         let mut stmt = conn.prepare(
-            r#"SELECT id, session_id, status, tool_name, tool_input, tool_response,
-                      retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch
-               FROM pending_messages
-               WHERE status = 'pending'
-                  OR (status = 'processing' AND claimed_at_epoch < ?1)
-               ORDER BY created_at_epoch ASC
-               LIMIT ?2"#,
+            r#"UPDATE pending_messages
+               SET status = 'processing', claimed_at_epoch = ?1
+               WHERE id IN (
+                   SELECT id FROM pending_messages
+                   WHERE status = 'pending'
+                      OR (status = 'processing' AND claimed_at_epoch < ?2)
+                   ORDER BY created_at_epoch ASC
+                   LIMIT ?3
+               )
+               RETURNING id, session_id, status, tool_name, tool_input, tool_response,
+                         retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch"#,
         )?;
 
         let messages: Vec<PendingMessage> = stmt
-            .query_map(params![stale_threshold, limit], |row| {
+            .query_map(params![now, stale_threshold, limit], |row| {
                 let status_str: String = row.get(2)?;
                 let status = status_str
                     .parse::<PendingMessageStatus>()
-                    .unwrap_or(PendingMessageStatus::Pending);
+                    .unwrap_or(PendingMessageStatus::Processing);
                 Ok(PendingMessage {
                     id: row.get(0)?,
                     session_id: row.get(1)?,
@@ -1244,16 +1249,6 @@ impl Storage {
             })?
             .filter_map(log_row_error)
             .collect();
-
-        // Mark claimed messages as processing
-        for msg in &messages {
-            conn.execute(
-                r#"UPDATE pending_messages 
-                   SET status = 'processing', claimed_at_epoch = ?1
-                   WHERE id = ?2"#,
-                params![now, msg.id],
-            )?;
-        }
 
         Ok(messages)
     }
@@ -1393,26 +1388,18 @@ impl Storage {
 
     pub fn get_queue_stats(&self) -> Result<crate::types::QueueStats> {
         let conn = lock_conn(&self.conn)?;
-        let pending: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM pending_messages WHERE status = 'pending'",
-            [],
-            |row| row.get(0),
-        )?;
-        let processing: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM pending_messages WHERE status = 'processing'",
-            [],
-            |row| row.get(0),
-        )?;
-        let failed: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM pending_messages WHERE status = 'failed'",
-            [],
-            |row| row.get(0),
-        )?;
-        let processed: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM pending_messages WHERE status = 'processed'",
-            [],
-            |row| row.get(0),
-        )?;
+        let (pending, processing, failed, processed): (i64, i64, i64, i64) = conn
+            .query_row(
+                r#"SELECT 
+                SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END),
+                SUM(CASE WHEN status = 'processed' THEN 1 ELSE 0 END)
+            FROM pending_messages"#,
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap_or((0, 0, 0, 0));
         Ok(crate::types::QueueStats {
             pending: pending as u64,
             processing: processing as u64,
