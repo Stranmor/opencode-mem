@@ -9,7 +9,7 @@ use tokio::sync::Semaphore;
 
 use opencode_mem_core::{ObservationInput, ToolOutput};
 use opencode_mem_infinite::tool_event;
-use opencode_mem_storage::{PendingMessage, DEFAULT_VISIBILITY_TIMEOUT_SECS};
+use opencode_mem_storage::{PendingMessage, default_visibility_timeout_secs};
 
 use crate::api_types::{
     ClearQueueResponse, PendingQueueResponse, ProcessQueueResponse, ProcessingStatusResponse,
@@ -18,7 +18,12 @@ use crate::api_types::{
 use crate::blocking::blocking_result;
 use crate::AppState;
 
-const MAX_QUEUE_WORKERS: usize = 10;
+fn max_queue_workers() -> usize {
+    std::env::var("OPENCODE_MEM_QUEUE_WORKERS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10)
+}
 
 pub async fn get_pending_queue(
     State(state): State<Arc<AppState>>,
@@ -39,8 +44,9 @@ pub async fn process_pending_queue(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ProcessQueueResponse>, StatusCode> {
     let storage = state.storage.clone();
+    let max_workers = max_queue_workers();
     let messages = blocking_result(move || {
-        storage.claim_pending_messages(MAX_QUEUE_WORKERS, DEFAULT_VISIBILITY_TIMEOUT_SECS)
+        storage.claim_pending_messages(max_workers, default_visibility_timeout_secs())
     })
     .await?;
 
@@ -52,7 +58,7 @@ pub async fn process_pending_queue(
     }
 
     let count = messages.len();
-    let semaphore = Arc::new(Semaphore::new(MAX_QUEUE_WORKERS));
+    let semaphore = Arc::new(Semaphore::new(max_workers));
     let mut handles = Vec::with_capacity(count);
 
     for msg in messages {
@@ -210,7 +216,7 @@ pub async fn set_processing_status(
 pub fn run_startup_recovery(state: &AppState) -> anyhow::Result<usize> {
     let released = state
         .storage
-        .release_stale_messages(DEFAULT_VISIBILITY_TIMEOUT_SECS)?;
+        .release_stale_messages(default_visibility_timeout_secs())?;
     if released > 0 {
         tracing::info!(
             "Startup recovery: released {} stale messages back to pending",

@@ -103,6 +103,13 @@ fn init_connection(_conn: &mut Connection) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
+fn db_pool_size() -> u32 {
+    std::env::var("OPENCODE_MEM_DB_POOL_SIZE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(8)
+}
+
 impl Storage {
     /// Create new storage instance with SQLite connection pool
     pub fn new(db_path: &Path) -> Result<Self> {
@@ -110,12 +117,15 @@ impl Storage {
 
         let manager = SqliteConnectionManager::file(db_path).with_init(init_connection);
 
-        let pool = Pool::builder().max_size(8).build(manager)?;
+        let pool_size = db_pool_size();
+        let pool = Pool::builder().max_size(pool_size).build(manager)?;
 
         // Run migrations on first connection
         let conn = pool.get()?;
         migrations::run_migrations(&conn)?;
         drop(conn);
+
+        tracing::info!(pool_size = pool_size, "Storage initialized with connection pool");
 
         Ok(Self { pool })
     }

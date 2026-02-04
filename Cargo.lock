@@ -2166,6 +2166,7 @@ dependencies = [
  "fastembed",
  "opencode-mem-core",
  "thiserror 2.0.18",
+ "tracing",
 ]
 
 [[package]]

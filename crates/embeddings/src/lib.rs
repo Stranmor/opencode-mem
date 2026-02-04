@@ -36,6 +36,12 @@ impl EmbeddingService {
 
         let model = TextEmbedding::try_new(options)?;
 
+        tracing::info!(
+            model = "AllMiniLML6V2",
+            dimension = 384,
+            "Embedding service initialized"
+        );
+
         Ok(Self {
             model: Mutex::new(model),
         })

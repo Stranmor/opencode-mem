@@ -40,6 +40,7 @@ pub struct McpError {
 }
 
 pub fn run_mcp_server(storage: Arc<Storage>, embeddings: Option<Arc<EmbeddingService>>) {
+    tracing::info!("MCP server starting on stdio");
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
     let reader = BufReader::new(stdin.lock());

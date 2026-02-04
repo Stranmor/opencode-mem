@@ -8,7 +8,6 @@ use anyhow::Result;
 use opencode_mem_llm::LlmClient;
 
 use sqlx::PgPool;
-use std::collections::HashMap;
 
 const MIN_5MIN_SUMMARIES_FOR_HOUR: usize = 6;
 const MIN_HOUR_SUMMARIES_FOR_DAY: usize = 12;
@@ -180,34 +179,41 @@ pub async fn create_day_summary(
     Ok(day_id)
 }
 
+const MAX_EVENTS_PER_BATCH: usize = 100;
+
 pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<u32> {
-    let events = event_queries::get_unsummarized_events(pool, 100).await?;
+    let events = event_queries::get_unsummarized_events(pool, MAX_EVENTS_PER_BATCH as i64).await?;
     if events.is_empty() {
         return Ok(0);
     }
 
-    let mut sessions: HashMap<String, Vec<StoredEvent>> = HashMap::new();
-    for event in events {
-        sessions
-            .entry(event.session_id.clone())
-            .or_default()
-            .push(event);
+    let mut seen_sessions: Vec<String> = Vec::new();
+    for event in &events {
+        if !seen_sessions.contains(&event.session_id) {
+            seen_sessions.push(event.session_id.clone());
+        }
     }
 
     let mut total_processed = 0u32;
-    for (session_id, session_events) in sessions {
+    for session_id in seen_sessions {
+        let session_events: Vec<&StoredEvent> =
+            events.iter().filter(|e| e.session_id == session_id).collect();
+
         if session_events.is_empty() {
             continue;
         }
+
         tracing::info!(
             "Compressing {} events for session {}",
             session_events.len(),
             session_id
         );
 
+        let owned_events: Vec<StoredEvent> = session_events.iter().map(|e| (*e).clone()).collect();
+
         let result: Result<()> = async {
-            let (summary, entities) = compress_events(llm, &session_events).await?;
-            create_5min_summary(pool, &session_events, &summary, entities.as_ref()).await?;
+            let (summary, entities) = compress_events(llm, &owned_events).await?;
+            create_5min_summary(pool, &owned_events, &summary, entities.as_ref()).await?;
             Ok(())
         }
         .await;
@@ -231,51 +237,55 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
     let events_processed = run_compression_pipeline(pool, llm).await?;
 
     let summaries_5min = summary_queries::get_unaggregated_5min_summaries(pool, 100).await?;
-    let mut sessions_5min: HashMap<Option<String>, Vec<Summary>> = HashMap::new();
-    for summary in summaries_5min {
-        sessions_5min
-            .entry(summary.session_id.clone())
-            .or_default()
-            .push(summary);
+
+    let mut seen_sessions_5min: Vec<Option<String>> = Vec::new();
+    for summary in &summaries_5min {
+        if !seen_sessions_5min.contains(&summary.session_id) {
+            seen_sessions_5min.push(summary.session_id.clone());
+        }
     }
 
     let mut hours_created = 0u32;
-    for (_session_id, session_summaries) in sessions_5min {
+    for session_id in seen_sessions_5min {
+        let session_summaries: Vec<&Summary> = summaries_5min
+            .iter()
+            .filter(|s| s.session_id == session_id)
+            .collect();
+
         if session_summaries.len() >= MIN_5MIN_SUMMARIES_FOR_HOUR {
-            let content = compress_summaries(llm, &session_summaries).await?;
+            let owned: Vec<Summary> = session_summaries.iter().map(|s| (*s).clone()).collect();
+            let content = compress_summaries(llm, &owned).await?;
             let merged_entities = SummaryEntities::merge(
-                &session_summaries
-                    .iter()
-                    .map(|s| s.entities.clone())
-                    .collect::<Vec<_>>(),
+                &owned.iter().map(|s| s.entities.clone()).collect::<Vec<_>>(),
             );
-            create_hour_summary(pool, &session_summaries, &content, merged_entities.as_ref())
-                .await?;
+            create_hour_summary(pool, &owned, &content, merged_entities.as_ref()).await?;
             hours_created += 1;
         }
     }
 
     let summaries_hour = summary_queries::get_unaggregated_hour_summaries(pool, 100).await?;
-    let mut sessions_hour: HashMap<Option<String>, Vec<Summary>> = HashMap::new();
-    for summary in summaries_hour {
-        sessions_hour
-            .entry(summary.session_id.clone())
-            .or_default()
-            .push(summary);
+
+    let mut seen_sessions_hour: Vec<Option<String>> = Vec::new();
+    for summary in &summaries_hour {
+        if !seen_sessions_hour.contains(&summary.session_id) {
+            seen_sessions_hour.push(summary.session_id.clone());
+        }
     }
 
     let mut days_created = 0u32;
-    for (_session_id, session_summaries) in sessions_hour {
+    for session_id in seen_sessions_hour {
+        let session_summaries: Vec<&Summary> = summaries_hour
+            .iter()
+            .filter(|s| s.session_id == session_id)
+            .collect();
+
         if session_summaries.len() >= MIN_HOUR_SUMMARIES_FOR_DAY {
-            let content = compress_summaries(llm, &session_summaries).await?;
+            let owned: Vec<Summary> = session_summaries.iter().map(|s| (*s).clone()).collect();
+            let content = compress_summaries(llm, &owned).await?;
             let merged_entities = SummaryEntities::merge(
-                &session_summaries
-                    .iter()
-                    .map(|s| s.entities.clone())
-                    .collect::<Vec<_>>(),
+                &owned.iter().map(|s| s.entities.clone()).collect::<Vec<_>>(),
             );
-            create_day_summary(pool, &session_summaries, &content, merged_entities.as_ref())
-                .await?;
+            create_day_summary(pool, &owned, &content, merged_entities.as_ref()).await?;
             days_created += 1;
         }
     }

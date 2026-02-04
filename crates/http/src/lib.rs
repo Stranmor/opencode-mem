@@ -24,16 +24,30 @@ use opencode_mem_storage::Storage;
 pub use api_types::{ReadinessResponse, Settings, VersionResponse};
 pub use handlers::queue::run_startup_recovery;
 
+/// Shared application state for all HTTP handlers.
+///
+/// Contains database connections, LLM client, and service instances.
+/// Wrapped in `Arc` for thread-safe sharing across handlers.
 pub struct AppState {
+    /// SQLite storage with connection pool
     pub storage: Arc<Storage>,
+    /// LLM client for AI operations (compression, knowledge extraction)
     pub llm: Arc<LlmClient>,
+    /// Semaphore limiting concurrent queue processing
     pub semaphore: Arc<Semaphore>,
+    /// Broadcast channel for SSE real-time updates
     pub event_tx: broadcast::Sender<String>,
+    /// Flag indicating if queue processing is active
     pub processing_active: AtomicBool,
+    /// Runtime-configurable settings
     pub settings: RwLock<Settings>,
+    /// Optional PostgreSQL backend for infinite memory
     pub infinite_mem: Option<Arc<InfiniteMemory>>,
+    /// Service for processing observations
     pub observation_service: Arc<ObservationService>,
+    /// Service for session management
     pub session_service: Arc<SessionService>,
+    /// Optional embedding service for semantic search
     pub embeddings: Option<Arc<EmbeddingService>>,
 }
 

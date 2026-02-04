@@ -5,9 +5,26 @@ use anyhow::Result;
 use opencode_mem_core::strip_markdown_json;
 use opencode_mem_llm::LlmClient;
 
-const MAX_CONTENT_CHARS: usize = 500;
-const MAX_TOTAL_CHARS: usize = 8000;
-const MAX_EVENTS: usize = 200;
+fn max_content_chars() -> usize {
+    std::env::var("OPENCODE_MEM_MAX_CONTENT_CHARS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(500)
+}
+
+fn max_total_chars() -> usize {
+    std::env::var("OPENCODE_MEM_MAX_TOTAL_CHARS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(8000)
+}
+
+fn max_events() -> usize {
+    std::env::var("OPENCODE_MEM_MAX_EVENTS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(200)
+}
 
 pub async fn compress_events(
     llm: &LlmClient,
@@ -17,11 +34,12 @@ pub async fn compress_events(
         return Ok((String::new(), None));
     }
 
-    if events.len() > MAX_EVENTS {
+    let max_events = max_events();
+    if events.len() > max_events {
         anyhow::bail!(
             "compress_events called with {} events, max allowed: {}",
             events.len(),
-            MAX_EVENTS
+            max_events
         );
     }
 
@@ -30,12 +48,13 @@ pub async fn compress_events(
 
     for e in events {
         let content_str = serde_json::to_string(&e.content).unwrap_or_default();
-        let truncated = if content_str.chars().count() > MAX_CONTENT_CHARS {
+        let max_content = max_content_chars();
+        let truncated = if content_str.chars().count() > max_content {
             format!(
                 "{}...(truncated)",
                 content_str
                     .chars()
-                    .take(MAX_CONTENT_CHARS)
+                    .take(max_content)
                     .collect::<String>()
             )
         } else {
@@ -48,7 +67,7 @@ pub async fn compress_events(
             truncated
         );
         total_chars += line.len();
-        if total_chars > MAX_TOTAL_CHARS {
+        if total_chars > max_total_chars() {
             events_text.push(format!(
                 "...({} more events truncated)",
                 events.len() - events_text.len()

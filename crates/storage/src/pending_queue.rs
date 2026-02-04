@@ -69,8 +69,19 @@ pub struct PendingMessage {
     pub completed_at_epoch: Option<i64>,
 }
 
-pub const MAX_RETRY_COUNT: i32 = 3;
-pub const DEFAULT_VISIBILITY_TIMEOUT_SECS: i64 = 300;
+pub fn max_retry_count() -> i32 {
+    std::env::var("OPENCODE_MEM_MAX_RETRY")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3)
+}
+
+pub fn default_visibility_timeout_secs() -> i64 {
+    std::env::var("OPENCODE_MEM_VISIBILITY_TIMEOUT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(300)
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueueStats {

@@ -3,7 +3,7 @@ use chrono::Utc;
 use rusqlite::params;
 
 use super::{get_conn, log_row_error, Storage};
-use crate::pending_queue::{PendingMessage, PendingMessageStatus, QueueStats, MAX_RETRY_COUNT};
+use crate::pending_queue::{max_retry_count, PendingMessage, PendingMessageStatus, QueueStats};
 
 fn row_to_pending_message(row: &rusqlite::Row) -> rusqlite::Result<PendingMessage> {
     let status_str: String = row.get(2)?;
@@ -98,7 +98,7 @@ impl Storage {
                        END,
                        claimed_at_epoch = NULL
                    WHERE id = ?2"#,
-                params![MAX_RETRY_COUNT, id],
+                params![max_retry_count(), id],
             )?;
         } else {
             conn.execute(
