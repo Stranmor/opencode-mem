@@ -70,6 +70,9 @@ fn validate_branch_name(branch: &str) -> Result<(), &'static str> {
     if branch.is_empty() {
         return Err("Branch name cannot be empty");
     }
+    if branch == "." || branch == ".." {
+        return Err("Branch name cannot be '.' or '..'");
+    }
     if branch.starts_with('-') {
         return Err("Branch name cannot start with dash");
     }

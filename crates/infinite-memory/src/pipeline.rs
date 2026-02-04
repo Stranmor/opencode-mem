@@ -204,8 +204,23 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
             session_events.len(),
             session_id
         );
-        let (summary, entities) = compress_events(llm, &session_events).await?;
-        create_5min_summary(pool, &session_events, &summary, entities.as_ref()).await?;
+
+        let result: Result<()> = async {
+            let (summary, entities) = compress_events(llm, &session_events).await?;
+            create_5min_summary(pool, &session_events, &summary, entities.as_ref()).await?;
+            Ok(())
+        }
+        .await;
+
+        if let Err(e) = result {
+            tracing::error!(
+                session_id = %session_id,
+                error = %e,
+                "Failed to compress session, skipping"
+            );
+            continue;
+        }
+
         total_processed += session_events.len() as u32;
     }
 

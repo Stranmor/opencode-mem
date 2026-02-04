@@ -48,7 +48,8 @@ impl Storage {
                LIMIT ?2"#,
         )?;
 
-        let results: Vec<(SearchResult, f64)> = stmt
+        // First pass: collect raw results with FTS scores and keywords
+        let raw_results: Vec<(SearchResult, f64, HashSet<String>)> = stmt
             .query_map(params![fts_query, limit * 2], |row| {
                 let obs_keywords: String = row.get(4)?;
                 let fts_score: f64 = row.get(5)?;
@@ -65,7 +66,7 @@ impl Storage {
                 ))
             })?
             .filter_map(log_row_error)
-            .filter_map(|(mut result, fts_score, obs_keywords)| {
+            .filter_map(|(result, fts_score, obs_keywords)| {
                 let obs_kw: HashSet<String> = match parse_json::<Vec<String>>(&obs_keywords) {
                     Ok(v) => v.into_iter().map(|s| s.to_lowercase()).collect(),
                     Err(e) => {
@@ -73,19 +74,37 @@ impl Storage {
                         return None;
                     }
                 };
+                Some((result, fts_score, obs_kw))
+            })
+            .collect();
+
+        // Find max FTS score for normalization (BM25 is unbounded, keyword score is 0-1)
+        let max_fts_score: f64 = raw_results
+            .iter()
+            .map(|(_, fts, _)| fts.abs())
+            .fold(0.0, f64::max);
+
+        // Second pass: normalize FTS scores and combine with keyword scores
+        let mut results: Vec<(SearchResult, f64)> = raw_results
+            .into_iter()
+            .map(|(mut result, fts_score, obs_kw)| {
+                let fts_normalized = if max_fts_score > 0.0 {
+                    fts_score.abs() / max_fts_score
+                } else {
+                    0.0
+                };
                 let keyword_overlap = keywords.intersection(&obs_kw).count() as f64;
                 let keyword_score = if keywords.is_empty() {
                     0.0
                 } else {
                     keyword_overlap / keywords.len() as f64
                 };
-                result.score = (fts_score.abs() * 0.7) + (keyword_score * 0.3);
+                result.score = (fts_normalized * 0.7) + (keyword_score * 0.3);
                 let score = result.score;
-                Some((result, score))
+                (result, score)
             })
             .collect();
 
-        let mut results = results;
         results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         Ok(results.into_iter().take(limit).map(|(r, _)| r).collect())
     }

@@ -9,7 +9,7 @@ impl Storage {
     pub fn save_observation(&self, obs: &Observation) -> Result<()> {
         let conn = get_conn(&self.pool)?;
         conn.execute(
-            r#"INSERT INTO observations 
+            r#"INSERT OR REPLACE INTO observations 
                (id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
                 files_read, files_modified, keywords, prompt_number, discovery_tokens, created_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)"#,

@@ -45,7 +45,7 @@ serde_json = "1"
 reqwest = { version = "0.12", features = ["json"] }
 
 # Utils
-uuid = { version = "1", features = ["v4"] }
+uuid = { version = "1", features = ["v4", "v5"] }
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "5"
 regex = "1"

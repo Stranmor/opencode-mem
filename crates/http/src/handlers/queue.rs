@@ -135,7 +135,10 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
         },
     };
 
-    let id = uuid::Uuid::new_v4().to_string();
+    // Deterministic UUID v5 based on message ID to prevent duplicates
+    // If same message is processed twice (race condition), same observation ID is generated
+    let id = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, msg.id.to_string().as_bytes())
+        .to_string();
     let observation = state.llm.compress_to_observation(&id, &input, None).await?;
     let storage = state.storage.clone();
     let obs_clone = observation.clone();
