@@ -20,30 +20,40 @@ pub async fn search(
     let q = if query.q.is_empty() {
         None
     } else {
-        Some(query.q.as_str())
+        Some(query.q.clone())
     };
-    state
-        .storage
-        .search_with_filters(
-            q,
-            query.project.as_deref(),
-            query.obs_type.as_deref(),
-            query.limit,
-        )
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Search failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    let storage = state.storage.clone();
+    let project = query.project.clone();
+    let obs_type = query.obs_type.clone();
+    let limit = query.limit;
+    tokio::task::spawn_blocking(move || {
+        storage.search_with_filters(q.as_deref(), project.as_deref(), obs_type.as_deref(), limit)
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!("Search join error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .map(Json)
+    .map_err(|e| {
+        tracing::error!("Search failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 pub async fn hybrid_search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    state
-        .storage
-        .hybrid_search(&query.q, query.limit)
+    let storage = state.storage.clone();
+    let q = query.q.clone();
+    let limit = query.limit;
+    tokio::task::spawn_blocking(move || storage.hybrid_search(&q, limit))
+        .await
+        .map_err(|e| {
+            tracing::error!("Hybrid search join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .map(Json)
         .map_err(|e| {
             tracing::error!("Hybrid search failed: {}", e);
@@ -61,26 +71,50 @@ pub async fn semantic_search(
 
     match &state.embeddings {
         Some(emb) => match emb.embed(&query.q) {
-            Ok(query_vec) => match state.storage.semantic_search(&query_vec, query.limit) {
-                Ok(results) if !results.is_empty() => Ok(Json(results)),
-                Ok(_) => state
-                    .storage
-                    .hybrid_search(&query.q, query.limit)
-                    .map(Json)
+            Ok(query_vec) => {
+                let storage = state.storage.clone();
+                let limit = query.limit;
+                match tokio::task::spawn_blocking(move || storage.semantic_search(&query_vec, limit))
+                    .await
                     .map_err(|e| {
-                        tracing::error!("Fallback hybrid search failed: {}", e);
+                        tracing::error!("Semantic search join error: {}", e);
                         StatusCode::INTERNAL_SERVER_ERROR
-                    }),
-                Err(e) => {
-                    tracing::error!("Semantic search failed: {}", e);
-                    Err(StatusCode::INTERNAL_SERVER_ERROR)
+                    })?
+                {
+                    Ok(results) if !results.is_empty() => Ok(Json(results)),
+                    Ok(_) => {
+                        let storage = state.storage.clone();
+                        let q = query.q.clone();
+                        let limit = query.limit;
+                        tokio::task::spawn_blocking(move || storage.hybrid_search(&q, limit))
+                            .await
+                            .map_err(|e| {
+                                tracing::error!("Fallback hybrid search join error: {}", e);
+                                StatusCode::INTERNAL_SERVER_ERROR
+                            })?
+                            .map(Json)
+                            .map_err(|e| {
+                                tracing::error!("Fallback hybrid search failed: {}", e);
+                                StatusCode::INTERNAL_SERVER_ERROR
+                            })
+                    }
+                    Err(e) => {
+                        tracing::error!("Semantic search failed: {}", e);
+                        Err(StatusCode::INTERNAL_SERVER_ERROR)
+                    }
                 }
-            },
+            }
             Err(e) => {
                 tracing::warn!("Failed to embed query, falling back to hybrid: {}", e);
-                state
-                    .storage
-                    .hybrid_search(&query.q, query.limit)
+                let storage = state.storage.clone();
+                let q = query.q.clone();
+                let limit = query.limit;
+                tokio::task::spawn_blocking(move || storage.hybrid_search(&q, limit))
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Fallback hybrid search join error: {}", e);
+                        StatusCode::INTERNAL_SERVER_ERROR
+                    })?
                     .map(Json)
                     .map_err(|e| {
                         tracing::error!("Fallback hybrid search failed: {}", e);
@@ -88,14 +122,22 @@ pub async fn semantic_search(
                     })
             }
         },
-        None => state
-            .storage
-            .hybrid_search(&query.q, query.limit)
-            .map(Json)
-            .map_err(|e| {
-                tracing::error!("Hybrid search (no embeddings) failed: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            }),
+        None => {
+            let storage = state.storage.clone();
+            let q = query.q.clone();
+            let limit = query.limit;
+            tokio::task::spawn_blocking(move || storage.hybrid_search(&q, limit))
+                .await
+                .map_err(|e| {
+                    tracing::error!("Hybrid search (no embeddings) join error: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?
+                .map(Json)
+                .map_err(|e| {
+                    tracing::error!("Hybrid search (no embeddings) failed: {}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })
+        }
     }
 }
 
@@ -106,35 +148,47 @@ pub async fn search_observations(
     let q = if query.q.is_empty() {
         None
     } else {
-        Some(query.q.as_str())
+        Some(query.q.clone())
     };
-    state
-        .storage
-        .search_with_filters(q, query.project.as_deref(), None, query.limit)
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Search observations failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    let storage = state.storage.clone();
+    let project = query.project.clone();
+    let limit = query.limit;
+    tokio::task::spawn_blocking(move || {
+        storage.search_with_filters(q.as_deref(), project.as_deref(), None, limit)
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!("Search observations join error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .map(Json)
+    .map_err(|e| {
+        tracing::error!("Search observations failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 pub async fn search_by_type(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    state
-        .storage
-        .search_with_filters(
-            None,
-            query.project.as_deref(),
-            query.obs_type.as_deref(),
-            query.limit,
-        )
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Search by type failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    let storage = state.storage.clone();
+    let project = query.project.clone();
+    let obs_type = query.obs_type.clone();
+    let limit = query.limit;
+    tokio::task::spawn_blocking(move || {
+        storage.search_with_filters(None, project.as_deref(), obs_type.as_deref(), limit)
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!("Search by type join error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .map(Json)
+    .map_err(|e| {
+        tracing::error!("Search by type failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 pub async fn search_by_concept(
@@ -144,16 +198,24 @@ pub async fn search_by_concept(
     let q = if query.q.is_empty() {
         None
     } else {
-        Some(query.q.as_str())
+        Some(query.q.clone())
     };
-    state
-        .storage
-        .search_with_filters(q, query.project.as_deref(), None, query.limit)
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Search by concept failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    let storage = state.storage.clone();
+    let project = query.project.clone();
+    let limit = query.limit;
+    tokio::task::spawn_blocking(move || {
+        storage.search_with_filters(q.as_deref(), project.as_deref(), None, limit)
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!("Search by concept join error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .map(Json)
+    .map_err(|e| {
+        tracing::error!("Search by concept failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 pub async fn search_sessions(
@@ -163,9 +225,15 @@ pub async fn search_sessions(
     if query.q.is_empty() {
         return Ok(Json(Vec::new()));
     }
-    state
-        .storage
-        .search_sessions(&query.q, query.limit)
+    let storage = state.storage.clone();
+    let q = query.q.clone();
+    let limit = query.limit;
+    tokio::task::spawn_blocking(move || storage.search_sessions(&q, limit))
+        .await
+        .map_err(|e| {
+            tracing::error!("Search sessions join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .map(Json)
         .map_err(|e| {
             tracing::error!("Search sessions failed: {}", e);
@@ -180,9 +248,15 @@ pub async fn search_prompts(
     if query.q.is_empty() {
         return Ok(Json(Vec::new()));
     }
-    state
-        .storage
-        .search_prompts(&query.q, query.limit)
+    let storage = state.storage.clone();
+    let q = query.q.clone();
+    let limit = query.limit;
+    tokio::task::spawn_blocking(move || storage.search_prompts(&q, limit))
+        .await
+        .map_err(|e| {
+            tracing::error!("Search prompts join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .map(Json)
         .map_err(|e| {
             tracing::error!("Search prompts failed: {}", e);
@@ -194,9 +268,15 @@ pub async fn search_by_file(
     State(state): State<Arc<AppState>>,
     Query(query): Query<FileSearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    state
-        .storage
-        .search_by_file(&query.file_path, query.limit)
+    let storage = state.storage.clone();
+    let file_path = query.file_path.clone();
+    let limit = query.limit;
+    tokio::task::spawn_blocking(move || storage.search_by_file(&file_path, limit))
+        .await
+        .map_err(|e| {
+            tracing::error!("Search by file join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .map(Json)
         .map_err(|e| {
             tracing::error!("Search by file failed: {}", e);
@@ -215,23 +295,46 @@ pub async fn unified_search(
             prompts: Vec::new(),
         }));
     }
-    let observations = state
-        .storage
-        .search_with_filters(
-            Some(&query.q),
-            query.project.as_deref(),
-            query.obs_type.as_deref(),
-            query.limit,
-        )
-        .unwrap_or_default();
-    let sessions = state
-        .storage
-        .search_sessions(&query.q, query.limit)
-        .unwrap_or_default();
-    let prompts = state
-        .storage
-        .search_prompts(&query.q, query.limit)
-        .unwrap_or_default();
+    let storage = state.storage.clone();
+    let q = query.q.clone();
+    let project = query.project.clone();
+    let obs_type = query.obs_type.clone();
+    let limit = query.limit;
+    let observations = tokio::task::spawn_blocking({
+        let storage = storage.clone();
+        let q = q.clone();
+        let project = project.clone();
+        let obs_type = obs_type.clone();
+        move || storage.search_with_filters(Some(&q), project.as_deref(), obs_type.as_deref(), limit)
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!("Unified search observations join error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .unwrap_or_default();
+    let sessions = tokio::task::spawn_blocking({
+        let storage = storage.clone();
+        let q = q.clone();
+        move || storage.search_sessions(&q, limit)
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!("Unified search sessions join error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .unwrap_or_default();
+    let prompts = tokio::task::spawn_blocking({
+        let storage = storage.clone();
+        let q = q.clone();
+        move || storage.search_prompts(&q, limit)
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!("Unified search prompts join error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .unwrap_or_default();
     Ok(Json(UnifiedSearchResult {
         observations,
         sessions,
@@ -244,14 +347,32 @@ pub async fn unified_timeline(
     Query(query): Query<UnifiedTimelineQuery>,
 ) -> Result<Json<TimelineResult>, StatusCode> {
     let anchor_obs = if let Some(id) = &query.anchor {
-        state.storage.get_by_id(id).ok().flatten()
-    } else if let Some(q) = &query.q {
-        state
-            .storage
-            .hybrid_search(q, 1)
+        let storage = state.storage.clone();
+        let id = id.clone();
+        tokio::task::spawn_blocking(move || storage.get_by_id(&id))
+            .await
             .ok()
-            .and_then(|r| r.into_iter().next())
-            .and_then(|sr| state.storage.get_by_id(&sr.id).ok().flatten())
+            .and_then(|r| r.ok())
+            .flatten()
+    } else if let Some(q) = &query.q {
+        let storage = state.storage.clone();
+        let q = q.clone();
+        let search_result = tokio::task::spawn_blocking(move || storage.hybrid_search(&q, 1))
+            .await
+            .ok()
+            .and_then(|r| r.ok())
+            .and_then(|r| r.into_iter().next());
+        if let Some(sr) = search_result {
+            let storage = state.storage.clone();
+            let id = sr.id;
+            tokio::task::spawn_blocking(move || storage.get_by_id(&id))
+                .await
+                .ok()
+                .and_then(|r| r.ok())
+                .flatten()
+        } else {
+            None
+        }
     } else {
         None
     };
@@ -266,23 +387,36 @@ pub async fn unified_timeline(
             score: 1.0,
         };
 
-        let before_items = state
-            .storage
-            .get_timeline(None, Some(&anchor_time), query.before + 1)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|o| o.id != anchor_sr.id)
-            .take(query.before)
-            .collect();
+        let storage = state.storage.clone();
+        let anchor_time_clone = anchor_time.clone();
+        let before_limit = query.before + 1;
+        let anchor_id = anchor_sr.id.clone();
+        let before_items = tokio::task::spawn_blocking(move || {
+            storage.get_timeline(None, Some(&anchor_time_clone), before_limit)
+        })
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|o| o.id != anchor_id)
+        .take(query.before)
+        .collect();
 
-        let after_items: Vec<_> = state
-            .storage
-            .get_timeline(Some(&anchor_time), None, query.after + 1)
-            .unwrap_or_default()
-            .into_iter()
-            .filter(|o| o.id != anchor_sr.id)
-            .take(query.after)
-            .collect();
+        let storage = state.storage.clone();
+        let after_limit = query.after + 1;
+        let anchor_id = anchor_sr.id.clone();
+        let after_items: Vec<_> = tokio::task::spawn_blocking(move || {
+            storage.get_timeline(Some(&anchor_time), None, after_limit)
+        })
+        .await
+        .ok()
+        .and_then(|r| r.ok())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|o| o.id != anchor_id)
+        .take(query.after)
+        .collect();
 
         (Some(anchor_sr), before_items, after_items)
     } else {

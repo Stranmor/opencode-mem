@@ -18,9 +18,14 @@ pub async fn list_knowledge(
         .knowledge_type
         .as_ref()
         .and_then(|s| s.parse::<KnowledgeType>().ok());
-    state
-        .storage
-        .list_knowledge(knowledge_type, query.limit)
+    let storage = state.storage.clone();
+    let limit = query.limit;
+    tokio::task::spawn_blocking(move || storage.list_knowledge(knowledge_type, limit))
+        .await
+        .map_err(|e| {
+            tracing::error!("List knowledge join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .map(Json)
         .map_err(|e| {
             tracing::error!("List knowledge failed: {}", e);
@@ -32,9 +37,15 @@ pub async fn search_knowledge(
     State(state): State<Arc<AppState>>,
     Query(query): Query<KnowledgeQuery>,
 ) -> Result<Json<Vec<KnowledgeSearchResult>>, StatusCode> {
-    state
-        .storage
-        .search_knowledge(&query.q, query.limit)
+    let storage = state.storage.clone();
+    let q = query.q.clone();
+    let limit = query.limit;
+    tokio::task::spawn_blocking(move || storage.search_knowledge(&q, limit))
+        .await
+        .map_err(|e| {
+            tracing::error!("Search knowledge join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .map(Json)
         .map_err(|e| {
             tracing::error!("Search knowledge failed: {}", e);
@@ -46,10 +57,18 @@ pub async fn get_knowledge_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Option<GlobalKnowledge>>, StatusCode> {
-    state.storage.get_knowledge(&id).map(Json).map_err(|e| {
-        tracing::error!("Get knowledge failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    let storage = state.storage.clone();
+    tokio::task::spawn_blocking(move || storage.get_knowledge(&id))
+        .await
+        .map_err(|e| {
+            tracing::error!("Get knowledge join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Get knowledge failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
 }
 
 pub async fn save_knowledge(
@@ -71,19 +90,32 @@ pub async fn save_knowledge(
         source_observation: req.source_observation,
     };
 
-    state.storage.save_knowledge(input).map(Json).map_err(|e| {
-        tracing::error!("Save knowledge failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    let storage = state.storage.clone();
+    tokio::task::spawn_blocking(move || storage.save_knowledge(input))
+        .await
+        .map_err(|e| {
+            tracing::error!("Save knowledge join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Save knowledge failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
 }
 
 pub async fn record_knowledge_usage(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<KnowledgeUsageResponse>, StatusCode> {
-    state
-        .storage
-        .update_knowledge_usage(&id)
+    let storage = state.storage.clone();
+    let id_clone = id.clone();
+    tokio::task::spawn_blocking(move || storage.update_knowledge_usage(&id_clone))
+        .await
+        .map_err(|e| {
+            tracing::error!("Record knowledge usage join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .map(|_| {
             Json(KnowledgeUsageResponse {
                 success: true,

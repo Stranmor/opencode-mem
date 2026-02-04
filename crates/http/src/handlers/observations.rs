@@ -169,23 +169,35 @@ pub async fn get_prompts_paginated(
     Query(query): Query<PaginationQuery>,
 ) -> Result<Json<PaginatedResult<UserPrompt>>, StatusCode> {
     let limit = query.limit.min(100);
-    state
-        .storage
-        .get_prompts_paginated(query.offset, limit, query.project.as_deref())
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get prompts paginated failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    let storage = state.storage.clone();
+    let offset = query.offset;
+    let project = query.project.clone();
+    tokio::task::spawn_blocking(move || {
+        storage.get_prompts_paginated(offset, limit, project.as_deref())
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!("Get prompts paginated join error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .map(Json)
+    .map_err(|e| {
+        tracing::error!("Get prompts paginated failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 pub async fn get_session_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Option<SessionSummary>>, StatusCode> {
-    state
-        .storage
-        .get_session_summary(&id)
+    let storage = state.storage.clone();
+    tokio::task::spawn_blocking(move || storage.get_session_summary(&id))
+        .await
+        .map_err(|e| {
+            tracing::error!("Get session by id join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get session by id failed: {}", e);
@@ -197,8 +209,16 @@ pub async fn get_prompt_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Option<UserPrompt>>, StatusCode> {
-    state.storage.get_prompt_by_id(&id).map(Json).map_err(|e| {
-        tracing::error!("Get prompt by id failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    let storage = state.storage.clone();
+    tokio::task::spawn_blocking(move || storage.get_prompt_by_id(&id))
+        .await
+        .map_err(|e| {
+            tracing::error!("Get prompt by id join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Get prompt by id failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
 }

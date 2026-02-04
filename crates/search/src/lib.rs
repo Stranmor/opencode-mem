@@ -3,7 +3,7 @@
 //! Implements 3-layer search pattern:
 //! 1. search(query) → Get lightweight index with IDs and scores
 //! 2. timeline(from/to) → Get context around interesting results
-//! 3. get_full([IDs]) → Fetch full observations ONLY for filtered IDs
+//! 3. get_full(ids) → Fetch full observations ONLY for filtered IDs
 
 use std::sync::Arc;
 

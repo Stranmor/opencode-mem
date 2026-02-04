@@ -118,16 +118,29 @@ pub async fn session_status(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
 ) -> Result<Json<SessionStatusResponse>, StatusCode> {
-    let session = state.storage.get_session(&session_db_id).map_err(|e| {
-        tracing::error!("Get session failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let storage = state.storage.clone();
+    let id = session_db_id.clone();
+    let session = tokio::task::spawn_blocking(move || storage.get_session(&id))
+        .await
+        .map_err(|e| {
+            tracing::error!("Get session join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .map_err(|e| {
+            tracing::error!("Get session failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     match session {
         Some(s) => {
-            let obs_count = state
-                .storage
-                .get_session_observation_count(&session_db_id)
-                .unwrap_or(0);
+            let storage = state.storage.clone();
+            let id = session_db_id.clone();
+            let obs_count = tokio::task::spawn_blocking(move || {
+                storage.get_session_observation_count(&id)
+            })
+            .await
+            .ok()
+            .and_then(|r| r.ok())
+            .unwrap_or(0);
             Ok(Json(SessionStatusResponse {
                 session_id: s.id,
                 status: s.status,
@@ -144,10 +157,18 @@ pub async fn session_delete(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
 ) -> Result<Json<SessionDeleteResponse>, StatusCode> {
-    let deleted = state.storage.delete_session(&session_db_id).map_err(|e| {
-        tracing::error!("Delete session failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let storage = state.storage.clone();
+    let id = session_db_id.clone();
+    let deleted = tokio::task::spawn_blocking(move || storage.delete_session(&id))
+        .await
+        .map_err(|e| {
+            tracing::error!("Delete session join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .map_err(|e| {
+            tracing::error!("Delete session failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     Ok(Json(SessionDeleteResponse {
         deleted,
         session_id: session_db_id,

@@ -41,9 +41,14 @@ pub async fn api_session_observations(
     Json(req): Json<SessionObservationsRequest>,
 ) -> Result<Json<SessionObservationsResponse>, StatusCode> {
     let content_session_id = req.content_session_id.ok_or(StatusCode::BAD_REQUEST)?;
-    let session = state
-        .storage
-        .get_session_by_content_id(&content_session_id)
+    let storage = state.storage.clone();
+    let cid = content_session_id.clone();
+    let session = tokio::task::spawn_blocking(move || storage.get_session_by_content_id(&cid))
+        .await
+        .map_err(|e| {
+            tracing::error!("Get session by content id join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .map_err(|e| {
             tracing::error!("Get session by content id failed: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
@@ -84,9 +89,14 @@ pub async fn api_session_summarize(
     Json(req): Json<SessionSummarizeRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let content_session_id = req.content_session_id.ok_or(StatusCode::BAD_REQUEST)?;
-    let session = state
-        .storage
-        .get_session_by_content_id(&content_session_id)
+    let storage = state.storage.clone();
+    let cid = content_session_id.clone();
+    let session = tokio::task::spawn_blocking(move || storage.get_session_by_content_id(&cid))
+        .await
+        .map_err(|e| {
+            tracing::error!("Get session by content id join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .map_err(|e| {
             tracing::error!("Get session by content id failed: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR

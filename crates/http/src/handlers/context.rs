@@ -24,9 +24,15 @@ pub async fn get_context_recent(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextQuery>,
 ) -> Result<Json<Vec<Observation>>, StatusCode> {
-    state
-        .storage
-        .get_context_for_project(&query.project, query.limit)
+    let storage = state.storage.clone();
+    let project = query.project.clone();
+    let limit = query.limit;
+    tokio::task::spawn_blocking(move || storage.get_context_for_project(&project, limit))
+        .await
+        .map_err(|e| {
+            tracing::error!("Get context recent join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get context recent failed: {}", e);
@@ -37,28 +43,50 @@ pub async fn get_context_recent(
 pub async fn get_projects(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<String>>, StatusCode> {
-    state.storage.get_all_projects().map(Json).map_err(|e| {
-        tracing::error!("Get projects failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    let storage = state.storage.clone();
+    tokio::task::spawn_blocking(move || storage.get_all_projects())
+        .await
+        .map_err(|e| {
+            tracing::error!("Get projects join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Get projects failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
 }
 
 pub async fn get_stats(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<StorageStats>, StatusCode> {
-    state.storage.get_stats().map(Json).map_err(|e| {
-        tracing::error!("Get stats failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    let storage = state.storage.clone();
+    tokio::task::spawn_blocking(move || storage.get_stats())
+        .await
+        .map_err(|e| {
+            tracing::error!("Get stats join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Get stats failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
 }
 
 pub async fn get_context_inject(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextQuery>,
 ) -> Result<Json<Vec<Observation>>, StatusCode> {
-    state
-        .storage
-        .get_context_for_project(&query.project, query.limit)
+    let storage = state.storage.clone();
+    let project = query.project.clone();
+    let limit = query.limit;
+    tokio::task::spawn_blocking(move || storage.get_context_for_project(&project, limit))
+        .await
+        .map_err(|e| {
+            tracing::error!("Get context inject join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get context inject failed: {}", e);
@@ -92,16 +120,24 @@ pub async fn get_decisions(
     let q = if query.q.is_empty() {
         None
     } else {
-        Some(query.q.as_str())
+        Some(query.q.clone())
     };
-    state
-        .storage
-        .search_with_filters(q, query.project.as_deref(), Some("decision"), query.limit)
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get decisions failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    let storage = state.storage.clone();
+    let project = query.project.clone();
+    let limit = query.limit;
+    tokio::task::spawn_blocking(move || {
+        storage.search_with_filters(q.as_deref(), project.as_deref(), Some("decision"), limit)
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!("Get decisions join error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .map(Json)
+    .map_err(|e| {
+        tracing::error!("Get decisions failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 pub async fn get_changes(
@@ -111,16 +147,24 @@ pub async fn get_changes(
     let q = if query.q.is_empty() {
         None
     } else {
-        Some(query.q.as_str())
+        Some(query.q.clone())
     };
-    state
-        .storage
-        .search_with_filters(q, query.project.as_deref(), Some("change"), query.limit)
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get changes failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    let storage = state.storage.clone();
+    let project = query.project.clone();
+    let limit = query.limit;
+    tokio::task::spawn_blocking(move || {
+        storage.search_with_filters(q.as_deref(), project.as_deref(), Some("change"), limit)
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!("Get changes join error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .map(Json)
+    .map_err(|e| {
+        tracing::error!("Get changes failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 pub async fn get_how_it_works(
@@ -132,9 +176,14 @@ pub async fn get_how_it_works(
     } else {
         format!("{} how-it-works", query.q)
     };
-    state
-        .storage
-        .hybrid_search(&search_query, query.limit)
+    let storage = state.storage.clone();
+    let limit = query.limit;
+    tokio::task::spawn_blocking(move || storage.hybrid_search(&search_query, limit))
+        .await
+        .map_err(|e| {
+            tracing::error!("Get how-it-works join error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get how-it-works failed: {}", e);
@@ -153,13 +202,21 @@ pub async fn context_preview(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextPreviewQuery>,
 ) -> Result<Json<ContextPreview>, StatusCode> {
-    let observations = state
-        .storage
-        .get_context_for_project(&query.project, query.limit)
-        .map_err(|e| {
-            tracing::error!("Context preview failed: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let storage = state.storage.clone();
+    let project = query.project.clone();
+    let limit = query.limit;
+    let observations = tokio::task::spawn_blocking(move || {
+        storage.get_context_for_project(&project, limit)
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!("Context preview join error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?
+    .map_err(|e| {
+        tracing::error!("Context preview failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     let preview = if query.format == "full" {
         observations
             .iter()
