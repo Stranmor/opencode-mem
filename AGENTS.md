@@ -36,7 +36,7 @@ Last reviewed commit: `1341e93fcab15b9caf48bc947d8521b4a97515d8`
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| **Infinite Memory** | 🚧 WIP | PostgreSQL + pgvector backend for long-term AGI memory. Has known issues: session mixing in compression pipeline, no hour/day summaries. Disabled by default (INFINITE_MEMORY_URL not set). |
+| **Infinite Memory** | ✅ Ready | PostgreSQL + pgvector backend for long-term AGI memory. Session isolation, hierarchical summaries (5min→hour→day), content truncation. Enabled via INFINITE_MEMORY_URL. |
 
 ## Upstream Sync
 

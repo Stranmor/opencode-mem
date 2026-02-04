@@ -71,17 +71,42 @@ pub struct Summary {
     pub event_count: i32,
 }
 
+/// Configuration for InfiniteMemory
+#[derive(Debug, Clone)]
+pub struct InfiniteMemoryConfig {
+    pub api_base: String,
+    pub model: String,
+}
+
+impl Default for InfiniteMemoryConfig {
+    fn default() -> Self {
+        Self {
+            api_base: "https://antigravity.quantumind.ru".to_string(),
+            model: "gemini-3-flash".to_string(),
+        }
+    }
+}
+
 /// Infinite memory storage client
 pub struct InfiniteMemory {
     pool: PgPool,
     api_key: String,
-    api_base: String,
+    config: InfiniteMemoryConfig,
     http_client: reqwest::Client,
 }
 
 impl InfiniteMemory {
-    /// Create new connection to infinite memory
+    /// Create new connection with default config
     pub async fn new(database_url: &str, api_key: &str) -> Result<Self> {
+        Self::with_config(database_url, api_key, InfiniteMemoryConfig::default()).await
+    }
+
+    /// Create new connection with custom config
+    pub async fn with_config(
+        database_url: &str,
+        api_key: &str,
+        config: InfiniteMemoryConfig,
+    ) -> Result<Self> {
         let pool = PgPoolOptions::new()
             .max_connections(5)
             .connect(database_url)
@@ -90,7 +115,7 @@ impl InfiniteMemory {
         Ok(Self {
             pool,
             api_key: api_key.to_string(),
-            api_base: "https://antigravity.quantumind.ru".to_string(),
+            config,
             http_client: reqwest::Client::new(),
         })
     }
@@ -176,22 +201,38 @@ impl InfiniteMemory {
     }
 
     /// Compress events using Gemini Flash
+    /// Truncates large content to prevent context window exhaustion
     pub async fn compress_events(&self, events: &[StoredEvent]) -> Result<String> {
+        const MAX_CONTENT_CHARS: usize = 500;
+        const MAX_TOTAL_CHARS: usize = 8000;
+        
         if events.is_empty() {
             return Ok(String::new());
         }
 
-        let events_text: Vec<String> = events
-            .iter()
-            .map(|e| {
-                format!(
-                    "[{}] {}: {}",
-                    e.event_type,
-                    e.ts.format("%H:%M:%S"),
-                    serde_json::to_string(&e.content).unwrap_or_default()
-                )
-            })
-            .collect();
+        let mut events_text: Vec<String> = Vec::with_capacity(events.len());
+        let mut total_chars = 0usize;
+        
+        for e in events {
+            let content_str = serde_json::to_string(&e.content).unwrap_or_default();
+            let truncated = if content_str.len() > MAX_CONTENT_CHARS {
+                format!("{}...(truncated)", &content_str[..MAX_CONTENT_CHARS])
+            } else {
+                content_str
+            };
+            let line = format!(
+                "[{}] {}: {}",
+                e.event_type,
+                e.ts.format("%H:%M:%S"),
+                truncated
+            );
+            total_chars += line.len();
+            if total_chars > MAX_TOTAL_CHARS {
+                events_text.push(format!("...({} more events truncated)", events.len() - events_text.len()));
+                break;
+            }
+            events_text.push(line);
+        }
 
         let prompt = format!(
             "Сожми эти {} событий в 2-3 ключевых факта на русском. \
@@ -201,10 +242,10 @@ impl InfiniteMemory {
         );
 
         let response = self.http_client
-            .post(format!("{}/v1/chat/completions", self.api_base))
+            .post(format!("{}/v1/chat/completions", self.config.api_base))
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&serde_json::json!({
-                "model": "gemini-3-flash",
+                "model": self.config.model,
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 500
             }))
@@ -270,17 +311,238 @@ impl InfiniteMemory {
     }
 
     /// Run compression pipeline (call periodically)
+    /// Groups events by session_id to prevent context leakage between sessions
     pub async fn run_compression_pipeline(&self) -> Result<u32> {
-        let events = self.get_unsummarized_events(50).await?;
+        let events = self.get_unsummarized_events(100).await?;
         if events.is_empty() {
             return Ok(0);
         }
 
-        tracing::info!("Compressing {} events", events.len());
-        let summary = self.compress_events(&events).await?;
-        self.create_5min_summary(&events, &summary).await?;
+        // Group events by session_id
+        let mut sessions: std::collections::HashMap<String, Vec<StoredEvent>> =
+            std::collections::HashMap::new();
+        for event in events {
+            sessions
+                .entry(event.session_id.clone())
+                .or_default()
+                .push(event);
+        }
 
-        Ok(events.len() as u32)
+        let mut total_processed = 0u32;
+        for (session_id, session_events) in sessions {
+            if session_events.is_empty() {
+                continue;
+            }
+            tracing::info!(
+                "Compressing {} events for session {}",
+                session_events.len(),
+                session_id
+            );
+            let summary = self.compress_events(&session_events).await?;
+            self.create_5min_summary(&session_events, &summary).await?;
+            total_processed += session_events.len() as u32;
+        }
+
+        Ok(total_processed)
+    }
+
+    /// Get 5-min summaries not yet aggregated into hour summaries
+    pub async fn get_unaggregated_5min_summaries(&self, limit: i64) -> Result<Vec<Summary>> {
+        let rows = sqlx::query_as::<_, (i64, DateTime<Utc>, DateTime<Utc>, Option<String>, String, i32)>(
+            r#"
+            SELECT id, ts_start, ts_end, project, content, event_count
+            FROM summaries_5min
+            WHERE summary_hour_id IS NULL
+            ORDER BY ts_start ASC
+            LIMIT $1
+            "#,
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(id, ts_start, ts_end, project, content, event_count)| Summary {
+                id,
+                ts_start,
+                ts_end,
+                project,
+                content,
+                event_count,
+            })
+            .collect())
+    }
+
+    /// Create hour summary from 5-min summaries
+    pub async fn create_hour_summary(&self, summaries: &[Summary], content: &str) -> Result<i64> {
+        if summaries.is_empty() {
+            return Ok(0);
+        }
+
+        let ts_start = summaries.first().expect("BUG: empty summaries after check").ts_start;
+        let ts_end = summaries.last().expect("BUG: empty summaries after check").ts_end;
+        let project = summaries.first().and_then(|s| s.project.clone());
+        let total_events: i32 = summaries.iter().map(|s| s.event_count).sum();
+
+        let mut tx = self.pool.begin().await?;
+
+        let row: (i64,) = sqlx::query_as(
+            r#"
+            INSERT INTO summaries_hour (ts_start, ts_end, project, content, event_count)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
+            "#,
+        )
+        .bind(ts_start)
+        .bind(ts_end)
+        .bind(&project)
+        .bind(content)
+        .bind(total_events)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        let hour_id = row.0;
+        let summary_ids: Vec<i64> = summaries.iter().map(|s| s.id).collect();
+        sqlx::query("UPDATE summaries_5min SET summary_hour_id = $1 WHERE id = ANY($2)")
+            .bind(hour_id)
+            .bind(&summary_ids)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+        Ok(hour_id)
+    }
+
+    /// Get hour summaries not yet aggregated into day summaries
+    pub async fn get_unaggregated_hour_summaries(&self, limit: i64) -> Result<Vec<Summary>> {
+        let rows = sqlx::query_as::<_, (i64, DateTime<Utc>, DateTime<Utc>, Option<String>, String, i32)>(
+            r#"
+            SELECT id, ts_start, ts_end, project, content, event_count
+            FROM summaries_hour
+            WHERE summary_day_id IS NULL
+            ORDER BY ts_start ASC
+            LIMIT $1
+            "#,
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(id, ts_start, ts_end, project, content, event_count)| Summary {
+                id,
+                ts_start,
+                ts_end,
+                project,
+                content,
+                event_count,
+            })
+            .collect())
+    }
+
+    /// Create day summary from hour summaries
+    pub async fn create_day_summary(&self, summaries: &[Summary], content: &str) -> Result<i64> {
+        if summaries.is_empty() {
+            return Ok(0);
+        }
+
+        let ts_start = summaries.first().expect("BUG: empty summaries after check").ts_start;
+        let ts_end = summaries.last().expect("BUG: empty summaries after check").ts_end;
+        let project = summaries.first().and_then(|s| s.project.clone());
+        let total_events: i32 = summaries.iter().map(|s| s.event_count).sum();
+
+        let mut tx = self.pool.begin().await?;
+
+        let row: (i64,) = sqlx::query_as(
+            r#"
+            INSERT INTO summaries_day (ts_start, ts_end, project, content, event_count)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id
+            "#,
+        )
+        .bind(ts_start)
+        .bind(ts_end)
+        .bind(&project)
+        .bind(content)
+        .bind(total_events)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        let day_id = row.0;
+        let summary_ids: Vec<i64> = summaries.iter().map(|s| s.id).collect();
+        sqlx::query("UPDATE summaries_hour SET summary_day_id = $1 WHERE id = ANY($2)")
+            .bind(day_id)
+            .bind(&summary_ids)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await?;
+        Ok(day_id)
+    }
+
+    /// Compress summaries into higher-level summary
+    pub async fn compress_summaries(&self, summaries: &[Summary]) -> Result<String> {
+        if summaries.is_empty() {
+            return Ok(String::new());
+        }
+
+        let summaries_text: Vec<String> = summaries
+            .iter()
+            .map(|s| format!("[{} - {}] {}", s.ts_start.format("%H:%M"), s.ts_end.format("%H:%M"), s.content))
+            .collect();
+
+        let prompt = format!(
+            "Объедини эти {} сводок в одну краткую сводку на русском (2-3 предложения). \
+             Сохрани ключевые факты, файлы, решения.\n\n{}",
+            summaries.len(),
+            summaries_text.join("\n\n")
+        );
+
+        let response = self.http_client
+            .post(format!("{}/v1/chat/completions", self.config.api_base))
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&serde_json::json!({
+                "model": self.config.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 300
+            }))
+            .send()
+            .await?
+            .error_for_status()?
+            .json::<serde_json::Value>()
+            .await?;
+
+        Ok(response["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("")
+            .to_string())
+    }
+
+    /// Run full hierarchical compression pipeline
+    pub async fn run_full_compression(&self) -> Result<(u32, u32, u32)> {
+        let events_processed = self.run_compression_pipeline().await?;
+        
+        let summaries_5min = self.get_unaggregated_5min_summaries(12).await?;
+        let hours_created = if summaries_5min.len() >= 6 {
+            let content = self.compress_summaries(&summaries_5min).await?;
+            self.create_hour_summary(&summaries_5min, &content).await?;
+            1u32
+        } else {
+            0u32
+        };
+
+        let summaries_hour = self.get_unaggregated_hour_summaries(24).await?;
+        let days_created = if summaries_hour.len() >= 12 {
+            let content = self.compress_summaries(&summaries_hour).await?;
+            self.create_day_summary(&summaries_hour, &content).await?;
+            1u32
+        } else {
+            0u32
+        };
+
+        Ok((events_processed, hours_created, days_created))
     }
 
     /// Search events by text (FTS on content)
