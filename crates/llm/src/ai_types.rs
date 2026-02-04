@@ -34,8 +34,14 @@ pub(crate) struct ResponseMessage {
     pub content: String,
 }
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Deserialize)]
 pub(crate) struct ObservationJson {
+    #[serde(default = "default_true")]
+    pub should_save: bool,
     #[serde(rename = "type")]
     pub observation_type: String,
     pub title: String,

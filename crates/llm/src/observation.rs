@@ -27,27 +27,45 @@ impl LlmClient {
         id: &str,
         input: &ObservationInput,
         project: Option<&str>,
-    ) -> Result<Observation> {
+    ) -> Result<Option<Observation>> {
         let filtered_output = filter_private_content(&input.output.output);
         let filtered_title = filter_private_content(&input.output.title);
 
         let prompt = format!(
-            r#"Analyze this tool execution and extract a structured observation.
+            r#"Analyze this tool execution and decide if it's worth remembering.
 
 Tool: {}
 Output Title: {}
 Output Content: {}
 
-Return JSON with these fields:
+FIRST DECIDE: Is this event worth saving for future reference?
+
+SAVE if it contains:
+- Bug fix with solution (how a problem was solved)
+- Pattern or technique that can be reused
+- Gotcha or pitfall to avoid
+- Important decision with reasoning
+- New feature implementation details
+- Useful discovery about a library/tool/API
+
+DO NOT SAVE trivial events like:
+- "Command executed successfully" with no useful output
+- Simple file reads without insights
+- Routine operations (git status, ls, etc.)
+- Failed commands that don't teach anything
+- Meta-observations about the system itself
+
+Return JSON:
+- should_save: boolean - false if trivial, true if worth remembering
 - type: one of "bugfix", "feature", "refactor", "change", "discovery", "decision"
 - title: concise title (max 100 chars)
 - subtitle: optional one-line context
-- narrative: optional 2-3 sentence explanation of what happened and why
-- facts: array of specific facts learned (file paths, function names, decisions)
+- narrative: 2-3 sentence explanation of what was learned and why it matters
+- facts: array of specific actionable facts
 - concepts: array from ["how-it-works", "why-it-exists", "what-changed", "problem-solution", "gotcha", "pattern", "trade-off"]
-- files_read: array of file paths that were read or searched
-- files_modified: array of file paths that were created or modified
-- keywords: array of 5-10 semantic keywords for search (technologies, patterns, concepts)"#,
+- files_read: array of file paths
+- files_modified: array of file paths
+- keywords: 5-10 semantic keywords for search"#,
             input.tool,
             filtered_title,
             truncate(&filtered_output, MAX_OUTPUT_LEN),
@@ -105,6 +123,11 @@ Return JSON with these fields:
             ))
         })?;
 
+        if !obs_json.should_save {
+            tracing::debug!("Skipping trivial observation: {}", obs_json.title);
+            return Ok(None);
+        }
+
         let mut concepts = Vec::new();
         for s in &obs_json.concepts {
             if let Some(concept) = parse_concept(s) {
@@ -112,7 +135,7 @@ Return JSON with these fields:
             }
         }
 
-        Ok(Observation {
+        Ok(Some(Observation {
             id: id.to_string(),
             session_id: input.session_id.clone(),
             project: project.map(|s| s.to_string()),
@@ -135,6 +158,6 @@ Return JSON with these fields:
             prompt_number: None,
             discovery_tokens: None,
             created_at: Utc::now(),
-        })
+        }))
     }
 }

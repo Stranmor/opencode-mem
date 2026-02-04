@@ -32,18 +32,21 @@ impl ObservationService {
         }
     }
 
-    pub async fn process(&self, id: &str, tool_call: ToolCall) -> anyhow::Result<Observation> {
-        let observation = self.compress_and_save(id, &tool_call).await?;
-        self.extract_knowledge(&observation).await;
-        self.store_infinite_memory(&tool_call, &observation).await;
-        Ok(observation)
+    pub async fn process(&self, id: &str, tool_call: ToolCall) -> anyhow::Result<Option<Observation>> {
+        if let Some(observation) = self.compress_and_save(id, &tool_call).await? {
+            self.extract_knowledge(&observation).await;
+            self.store_infinite_memory(&tool_call, &observation).await;
+            Ok(Some(observation))
+        } else {
+            Ok(None)
+        }
     }
 
     pub async fn compress_and_save(
         &self,
         id: &str,
         tool_call: &ToolCall,
-    ) -> anyhow::Result<Observation> {
+    ) -> anyhow::Result<Option<Observation>> {
         let input = ObservationInput {
             tool: tool_call.tool.clone(),
             session_id: tool_call.session_id.clone(),
@@ -54,10 +57,17 @@ impl ObservationService {
                 metadata: tool_call.input.clone(),
             },
         };
-        let observation = self
+        let observation = match self
             .llm
             .compress_to_observation(id, &input, tool_call.project.as_deref())
-            .await?;
+            .await?
+        {
+            Some(obs) => obs,
+            None => {
+                tracing::debug!("Observation filtered as trivial");
+                return Ok(None);
+            }
+        };
         self.storage.save_observation(&observation)?;
 
         // Auto-generate embedding for semantic search
@@ -88,7 +98,7 @@ impl ObservationService {
             observation.title
         );
         let _ = self.event_tx.send(serde_json::to_string(&observation)?);
-        Ok(observation)
+        Ok(Some(observation))
     }
 
     pub async fn extract_knowledge(&self, observation: &Observation) {

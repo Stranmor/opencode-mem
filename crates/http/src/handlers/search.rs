@@ -64,7 +64,13 @@ pub async fn semantic_search(
                         let limit = query.limit;
                         blocking_json(move || storage.hybrid_search(&q, limit)).await
                     }
-                    Err(e) => Err(e),
+                    Err(e) => {
+                        tracing::warn!("Semantic search storage error, falling back to hybrid: {}", e);
+                        let storage = state.storage.clone();
+                        let q = query.q.clone();
+                        let limit = query.limit;
+                        blocking_json(move || storage.hybrid_search(&q, limit)).await
+                    }
                 }
             }
             Err(e) => {

@@ -32,19 +32,31 @@ impl Storage {
 
         let query_bytes = query_vec.as_bytes();
 
-        let mut stmt = conn.prepare(
+        let stmt_result = conn.prepare(
             r#"SELECT o.id, o.title, o.subtitle, o.observation_type,
                       (1.0 - vec_distance_cosine(v.embedding, ?1)) as similarity
                FROM observations_vec v
                JOIN observations o ON o.rowid = v.rowid
                ORDER BY similarity DESC
                LIMIT ?2"#,
-        )?;
+        );
 
-        let results = stmt
-            .query_map(params![query_bytes, limit], map_search_result)?
-            .filter_map(log_row_error)
-            .collect();
+        let mut stmt = match stmt_result {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!("Vector search unavailable (sqlite-vec not loaded?): {}", e);
+                return Ok(Vec::new());
+            }
+        };
+
+        let query_result = stmt.query_map(params![query_bytes, limit], map_search_result);
+        let results = match query_result {
+            Ok(rows) => rows.filter_map(log_row_error).collect(),
+            Err(e) => {
+                tracing::warn!("Vector query failed, returning empty: {}", e);
+                return Ok(Vec::new());
+            }
+        };
 
         Ok(results)
     }
@@ -108,20 +120,30 @@ impl Storage {
         let query_bytes = query_vec.as_bytes();
         let mut vec_scores: HashMap<String, f64> = HashMap::new();
 
-        let mut stmt = conn.prepare(
-            r#"SELECT o.id, (1.0 - vec_distance_cosine(v.embedding, ?1)) as similarity
-               FROM observations_vec v
-               JOIN observations o ON o.rowid = v.rowid
-               ORDER BY similarity DESC
-               LIMIT ?2"#,
-        )?;
+        let vec_sql = r#"SELECT o.id, (1.0 - vec_distance_cosine(v.embedding, ?1)) as similarity
+                   FROM observations_vec v
+                   JOIN observations o ON o.rowid = v.rowid
+                   ORDER BY similarity DESC
+                   LIMIT ?2"#;
 
-        let vec_results: Vec<(String, f64)> = stmt
-            .query_map(params![query_bytes, limit * 3], |row| {
+        let vec_result: Result<Vec<(String, f64)>, rusqlite::Error> = (|| {
+            let mut stmt = conn.prepare(vec_sql)?;
+            let rows = stmt.query_map(params![query_bytes, limit * 3], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
-            })?
-            .filter_map(log_row_error)
-            .collect();
+            })?;
+            Ok(rows.filter_map(log_row_error).collect())
+        })();
+
+        let vec_results: Vec<(String, f64)> = match vec_result {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    "Vector search failed in hybrid_search_v2, falling back to text-only: {}",
+                    e
+                );
+                return self.hybrid_search(query, limit);
+            }
+        };
 
         for (id, score) in vec_results {
             vec_scores.insert(id, score);

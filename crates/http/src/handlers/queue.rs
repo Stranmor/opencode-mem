@@ -145,7 +145,13 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
     // If same message is processed twice (race condition), same observation ID is generated
     let id = uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, msg.id.to_string().as_bytes())
         .to_string();
-    let observation = state.llm.compress_to_observation(&id, &input, None).await?;
+    let observation = match state.llm.compress_to_observation(&id, &input, None).await? {
+        Some(obs) => obs,
+        None => {
+            tracing::debug!("Observation filtered as trivial for message {}", msg.id);
+            return Ok(());
+        }
+    };
     let storage = state.storage.clone();
     let obs_clone = observation.clone();
     tokio::task::spawn_blocking(move || storage.save_observation(&obs_clone))

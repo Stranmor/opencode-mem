@@ -18,26 +18,27 @@ pub async fn observe(
     State(state): State<Arc<AppState>>,
     Json(tool_call): Json<ToolCall>,
 ) -> Result<Json<ObserveResponse>, StatusCode> {
-    let id = uuid::Uuid::new_v4().to_string();
+    // Serialize tool_call.input as tool_input for queue processing
+    let tool_input = serde_json::to_string(&tool_call.input).ok();
+    let storage = state.storage.clone();
+    let session_id = tool_call.session_id.clone();
+    let tool_name = tool_call.tool.clone();
+    let tool_response = tool_call.output.clone();
 
-    let service = state.observation_service.clone();
-    let semaphore = state.semaphore.clone();
-    let id_clone = id.clone();
-    tokio::spawn(async move {
-        let permit = match semaphore.acquire().await {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::error!("Semaphore closed, cannot process observation: {}", e);
-                return;
-            }
-        };
-        if let Err(e) = service.process(&id_clone, tool_call).await {
-            tracing::error!("Failed to process observation: {}", e);
-        }
-        drop(permit);
-    });
+    let message_id = crate::blocking::blocking_result(move || {
+        storage.queue_message(
+            &session_id,
+            Some(&tool_name),
+            tool_input.as_deref(),
+            Some(&tool_response),
+        )
+    })
+    .await?;
 
-    Ok(Json(ObserveResponse { id, queued: true }))
+    Ok(Json(ObserveResponse {
+        id: message_id.to_string(),
+        queued: true,
+    }))
 }
 
 pub async fn get_observation(
