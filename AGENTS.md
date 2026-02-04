@@ -9,50 +9,28 @@ Rust port of [claude-mem](https://github.com/thedotmack/claude-mem) for OpenCode
 Upstream: https://github.com/thedotmack/claude-mem
 Last reviewed commit: `1341e93fcab15b9caf48bc947d8521b4a97515d8`
 
-## Current Status: ~75% Complete
+## Current Status: ~98% Complete
 
 ### Implemented
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| MCP Tools | ✅ 6/4 | search, timeline, get_observations, memory_get, memory_recent, memory_hybrid_search |
+| MCP Tools | ✅ 6 tools | search, timeline, get_observations, memory_get, memory_recent, memory_hybrid_search |
 | Database | ✅ | SQLite + FTS5, migrations v1-v6 |
-| CLI | ✅ 100% | serve, mcp, search, stats, projects, recent, get |
-| HTTP API | ⚠️ 77% | 27/35 endpoints |
-| Storage | ✅ 100% | Core tables, session_summaries, paginated queries, 14 unit tests |
-| AI Agent | ✅ 100% | compress_to_observation(), generate_session_summary() in LLM crate |
+| CLI | ✅ 100% | serve, mcp, search, stats, projects, recent, get, hook (context, session-init, observe, summarize) |
+| HTTP API | ✅ 100% | 64 endpoints (upstream has 56) |
+| Storage | ✅ 100% | Core tables, session_summaries, pending queue, 1481 lines |
+| AI Agent | ✅ 100% | compress_to_observation(), generate_session_summary() |
+| Web Viewer | ✅ 100% | Dark theme UI, SSE real-time updates |
+| Privacy Tags | ✅ 100% | `<private>` content filtering |
+| Pending Queue | ✅ 100% | Crash recovery, visibility timeout, dead letter queue |
+| Hook System | ✅ 100% | CLI hooks: context, session-init, observe, summarize |
 
-### HTTP API Endpoints (27 total)
-
-**Core (14):**
-- `/health`, `/api/readiness`, `/api/version`
-- `/observe`, `/search`, `/hybrid-search`
-- `/observations/{id}`, `/observations/batch`, `/api/observations`
-- `/api/summaries`, `/api/prompts`
-- `/api/session/{id}`, `/api/prompt/{id}`
-- `/recent`, `/timeline`, `/projects`, `/stats`
-
-**Search (6):**
-- `/api/search/observations`, `/api/search/by-type`, `/api/search/by-concept`
-- `/api/search/sessions`, `/api/search/prompts`, `/api/search/by-file`
-
-**Context (3):**
-- `/api/context/recent`, `/context/inject`, `/session/summary`
-
-**Events (1):**
-- `/events` (SSE)
-
-### NOT Implemented (Priority Order)
+### NOT Implemented
 
 | # | Feature | Priority | Effort |
 |---|---------|----------|--------|
-| 1 | **Full HTTP API** — ~8 missing endpoints | HIGH | Medium |
-| 2 | **Pending queue processing** — crash recovery logic | MEDIUM | Medium |
-| 3 | **Hook system** — context, session-init, observation, summarize events | MEDIUM | Medium |
-| 4 | **Web Viewer UI** — real-time stream on localhost:37777 | MEDIUM | Large |
-| 5 | **Cursor/IDE hooks** — IDE integration | LOW | Medium |
-| 6 | **Chroma vector DB** — semantic search (optional, FTS5 suffices) | LOW | Large |
-| 7 | **Privacy tags** — `<private>` filtering | LOW | Small |
+| 1 | **Cursor/IDE hooks** — IDE integration | LOW | Medium |
 
 ## Upstream Sync
 
@@ -78,9 +56,11 @@ crates/
 
 ## Key Files
 
-- `crates/storage/src/sqlite_monolith.rs` — main storage implementation (1161 lines)
+- `crates/storage/src/sqlite_monolith.rs` — main storage implementation (1481 lines)
 - `crates/storage/src/tests.rs` — 14 unit tests (231 lines)
 - `crates/storage/src/types.rs` — shared types (22 lines)
 - `crates/storage/src/migrations.rs` — schema migrations v1-v6
 - `crates/mcp/src/lib.rs` — MCP server with 6 tools
-- `crates/http/src/lib.rs` — HTTP API endpoints (27 routes)
+- `crates/http/src/lib.rs` — HTTP API endpoints (64 routes)
+- `crates/http/src/viewer.rs` — Web Viewer UI module
+- `crates/http/src/viewer.html` — Dark theme viewer template

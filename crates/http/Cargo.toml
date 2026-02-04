@@ -7,6 +7,7 @@ edition.workspace = true
 opencode-mem-core = { workspace = true }
 opencode-mem-storage = { workspace = true }
 opencode-mem-llm = { workspace = true }
+opencode-mem-infinite = { workspace = true }
 axum = { workspace = true }
 tower-http = { workspace = true }
 tokio = { workspace = true }

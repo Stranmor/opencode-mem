@@ -1,0 +1,15 @@
+[package]
+name = "opencode-mem-infinite"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono", "json"] }
+pgvector = { version = "0.4", features = ["sqlx"] }
+reqwest = { workspace = true }

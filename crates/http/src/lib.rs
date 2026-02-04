@@ -1,4 +1,6 @@
 //! HTTP API server (Axum)
+mod viewer;
+
 use axum::{
     extract::{ConnectInfo, Path, Query, State},
     http::StatusCode,
@@ -20,6 +22,7 @@ use opencode_mem_core::{
     Observation, ObservationInput, SearchResult, Session, SessionStatus, SessionSummary, ToolCall,
     ToolOutput, UserPrompt,
 };
+use opencode_mem_infinite::{InfiniteMemory, tool_event};
 use opencode_mem_llm::LlmClient;
 use opencode_mem_storage::{
     PaginatedResult, PendingMessage, QueueStats, Storage, StorageStats,
@@ -173,10 +176,12 @@ pub struct AppState {
     pub event_tx: broadcast::Sender<String>,
     pub processing_active: AtomicBool,
     pub settings: RwLock<Settings>,
+    pub infinite_mem: Option<Arc<InfiniteMemory>>,
 }
 
 pub fn create_router(state: Arc<AppState>) -> Router {
     Router::new()
+        .route("/", get(viewer::serve_viewer))
         .route("/health", get(health))
         .route("/api/readiness", get(readiness))
         .route("/api/version", get(version))
@@ -310,8 +315,8 @@ async fn process_observation(
         call_id: tool_call.call_id.clone(),
         output: ToolOutput {
             title: format!("Observation from {}", tool_call.tool),
-            output: tool_call.output,
-            metadata: tool_call.input,
+            output: tool_call.output.clone(),
+            metadata: tool_call.input.clone(),
         },
     };
     let observation = state
@@ -325,6 +330,22 @@ async fn process_observation(
         observation.title
     );
     let _ = state.event_tx.send(serde_json::to_string(&observation)?);
+    
+    // Store in infinite memory (PostgreSQL + pgvector)
+    if let Some(ref infinite_mem) = state.infinite_mem {
+        let event = tool_event(
+            &tool_call.session_id,
+            tool_call.project.as_deref(),
+            &tool_call.tool,
+            tool_call.input,
+            serde_json::json!({"output": tool_call.output}),
+            observation.files_modified.clone(),
+        );
+        if let Err(e) = infinite_mem.store_event(event).await {
+            tracing::warn!("Failed to store in infinite memory: {}", e);
+        }
+    }
+    
     Ok(())
 }
 

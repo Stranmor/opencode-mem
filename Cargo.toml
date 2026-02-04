@@ -10,6 +10,7 @@ members = [
     "crates/mcp",
     "crates/plugin",
     "crates/cli",
+    "crates/infinite-memory",
 ]
 
 [workspace.package]
@@ -63,6 +64,7 @@ opencode-mem-llm = { path = "crates/llm" }
 opencode-mem-http = { path = "crates/http" }
 opencode-mem-mcp = { path = "crates/mcp" }
 opencode-mem-plugin = { path = "crates/plugin" }
+opencode-mem-infinite = { path = "crates/infinite-memory" }
 
 [profile.release]
 lto = true
