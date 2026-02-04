@@ -1,8 +1,11 @@
+use std::io;
+use std::result::Result as StdResult;
+
 use thiserror::Error;
 
 /// Errors that can occur in opencode-mem
 #[derive(Error, Debug)]
-pub enum Error {
+pub enum MemoryError {
     #[error("Storage error: {0}")]
     Storage(String),
 
@@ -28,7 +31,7 @@ pub enum Error {
     InvalidInput(String),
 
     #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
+    Io(#[from] io::Error),
 }
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = StdResult<T, MemoryError>;

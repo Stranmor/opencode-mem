@@ -2,21 +2,17 @@
 
 /// Strip markdown code block wrappers from JSON content.
 ///
-/// Handles both `\`\`\`json ... \`\`\`` and plain `\`\`\` ... \`\`\`` wrappers.
+/// Handles both `` ```json ... ``` `` and plain `` ``` ... ``` `` wrappers.
+#[must_use]
 pub fn strip_markdown_json(content: &str) -> &str {
     let trimmed = content.trim();
     if trimmed.starts_with("```json") {
         trimmed
             .strip_prefix("```json")
             .and_then(|s| s.strip_suffix("```"))
-            .map(|s| s.trim())
-            .unwrap_or(trimmed)
+            .map_or(trimmed, str::trim)
     } else if trimmed.starts_with("```") {
-        trimmed
-            .strip_prefix("```")
-            .and_then(|s| s.strip_suffix("```"))
-            .map(|s| s.trim())
-            .unwrap_or(trimmed)
+        trimmed.strip_prefix("```").and_then(|s| s.strip_suffix("```")).map_or(trimmed, str::trim)
     } else {
         trimmed
     }

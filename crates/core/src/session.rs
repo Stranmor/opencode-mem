@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -22,7 +24,7 @@ pub enum SessionStatus {
     Failed,
 }
 
-impl std::str::FromStr for SessionStatus {
+impl FromStr for SessionStatus {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -30,7 +32,7 @@ impl std::str::FromStr for SessionStatus {
             "active" => Ok(Self::Active),
             "completed" => Ok(Self::Completed),
             "failed" => Ok(Self::Failed),
-            _ => Err(anyhow::anyhow!("Invalid session status: {}", s)),
+            _ => Err(anyhow::anyhow!("Invalid session status: {s}")),
         }
     }
 }

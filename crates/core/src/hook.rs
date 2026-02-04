@@ -2,6 +2,9 @@
 //!
 //! Hooks are triggered by IDE events and call HTTP endpoints on the worker service.
 
+use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 /// Hook event types triggered by IDE/CLI
@@ -18,9 +21,9 @@ pub enum HookEvent {
     Summarize,
 }
 
-impl std::fmt::Display for HookEvent {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+impl Display for HookEvent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match *self {
             Self::Context => write!(f, "context"),
             Self::SessionInit => write!(f, "session-init"),
             Self::Observation => write!(f, "observation"),
@@ -29,7 +32,7 @@ impl std::fmt::Display for HookEvent {
     }
 }
 
-impl std::str::FromStr for HookEvent {
+impl FromStr for HookEvent {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -38,7 +41,7 @@ impl std::str::FromStr for HookEvent {
             "session-init" | "session_init" => Ok(Self::SessionInit),
             "observation" | "observe" => Ok(Self::Observation),
             "summarize" => Ok(Self::Summarize),
-            _ => Err(anyhow::anyhow!("Invalid hook event: {}", s)),
+            _ => Err(anyhow::anyhow!("Invalid hook event: {s}")),
         }
     }
 }
@@ -51,7 +54,7 @@ pub struct ContextHookRequest {
     pub limit: usize,
 }
 
-fn default_context_limit() -> usize {
+const fn default_context_limit() -> usize {
     50
 }
 

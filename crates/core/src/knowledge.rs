@@ -3,6 +3,8 @@
 //! Cross-project knowledge that allows AI agents to learn skills/patterns once
 //! and apply them across ALL projects (solving the "Groundhog Day" problem).
 
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 /// Type of knowledge entry
@@ -22,8 +24,9 @@ pub enum KnowledgeType {
 }
 
 impl KnowledgeType {
-    pub fn as_str(&self) -> &'static str {
-        match self {
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match *self {
             Self::Skill => "skill",
             Self::Pattern => "pattern",
             Self::Gotcha => "gotcha",
@@ -33,7 +36,7 @@ impl KnowledgeType {
     }
 }
 
-impl std::str::FromStr for KnowledgeType {
+impl FromStr for KnowledgeType {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -43,7 +46,7 @@ impl std::str::FromStr for KnowledgeType {
             "gotcha" => Ok(Self::Gotcha),
             "architecture" => Ok(Self::Architecture),
             "tool_usage" | "toolusage" => Ok(Self::ToolUsage),
-            other => Err(format!("unknown knowledge type: {}", other)),
+            other => Err(format!("unknown knowledge type: {other}")),
         }
     }
 }

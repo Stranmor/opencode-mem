@@ -1,6 +1,6 @@
 //! Storage backend abstraction trait
 //!
-//! Provides a common interface for SQLite (Storage) and PostgreSQL (InfiniteMemory) backends.
+//! Provides a common interface for `SQLite` (`Storage`) and `PostgreSQL` (`InfiniteMemory`) backends.
 //! Enables mocking, testing, and backend-agnostic code.
 
 use crate::{Observation, SearchResult, Session};
@@ -9,8 +9,8 @@ use async_trait::async_trait;
 
 /// Common storage backend interface for observations and sessions.
 ///
-/// Both SQLite-based `Storage` and PostgreSQL-based `InfiniteMemory` implement this trait.
-/// The trait is async to accommodate PostgreSQL's async nature; SQLite implementations
+/// Both `SQLite`-based `Storage` and `PostgreSQL`-based `InfiniteMemory` implement this trait.
+/// The trait is async to accommodate `PostgreSQL`'s async nature; `SQLite` implementations
 /// use `spawn_blocking` internally.
 #[async_trait]
 pub trait StorageBackend: Send + Sync {

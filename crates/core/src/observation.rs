@@ -1,11 +1,13 @@
+use std::str::FromStr;
+use std::sync::LazyLock;
+
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::sync::LazyLock;
 
-static PRIVATE_TAG_REGEX: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?is)<private>.*?</private>").expect("Invalid privacy tag regex")
-});
+#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
+static PRIVATE_TAG_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new("(?is)<private>.*?</private>").unwrap());
 
 /// Filters out content wrapped in `<private>...</private>` tags.
 pub fn filter_private_content(text: &str) -> String {
@@ -16,34 +18,33 @@ pub fn filter_private_content(text: &str) -> String {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ObservationType {
-    /// Bug fix
     Bugfix,
-    /// New feature implementation
     Feature,
-    /// Code refactoring
     Refactor,
-    /// General change
     Change,
-    /// Discovery or learning
     Discovery,
-    /// Architectural or design decision
     Decision,
+    Gotcha,
+    Preference,
 }
 
 impl ObservationType {
-    pub fn as_str(&self) -> &'static str {
-        match self {
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match *self {
             Self::Bugfix => "bugfix",
             Self::Feature => "feature",
             Self::Refactor => "refactor",
             Self::Change => "change",
             Self::Discovery => "discovery",
             Self::Decision => "decision",
+            Self::Gotcha => "gotcha",
+            Self::Preference => "preference",
         }
     }
 }
 
-impl std::str::FromStr for ObservationType {
+impl FromStr for ObservationType {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -54,7 +55,9 @@ impl std::str::FromStr for ObservationType {
             "change" => Ok(Self::Change),
             "discovery" => Ok(Self::Discovery),
             "decision" => Ok(Self::Decision),
-            other => Err(format!("unknown observation type: {}", other)),
+            "gotcha" => Ok(Self::Gotcha),
+            "preference" => Ok(Self::Preference),
+            other => Err(format!("unknown observation type: {other}")),
         }
     }
 }
@@ -95,7 +98,7 @@ pub struct Observation {
 }
 
 /// Semantic concepts for observation categorization
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum Concept {
     HowItWorks,
