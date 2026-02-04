@@ -3,3 +3,5 @@ Cargo.lock
 *.db
 *.sqlite
 .DS_Store
+.fastembed_cache/
+.sisyphus/
