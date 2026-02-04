@@ -858,8 +858,8 @@ async fn process_observation_for_session(
         call_id: tool_call.call_id.clone(),
         output: ToolOutput {
             title: format!("Observation from {}", tool_call.tool),
-            output: tool_call.output,
-            metadata: tool_call.input,
+            output: tool_call.output.clone(),
+            metadata: tool_call.input.clone(),
         },
     };
     let observation = state
@@ -873,6 +873,21 @@ async fn process_observation_for_session(
         observation.title
     );
     let _ = state.event_tx.send(serde_json::to_string(&observation)?);
+    
+    if let Some(ref infinite_mem) = state.infinite_mem {
+        let event = tool_event(
+            session_id,
+            tool_call.project.as_deref(),
+            &tool_call.tool,
+            tool_call.input,
+            serde_json::json!({"output": tool_call.output}),
+            observation.files_modified.clone(),
+        );
+        if let Err(e) = infinite_mem.store_event(event).await {
+            tracing::warn!("Failed to store in infinite memory: {}", e);
+        }
+    }
+    
     Ok(())
 }
 
@@ -1209,7 +1224,8 @@ async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> anyh
             title: format!("Observation from {}", tool_name),
             output: tool_response.to_string(),
             metadata: tool_input
-                .and_then(|s| serde_json::from_str(&s).ok())
+                .as_ref()
+                .and_then(|s| serde_json::from_str(s).ok())
                 .unwrap_or(serde_json::Value::Null),
         },
     };
@@ -1223,6 +1239,21 @@ async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> anyh
         observation.id
     );
     let _ = state.event_tx.send(serde_json::to_string(&observation)?);
+    
+    if let Some(ref infinite_mem) = state.infinite_mem {
+        let event = tool_event(
+            &msg.session_id,
+            None,
+            tool_name,
+            tool_input.and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(serde_json::Value::Null),
+            serde_json::json!({"output": tool_response}),
+            observation.files_modified.clone(),
+        );
+        if let Err(e) = infinite_mem.store_event(event).await {
+            tracing::warn!("Failed to store in infinite memory: {}", e);
+        }
+    }
+    
     Ok(())
 }
 
@@ -1503,6 +1534,8 @@ pub struct LogsResponse {
 
 #[allow(dead_code)]
 async fn get_logs(State(state): State<Arc<AppState>>) -> Result<Json<LogsResponse>, StatusCode> {
+    const MAX_BYTES: usize = 512 * 1024; // 512KB max
+    
     let settings = state.settings.read().await;
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let log_path = settings.log_path.clone();
@@ -1510,10 +1543,32 @@ async fn get_logs(State(state): State<Arc<AppState>>) -> Result<Json<LogsRespons
     let content = if let Some(log_path) = log_path {
         tokio::task::spawn_blocking(move || {
             let path = std::path::Path::new(&log_path);
-            if path.exists() {
+            if !path.exists() {
+                return String::new();
+            }
+            let metadata = std::fs::metadata(path).ok();
+            let file_size = metadata.map(|m| m.len() as usize).unwrap_or(0);
+            
+            if file_size <= MAX_BYTES {
                 std::fs::read_to_string(path).unwrap_or_default()
             } else {
-                String::new()
+                use std::io::{Read, Seek, SeekFrom};
+                let mut file = match std::fs::File::open(path) {
+                    Ok(f) => f,
+                    Err(_) => return String::new(),
+                };
+                let skip = file_size.saturating_sub(MAX_BYTES);
+                if file.seek(SeekFrom::Start(skip as u64)).is_err() {
+                    return String::new();
+                }
+                let mut buf = String::with_capacity(MAX_BYTES);
+                if file.read_to_string(&mut buf).is_err() {
+                    return String::new();
+                }
+                if let Some(newline_pos) = buf.find('\n') {
+                    buf = buf[newline_pos + 1..].to_string();
+                }
+                format!("... (truncated, showing last ~500KB) ...\n{}", buf)
             }
         })
         .await
@@ -1633,21 +1688,28 @@ async fn unified_timeline(
             .storage
             .get_timeline(None, None, query.before + query.after + 50)
             .unwrap_or_default();
-        let pos = all.iter().position(|o| o.id == anchor.id).unwrap_or(0);
-        let before_items: Vec<_> = all[..pos]
-            .iter()
-            .rev()
-            .take(query.before)
-            .cloned()
-            .collect();
-        let after_items: Vec<_> = all
-            .get(pos + 1..)
-            .unwrap_or(&[])
-            .iter()
-            .take(query.after)
-            .cloned()
-            .collect();
-        (before_items, after_items)
+        match all.iter().position(|o| o.id == anchor.id) {
+            Some(pos) => {
+                let before_items: Vec<_> = all[..pos]
+                    .iter()
+                    .rev()
+                    .take(query.before)
+                    .cloned()
+                    .collect();
+                let after_items: Vec<_> = all
+                    .get(pos + 1..)
+                    .unwrap_or(&[])
+                    .iter()
+                    .take(query.after)
+                    .cloned()
+                    .collect();
+                (before_items, after_items)
+            }
+            None => {
+                // Anchor not in recent timeline - return empty context
+                (Vec::new(), Vec::new())
+            }
+        }
     } else {
         (Vec::new(), Vec::new())
     };

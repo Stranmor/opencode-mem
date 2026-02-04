@@ -76,6 +76,7 @@ pub struct InfiniteMemory {
     pool: PgPool,
     api_key: String,
     api_base: String,
+    http_client: reqwest::Client,
 }
 
 impl InfiniteMemory {
@@ -90,6 +91,7 @@ impl InfiniteMemory {
             pool,
             api_key: api_key.to_string(),
             api_base: "https://antigravity.quantumind.ru".to_string(),
+            http_client: reqwest::Client::new(),
         })
     }
 
@@ -198,8 +200,7 @@ impl InfiniteMemory {
             events_text.join("\n")
         );
 
-        let client = reqwest::Client::new();
-        let response = client
+        let response = self.http_client
             .post(format!("{}/v1/chat/completions", self.api_base))
             .header("Authorization", format!("Bearer {}", self.api_key))
             .json(&serde_json::json!({
@@ -209,6 +210,7 @@ impl InfiniteMemory {
             }))
             .send()
             .await?
+            .error_for_status()?
             .json::<serde_json::Value>()
             .await?;
 
@@ -231,7 +233,8 @@ impl InfiniteMemory {
         let session_id = events.first().map(|e| e.session_id.clone());
         let project = events.first().and_then(|e| e.project.clone());
 
-        // Insert summary
+        let mut tx = self.pool.begin().await?;
+
         let row: (i64,) = sqlx::query_as(
             r#"
             INSERT INTO summaries_5min (ts_start, ts_end, session_id, project, content, event_count)
@@ -245,12 +248,11 @@ impl InfiniteMemory {
         .bind(&project)
         .bind(summary)
         .bind(events.len() as i32)
-        .fetch_one(&self.pool)
+        .fetch_one(&mut *tx)
         .await?;
 
         let summary_id = row.0;
 
-        // Link events to summary
         let event_ids: Vec<i64> = events.iter().map(|e| e.id).collect();
         sqlx::query(
             r#"
@@ -259,8 +261,10 @@ impl InfiniteMemory {
         )
         .bind(summary_id)
         .bind(&event_ids)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
+
+        tx.commit().await?;
 
         Ok(summary_id)
     }

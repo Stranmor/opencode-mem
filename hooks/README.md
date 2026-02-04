@@ -29,26 +29,29 @@ All hooks accept these environment variables:
 ### Hook-specific Variables
 
 **on-file-save.sh:**
-- `FILE_PATH` - Absolute path to saved file
+- First argument (`$1`) - Absolute path to saved file
 
 **on-session-end.sh:**
-- `DURATION` - Session duration in seconds
+- `DURATION` - Session duration in seconds (optional)
 
 ## IDE Integration Examples
 
-### Cursor/VS Code
+### VS Code (with Run on Save extension)
+
+Requires the [emeraldwalk.RunOnSave](https://marketplace.visualstudio.com/items?itemName=emeraldwalk.RunOnSave) extension.
 
 Add to `.vscode/settings.json`:
 
 ```json
 {
-  "files.saveDelay": 0,
-  "runOnSave.commands": [
-    {
-      "match": ".*",
-      "command": "./hooks/on-file-save.sh ${file}"
-    }
-  ]
+  "emeraldwalk.runonsave": {
+    "commands": [
+      {
+        "match": ".*",
+        "cmd": "./hooks/on-file-save.sh ${file}"
+      }
+    ]
+  }
 }
 ```
 

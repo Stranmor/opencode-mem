@@ -6,7 +6,7 @@ use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_mcp::run_mcp_server;
 use opencode_mem_storage::Storage;
-use std::io::Read;
+use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -79,6 +79,8 @@ enum HookCommands {
         session_id: Option<String>,
         #[arg(short, long)]
         project: Option<String>,
+        #[arg(short, long, help = "Tool input arguments as JSON string")]
+        input: Option<String>,
         #[arg(long, default_value = "http://127.0.0.1:37777")]
         endpoint: String,
     },
@@ -122,16 +124,13 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
-    let db_path = get_db_path();
-
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-
-    let storage = Storage::new(&db_path)?;
 
     match cli.command {
         Commands::Serve { port, host } => {
+            let db_path = get_db_path();
+            ensure_db_dir(&db_path)?;
+            let storage = Storage::new(&db_path)?;
+            
             let api_key = get_api_key()?;
             let llm = LlmClient::new(api_key.clone(), get_base_url());
             let (event_tx, _) = broadcast::channel(100);
@@ -172,6 +171,9 @@ async fn main() -> Result<()> {
             axum::serve(listener, router).await?;
         }
         Commands::Mcp => {
+            let db_path = get_db_path();
+            ensure_db_dir(&db_path)?;
+            let storage = Storage::new(&db_path)?;
             tokio::task::spawn_blocking(move || {
                 run_mcp_server(Arc::new(storage));
             })
@@ -183,6 +185,9 @@ async fn main() -> Result<()> {
             project,
             obs_type,
         } => {
+            let db_path = get_db_path();
+            ensure_db_dir(&db_path)?;
+            let storage = Storage::new(&db_path)?;
             let results = storage.search_with_filters(
                 Some(&query),
                 project.as_deref(),
@@ -192,23 +197,37 @@ async fn main() -> Result<()> {
             println!("{}", serde_json::to_string_pretty(&results)?);
         }
         Commands::Stats => {
+            let db_path = get_db_path();
+            ensure_db_dir(&db_path)?;
+            let storage = Storage::new(&db_path)?;
             let stats = storage.get_stats()?;
             println!("{}", serde_json::to_string_pretty(&stats)?);
         }
         Commands::Projects => {
+            let db_path = get_db_path();
+            ensure_db_dir(&db_path)?;
+            let storage = Storage::new(&db_path)?;
             let projects = storage.get_all_projects()?;
             println!("{}", serde_json::to_string_pretty(&projects)?);
         }
         Commands::Recent { limit } => {
+            let db_path = get_db_path();
+            ensure_db_dir(&db_path)?;
+            let storage = Storage::new(&db_path)?;
             let results = storage.get_recent(limit)?;
             println!("{}", serde_json::to_string_pretty(&results)?);
         }
-        Commands::Get { id } => match storage.get_by_id(&id)? {
-            Some(obs) => println!("{}", serde_json::to_string_pretty(&obs)?),
-            None => println!("Observation not found: {}", id),
-        },
+        Commands::Get { id } => {
+            let db_path = get_db_path();
+            ensure_db_dir(&db_path)?;
+            let storage = Storage::new(&db_path)?;
+            match storage.get_by_id(&id)? {
+                Some(obs) => println!("{}", serde_json::to_string_pretty(&obs)?),
+                None => println!("Observation not found: {}", id),
+            }
+        }
         Commands::Hook(hook_cmd) => {
-            drop(storage);
+            // Hook commands use HTTP API, no direct Storage access needed
             handle_hook_command(hook_cmd).await?;
         }
     }
@@ -216,8 +235,15 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+fn ensure_db_dir(db_path: &std::path::Path) -> Result<()> {
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    Ok(())
+}
+
 fn get_project_from_stdin() -> Option<String> {
-    if atty::is(atty::Stream::Stdin) {
+    if std::io::stdin().is_terminal() {
         return None;
     }
     let mut input = String::new();
@@ -246,29 +272,23 @@ fn build_observation_request(
     tool: Option<String>,
     session_id: Option<String>,
     project: Option<String>,
+    input_json: Option<String>,
 ) -> Result<ObservationHookRequest> {
-    let mut input_str = String::new();
-    if !atty::is(atty::Stream::Stdin) {
-        std::io::stdin().read_to_string(&mut input_str)?;
+    let mut output_str = String::new();
+    if !std::io::stdin().is_terminal() {
+        std::io::stdin().read_to_string(&mut output_str)?;
     }
     let tool_name = tool.unwrap_or_else(|| "unknown".to_string());
-    let input_json: Option<serde_json::Value> = if input_str.is_empty() {
-        None
-    } else {
-        serde_json::from_str(&input_str).ok()
-    };
-    let output = if input_str.is_empty() {
-        "".to_string()
-    } else {
-        input_str
-    };
+    let input: Option<serde_json::Value> = input_json
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok());
     Ok(ObservationHookRequest {
         tool: tool_name,
         session_id,
         call_id: None,
         project,
-        input: input_json,
-        output,
+        input,
+        output: output_str,
     })
 }
 
@@ -319,9 +339,10 @@ async fn handle_hook_command(cmd: HookCommands) -> Result<()> {
             tool,
             session_id,
             project,
+            input,
             endpoint,
         } => {
-            let req = build_observation_request(tool, session_id, project)?;
+            let req = build_observation_request(tool, session_id, project, input)?;
             let url = format!("{}/observe", endpoint);
             let resp = client.post(&url).json(&req).send().await?;
             let body: serde_json::Value = resp.json().await?;
