@@ -1388,23 +1388,26 @@ impl Storage {
 
     pub fn get_queue_stats(&self) -> Result<crate::types::QueueStats> {
         let conn = lock_conn(&self.conn)?;
-        let (pending, processing, failed, processed): (i64, i64, i64, i64) = conn
-            .query_row(
-                r#"SELECT 
+        let (pending, processing, failed, processed): (
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<i64>,
+        ) = conn.query_row(
+            r#"SELECT 
                 SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END),
                 SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END),
                 SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END),
                 SUM(CASE WHEN status = 'processed' THEN 1 ELSE 0 END)
             FROM pending_messages"#,
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            )
-            .unwrap_or((0, 0, 0, 0));
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )?;
         Ok(crate::types::QueueStats {
-            pending: pending as u64,
-            processing: processing as u64,
-            failed: failed as u64,
-            processed: processed as u64,
+            pending: pending.unwrap_or(0) as u64,
+            processing: processing.unwrap_or(0) as u64,
+            failed: failed.unwrap_or(0) as u64,
+            processed: processed.unwrap_or(0) as u64,
         })
     }
 

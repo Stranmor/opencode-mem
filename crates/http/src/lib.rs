@@ -1159,7 +1159,10 @@ async fn process_pending_queue(
             }
         });
     }
-    Ok(Json(ProcessQueueResponse { processed: count, failed: 0 }))
+    Ok(Json(ProcessQueueResponse {
+        processed: count,
+        failed: 0,
+    }))
 }
 
 async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> anyhow::Result<()> {
@@ -1177,7 +1180,7 @@ async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> anyh
             title: format!("Observation from {}", tool_name),
             output: tool_response.to_string(),
             metadata: tool_input
-                .map(serde_json::Value::String)
+                .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or(serde_json::Value::Null),
         },
     };
@@ -1393,7 +1396,9 @@ async fn get_instructions(
         } else {
             String::new()
         }
-    }).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    })
+    .await
+    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     let sections: Vec<String> = content
         .lines()
         .filter(|l| l.starts_with("## "))
@@ -1484,7 +1489,9 @@ async fn get_logs(State(state): State<Arc<AppState>>) -> Result<Json<LogsRespons
             } else {
                 String::new()
             }
-        }).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        })
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
     } else {
         String::new()
     };
@@ -1517,7 +1524,9 @@ async fn clear_logs(
             } else {
                 Ok(())
             }
-        }).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        })
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
         if let Err(e) = result {
             tracing::error!("Failed to clear logs: {}", e);
             return Ok(Json(ClearLogsResponse {
@@ -1543,12 +1552,28 @@ async fn unified_search(
             prompts: Vec::new(),
         }));
     }
-    let observations = state.storage
-        .search_with_filters(Some(&query.q), query.project.as_deref(), query.obs_type.as_deref(), query.limit)
+    let observations = state
+        .storage
+        .search_with_filters(
+            Some(&query.q),
+            query.project.as_deref(),
+            query.obs_type.as_deref(),
+            query.limit,
+        )
         .unwrap_or_default();
-    let sessions = state.storage.search_sessions(&query.q, query.limit).unwrap_or_default();
-    let prompts = state.storage.search_prompts(&query.q, query.limit).unwrap_or_default();
-    Ok(Json(UnifiedSearchResult { observations, sessions, prompts }))
+    let sessions = state
+        .storage
+        .search_sessions(&query.q, query.limit)
+        .unwrap_or_default();
+    let prompts = state
+        .storage
+        .search_prompts(&query.q, query.limit)
+        .unwrap_or_default();
+    Ok(Json(UnifiedSearchResult {
+        observations,
+        sessions,
+        prompts,
+    }))
 }
 
 async fn unified_timeline(
@@ -1556,37 +1581,69 @@ async fn unified_timeline(
     Query(query): Query<UnifiedTimelineQuery>,
 ) -> Result<Json<TimelineResult>, StatusCode> {
     let anchor_sr = if let Some(id) = &query.anchor {
-        state.storage.get_by_id(id).ok().flatten().map(|obs| SearchResult {
-            id: obs.id,
-            title: obs.title,
-            subtitle: obs.subtitle.clone(),
-            observation_type: obs.observation_type,
-            score: 1.0,
-        })
+        state
+            .storage
+            .get_by_id(id)
+            .ok()
+            .flatten()
+            .map(|obs| SearchResult {
+                id: obs.id,
+                title: obs.title,
+                subtitle: obs.subtitle.clone(),
+                observation_type: obs.observation_type,
+                score: 1.0,
+            })
     } else if let Some(q) = &query.q {
-        state.storage.hybrid_search(q, 1).ok().and_then(|r| r.into_iter().next())
+        state
+            .storage
+            .hybrid_search(q, 1)
+            .ok()
+            .and_then(|r| r.into_iter().next())
     } else {
         None
     };
     let (before, after) = if let Some(ref anchor) = anchor_sr {
-        let all = state.storage.get_timeline(None, None, query.before + query.after + 50)
+        let all = state
+            .storage
+            .get_timeline(None, None, query.before + query.after + 50)
             .unwrap_or_default();
         let pos = all.iter().position(|o| o.id == anchor.id).unwrap_or(0);
-        let before_items: Vec<_> = all[..pos].iter().rev().take(query.before).cloned().collect();
-        let after_items: Vec<_> = all.get(pos + 1..).unwrap_or(&[]).iter().take(query.after).cloned().collect();
+        let before_items: Vec<_> = all[..pos]
+            .iter()
+            .rev()
+            .take(query.before)
+            .cloned()
+            .collect();
+        let after_items: Vec<_> = all
+            .get(pos + 1..)
+            .unwrap_or(&[])
+            .iter()
+            .take(query.after)
+            .cloned()
+            .collect();
         (before_items, after_items)
     } else {
         (Vec::new(), Vec::new())
     };
-    Ok(Json(TimelineResult { anchor: anchor_sr, before, after }))
+    Ok(Json(TimelineResult {
+        anchor: anchor_sr,
+        before,
+        after,
+    }))
 }
 
 async fn get_decisions(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
-    state.storage.search_with_filters(q, query.project.as_deref(), Some("decision"), query.limit)
+    let q = if query.q.is_empty() {
+        None
+    } else {
+        Some(query.q.as_str())
+    };
+    state
+        .storage
+        .search_with_filters(q, query.project.as_deref(), Some("decision"), query.limit)
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get decisions failed: {}", e);
@@ -1598,8 +1655,14 @@ async fn get_changes(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
-    state.storage.search_with_filters(q, query.project.as_deref(), Some("change"), query.limit)
+    let q = if query.q.is_empty() {
+        None
+    } else {
+        Some(query.q.as_str())
+    };
+    state
+        .storage
+        .search_with_filters(q, query.project.as_deref(), Some("change"), query.limit)
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get changes failed: {}", e);
@@ -1616,7 +1679,9 @@ async fn get_how_it_works(
     } else {
         format!("{} how-it-works", query.q)
     };
-    state.storage.hybrid_search(&search_query, query.limit)
+    state
+        .storage
+        .hybrid_search(&search_query, query.limit)
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get how-it-works failed: {}", e);
@@ -1635,18 +1700,29 @@ async fn context_preview(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextPreviewQuery>,
 ) -> Result<Json<ContextPreview>, StatusCode> {
-    let observations = state.storage.get_context_for_project(&query.project, query.limit)
+    let observations = state
+        .storage
+        .get_context_for_project(&query.project, query.limit)
         .map_err(|e| {
             tracing::error!("Context preview failed: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
     let preview = if query.format == "full" {
-        observations.iter()
-            .map(|o| format!("[{}] {}: {}", o.observation_type.as_str(), o.title, o.subtitle.as_deref().unwrap_or("")))
+        observations
+            .iter()
+            .map(|o| {
+                format!(
+                    "[{}] {}: {}",
+                    o.observation_type.as_str(),
+                    o.title,
+                    o.subtitle.as_deref().unwrap_or("")
+                )
+            })
             .collect::<Vec<_>>()
             .join("\n\n")
     } else {
-        observations.iter()
+        observations
+            .iter()
             .map(|o| format!("• {}", o.title))
             .collect::<Vec<_>>()
             .join("\n")
@@ -1673,10 +1749,26 @@ async fn search_help() -> Json<SearchHelpResponse> {
                 method: "GET",
                 description: "Unified search across observations, sessions, and prompts",
                 params: vec![
-                    ParamDoc { name: "q", required: true, description: "Search query" },
-                    ParamDoc { name: "limit", required: false, description: "Max results (default 20)" },
-                    ParamDoc { name: "project", required: false, description: "Filter by project" },
-                    ParamDoc { name: "type", required: false, description: "Filter by observation type" },
+                    ParamDoc {
+                        name: "q",
+                        required: true,
+                        description: "Search query",
+                    },
+                    ParamDoc {
+                        name: "limit",
+                        required: false,
+                        description: "Max results (default 20)",
+                    },
+                    ParamDoc {
+                        name: "project",
+                        required: false,
+                        description: "Filter by project",
+                    },
+                    ParamDoc {
+                        name: "type",
+                        required: false,
+                        description: "Filter by observation type",
+                    },
                 ],
             },
             EndpointDoc {
@@ -1684,10 +1776,26 @@ async fn search_help() -> Json<SearchHelpResponse> {
                 method: "GET",
                 description: "Get timeline centered around an anchor observation",
                 params: vec![
-                    ParamDoc { name: "anchor", required: false, description: "Observation ID to center on" },
-                    ParamDoc { name: "q", required: false, description: "Search query to find anchor" },
-                    ParamDoc { name: "before", required: false, description: "Count before anchor (default 5)" },
-                    ParamDoc { name: "after", required: false, description: "Count after anchor (default 5)" },
+                    ParamDoc {
+                        name: "anchor",
+                        required: false,
+                        description: "Observation ID to center on",
+                    },
+                    ParamDoc {
+                        name: "q",
+                        required: false,
+                        description: "Search query to find anchor",
+                    },
+                    ParamDoc {
+                        name: "before",
+                        required: false,
+                        description: "Count before anchor (default 5)",
+                    },
+                    ParamDoc {
+                        name: "after",
+                        required: false,
+                        description: "Count after anchor (default 5)",
+                    },
                 ],
             },
             EndpointDoc {
@@ -1695,8 +1803,16 @@ async fn search_help() -> Json<SearchHelpResponse> {
                 method: "GET",
                 description: "Get observations of type 'decision'",
                 params: vec![
-                    ParamDoc { name: "q", required: false, description: "Optional search filter" },
-                    ParamDoc { name: "limit", required: false, description: "Max results" },
+                    ParamDoc {
+                        name: "q",
+                        required: false,
+                        description: "Optional search filter",
+                    },
+                    ParamDoc {
+                        name: "limit",
+                        required: false,
+                        description: "Max results",
+                    },
                 ],
             },
             EndpointDoc {
@@ -1704,8 +1820,16 @@ async fn search_help() -> Json<SearchHelpResponse> {
                 method: "GET",
                 description: "Get observations of type 'change'",
                 params: vec![
-                    ParamDoc { name: "q", required: false, description: "Optional search filter" },
-                    ParamDoc { name: "limit", required: false, description: "Max results" },
+                    ParamDoc {
+                        name: "q",
+                        required: false,
+                        description: "Optional search filter",
+                    },
+                    ParamDoc {
+                        name: "limit",
+                        required: false,
+                        description: "Max results",
+                    },
                 ],
             },
             EndpointDoc {
@@ -1713,8 +1837,16 @@ async fn search_help() -> Json<SearchHelpResponse> {
                 method: "GET",
                 description: "Search for 'how-it-works' concept observations",
                 params: vec![
-                    ParamDoc { name: "q", required: false, description: "Additional search terms" },
-                    ParamDoc { name: "limit", required: false, description: "Max results" },
+                    ParamDoc {
+                        name: "q",
+                        required: false,
+                        description: "Additional search terms",
+                    },
+                    ParamDoc {
+                        name: "limit",
+                        required: false,
+                        description: "Max results",
+                    },
                 ],
             },
             EndpointDoc {
@@ -1722,9 +1854,21 @@ async fn search_help() -> Json<SearchHelpResponse> {
                 method: "GET",
                 description: "Generate context preview for a project",
                 params: vec![
-                    ParamDoc { name: "project", required: true, description: "Project path" },
-                    ParamDoc { name: "limit", required: false, description: "Max observations" },
-                    ParamDoc { name: "format", required: false, description: "'compact' or 'full'" },
+                    ParamDoc {
+                        name: "project",
+                        required: true,
+                        description: "Project path",
+                    },
+                    ParamDoc {
+                        name: "limit",
+                        required: false,
+                        description: "Max observations",
+                    },
+                    ParamDoc {
+                        name: "format",
+                        required: false,
+                        description: "'compact' or 'full'",
+                    },
                 ],
             },
         ],
