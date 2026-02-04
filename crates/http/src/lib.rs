@@ -1145,6 +1145,13 @@ async fn process_pending_queue(
     for msg in messages {
         let state_clone = state.clone();
         tokio::spawn(async move {
+            let permit = match state_clone.semaphore.acquire().await {
+                Ok(p) => p,
+                Err(e) => {
+                    tracing::error!("Semaphore closed: {}", e);
+                    return;
+                }
+            };
             let result = process_pending_message(&state_clone, &msg).await;
             match result {
                 Ok(()) => {
@@ -1157,6 +1164,7 @@ async fn process_pending_queue(
                     let _ = state_clone.storage.fail_message(msg.id, true);
                 }
             }
+            drop(permit);
         });
     }
     Ok(Json(ProcessQueueResponse {
