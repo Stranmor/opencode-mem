@@ -7,6 +7,10 @@ use rusqlite::params;
 use crate::storage::{get_conn, log_row_error, map_search_result_default_score, Storage};
 
 impl Storage {
+    /// Returns observations within a time range.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_timeline(
         &self,
         from: Option<&str>,

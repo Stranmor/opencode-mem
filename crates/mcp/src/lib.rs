@@ -1,3 +1,6 @@
+//! MCP (Model Context Protocol) server for opencode-mem.
+
+#![allow(missing_docs, reason = "Internal crate with self-explanatory API")]
 #![allow(clippy::as_conversions, reason = "u64 to usize conversions are safe")]
 #![allow(clippy::cast_possible_truncation, reason = "Sizes are within bounds")]
 #![allow(clippy::option_if_let_else, reason = "if let is clearer")]
@@ -15,6 +18,15 @@
 #![allow(clippy::too_many_lines, reason = "Handler functions are complex")]
 #![allow(clippy::manual_let_else, reason = "if let is clearer")]
 #![allow(clippy::or_fun_call, reason = "unwrap_or with function is acceptable")]
+#![allow(clippy::missing_docs_in_private_items, reason = "Internal crate")]
+#![allow(clippy::implicit_return, reason = "Implicit return is idiomatic Rust")]
+#![allow(clippy::question_mark_used, reason = "? operator is idiomatic Rust")]
+#![allow(clippy::min_ident_chars, reason = "Short error vars are idiomatic")]
+#![allow(clippy::shadow_unrelated, reason = "Shadowing in match arms is idiomatic")]
+#![allow(clippy::shadow_reuse, reason = "Shadowing for unwrapping is idiomatic")]
+#![allow(clippy::exhaustive_enums, reason = "MCP tools are stable")]
+#![allow(clippy::exhaustive_structs, reason = "MCP types are stable")]
+#![allow(clippy::single_call_fn, reason = "Handler functions improve readability")]
 
 mod handlers;
 mod tools;
@@ -210,6 +222,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::indexing_slicing, reason = "test code with known structure")]
     fn test_mcp_ok_serialization() {
         let data = vec!["item1", "item2"];
         let result = mcp_ok(&data);
@@ -219,6 +232,8 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::indexing_slicing, reason = "test code with known structure")]
+    #[expect(clippy::unwrap_used, reason = "test code")]
     fn test_mcp_err_format() {
         let result = mcp_err("test error");
         assert_eq!(result["isError"].as_bool(), Some(true));
@@ -227,6 +242,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::indexing_slicing, reason = "test code with known structure")]
     fn test_mcp_text_format() {
         let result = mcp_text("hello world");
         assert_eq!(result["content"][0]["text"].as_str(), Some("hello world"));

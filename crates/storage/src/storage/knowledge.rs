@@ -53,21 +53,21 @@ impl Storage {
             ],
         )?;
 
-        Ok(GlobalKnowledge {
+        Ok(GlobalKnowledge::new(
             id,
-            knowledge_type: input.knowledge_type,
-            title: input.title,
-            description: input.description,
-            instructions: input.instructions,
-            triggers: input.triggers,
-            source_projects: input.source_project.map(|p| vec![p]).unwrap_or_default(),
-            source_observations: input.source_observation.map(|o| vec![o]).unwrap_or_default(),
-            confidence: 0.5,
-            usage_count: 0,
-            last_used_at: None,
-            created_at: now.clone(),
-            updated_at: now,
-        })
+            input.knowledge_type,
+            input.title,
+            input.description,
+            input.instructions,
+            input.triggers,
+            input.source_project.map(|p| vec![p]).unwrap_or_default(),
+            input.source_observation.map(|o| vec![o]).unwrap_or_default(),
+            0.5,
+            0,
+            None,
+            now.clone(),
+            now,
+        ))
     }
 
     /// Get knowledge by ID.
@@ -108,10 +108,7 @@ impl Storage {
 
         if fts_query.is_empty() {
             return self.list_knowledge(None, limit).map(|items| {
-                items
-                    .into_iter()
-                    .map(|k| KnowledgeSearchResult { knowledge: k, relevance_score: 1.0 })
-                    .collect()
+                items.into_iter().map(|k| KnowledgeSearchResult::new(k, 1.0)).collect()
             });
         }
 
@@ -129,10 +126,7 @@ impl Storage {
         let results = stmt
             .query_map(params![fts_query, limit], |row| {
                 let score: f64 = row.get(13)?;
-                Ok(KnowledgeSearchResult {
-                    knowledge: Self::row_to_knowledge(row)?,
-                    relevance_score: score.abs(),
-                })
+                Ok(KnowledgeSearchResult::new(Self::row_to_knowledge(row)?, score.abs()))
             })?
             .filter_map(log_row_error)
             .collect();
@@ -208,20 +202,20 @@ impl Storage {
             )))
         })?;
 
-        Ok(GlobalKnowledge {
-            id: row.get(0)?,
+        Ok(GlobalKnowledge::new(
+            row.get(0)?,
             knowledge_type,
-            title: row.get(2)?,
-            description: row.get(3)?,
-            instructions: row.get(4)?,
-            triggers: parse_json(&row.get::<_, String>(5)?)?,
-            source_projects: parse_json(&row.get::<_, String>(6)?)?,
-            source_observations: parse_json(&row.get::<_, String>(7)?)?,
-            confidence: row.get(8)?,
-            usage_count: row.get(9)?,
-            last_used_at: row.get(10)?,
-            created_at: row.get(11)?,
-            updated_at: row.get(12)?,
-        })
+            row.get(2)?,
+            row.get(3)?,
+            row.get(4)?,
+            parse_json(&row.get::<_, String>(5)?)?,
+            parse_json(&row.get::<_, String>(6)?)?,
+            parse_json(&row.get::<_, String>(7)?)?,
+            row.get(8)?,
+            row.get(9)?,
+            row.get(10)?,
+            row.get(11)?,
+            row.get(12)?,
+        ))
     }
 }

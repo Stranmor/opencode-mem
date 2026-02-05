@@ -49,15 +49,15 @@ pub async fn save_knowledge(
         .parse::<KnowledgeType>()
         .map_err(|_parse_err| StatusCode::BAD_REQUEST)?;
 
-    let input = KnowledgeInput {
+    let input = KnowledgeInput::new(
         knowledge_type,
-        title: req.title,
-        description: req.description,
-        instructions: req.instructions,
-        triggers: req.triggers,
-        source_project: req.source_project,
-        source_observation: req.source_observation,
-    };
+        req.title,
+        req.description,
+        req.instructions,
+        req.triggers,
+        req.source_project,
+        req.source_observation,
+    );
 
     let storage = Arc::clone(&state.storage);
     blocking_json(move || storage.save_knowledge(input)).await

@@ -123,15 +123,16 @@ impl Storage {
     }
 
     pub(crate) fn row_to_prompt(row: &rusqlite::Row<'_>) -> rusqlite::Result<UserPrompt> {
-        Ok(UserPrompt {
-            id: row.get(0)?,
-            content_session_id: row.get(1)?,
-            prompt_number: row.get(2)?,
-            prompt_text: row.get(3)?,
-            project: row.get(4)?,
-            created_at: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(5)?)
-                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
-                .with_timezone(&Utc),
-        })
+        let created_at = chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(5)?)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
+            .with_timezone(&Utc);
+        Ok(UserPrompt::new(
+            row.get(0)?,
+            row.get(1)?,
+            row.get(2)?,
+            row.get(3)?,
+            row.get(4)?,
+            created_at,
+        ))
     }
 }

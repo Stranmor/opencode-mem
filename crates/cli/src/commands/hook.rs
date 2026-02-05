@@ -64,7 +64,7 @@ fn build_session_init_request(
     user_prompt: Option<String>,
 ) -> Result<SessionInitHookRequest> {
     let session_id = content_session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    Ok(SessionInitHookRequest { content_session_id: session_id, project, user_prompt })
+    Ok(SessionInitHookRequest::new(session_id, project, user_prompt))
 }
 
 fn build_observation_request(
@@ -80,21 +80,14 @@ fn build_observation_request(
     let tool_name = tool.unwrap_or_else(|| "unknown".to_owned());
     let input: Option<serde_json::Value> =
         input_json.as_ref().and_then(|s| serde_json::from_str(s).ok());
-    Ok(ObservationHookRequest {
-        tool: tool_name,
-        session_id,
-        call_id: None,
-        project,
-        input,
-        output: output_str,
-    })
+    Ok(ObservationHookRequest::new(tool_name, session_id, None, project, input, output_str))
 }
 
-const fn build_summarize_request(
+fn build_summarize_request(
     content_session_id: Option<String>,
     session_id: Option<String>,
 ) -> Result<SummarizeHookRequest> {
-    Ok(SummarizeHookRequest { content_session_id, session_id })
+    Ok(SummarizeHookRequest::new(content_session_id, session_id))
 }
 
 pub(crate) async fn run(cmd: HookCommands) -> Result<()> {

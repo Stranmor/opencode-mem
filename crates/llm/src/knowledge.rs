@@ -101,16 +101,16 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
         let knowledge_type =
             knowledge_type_str.parse::<KnowledgeType>().unwrap_or(KnowledgeType::Skill);
 
-        Ok(Some(KnowledgeInput {
+        Ok(Some(KnowledgeInput::new(
             knowledge_type,
-            title: extraction.title.unwrap_or_else(|| observation.title.clone()),
-            description: extraction
+            extraction.title.unwrap_or_else(|| observation.title.clone()),
+            extraction
                 .description
                 .unwrap_or_else(|| observation.narrative.clone().unwrap_or_default()),
-            instructions: extraction.instructions,
-            triggers: extraction.triggers.unwrap_or_default(),
-            source_project: observation.project.clone(),
-            source_observation: Some(observation.id.clone()),
-        }))
+            extraction.instructions,
+            extraction.triggers.unwrap_or_default(),
+            observation.project.clone(),
+            Some(observation.id.clone()),
+        )))
     }
 }

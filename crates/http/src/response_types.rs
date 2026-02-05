@@ -47,6 +47,7 @@ pub struct SessionCompleteResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[non_exhaustive]
 pub struct ReadinessResponse {
     pub status: &'static str,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -54,11 +55,13 @@ pub struct ReadinessResponse {
 }
 
 #[derive(Debug, Serialize)]
+#[non_exhaustive]
 pub struct VersionResponse {
     pub version: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[non_exhaustive]
 pub struct Settings {
     #[serde(default)]
     pub env: HashMap<String, String>,

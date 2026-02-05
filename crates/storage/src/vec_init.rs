@@ -5,6 +5,7 @@ use std::sync::Once;
 
 static INIT: Once = Once::new();
 
+/// Initializes the sqlite-vec extension for vector similarity search.
 #[expect(
     clippy::missing_transmute_annotations,
     reason = "transmute required for sqlite extension registration FFI"

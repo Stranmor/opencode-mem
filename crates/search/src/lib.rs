@@ -8,6 +8,9 @@
 #![allow(clippy::missing_errors_doc, reason = "Errors are self-explanatory from Result types")]
 #![allow(clippy::pattern_type_mismatch, reason = "Pattern matching style")]
 #![allow(missing_debug_implementations, reason = "Internal types")]
+#![allow(clippy::missing_docs_in_private_items, reason = "Internal crate")]
+#![allow(clippy::implicit_return, reason = "Implicit return is idiomatic Rust")]
+#![allow(clippy::question_mark_used, reason = "? operator is idiomatic Rust")]
 
 use std::sync::Arc;
 
@@ -151,6 +154,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    #[expect(clippy::expect_used, reason = "test code")]
     fn create_test_storage() -> (TempDir, Arc<Storage>) {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let db_path = temp_dir.path().join("test.db");
@@ -166,6 +170,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::expect_used, reason = "test code")]
     fn test_search_without_embeddings() {
         let (_temp, storage) = create_test_storage();
         let search = HybridSearch::new(storage, None);
@@ -176,6 +181,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::expect_used, reason = "test code")]
     fn test_timeline_empty() {
         let (_temp, storage) = create_test_storage();
         let search = HybridSearch::new(storage, None);
@@ -185,6 +191,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::expect_used, reason = "test code")]
     fn test_get_full_empty() {
         let (_temp, storage) = create_test_storage();
         let search = HybridSearch::new(storage, None);
@@ -194,6 +201,7 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::expect_used, reason = "test code")]
     fn test_semantic_search_without_embeddings() {
         let (_temp, storage) = create_test_storage();
         let search = HybridSearch::new(storage, None);

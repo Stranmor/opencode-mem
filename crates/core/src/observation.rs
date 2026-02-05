@@ -251,7 +251,7 @@ pub struct ToolCall {
 impl ToolCall {
     /// Creates a new tool call.
     #[must_use]
-    pub fn new(
+    pub const fn new(
         tool: String,
         session_id: String,
         call_id: String,
@@ -259,13 +259,13 @@ impl ToolCall {
         input: serde_json::Value,
         output: String,
     ) -> Self {
-        Self { tool, session_id, call_id, project, input, output }
+        return Self { tool, session_id, call_id, project, input, output };
     }
 
     /// Creates a new tool call with a different session ID.
     #[must_use]
     pub fn with_session_id(self, session_id: String) -> Self {
-        Self { session_id, ..self }
+        return Self { session_id, ..self };
     }
 }
 

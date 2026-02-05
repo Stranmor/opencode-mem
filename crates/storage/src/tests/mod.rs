@@ -1,15 +1,12 @@
-//! Test utilities and module declarations for storage tests
-
-mod observation_tests;
-mod queue_tests;
-mod search_tests;
-mod session_tests;
+//! Test utilities and module declarations for storage tests.
 
 use crate::Storage;
 use chrono::Utc;
-use opencode_mem_core::{Observation, ObservationType, Session, SessionStatus};
+use opencode_mem_core::{NoiseLevel, Observation, ObservationType, Session, SessionStatus};
 use tempfile::TempDir;
 
+#[expect(dead_code, reason = "test utility function")]
+#[expect(clippy::unwrap_used, reason = "test code")]
 pub fn create_test_storage() -> (Storage, TempDir) {
     let temp_dir = TempDir::new().unwrap();
     let db_path = temp_dir.path().join("test.db");
@@ -17,36 +14,40 @@ pub fn create_test_storage() -> (Storage, TempDir) {
     (storage, temp_dir)
 }
 
+#[expect(dead_code, reason = "test utility function")]
 pub fn create_test_observation(id: &str, project: &str) -> Observation {
-    Observation {
-        id: id.to_string(),
-        session_id: "test-session".to_string(),
-        project: Some(project.to_string()),
-        observation_type: ObservationType::Discovery,
-        title: format!("Test observation {}", id),
-        subtitle: Some("Test subtitle".to_string()),
-        narrative: Some("Test narrative".to_string()),
-        facts: vec!["fact1".to_string(), "fact2".to_string()],
-        concepts: vec![],
-        files_read: vec!["file1.rs".to_string()],
-        files_modified: vec!["file2.rs".to_string()],
-        keywords: vec!["test".to_string(), "keyword".to_string()],
-        prompt_number: Some(1),
-        discovery_tokens: Some(100),
-        created_at: Utc::now(),
-    }
+    Observation::new(
+        id.to_owned(),
+        "test-session".to_owned(),
+        Some(project.to_owned()),
+        ObservationType::Discovery,
+        format!("Test observation {id}"),
+        Some("Test subtitle".to_owned()),
+        Some("Test narrative".to_owned()),
+        vec!["fact1".to_owned(), "fact2".to_owned()],
+        vec![],
+        vec!["file1.rs".to_owned()],
+        vec!["file2.rs".to_owned()],
+        vec!["test".to_owned(), "keyword".to_owned()],
+        Some(1),
+        Some(100),
+        NoiseLevel::Medium,
+        None,
+        Utc::now(),
+    )
 }
 
+#[expect(dead_code, reason = "test utility function")]
 pub fn create_test_session(id: &str) -> Session {
-    Session {
-        id: id.to_string(),
-        content_session_id: format!("content-{}", id),
-        memory_session_id: Some(format!("memory-{}", id)),
-        project: "test-project".to_string(),
-        user_prompt: Some("Test prompt".to_string()),
-        started_at: Utc::now(),
-        ended_at: None,
-        status: SessionStatus::Active,
-        prompt_counter: 0,
-    }
+    Session::new(
+        id.to_owned(),
+        format!("content-{id}"),
+        Some(format!("memory-{id}")),
+        "test-project".to_owned(),
+        Some("Test prompt".to_owned()),
+        Utc::now(),
+        None,
+        SessionStatus::Active,
+        0,
+    )
 }

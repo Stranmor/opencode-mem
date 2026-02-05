@@ -69,10 +69,12 @@ mod stats;
 mod summaries;
 
 use anyhow::Result;
+use opencode_mem_core::NoiseLevel;
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 use std::path::Path;
+use std::str::FromStr as _;
 
 use crate::migrations;
 use crate::vec_init::init_sqlite_vec;
@@ -107,30 +109,36 @@ pub fn log_row_error<T>(result: rusqlite::Result<T>) -> Option<T> {
     }
 }
 
-/// Map database row to `SearchResult` (5-column format: id, title, subtitle, `observation_type`, score)
+/// Map database row to `SearchResult` (6-column format: id, title, subtitle, `observation_type`, `noise_level`, score)
 pub fn map_search_result(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<opencode_mem_core::SearchResult> {
-    Ok(opencode_mem_core::SearchResult {
-        id: row.get(0)?,
-        title: row.get(1)?,
-        subtitle: row.get(2)?,
-        observation_type: parse_json(&row.get::<_, String>(3)?)?,
-        score: row.get(4)?,
-    })
+    let noise_str: Option<String> = row.get(4)?;
+    let noise_level = noise_str.and_then(|s| NoiseLevel::from_str(&s).ok()).unwrap_or_default();
+    Ok(opencode_mem_core::SearchResult::new(
+        row.get(0)?,
+        row.get(1)?,
+        row.get(2)?,
+        parse_json(&row.get::<_, String>(3)?)?,
+        noise_level,
+        row.get(5)?,
+    ))
 }
 
-/// Map database row to `SearchResult` (4-column format with default score=1.0)
+/// Map database row to `SearchResult` (5-column format with default score=1.0)
 pub fn map_search_result_default_score(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<opencode_mem_core::SearchResult> {
-    Ok(opencode_mem_core::SearchResult {
-        id: row.get(0)?,
-        title: row.get(1)?,
-        subtitle: row.get(2)?,
-        observation_type: parse_json(&row.get::<_, String>(3)?)?,
-        score: 1.0,
-    })
+    let noise_str: Option<String> = row.get(4)?;
+    let noise_level = noise_str.and_then(|s| NoiseLevel::from_str(&s).ok()).unwrap_or_default();
+    Ok(opencode_mem_core::SearchResult::new(
+        row.get(0)?,
+        row.get(1)?,
+        row.get(2)?,
+        parse_json(&row.get::<_, String>(3)?)?,
+        noise_level,
+        1.0,
+    ))
 }
 
 /// Escape special characters for LIKE pattern matching

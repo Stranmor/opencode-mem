@@ -1,9 +1,10 @@
 //! Text-based search functions (FTS5)
 
 use anyhow::Result;
-use opencode_mem_core::SearchResult;
+use opencode_mem_core::{NoiseLevel, SearchResult};
 use rusqlite::params;
 use std::collections::HashSet;
+use std::str::FromStr as _;
 
 use crate::storage::{
     build_fts_query, coerce_to_sql, get_conn, log_row_error, map_search_result,
@@ -11,10 +12,14 @@ use crate::storage::{
 };
 
 impl Storage {
+    /// Performs FTS5 full-text search.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
-            "SELECT o.id, o.title, o.subtitle, o.observation_type, bm25(observations_fts) as score
+            "SELECT o.id, o.title, o.subtitle, o.observation_type, o.noise_level, bm25(observations_fts) as score
                FROM observations_fts f
                JOIN observations o ON o.rowid = f.rowid
                WHERE observations_fts MATCH ?1
@@ -28,6 +33,10 @@ impl Storage {
         Ok(results)
     }
 
+    /// Performs hybrid search combining FTS5 and keyword matching.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn hybrid_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let keywords: HashSet<String> = query.split_whitespace().map(str::to_lowercase).collect();
 
@@ -39,7 +48,7 @@ impl Storage {
 
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
-            "SELECT o.id, o.title, o.subtitle, o.observation_type, o.keywords,
+            "SELECT o.id, o.title, o.subtitle, o.observation_type, o.noise_level, o.keywords,
                       bm25(observations_fts) as fts_score
                FROM observations_fts f
                JOIN observations o ON o.rowid = f.rowid
@@ -47,19 +56,22 @@ impl Storage {
                LIMIT ?2",
         )?;
 
-        // First pass: collect raw results with FTS scores and keywords
         let raw_results: Vec<(SearchResult, f64, HashSet<String>)> = stmt
             .query_map(params![fts_query, limit * 2], |row| {
-                let obs_keywords: String = row.get(4)?;
-                let fts_score: f64 = row.get(5)?;
+                let noise_str: Option<String> = row.get(4)?;
+                let noise_level =
+                    noise_str.and_then(|s| NoiseLevel::from_str(&s).ok()).unwrap_or_default();
+                let obs_keywords: String = row.get(5)?;
+                let fts_score: f64 = row.get(6)?;
                 Ok((
-                    SearchResult {
-                        id: row.get(0)?,
-                        title: row.get(1)?,
-                        subtitle: row.get(2)?,
-                        observation_type: parse_json(&row.get::<_, String>(3)?)?,
-                        score: 0.0,
-                    },
+                    SearchResult::new(
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        parse_json(&row.get::<_, String>(3)?)?,
+                        noise_level,
+                        0.0,
+                    ),
                     fts_score,
                     obs_keywords,
                 ))
@@ -100,6 +112,10 @@ impl Storage {
         Ok(results.into_iter().take(limit).map(|(r, _)| r).collect())
     }
 
+    /// Searches with optional filters for project and observation type.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn search_with_filters(
         &self,
         query: Option<&str>,
@@ -132,7 +148,7 @@ impl Storage {
                 };
 
                 let sql = format!(
-                    "SELECT o.id, o.title, o.subtitle, o.observation_type, bm25(observations_fts) as score
+                    "SELECT o.id, o.title, o.subtitle, o.observation_type, o.noise_level, bm25(observations_fts) as score
                        FROM observations_fts f
                        JOIN observations o ON o.rowid = f.rowid
                        WHERE observations_fts MATCH ? {where_clause}
@@ -162,7 +178,7 @@ impl Storage {
         };
 
         let sql = format!(
-            "SELECT id, title, subtitle, observation_type
+            "SELECT id, title, subtitle, observation_type, noise_level
                FROM observations o {where_clause} ORDER BY created_at DESC LIMIT ?"
         );
 

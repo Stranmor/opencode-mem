@@ -1,6 +1,8 @@
 use anyhow::Result;
 use opencode_mem_embeddings::EmbeddingService;
-use opencode_mem_http::{create_router, run_startup_recovery, AppState, Settings};
+use opencode_mem_http::{
+    create_router, run_startup_recovery, start_background_processor, AppState, Settings,
+};
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_service::{ObservationService, SessionService};
@@ -55,7 +57,8 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         event_tx.clone(),
         embeddings.clone(),
     ));
-    let session_service = Arc::new(SessionService::new(storage.clone(), llm.clone()));
+    let session_service =
+        Arc::new(SessionService::new(storage.clone(), llm.clone(), observation_service.clone()));
 
     let state = Arc::new(AppState {
         storage,
@@ -73,6 +76,8 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     if let Err(e) = run_startup_recovery(&state) {
         tracing::warn!("Startup recovery failed: {}", e);
     }
+
+    start_background_processor(state.clone());
 
     let router = create_router(state);
     let addr = format!("{host}:{port}");

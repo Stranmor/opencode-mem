@@ -109,19 +109,19 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
     let tool_input = msg.tool_input.clone();
     let tool_response = msg.tool_response.as_deref().unwrap_or("");
 
-    let input = ObservationInput {
-        tool: tool_name.to_owned(),
-        session_id: msg.session_id.clone(),
-        call_id: String::new(),
-        output: ToolOutput {
-            title: format!("Observation from {tool_name}"),
-            output: tool_response.to_owned(),
-            metadata: tool_input
+    let input = ObservationInput::new(
+        tool_name.to_owned(),
+        msg.session_id.clone(),
+        String::new(),
+        ToolOutput::new(
+            format!("Observation from {tool_name}"),
+            tool_response.to_owned(),
+            tool_input
                 .as_ref()
                 .and_then(|s| serde_json::from_str(s).ok())
                 .unwrap_or(serde_json::Value::Null),
-        },
-    };
+        ),
+    );
 
     // Deterministic UUID v5 based on message ID to prevent duplicates
     // If same message is processed twice (race condition), same observation ID is generated
@@ -201,4 +201,76 @@ pub fn run_startup_recovery(state: &AppState) -> anyhow::Result<usize> {
         tracing::info!("Startup recovery: released {} stale messages back to pending", released);
     }
     Ok(released)
+}
+
+/// Spawns background task that polls pending queue every 5 seconds.
+pub fn start_background_processor(state: Arc<AppState>) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+        loop {
+            interval.tick().await;
+            if !state.processing_active.load(Ordering::SeqCst) {
+                continue;
+            }
+            tracing::debug!("Background processor: checking queue...");
+
+            let storage = Arc::clone(&state.storage);
+            let max_workers = max_queue_workers();
+            let messages = match spawn_blocking(move || {
+                storage.claim_pending_messages(max_workers, default_visibility_timeout_secs())
+            })
+            .await
+            {
+                Ok(Ok(msgs)) => msgs,
+                Ok(Err(e)) => {
+                    tracing::error!("Background processor: claim failed: {}", e);
+                    continue;
+                },
+                Err(e) => {
+                    tracing::error!("Background processor: join error: {}", e);
+                    continue;
+                },
+            };
+
+            if messages.is_empty() {
+                continue;
+            }
+
+            let count = messages.len();
+            let semaphore = Arc::new(Semaphore::new(max_workers));
+            let mut handles = Vec::with_capacity(count);
+
+            for msg in messages {
+                let permit = match Arc::clone(&semaphore).acquire_owned().await {
+                    Ok(p) => p,
+                    Err(_) => continue,
+                };
+                let state_clone = Arc::clone(&state);
+                let handle = tokio::spawn(async move {
+                    let _permit = permit;
+                    let result = process_pending_message(&state_clone, &msg).await;
+                    match result {
+                        Ok(()) => {
+                            let storage = Arc::clone(&state_clone.storage);
+                            let msg_id = msg.id;
+                            drop(spawn_blocking(move || storage.complete_message(msg_id)).await);
+                        },
+                        Err(e) => {
+                            tracing::error!("Background: process message {} failed: {}", msg.id, e);
+                            let storage = Arc::clone(&state_clone.storage);
+                            let msg_id = msg.id;
+                            drop(spawn_blocking(move || storage.fail_message(msg_id, true)).await);
+                        },
+                    }
+                });
+                handles.push(handle);
+            }
+
+            for handle in handles {
+                drop(handle.await);
+            }
+
+            tracing::info!("Background processor: processed {} messages", count);
+        }
+    });
 }

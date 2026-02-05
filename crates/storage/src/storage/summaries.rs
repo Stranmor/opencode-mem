@@ -198,22 +198,23 @@ impl Storage {
     }
 
     pub(crate) fn row_to_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionSummary> {
-        Ok(SessionSummary {
-            session_id: row.get(0)?,
-            project: row.get(1)?,
-            request: row.get(2)?,
-            investigated: row.get(3)?,
-            learned: row.get(4)?,
-            completed: row.get(5)?,
-            next_steps: row.get(6)?,
-            notes: row.get(7)?,
-            files_read: parse_json(&row.get::<_, String>(8)?)?,
-            files_edited: parse_json(&row.get::<_, String>(9)?)?,
-            prompt_number: row.get(10)?,
-            discovery_tokens: row.get(11)?,
-            created_at: chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(12)?)
-                .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
-                .with_timezone(&Utc),
-        })
+        let created_at = chrono::DateTime::parse_from_rfc3339(&row.get::<_, String>(12)?)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
+            .with_timezone(&Utc);
+        Ok(SessionSummary::new(
+            row.get(0)?,
+            row.get(1)?,
+            row.get(2)?,
+            row.get(3)?,
+            row.get(4)?,
+            row.get(5)?,
+            row.get(6)?,
+            row.get(7)?,
+            parse_json(&row.get::<_, String>(8)?)?,
+            parse_json(&row.get::<_, String>(9)?)?,
+            row.get(10)?,
+            row.get(11)?,
+            created_at,
+        ))
     }
 }

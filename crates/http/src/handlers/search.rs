@@ -252,13 +252,14 @@ pub async fn unified_timeline(
 
     let (anchor_sr, before, after) = if let Some(obs) = anchor_obs {
         let anchor_time = obs.created_at.to_rfc3339();
-        let anchor_sr = SearchResult {
-            id: obs.id,
-            title: obs.title,
-            subtitle: obs.subtitle.clone(),
-            observation_type: obs.observation_type,
-            score: 1.0,
-        };
+        let anchor_sr = SearchResult::new(
+            obs.id,
+            obs.title,
+            obs.subtitle.clone(),
+            obs.observation_type,
+            obs.noise_level,
+            1.0,
+        );
 
         let storage = Arc::clone(&state.storage);
         let anchor_time_clone = anchor_time.clone();

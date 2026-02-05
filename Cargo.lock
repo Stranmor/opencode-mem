@@ -2258,6 +2258,7 @@ name = "opencode-mem-service"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "opencode-mem-core",
  "opencode-mem-embeddings",
  "opencode-mem-infinite",
@@ -2266,6 +2267,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

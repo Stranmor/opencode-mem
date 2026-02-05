@@ -1,3 +1,6 @@
+//! CLI for opencode-mem memory system.
+
+#![allow(missing_docs, reason = "CLI binary with self-explanatory functions")]
 #![allow(clippy::print_stdout, reason = "CLI output")]
 #![allow(clippy::print_stderr, reason = "CLI error output")]
 #![allow(clippy::absolute_paths, reason = "Explicit paths for clarity")]
@@ -17,6 +20,15 @@
 #![allow(unused_crate_dependencies, reason = "Dependencies used in other modules")]
 #![allow(clippy::pub_use, reason = "Re-exports are intentional")]
 #![allow(clippy::redundant_pub_crate, reason = "pub(crate) is intentional for module visibility")]
+#![allow(clippy::missing_docs_in_private_items, reason = "CLI binary")]
+#![allow(clippy::implicit_return, reason = "Implicit return is idiomatic Rust")]
+#![allow(clippy::question_mark_used, reason = "? operator is idiomatic Rust")]
+#![allow(clippy::min_ident_chars, reason = "Short closure params are idiomatic")]
+#![allow(clippy::missing_const_for_fn, reason = "Const fn not always beneficial")]
+#![allow(clippy::shadow_reuse, reason = "Shadowing for unwrapping is idiomatic")]
+#![allow(clippy::shadow_unrelated, reason = "Shadowing in different scopes is clear")]
+#![allow(clippy::cognitive_complexity, reason = "CLI command handlers are inherently complex")]
+#![allow(clippy::single_call_fn, reason = "CLI command functions are called once from main")]
 
 mod commands;
 

@@ -1,7 +1,8 @@
 use anyhow::Result;
 use chrono::Utc;
-use opencode_mem_core::{Observation, ObservationType, SearchResult};
+use opencode_mem_core::{NoiseLevel, Observation, ObservationType, SearchResult};
 use rusqlite::params;
+use std::str::FromStr as _;
 
 use super::{coerce_to_sql, escape_like_pattern, get_conn, log_row_error, parse_json, Storage};
 
@@ -15,8 +16,8 @@ impl Storage {
         conn.execute(
             "INSERT OR REPLACE INTO observations 
                (id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
-                files_read, files_modified, keywords, prompt_number, discovery_tokens, created_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                files_read, files_modified, keywords, prompt_number, discovery_tokens, noise_level, noise_reason, created_at)
+               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
             params![
                 obs.id,
                 obs.session_id,
@@ -32,6 +33,8 @@ impl Storage {
                 serde_json::to_string(&obs.keywords)?,
                 obs.prompt_number,
                 obs.discovery_tokens,
+                obs.noise_level.as_str(),
+                obs.noise_reason,
                 obs.created_at.with_timezone(&Utc).to_rfc3339(),
             ],
         )?;
@@ -46,7 +49,7 @@ impl Storage {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
-                      files_read, files_modified, keywords, prompt_number, discovery_tokens, created_at
+                      files_read, files_modified, keywords, prompt_number, discovery_tokens, noise_level, noise_reason, created_at
                FROM observations WHERE id = ?1",
         )?;
         let mut rows = stmt.query(params![id])?;
@@ -64,18 +67,22 @@ impl Storage {
     pub fn get_recent(&self, limit: usize) -> Result<Vec<SearchResult>> {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
-            "SELECT id, title, subtitle, observation_type
+            "SELECT id, title, subtitle, observation_type, noise_level
                FROM observations ORDER BY created_at DESC LIMIT ?1",
         )?;
         let results = stmt
             .query_map(params![limit], |row| {
-                Ok(SearchResult {
-                    id: row.get(0)?,
-                    title: row.get(1)?,
-                    subtitle: row.get(2)?,
-                    observation_type: parse_json(&row.get::<_, String>(3)?)?,
-                    score: 1.0,
-                })
+                let noise_str: Option<String> = row.get(4)?;
+                let noise_level =
+                    noise_str.and_then(|s| NoiseLevel::from_str(&s).ok()).unwrap_or_default();
+                Ok(SearchResult::new(
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    parse_json(&row.get::<_, String>(3)?)?,
+                    noise_level,
+                    1.0,
+                ))
             })?
             .filter_map(log_row_error)
             .collect();
@@ -90,7 +97,7 @@ impl Storage {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
-                      files_read, files_modified, keywords, prompt_number, discovery_tokens, created_at
+                      files_read, files_modified, keywords, prompt_number, discovery_tokens, noise_level, noise_reason, created_at
                FROM observations WHERE session_id = ?1 ORDER BY created_at",
         )?;
         let results = stmt
@@ -112,7 +119,7 @@ impl Storage {
         let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let sql = format!(
             "SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
-                      files_read, files_modified, keywords, prompt_number, discovery_tokens, created_at
+                      files_read, files_modified, keywords, prompt_number, discovery_tokens, noise_level, noise_reason, created_at
                FROM observations WHERE id IN ({placeholders}) ORDER BY created_at DESC"
         );
         let mut stmt = conn.prepare(&sql)?;
@@ -132,7 +139,7 @@ impl Storage {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
-                      files_read, files_modified, keywords, prompt_number, discovery_tokens, created_at
+                      files_read, files_modified, keywords, prompt_number, discovery_tokens, noise_level, noise_reason, created_at
                FROM observations WHERE project = ?1 ORDER BY created_at DESC LIMIT ?2",
         )?;
         let results = stmt
@@ -165,7 +172,7 @@ impl Storage {
         let escaped = escape_like_pattern(file_path);
         let pattern = format!("%{escaped}%");
         let mut stmt = conn.prepare(
-            r"SELECT id, title, subtitle, observation_type
+            r"SELECT id, title, subtitle, observation_type, noise_level
                FROM observations
                WHERE files_read LIKE ?1 ESCAPE '\' OR files_modified LIKE ?1 ESCAPE '\'
                ORDER BY created_at DESC
@@ -173,13 +180,17 @@ impl Storage {
         )?;
         let results = stmt
             .query_map(params![pattern, limit], |row| {
-                Ok(SearchResult {
-                    id: row.get(0)?,
-                    title: row.get(1)?,
-                    subtitle: row.get(2)?,
-                    observation_type: parse_json(&row.get::<_, String>(3)?)?,
-                    score: 1.0,
-                })
+                let noise_str: Option<String> = row.get(4)?;
+                let noise_level =
+                    noise_str.and_then(|s| NoiseLevel::from_str(&s).ok()).unwrap_or_default();
+                Ok(SearchResult::new(
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    parse_json(&row.get::<_, String>(3)?)?,
+                    noise_level,
+                    1.0,
+                ))
             })?
             .filter_map(log_row_error)
             .collect();
@@ -190,26 +201,31 @@ impl Storage {
         let obs_type_str: String = row.get(3)?;
         let obs_type: ObservationType = serde_json::from_str(&obs_type_str)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-        let created_at_str: String = row.get(14)?;
+        let noise_str: Option<String> = row.get(14)?;
+        let noise_level = noise_str.and_then(|s| NoiseLevel::from_str(&s).ok()).unwrap_or_default();
+        let noise_reason: Option<String> = row.get(15)?;
+        let created_at_str: String = row.get(16)?;
         let created_at = chrono::DateTime::parse_from_rfc3339(&created_at_str)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
             .with_timezone(&Utc);
-        Ok(Observation {
-            id: row.get(0)?,
-            session_id: row.get(1)?,
-            project: row.get(2)?,
-            observation_type: obs_type,
-            title: row.get(4)?,
-            subtitle: row.get(5)?,
-            narrative: row.get(6)?,
-            facts: parse_json(&row.get::<_, String>(7)?)?,
-            concepts: parse_json(&row.get::<_, String>(8)?)?,
-            files_read: parse_json(&row.get::<_, String>(9)?)?,
-            files_modified: parse_json(&row.get::<_, String>(10)?)?,
-            keywords: parse_json(&row.get::<_, String>(11)?)?,
-            prompt_number: row.get(12)?,
-            discovery_tokens: row.get(13)?,
+        Ok(Observation::new(
+            row.get(0)?,
+            row.get(1)?,
+            row.get(2)?,
+            obs_type,
+            row.get(4)?,
+            row.get(5)?,
+            row.get(6)?,
+            parse_json(&row.get::<_, String>(7)?)?,
+            parse_json(&row.get::<_, String>(8)?)?,
+            parse_json(&row.get::<_, String>(9)?)?,
+            parse_json(&row.get::<_, String>(10)?)?,
+            parse_json(&row.get::<_, String>(11)?)?,
+            row.get(12)?,
+            row.get(13)?,
+            noise_level,
+            noise_reason,
             created_at,
-        })
+        ))
     }
 }

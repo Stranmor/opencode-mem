@@ -46,16 +46,16 @@ impl ObservationService {
         id: &str,
         tool_call: &ToolCall,
     ) -> anyhow::Result<Option<Observation>> {
-        let input = ObservationInput {
-            tool: tool_call.tool.clone(),
-            session_id: tool_call.session_id.clone(),
-            call_id: tool_call.call_id.clone(),
-            output: ToolOutput {
-                title: format!("Observation from {}", tool_call.tool),
-                output: tool_call.output.clone(),
-                metadata: tool_call.input.clone(),
-            },
-        };
+        let input = ObservationInput::new(
+            tool_call.tool.clone(),
+            tool_call.session_id.clone(),
+            tool_call.call_id.clone(),
+            ToolOutput::new(
+                format!("Observation from {}", tool_call.tool),
+                tool_call.output.clone(),
+                tool_call.input.clone(),
+            ),
+        );
         let observation = if let Some(obs) =
             self.llm.compress_to_observation(id, &input, tool_call.project.as_deref()).await?
         {
@@ -128,5 +128,32 @@ impl ObservationService {
                 tracing::warn!("Failed to store in infinite memory: {}", e);
             }
         }
+    }
+
+    pub fn save_observation(&self, observation: &Observation) -> anyhow::Result<()> {
+        self.storage.save_observation(observation)?;
+
+        if let Some(ref emb) = self.embeddings {
+            let text = format!(
+                "{} {} {}",
+                observation.title,
+                observation.narrative.as_deref().unwrap_or(""),
+                observation.facts.join(" ")
+            );
+            match emb.embed(&text) {
+                Ok(vec) => {
+                    if let Err(e) = self.storage.store_embedding(&observation.id, &vec) {
+                        tracing::warn!("Failed to store embedding for {}: {}", observation.id, e);
+                    }
+                },
+                Err(e) => {
+                    tracing::warn!("Failed to generate embedding for {}: {}", observation.id, e);
+                },
+            }
+        }
+
+        tracing::info!("Saved observation: {} - {}", observation.id, observation.title);
+        let _ = self.event_tx.send(serde_json::to_string(observation)?);
+        Ok(())
     }
 }

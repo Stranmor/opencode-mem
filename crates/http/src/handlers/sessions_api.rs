@@ -16,17 +16,17 @@ pub async fn api_session_init(
 ) -> Result<Json<SessionInitResponse>, StatusCode> {
     let content_session_id = req.content_session_id.ok_or(StatusCode::BAD_REQUEST)?;
     let session_id = uuid::Uuid::new_v4().to_string();
-    let session = Session {
-        id: session_id.clone(),
+    let session = Session::new(
+        session_id.clone(),
         content_session_id,
-        memory_session_id: None,
-        project: req.project.unwrap_or_default(),
-        user_prompt: req.user_prompt,
-        started_at: chrono::Utc::now(),
-        ended_at: None,
-        status: SessionStatus::Active,
-        prompt_counter: 0,
-    };
+        None,
+        req.project.unwrap_or_default(),
+        req.user_prompt,
+        chrono::Utc::now(),
+        None,
+        SessionStatus::Active,
+        0,
+    );
     state.session_service.init_session(session).map_err(|e| {
         tracing::error!("API session init failed: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
@@ -57,7 +57,7 @@ pub async fn api_session_observations(
                     return;
                 },
             };
-            let tool_call_with_session = ToolCall { session_id: sid.clone(), ..tool_call };
+            let tool_call_with_session = tool_call.with_session_id(sid.clone());
             if let Err(e) = service.process(&id, tool_call_with_session).await {
                 tracing::error!("Failed to process observation: {}", e);
             }
@@ -72,13 +72,19 @@ pub async fn api_session_summarize(
     Json(req): Json<SessionSummarizeRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let content_session_id = req.content_session_id.ok_or(StatusCode::BAD_REQUEST)?;
-    let storage = state.storage.clone();
-    let cid = content_session_id.clone();
-    let session = blocking_result(move || storage.get_session_by_content_id(&cid)).await?;
-    let session_id = session.map(|s| s.id).ok_or(StatusCode::NOT_FOUND)?;
-    let summary = state.session_service.summarize_session(&session_id).await.map_err(|e| {
-        tracing::error!("Generate summary failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    Ok(Json(serde_json::json!({"session_id": session_id, "summary": summary, "queued": true})))
+
+    let observations =
+        state.session_service.summarize_session_from_export(&content_session_id).await.map_err(
+            |e| {
+                tracing::error!("Session summarize failed: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            },
+        )?;
+
+    let count = observations.len();
+    Ok(Json(serde_json::json!({
+        "content_session_id": content_session_id,
+        "insights_extracted": count,
+        "status": "completed"
+    })))
 }

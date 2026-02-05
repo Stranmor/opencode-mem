@@ -6,6 +6,7 @@
 mod column_helpers;
 mod v1;
 mod v10;
+mod v11;
 mod v2;
 mod v3;
 mod v4;
@@ -18,8 +19,9 @@ mod v9;
 use column_helpers::add_column_if_not_exists;
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: i32 = 10;
+pub const SCHEMA_VERSION: i32 = 11;
 
+#[expect(clippy::cognitive_complexity, reason = "Sequential migrations are inherently linear")]
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.pragma_update(None, "journal_mode", "WAL")?;
     conn.pragma_update(None, "synchronous", "NORMAL")?;
@@ -86,6 +88,22 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     if current_version < 10i32 {
         tracing::info!("Running migration v10: UNIQUE constraint on session_summaries.session_id");
         conn.execute_batch(v10::SQL)?;
+    }
+
+    if current_version < 11i32 {
+        tracing::info!("Running migration v11: noise_level and noise_reason columns");
+        add_column_if_not_exists(
+            conn,
+            "observations",
+            v11::SQL_NOISE_LEVEL,
+            v11::SQL_NOISE_LEVEL_DEF,
+        )?;
+        add_column_if_not_exists(
+            conn,
+            "observations",
+            v11::SQL_NOISE_REASON,
+            v11::SQL_NOISE_REASON_DEF,
+        )?;
     }
 
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;

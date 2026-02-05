@@ -1,18 +1,26 @@
+use std::process::Command;
 use std::sync::Arc;
 
 use opencode_mem_core::{Observation, Session, SessionStatus};
 use opencode_mem_llm::LlmClient;
 use opencode_mem_storage::Storage;
 
+use crate::observation_service::ObservationService;
+
 pub struct SessionService {
     storage: Arc<Storage>,
     llm: Arc<LlmClient>,
+    observation_service: Arc<ObservationService>,
 }
 
 impl SessionService {
     #[must_use]
-    pub const fn new(storage: Arc<Storage>, llm: Arc<LlmClient>) -> Self {
-        Self { storage, llm }
+    pub const fn new(
+        storage: Arc<Storage>,
+        llm: Arc<LlmClient>,
+        observation_service: Arc<ObservationService>,
+    ) -> Self {
+        Self { storage, llm, observation_service }
     }
 
     pub fn init_session(&self, session: Session) -> anyhow::Result<Session> {
@@ -48,5 +56,56 @@ impl SessionService {
             Some(&summary),
         )?;
         Ok(summary)
+    }
+
+    pub async fn summarize_session_from_export(
+        &self,
+        content_session_id: &str,
+    ) -> anyhow::Result<Vec<Observation>> {
+        let output = Command::new("opencode").args(["export", content_session_id]).output()?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            anyhow::bail!("opencode export failed: {stderr}");
+        }
+
+        let session_json = String::from_utf8(output.stdout)?;
+
+        let session = self.storage.get_session_by_content_id(content_session_id)?;
+        let (session_id, project_path) = if let Some(s) = session {
+            (s.id, s.project)
+        } else {
+            let id = uuid::Uuid::new_v4().to_string();
+            let new_session = Session::new(
+                id.clone(),
+                content_session_id.to_owned(),
+                None,
+                String::new(),
+                None,
+                chrono::Utc::now(),
+                None,
+                SessionStatus::Active,
+                0,
+            );
+            self.storage.save_session(&new_session)?;
+            (id, String::new())
+        };
+
+        let observations = self
+            .llm
+            .extract_insights_from_session(&session_json, &project_path, &session_id)
+            .await?;
+
+        for obs in &observations {
+            self.observation_service.save_observation(obs)?;
+        }
+
+        self.storage.update_session_status_with_summary(
+            &session_id,
+            SessionStatus::Completed,
+            None,
+        )?;
+
+        Ok(observations)
     }
 }

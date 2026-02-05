@@ -3,6 +3,7 @@
 //! Stores all events (user, assistant, tool, decision, error, commit, delegation)
 //! with hierarchical summarization using Gemini Flash.
 
+#![allow(missing_docs, reason = "Internal crate with self-explanatory API")]
 #![allow(
     clippy::missing_errors_doc,
     reason = "Internal crate, errors are self-explanatory from Result types"
@@ -44,6 +45,14 @@
 #![allow(clippy::missing_const_for_fn, reason = "Const fn not always beneficial")]
 #![allow(clippy::default_numeric_fallback, reason = "Numeric types are clear from context")]
 #![allow(clippy::cast_possible_truncation, reason = "Sizes are within bounds")]
+#![allow(clippy::missing_docs_in_private_items, reason = "Internal crate modules")]
+#![allow(clippy::implicit_return, reason = "Implicit return is idiomatic Rust")]
+#![allow(clippy::question_mark_used, reason = "? operator is idiomatic Rust")]
+#![allow(clippy::min_ident_chars, reason = "Short closure params are idiomatic")]
+#![allow(clippy::shadow_reuse, reason = "Shadowing for transformations is idiomatic")]
+#![allow(clippy::exhaustive_enums, reason = "Internal event types are stable")]
+#![allow(clippy::exhaustive_structs, reason = "Internal event types are stable")]
+#![allow(clippy::single_call_fn, reason = "Helper functions improve readability")]
 
 mod backend;
 mod compression;

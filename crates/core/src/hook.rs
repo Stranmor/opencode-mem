@@ -77,6 +77,18 @@ pub struct SessionInitHookRequest {
     pub user_prompt: Option<String>,
 }
 
+impl SessionInitHookRequest {
+    /// Creates a new session init hook request.
+    #[must_use]
+    pub const fn new(
+        content_session_id: String,
+        project: Option<String>,
+        user_prompt: Option<String>,
+    ) -> Self {
+        return Self { content_session_id, project, user_prompt };
+    }
+}
+
 /// Request payload for observation hook
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -97,6 +109,21 @@ pub struct ObservationHookRequest {
     pub output: String,
 }
 
+impl ObservationHookRequest {
+    /// Creates a new observation hook request.
+    #[must_use]
+    pub const fn new(
+        tool: String,
+        session_id: Option<String>,
+        call_id: Option<String>,
+        project: Option<String>,
+        input: Option<serde_json::Value>,
+        output: String,
+    ) -> Self {
+        return Self { tool, session_id, call_id, project, input, output };
+    }
+}
+
 /// Request payload for summarize hook
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -107,4 +134,12 @@ pub struct SummarizeHookRequest {
     /// Memory session ID.
     #[serde(rename = "sessionId")]
     pub session_id: Option<String>,
+}
+
+impl SummarizeHookRequest {
+    /// Creates a new summarize hook request.
+    #[must_use]
+    pub const fn new(content_session_id: Option<String>, session_id: Option<String>) -> Self {
+        return Self { content_session_id, session_id };
+    }
 }

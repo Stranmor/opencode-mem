@@ -134,15 +134,15 @@ fn import_file(storage: &Storage, path: &Path) -> Result<(usize, usize)> {
             None => insight.observation.clone(),
         };
 
-        let input = KnowledgeInput {
-            knowledge_type: category_to_knowledge_type(&insight.category),
-            title: insight.title.clone(),
+        let input = KnowledgeInput::new(
+            category_to_knowledge_type(&insight.category),
+            insight.title.clone(),
             description,
-            instructions: insight.recommendation,
-            triggers: extract_triggers(&insight.title),
-            source_project: Some("agi-audit".to_owned()),
-            source_observation: None,
-        };
+            insight.recommendation,
+            extract_triggers(&insight.title),
+            Some("agi-audit".to_owned()),
+            None,
+        );
 
         storage.save_knowledge(input)?;
         imported += 1;

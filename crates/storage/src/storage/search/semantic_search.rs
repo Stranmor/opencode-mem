@@ -2,9 +2,10 @@
 
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
+use std::str::FromStr as _;
 
 use anyhow::Result;
-use opencode_mem_core::SearchResult;
+use opencode_mem_core::{NoiseLevel, SearchResult};
 use rusqlite::params;
 
 use crate::storage::{
@@ -12,6 +13,10 @@ use crate::storage::{
 };
 
 impl Storage {
+    /// Performs semantic search using vector similarity.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn semantic_search(&self, query_vec: &[f32], limit: usize) -> Result<Vec<SearchResult>> {
         use zerocopy::IntoBytes;
 
@@ -33,7 +38,7 @@ impl Storage {
         let query_bytes = query_vec.as_bytes();
 
         let stmt_result = conn.prepare(
-            "SELECT o.id, o.title, o.subtitle, o.observation_type,
+            "SELECT o.id, o.title, o.subtitle, o.observation_type, o.noise_level,
                       (1.0 - vec_distance_cosine(v.embedding, ?1)) as similarity
                FROM observations_vec v
                JOIN observations o ON o.rowid = v.rowid
@@ -192,7 +197,7 @@ impl Storage {
 
         let placeholders = top_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
         let sql = format!(
-            "SELECT id, title, subtitle, observation_type FROM observations WHERE id IN ({placeholders})"
+            "SELECT id, title, subtitle, observation_type, noise_level FROM observations WHERE id IN ({placeholders})"
         );
 
         let mut stmt = conn.prepare(&sql)?;
@@ -202,13 +207,17 @@ impl Storage {
             .query_map(params.as_slice(), |row| {
                 let id: String = row.get(0)?;
                 let score = score_lookup.get(&id).copied().unwrap_or(0.0f64);
-                Ok(SearchResult {
+                let noise_str: Option<String> = row.get(4)?;
+                let noise_level =
+                    noise_str.and_then(|s| NoiseLevel::from_str(&s).ok()).unwrap_or_default();
+                Ok(SearchResult::new(
                     id,
-                    title: row.get(1)?,
-                    subtitle: row.get(2)?,
-                    observation_type: parse_json(&row.get::<_, String>(3)?)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    parse_json(&row.get::<_, String>(3)?)?,
+                    noise_level,
                     score,
-                })
+                ))
             })?
             .filter_map(log_row_error)
             .collect();

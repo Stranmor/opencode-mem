@@ -111,16 +111,16 @@ impl Storage {
         let status = serde_json::from_str(&status_str)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
-        Ok(Session {
-            id: row.get(0)?,
-            content_session_id: row.get(1)?,
-            memory_session_id: row.get(2)?,
-            project: row.get(3)?,
-            user_prompt: row.get(4)?,
+        Ok(Session::new(
+            row.get(0)?,
+            row.get(1)?,
+            row.get(2)?,
+            row.get(3)?,
+            row.get(4)?,
             started_at,
             ended_at,
             status,
-            prompt_counter: row.get(8)?,
-        })
+            row.get(8)?,
+        ))
     }
 }

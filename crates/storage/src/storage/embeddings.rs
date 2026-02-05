@@ -6,6 +6,10 @@ use zerocopy::IntoBytes;
 use super::{get_conn, log_row_error, Storage};
 
 impl Storage {
+    /// Stores an embedding vector for an observation.
+    ///
+    /// # Errors
+    /// Returns error if database operation fails.
     pub fn store_embedding(&self, observation_id: &str, embedding: &[f32]) -> Result<()> {
         let conn = get_conn(&self.pool)?;
         let rowid: i64 = conn.query_row(
@@ -21,6 +25,10 @@ impl Storage {
         Ok(())
     }
 
+    /// Returns observations that don't have embeddings yet.
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
     pub fn get_observations_without_embeddings(&self, limit: usize) -> Result<Vec<Observation>> {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(

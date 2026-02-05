@@ -1,3 +1,6 @@
+//! HTTP API server for opencode-mem.
+
+#![allow(missing_docs, reason = "Internal crate with self-explanatory API")]
 #![allow(unreachable_pub, reason = "pub items are re-exported")]
 #![allow(clippy::clone_on_ref_ptr, reason = "Arc cloning is intentional")]
 #![allow(clippy::absolute_paths, reason = "Explicit paths for clarity")]
@@ -23,6 +26,16 @@
 #![allow(clippy::assigning_clones, reason = "Clone assignment is clearer")]
 #![allow(dead_code, reason = "Public API for future use")]
 #![allow(clippy::needless_continue, reason = "Continue is clearer in loops")]
+#![allow(clippy::missing_docs_in_private_items, reason = "Internal crate")]
+#![allow(clippy::implicit_return, reason = "Implicit return is idiomatic Rust")]
+#![allow(clippy::question_mark_used, reason = "? operator is idiomatic Rust")]
+#![allow(clippy::min_ident_chars, reason = "Short closure params are idiomatic")]
+#![allow(clippy::else_if_without_else, reason = "Else not always needed")]
+#![allow(clippy::shadow_reuse, reason = "Shadowing for Arc clones is idiomatic")]
+#![allow(clippy::shadow_unrelated, reason = "Shadowing in async blocks is idiomatic")]
+#![allow(clippy::cognitive_complexity, reason = "Complex async handlers are inherent")]
+#![allow(clippy::exhaustive_structs, reason = "HTTP types are stable")]
+#![allow(clippy::single_call_fn, reason = "Helper functions improve readability")]
 
 mod api_types;
 mod blocking;
@@ -48,7 +61,7 @@ use opencode_mem_service::{ObservationService, SessionService};
 use opencode_mem_storage::Storage;
 
 pub use api_types::{ReadinessResponse, Settings, VersionResponse};
-pub use handlers::queue::run_startup_recovery;
+pub use handlers::queue::{run_startup_recovery, start_background_processor};
 
 /// Shared application state for all HTTP handlers.
 ///
