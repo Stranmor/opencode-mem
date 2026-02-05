@@ -2,12 +2,19 @@
 //!
 //! This crate contains domain types shared across all other crates.
 
+/// Error types for opencode-mem operations.
 mod error;
+/// Hook event types for IDE integration.
 mod hook;
+/// JSON utility functions shared across crates.
 mod json_utils;
+/// Global Knowledge Layer types.
 mod knowledge;
+/// Observation types for coding session capture.
 mod observation;
+/// Session types for memory sessions.
 mod session;
+/// Storage backend abstraction trait.
 mod storage_trait;
 
 /// Alias for backward compatibility

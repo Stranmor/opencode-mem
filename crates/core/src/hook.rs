@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 /// Hook event types triggered by IDE/CLI
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[non_exhaustive]
 pub enum HookEvent {
     /// Context injection - get relevant observations for current project
     Context,
@@ -24,10 +25,10 @@ pub enum HookEvent {
 impl Display for HookEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match *self {
-            Self::Context => write!(f, "context"),
-            Self::SessionInit => write!(f, "session-init"),
-            Self::Observation => write!(f, "observation"),
-            Self::Summarize => write!(f, "summarize"),
+            Self::Context => return write!(f, "context"),
+            Self::SessionInit => return write!(f, "session-init"),
+            Self::Observation => return write!(f, "observation"),
+            Self::Summarize => return write!(f, "summarize"),
         }
     }
 }
@@ -37,55 +38,73 @@ impl FromStr for HookEvent {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "context" => Ok(Self::Context),
-            "session-init" | "session_init" => Ok(Self::SessionInit),
-            "observation" | "observe" => Ok(Self::Observation),
-            "summarize" => Ok(Self::Summarize),
-            _ => Err(anyhow::anyhow!("Invalid hook event: {s}")),
+            "context" => return Ok(Self::Context),
+            "session-init" | "session_init" => return Ok(Self::SessionInit),
+            "observation" | "observe" => return Ok(Self::Observation),
+            "summarize" => return Ok(Self::Summarize),
+            _ => return Err(anyhow::anyhow!("Invalid hook event: {s}")),
         }
     }
 }
 
 /// Request payload for context hook
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ContextHookRequest {
+    /// Project path or name to get context for.
     pub project: String,
+    /// Maximum number of observations to return.
     #[serde(default = "default_context_limit")]
     pub limit: usize,
 }
 
+/// Default limit for context hook requests.
 const fn default_context_limit() -> usize {
-    50
+    return 50;
 }
 
 /// Request payload for session-init hook
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct SessionInitHookRequest {
+    /// Content session ID from the IDE.
     #[serde(rename = "contentSessionId")]
     pub content_session_id: String,
+    /// Project path or name.
     pub project: Option<String>,
+    /// Initial user prompt text.
     #[serde(rename = "userPrompt")]
     pub user_prompt: Option<String>,
 }
 
 /// Request payload for observation hook
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct ObservationHookRequest {
+    /// Tool name that was executed.
     pub tool: String,
+    /// Session ID this observation belongs to.
     #[serde(rename = "sessionId")]
     pub session_id: Option<String>,
+    /// Unique call ID for this tool invocation.
     #[serde(rename = "callId")]
     pub call_id: Option<String>,
+    /// Project path or name.
     pub project: Option<String>,
+    /// Tool input parameters.
     pub input: Option<serde_json::Value>,
+    /// Tool output text.
     pub output: String,
 }
 
 /// Request payload for summarize hook
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
 pub struct SummarizeHookRequest {
+    /// Content session ID from the IDE.
     #[serde(rename = "contentSessionId")]
     pub content_session_id: Option<String>,
+    /// Memory session ID.
     #[serde(rename = "sessionId")]
     pub session_id: Option<String>,
 }

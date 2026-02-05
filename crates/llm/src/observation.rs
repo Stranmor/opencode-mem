@@ -1,7 +1,7 @@
 use chrono::Utc;
 use opencode_mem_core::{
-    filter_private_content, strip_markdown_json, Concept, Error, Observation, ObservationInput,
-    ObservationType, Result,
+    filter_private_content, strip_markdown_json, Concept, Error, NoiseLevel, Observation,
+    ObservationInput, ObservationType, Result,
 };
 use std::str::FromStr as _;
 
@@ -39,39 +39,43 @@ impl LlmClient {
         let filtered_title = filter_private_content(&input.output.title);
 
         let prompt = format!(
-            r#"Analyze this tool execution. Decide if it contains PROJECT-SPECIFIC knowledge worth remembering.
+            r#"Analyze this tool execution and classify its noise level for memory storage.
 
 Tool: {}
 Output Title: {}
 Output Content: {}
 
-SAVE ONLY if it contains:
-- PROJECT DECISION: Why this project chose X over Y (architecture, library, pattern)
-- PROJECT-SPECIFIC GOTCHA: Something unique to THIS codebase/API that would bite someone new
-- USER PREFERENCE: How this user likes things done (code style, communication, workflow)
-- UNIQUE DISCOVERY: Something about THIS project's dependencies/APIs that isn't obvious
+NOISE LEVELS (from most to least important):
+- "critical": Major architectural decisions, breaking changes, security issues
+- "high": Project-specific gotchas, user preferences, unique discoveries
+- "medium": Useful context that might help later (default)
+- "low": Routine operations, common patterns, obvious facts
+- "negligible": Pure noise - file listings, build output, trivial reads
 
-DO NOT SAVE (LLM already knows these):
-- Generic programming patterns (async/await, error handling, mutex usage)
+CLASSIFY AS CRITICAL/HIGH if it contains:
+- PROJECT DECISION: Why this project chose X over Y (architecture, library, pattern)
+- PROJECT-SPECIFIC GOTCHA: Something unique to THIS codebase/API
+- USER PREFERENCE: How this user likes things done
+- UNIQUE DISCOVERY: Something about THIS project's dependencies/APIs
+
+CLASSIFY AS LOW/NEGLIGIBLE if:
+- Generic programming patterns (async/await, error handling)
 - Common library usage (how to use tokio, reqwest, serde)
-- Standard fixes (race condition -> RwLock, null check, etc.)
 - Routine operations (file reads, git commands, builds)
 - Obvious facts (Rust needs cargo, Python needs pip)
 
-CRITICAL: If a senior Rust developer would already know this -> DO NOT SAVE.
-Only save what is UNIQUE to this project/user/codebase.
-
 Return JSON:
-- should_save: boolean - true ONLY for project-specific knowledge
-- type: one of "decision", "discovery", "gotcha", "preference", "change"
+- noise_level: one of "critical", "high", "medium", "low", "negligible"
+- noise_reason: brief explanation of classification (max 100 chars)
+- type: one of "decision", "discovery", "gotcha", "preference", "change", "bugfix", "refactor", "feature"
 - title: what was learned (max 80 chars)
 - subtitle: project/context this applies to
-- narrative: why this matters FOR THIS PROJECT specifically
-- facts: actionable project-specific facts
+- narrative: why this matters
+- facts: actionable facts
 - concepts: from ["how-it-works", "why-it-exists", "what-changed", "problem-solution", "gotcha", "pattern", "trade-off"]
 - files_read: file paths
 - files_modified: file paths
-- keywords: project-specific terms for search"#,
+- keywords: terms for search"#,
             input.tool,
             filtered_title,
             truncate(&filtered_output, MAX_OUTPUT_LEN),
@@ -119,10 +123,13 @@ Return JSON:
             ))
         })?;
 
-        if !obs_json.should_save {
-            tracing::debug!("Skipping trivial observation: {}", obs_json.title);
-            return Ok(None);
-        }
+        let noise_level = NoiseLevel::from_str(&obs_json.noise_level).unwrap_or_default();
+        tracing::debug!(
+            "Observation noise_level={:?}, reason={:?}, title={}",
+            noise_level,
+            obs_json.noise_reason,
+            obs_json.title
+        );
 
         let mut concepts = Vec::new();
         for s in &obs_json.concepts {
@@ -131,29 +138,32 @@ Return JSON:
             }
         }
 
-        Ok(Some(Observation {
-            id: id.to_owned(),
-            session_id: input.session_id.clone(),
-            project: project.map(ToOwned::to_owned),
-            observation_type: ObservationType::from_str(&obs_json.observation_type).map_err(
-                |_ignored| {
-                    Error::InvalidInput(format!(
-                        "Invalid observation type: {}",
-                        obs_json.observation_type
-                    ))
-                },
-            )?,
-            title: obs_json.title,
-            subtitle: obs_json.subtitle,
-            narrative: obs_json.narrative,
-            facts: obs_json.facts,
+        let observation_type =
+            ObservationType::from_str(&obs_json.observation_type).map_err(|_ignored| {
+                Error::InvalidInput(format!(
+                    "Invalid observation type: {}",
+                    obs_json.observation_type
+                ))
+            })?;
+
+        return Ok(Some(Observation::new(
+            id.to_owned(),
+            input.session_id.clone(),
+            project.map(ToOwned::to_owned),
+            observation_type,
+            obs_json.title,
+            obs_json.subtitle,
+            obs_json.narrative,
+            obs_json.facts,
             concepts,
-            files_read: obs_json.files_read,
-            files_modified: obs_json.files_modified,
-            keywords: obs_json.keywords,
-            prompt_number: None,
-            discovery_tokens: None,
-            created_at: Utc::now(),
-        }))
+            obs_json.files_read,
+            obs_json.files_modified,
+            obs_json.keywords,
+            None,
+            None,
+            noise_level,
+            obs_json.noise_reason,
+            Utc::now(),
+        )));
     }
 }

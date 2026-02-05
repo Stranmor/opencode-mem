@@ -34,14 +34,15 @@ pub struct ResponseMessage {
     pub content: String,
 }
 
-const fn default_true() -> bool {
-    true
+fn default_medium() -> String {
+    "medium".to_owned()
 }
 
 #[derive(Deserialize)]
 pub struct ObservationJson {
-    #[serde(default = "default_true")]
-    pub should_save: bool,
+    #[serde(default = "default_medium")]
+    pub noise_level: String,
+    pub noise_reason: Option<String>,
     #[serde(rename = "type", default)]
     pub observation_type: String,
     #[serde(default)]

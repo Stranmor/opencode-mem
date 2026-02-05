@@ -9,12 +9,11 @@ pub fn strip_markdown_json(content: &str) -> &str {
     if trimmed.starts_with("```") && trimmed.ends_with("```") {
         let without_prefix = trimmed.strip_prefix("```").unwrap_or(trimmed);
         let without_suffix = without_prefix.strip_suffix("```").unwrap_or(without_prefix);
-        without_suffix
+        return without_suffix
             .split_once('\n')
-            .map_or_else(|| without_suffix.trim(), |(_, rest)| rest.trim())
-    } else {
-        trimmed
+            .map_or_else(|| return without_suffix.trim(), |(_, rest)| return rest.trim());
     }
+    return trimmed;
 }
 
 #[cfg(test)]
