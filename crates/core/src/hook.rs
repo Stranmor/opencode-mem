@@ -25,10 +25,10 @@ pub enum HookEvent {
 impl Display for HookEvent {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match *self {
-            Self::Context => return write!(f, "context"),
-            Self::SessionInit => return write!(f, "session-init"),
-            Self::Observation => return write!(f, "observation"),
-            Self::Summarize => return write!(f, "summarize"),
+            Self::Context => write!(f, "context"),
+            Self::SessionInit => write!(f, "session-init"),
+            Self::Observation => write!(f, "observation"),
+            Self::Summarize => write!(f, "summarize"),
         }
     }
 }
@@ -38,11 +38,11 @@ impl FromStr for HookEvent {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "context" => return Ok(Self::Context),
-            "session-init" | "session_init" => return Ok(Self::SessionInit),
-            "observation" | "observe" => return Ok(Self::Observation),
-            "summarize" => return Ok(Self::Summarize),
-            _ => return Err(anyhow::anyhow!("Invalid hook event: {s}")),
+            "context" => Ok(Self::Context),
+            "session-init" | "session_init" => Ok(Self::SessionInit),
+            "observation" | "observe" => Ok(Self::Observation),
+            "summarize" => Ok(Self::Summarize),
+            _ => Err(anyhow::anyhow!("Invalid hook event: {s}")),
         }
     }
 }
@@ -60,7 +60,7 @@ pub struct ContextHookRequest {
 
 /// Default limit for context hook requests.
 const fn default_context_limit() -> usize {
-    return 50;
+    50
 }
 
 /// Request payload for session-init hook
@@ -85,7 +85,7 @@ impl SessionInitHookRequest {
         project: Option<String>,
         user_prompt: Option<String>,
     ) -> Self {
-        return Self { content_session_id, project, user_prompt };
+        Self { content_session_id, project, user_prompt }
     }
 }
 
@@ -120,7 +120,7 @@ impl ObservationHookRequest {
         input: Option<serde_json::Value>,
         output: String,
     ) -> Self {
-        return Self { tool, session_id, call_id, project, input, output };
+        Self { tool, session_id, call_id, project, input, output }
     }
 }
 
@@ -140,6 +140,6 @@ impl SummarizeHookRequest {
     /// Creates a new summarize hook request.
     #[must_use]
     pub const fn new(content_session_id: Option<String>, session_id: Option<String>) -> Self {
-        return Self { content_session_id, session_id };
+        Self { content_session_id, session_id }
     }
 }

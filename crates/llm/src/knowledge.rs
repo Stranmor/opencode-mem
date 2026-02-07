@@ -1,9 +1,8 @@
 use opencode_mem_core::{
-    strip_markdown_json, Concept, Error, KnowledgeExtractionResult, KnowledgeInput, KnowledgeType,
-    Observation, Result,
+    Concept, Error, KnowledgeExtractionResult, KnowledgeInput, KnowledgeType, Observation, Result,
 };
 
-use crate::ai_types::{ChatRequest, ChatResponse, Message, ResponseFormat};
+use crate::ai_types::{ChatRequest, Message, ResponseFormat};
 use crate::client::LlmClient;
 
 impl LlmClient {
@@ -57,41 +56,14 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
             response_format: ResponseFormat { format_type: "json_object".to_owned() },
         };
 
-        let response = self
-            .client
-            .post(format!("{}/v1/chat/completions", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| Error::LlmApi(e.to_string()))?;
-
-        let status = response.status();
-        let body = response.text().await.map_err(|e| Error::LlmApi(e.to_string()))?;
-
-        if !status.is_success() {
-            return Err(Error::LlmApi(format!("API error {status}: {body}")));
-        }
-
-        let chat_response: ChatResponse = serde_json::from_str(&body).map_err(|e| {
-            Error::LlmApi(format!(
-                "Failed to parse response: {e} - body: {}",
-                body.get(..500).unwrap_or(&body)
-            ))
-        })?;
-
-        let first_choice = chat_response
-            .choices
-            .first()
-            .ok_or_else(|| Error::LlmApi("API returned empty choices array".to_owned()))?;
-
-        let content = strip_markdown_json(&first_choice.message.content);
-        let extraction: KnowledgeExtractionResult = serde_json::from_str(content).map_err(|e| {
-            Error::LlmApi(format!(
-                "Failed to parse extraction JSON: {e} - content: {}",
-                content.get(..300).unwrap_or(content)
-            ))
-        })?;
+        let content = self.chat_completion(&request).await?;
+        let extraction: KnowledgeExtractionResult =
+            serde_json::from_str(&content).map_err(|e| {
+                Error::LlmApi(format!(
+                    "Failed to parse extraction JSON: {e} - content: {}",
+                    content.get(..300).unwrap_or(&content)
+                ))
+            })?;
 
         if !extraction.extract {
             return Ok(None);

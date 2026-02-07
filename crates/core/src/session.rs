@@ -44,7 +44,7 @@ impl Session {
         status: SessionStatus,
         prompt_counter: u32,
     ) -> Self {
-        return Self {
+        Self {
             id,
             content_session_id,
             memory_session_id,
@@ -54,7 +54,7 @@ impl Session {
             ended_at,
             status,
             prompt_counter,
-        };
+        }
     }
 }
 
@@ -75,12 +75,12 @@ impl FromStr for SessionStatus {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        return match s {
+        match s {
             "active" => Ok(Self::Active),
             "completed" => Ok(Self::Completed),
             "failed" => Ok(Self::Failed),
             _ => Err(anyhow::anyhow!("Invalid session status: {s}")),
-        };
+        }
     }
 }
 
@@ -135,7 +135,7 @@ impl SessionSummary {
         discovery_tokens: Option<u32>,
         created_at: DateTime<Utc>,
     ) -> Self {
-        return Self {
+        Self {
             session_id,
             project,
             request,
@@ -149,7 +149,7 @@ impl SessionSummary {
             prompt_number,
             discovery_tokens,
             created_at,
-        };
+        }
     }
 }
 
@@ -182,6 +182,6 @@ impl UserPrompt {
         project: Option<String>,
         created_at: DateTime<Utc>,
     ) -> Self {
-        return Self { id, content_session_id, prompt_number, prompt_text, project, created_at };
+        Self { id, content_session_id, prompt_number, prompt_text, project, created_at }
     }
 }

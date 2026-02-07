@@ -15,9 +15,9 @@ impl HookEvent {
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match *self {
-            Self::SessionStart => return "session_start",
-            Self::FileSave => return "file_save",
-            Self::SessionEnd => return "session_end",
+            Self::SessionStart => "session_start",
+            Self::FileSave => "file_save",
+            Self::SessionEnd => "session_end",
         }
     }
 
@@ -25,9 +25,9 @@ impl HookEvent {
     #[must_use]
     pub const fn script_name(&self) -> &'static str {
         match *self {
-            Self::SessionStart => return "on-session-start.sh",
-            Self::FileSave => return "on-file-save.sh",
-            Self::SessionEnd => return "on-session-end.sh",
+            Self::SessionStart => "on-session-start.sh",
+            Self::FileSave => "on-file-save.sh",
+            Self::SessionEnd => "on-session-end.sh",
         }
     }
 }
@@ -50,34 +50,34 @@ impl HookContext {
     /// Creates a new empty hook context.
     #[must_use]
     pub const fn new() -> Self {
-        return Self { session_id: None, project_path: None, file_path: None, editor: None };
+        Self { session_id: None, project_path: None, file_path: None, editor: None }
     }
 
     /// Sets the session ID.
     #[must_use]
     pub fn with_session_id<S: Into<String>>(mut self, id: S) -> Self {
         self.session_id = Some(id.into());
-        return self;
+        self
     }
 
     /// Sets the project path.
     #[must_use]
     pub fn with_project_path<S: Into<String>>(mut self, path: S) -> Self {
         self.project_path = Some(path.into());
-        return self;
+        self
     }
 
     /// Sets the file path.
     #[must_use]
     pub fn with_file_path<S: Into<String>>(mut self, path: S) -> Self {
         self.file_path = Some(path.into());
-        return self;
+        self
     }
 
     /// Sets the editor name.
     #[must_use]
     pub fn with_editor<S: Into<String>>(mut self, editor: S) -> Self {
         self.editor = Some(editor.into());
-        return self;
+        self
     }
 }

@@ -28,13 +28,13 @@ impl KnowledgeType {
     /// Returns the string representation of this knowledge type.
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
-        return match *self {
+        match *self {
             Self::Skill => "skill",
             Self::Pattern => "pattern",
             Self::Gotcha => "gotcha",
             Self::Architecture => "architecture",
             Self::ToolUsage => "tool_usage",
-        };
+        }
     }
 }
 
@@ -42,14 +42,14 @@ impl FromStr for KnowledgeType {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        return match s.to_lowercase().as_str() {
+        match s.to_lowercase().as_str() {
             "skill" => Ok(Self::Skill),
             "pattern" => Ok(Self::Pattern),
             "gotcha" => Ok(Self::Gotcha),
             "architecture" => Ok(Self::Architecture),
             "tool_usage" | "toolusage" => Ok(Self::ToolUsage),
             other => Err(format!("unknown knowledge type: {other}")),
-        };
+        }
     }
 }
 
@@ -104,7 +104,7 @@ impl GlobalKnowledge {
         created_at: String,
         updated_at: String,
     ) -> Self {
-        return Self {
+        Self {
             id,
             knowledge_type,
             title,
@@ -118,7 +118,7 @@ impl GlobalKnowledge {
             last_used_at,
             created_at,
             updated_at,
-        };
+        }
     }
 }
 
@@ -154,7 +154,7 @@ impl KnowledgeInput {
         source_project: Option<String>,
         source_observation: Option<String>,
     ) -> Self {
-        return Self {
+        Self {
             knowledge_type,
             title,
             description,
@@ -162,7 +162,7 @@ impl KnowledgeInput {
             triggers,
             source_project,
             source_observation,
-        };
+        }
     }
 }
 
@@ -180,7 +180,7 @@ impl KnowledgeSearchResult {
     /// Creates a new knowledge search result.
     #[must_use]
     pub const fn new(knowledge: GlobalKnowledge, relevance_score: f64) -> Self {
-        return Self { knowledge, relevance_score };
+        Self { knowledge, relevance_score }
     }
 }
 

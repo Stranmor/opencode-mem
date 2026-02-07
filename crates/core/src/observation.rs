@@ -10,11 +10,11 @@ use serde::{Deserialize, Serialize};
 /// Regex pattern for matching private content tags.
 #[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
 static PRIVATE_TAG_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| return Regex::new("(?is)<private>.*?</private>").unwrap());
+    LazyLock::new(|| Regex::new("(?is)<private>.*?</private>").unwrap());
 
 /// Filters out content wrapped in `<private>...</private>` tags.
 pub fn filter_private_content(text: &str) -> String {
-    return PRIVATE_TAG_REGEX.replace_all(text, "").into_owned();
+    PRIVATE_TAG_REGEX.replace_all(text, "").into_owned()
 }
 
 /// Type of observation captured during a coding session
@@ -44,7 +44,7 @@ impl ObservationType {
     /// Returns the string representation of the observation type.
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
-        return match *self {
+        match *self {
             Self::Bugfix => "bugfix",
             Self::Feature => "feature",
             Self::Refactor => "refactor",
@@ -53,7 +53,7 @@ impl ObservationType {
             Self::Decision => "decision",
             Self::Gotcha => "gotcha",
             Self::Preference => "preference",
-        };
+        }
     }
 }
 
@@ -61,7 +61,7 @@ impl FromStr for ObservationType {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        return match s.to_lowercase().as_str() {
+        match s.to_lowercase().as_str() {
             "bugfix" => Ok(Self::Bugfix),
             "feature" => Ok(Self::Feature),
             "refactor" => Ok(Self::Refactor),
@@ -71,7 +71,7 @@ impl FromStr for ObservationType {
             "gotcha" => Ok(Self::Gotcha),
             "preference" => Ok(Self::Preference),
             other => Err(format!("unknown observation type: {other}")),
-        };
+        }
     }
 }
 
@@ -139,7 +139,7 @@ impl Observation {
         noise_reason: Option<String>,
         created_at: DateTime<Utc>,
     ) -> Self {
-        return Self {
+        Self {
             id,
             session_id,
             project,
@@ -157,7 +157,7 @@ impl Observation {
             noise_level,
             noise_reason,
             created_at,
-        };
+        }
     }
 }
 
@@ -205,13 +205,13 @@ impl NoiseLevel {
     /// Returns the string representation of the noise level.
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
-        return match *self {
+        match *self {
             Self::Critical => "critical",
             Self::High => "high",
             Self::Medium => "medium",
             Self::Low => "low",
             Self::Negligible => "negligible",
-        };
+        }
     }
 }
 
@@ -219,14 +219,14 @@ impl FromStr for NoiseLevel {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        return match s.to_lowercase().as_str() {
+        match s.to_lowercase().as_str() {
             "critical" => Ok(Self::Critical),
             "high" => Ok(Self::High),
             "medium" => Ok(Self::Medium),
             "low" => Ok(Self::Low),
             "negligible" => Ok(Self::Negligible),
             other => Err(format!("unknown noise level: {other}")),
-        };
+        }
     }
 }
 
@@ -259,13 +259,13 @@ impl ToolCall {
         input: serde_json::Value,
         output: String,
     ) -> Self {
-        return Self { tool, session_id, call_id, project, input, output };
+        Self { tool, session_id, call_id, project, input, output }
     }
 
     /// Creates a new tool call with a different session ID.
     #[must_use]
     pub fn with_session_id(self, session_id: String) -> Self {
-        return Self { session_id, ..self };
+        Self { session_id, ..self }
     }
 }
 
@@ -292,7 +292,7 @@ impl ObservationInput {
         call_id: String,
         output: ToolOutput,
     ) -> Self {
-        return Self { tool, session_id, call_id, output };
+        Self { tool, session_id, call_id, output }
     }
 }
 
@@ -313,7 +313,7 @@ impl ToolOutput {
     /// Creates a new tool output.
     #[must_use]
     pub const fn new(title: String, output: String, metadata: serde_json::Value) -> Self {
-        return Self { title, output, metadata };
+        Self { title, output, metadata }
     }
 }
 
@@ -366,7 +366,7 @@ impl SearchResult {
         noise_level: NoiseLevel,
         score: f64,
     ) -> Self {
-        return Self { id, title, subtitle, observation_type, noise_level, score };
+        Self { id, title, subtitle, observation_type, noise_level, score }
     }
 }
 

@@ -4,7 +4,7 @@ use chrono::Utc;
 use opencode_mem_core::{Concept, Error, NoiseLevel, Observation, ObservationType, Result};
 use serde::Deserialize;
 
-use crate::ai_types::{ChatRequest, ChatResponse, Message, ResponseFormat};
+use crate::ai_types::{ChatRequest, Message, ResponseFormat};
 use crate::client::{truncate, LlmClient};
 
 /// Single insight extracted from session analysis
@@ -110,7 +110,7 @@ fn insight_to_observation(
     let obs_type = map_insight_type(&insight.insight_type);
     let concepts = map_insight_concepts(&insight.insight_type);
 
-    return Observation::new(
+    Observation::new(
         uuid::Uuid::new_v4().to_string(),
         session_id.to_owned(),
         Some(project_path.to_owned()),
@@ -128,7 +128,7 @@ fn insight_to_observation(
         NoiseLevel::default(),
         None,
         Utc::now(),
-    );
+    )
 }
 
 impl LlmClient {
@@ -175,39 +175,11 @@ impl LlmClient {
             response_format: ResponseFormat { format_type: "json_object".to_owned() },
         };
 
-        let response = self
-            .client
-            .post(format!("{}/v1/chat/completions", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| Error::LlmApi(e.to_string()))?;
-
-        let status = response.status();
-        let body = response.text().await.map_err(|e| Error::LlmApi(e.to_string()))?;
-
-        if !status.is_success() {
-            return Err(Error::LlmApi(format!("API error {status}: {body}")));
-        }
-
-        let chat_response: ChatResponse = serde_json::from_str(&body).map_err(|e| {
-            Error::LlmApi(format!(
-                "Failed to parse response: {e} - body: {}",
-                body.get(..500).unwrap_or(&body)
-            ))
-        })?;
-
-        let first_choice = chat_response
-            .choices
-            .first()
-            .ok_or_else(|| Error::LlmApi("API returned empty choices array".to_owned()))?;
-
-        let content = opencode_mem_core::strip_markdown_json(&first_choice.message.content);
-        serde_json::from_str(content).map_err(|e| {
+        let content = self.chat_completion(&request).await?;
+        serde_json::from_str(&content).map_err(|e| {
             Error::LlmApi(format!(
                 "Failed to parse insights JSON: {e} - content: {}",
-                content.get(..300).unwrap_or(content)
+                content.get(..300).unwrap_or(&content)
             ))
         })
     }

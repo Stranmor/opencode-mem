@@ -1,6 +1,6 @@
-use opencode_mem_core::{strip_markdown_json, Error, Observation, Result};
+use opencode_mem_core::{Error, Observation, Result};
 
-use crate::ai_types::{ChatRequest, ChatResponse, Message, ResponseFormat, SummaryJson};
+use crate::ai_types::{ChatRequest, Message, ResponseFormat, SummaryJson};
 use crate::client::LlmClient;
 
 impl LlmClient {
@@ -42,38 +42,11 @@ Return JSON: {{"summary": "..."}}"#
             response_format: ResponseFormat { format_type: "json_object".to_owned() },
         };
 
-        let response = self
-            .client
-            .post(format!("{}/v1/chat/completions", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| Error::LlmApi(e.to_string()))?;
-
-        let status = response.status();
-        let body = response.text().await.map_err(|e| Error::LlmApi(e.to_string()))?;
-
-        if !status.is_success() {
-            return Err(Error::LlmApi(format!("API error {status}: {body}")));
-        }
-
-        let chat_response: ChatResponse = serde_json::from_str(&body).map_err(|e| {
-            Error::LlmApi(format!(
-                "Failed to parse response: {e} - body: {}",
-                body.get(..500).unwrap_or(&body)
-            ))
-        })?;
-
-        let first_choice = chat_response.choices.first().ok_or_else(|| {
-            Error::LlmApi("API returned empty choices array for session summary".to_owned())
-        })?;
-
-        let content = strip_markdown_json(&first_choice.message.content);
-        let summary: SummaryJson = serde_json::from_str(content).map_err(|e| {
+        let content = self.chat_completion(&request).await?;
+        let summary: SummaryJson = serde_json::from_str(&content).map_err(|e| {
             Error::LlmApi(format!(
                 "Failed to parse session summary: {e} - content: {}",
-                content.get(..300).unwrap_or(content)
+                content.get(..300).unwrap_or(&content)
             ))
         })?;
         Ok(summary.summary)

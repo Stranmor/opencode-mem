@@ -12,12 +12,8 @@ mod json_utils;
 mod knowledge;
 /// Observation types for coding session capture.
 mod observation;
-/// Search result types for observation queries.
-mod search_result;
 /// Session types for memory sessions.
 mod session;
-/// IO/pipeline types for tool calls and observation inputs.
-mod tool_call;
 
 /// Alias for backward compatibility
 pub use error::MemoryError as Error;
@@ -26,6 +22,5 @@ pub use hook::*;
 pub use json_utils::*;
 pub use knowledge::*;
 pub use observation::*;
-pub use search_result::*;
+
 pub use session::*;
-pub use tool_call::*;

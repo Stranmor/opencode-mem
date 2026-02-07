@@ -15,7 +15,7 @@ pub struct ContextBuilder {
 
 impl Default for ContextBuilder {
     fn default() -> Self {
-        return Self::new();
+        Self::new()
     }
 }
 
@@ -23,28 +23,28 @@ impl ContextBuilder {
     /// Creates a new context builder with default settings.
     #[must_use]
     pub const fn new() -> Self {
-        return Self { observations: Vec::new(), full_count: 5, index_count: 50 };
+        Self { observations: Vec::new(), full_count: 5, index_count: 50 }
     }
 
     /// Sets the observations to include in the context.
     #[must_use]
     pub fn with_observations(mut self, observations: Vec<Observation>) -> Self {
         self.observations = observations;
-        return self;
+        self
     }
 
     /// Sets the number of observations to show in full detail.
     #[must_use]
     pub const fn with_full_count(mut self, count: usize) -> Self {
         self.full_count = count;
-        return self;
+        self
     }
 
     /// Sets the number of observations to show as index references.
     #[must_use]
     pub const fn with_index_count(mut self, count: usize) -> Self {
         self.index_count = count;
-        return self;
+        self
     }
 
     /// Builds the context string.
@@ -80,12 +80,12 @@ impl ContextBuilder {
         output.push_str(
             "\nUse these memories for context about this project's patterns and past decisions.\n",
         );
-        return output;
+        output
     }
 }
 
 /// Formats observations for injection into agent context.
 #[must_use]
 pub fn format_context_for_injection(observations: Vec<Observation>) -> String {
-    return ContextBuilder::new().with_observations(observations).build();
+    ContextBuilder::new().with_observations(observations).build()
 }

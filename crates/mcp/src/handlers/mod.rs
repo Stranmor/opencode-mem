@@ -31,6 +31,7 @@ pub(crate) fn mcp_err(msg: impl Display) -> serde_json::Value {
     json!({ "content": [{ "type": "text", "text": format!("Error: {}", msg) }], "isError": true })
 }
 
+#[expect(clippy::too_many_arguments, reason = "MCP handler needs all service references")]
 pub fn handle_tool_call(
     storage: &Storage,
     embeddings: Option<&EmbeddingService>,

@@ -1,11 +1,11 @@
 use chrono::Utc;
 use opencode_mem_core::{
-    filter_private_content, strip_markdown_json, Concept, Error, NoiseLevel, Observation,
-    ObservationInput, ObservationType, Result,
+    filter_private_content, Concept, Error, NoiseLevel, Observation, ObservationInput,
+    ObservationType, Result,
 };
 use std::str::FromStr as _;
 
-use crate::ai_types::{ChatRequest, ChatResponse, Message, ObservationJson, ResponseFormat};
+use crate::ai_types::{ChatRequest, Message, ObservationJson, ResponseFormat};
 use crate::client::{truncate, LlmClient, MAX_OUTPUT_LEN};
 
 #[must_use]
@@ -28,7 +28,6 @@ impl LlmClient {
     /// # Errors
     /// Returns `Error::LlmApi` if the API call fails or response parsing fails.
     /// Returns `Error::InvalidInput` if the observation type is invalid.
-    #[expect(clippy::too_many_lines, reason = "LLM prompt construction requires sequential steps")]
     pub async fn compress_to_observation(
         &self,
         id: &str,
@@ -87,39 +86,11 @@ Return JSON:
             response_format: ResponseFormat { format_type: "json_object".to_owned() },
         };
 
-        let response = self
-            .client
-            .post(format!("{}/v1/chat/completions", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(&request)
-            .send()
-            .await
-            .map_err(|e| Error::LlmApi(e.to_string()))?;
-
-        let status = response.status();
-        let body = response.text().await.map_err(|e| Error::LlmApi(e.to_string()))?;
-
-        if !status.is_success() {
-            return Err(Error::LlmApi(format!("API error {status}: {body}")));
-        }
-
-        let chat_response: ChatResponse = serde_json::from_str(&body).map_err(|e| {
-            Error::LlmApi(format!(
-                "Failed to parse response: {e} - body: {}",
-                body.get(..500).unwrap_or(&body)
-            ))
-        })?;
-
-        let first_choice = chat_response
-            .choices
-            .first()
-            .ok_or_else(|| Error::LlmApi("API returned empty choices array".to_owned()))?;
-
-        let content = strip_markdown_json(&first_choice.message.content);
-        let obs_json: ObservationJson = serde_json::from_str(content).map_err(|e| {
+        let content = self.chat_completion(&request).await?;
+        let obs_json: ObservationJson = serde_json::from_str(&content).map_err(|e| {
             Error::LlmApi(format!(
                 "Failed to parse observation JSON: {e} - content: {}",
-                content.get(..300).unwrap_or(content)
+                content.get(..300).unwrap_or(&content)
             ))
         })?;
 
@@ -146,7 +117,7 @@ Return JSON:
                 ))
             })?;
 
-        return Ok(Some(Observation::new(
+        Ok(Some(Observation::new(
             id.to_owned(),
             input.session_id.clone(),
             project.map(ToOwned::to_owned),
@@ -164,6 +135,6 @@ Return JSON:
             noise_level,
             obs_json.noise_reason,
             Utc::now(),
-        )));
+        )))
     }
 }

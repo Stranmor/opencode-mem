@@ -11,9 +11,9 @@ pub fn strip_markdown_json(content: &str) -> &str {
         let without_suffix = without_prefix.strip_suffix("```").unwrap_or(without_prefix);
         return without_suffix
             .split_once('\n')
-            .map_or_else(|| return without_suffix.trim(), |(_, rest)| return rest.trim());
+            .map_or_else(|| without_suffix.trim(), |(_, rest)| rest.trim());
     }
-    return trimmed;
+    trimmed
 }
 
 #[cfg(test)]
