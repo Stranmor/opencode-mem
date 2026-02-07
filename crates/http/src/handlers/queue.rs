@@ -127,7 +127,28 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
     // If same message is processed twice (race condition), same observation ID is generated
     let id =
         uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, msg.id.to_string().as_bytes()).to_string();
-    let Some(observation) = state.llm.compress_to_observation(&id, &input, None).await? else {
+    let observation = state.llm.compress_to_observation(&id, &input, None).await?;
+
+    // Store raw event in Infinite Memory REGARDLESS of whether observation is trivial.
+    // Architecture invariant: raw events are NEVER lost — drill-down must always work.
+    if let Some(infinite_mem) = state.infinite_mem.as_ref() {
+        let files = observation.as_ref().map(|obs| obs.files_modified.clone()).unwrap_or_default();
+        let event = tool_event(
+            &msg.session_id,
+            None,
+            tool_name,
+            tool_input
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or(serde_json::Value::Null),
+            serde_json::json!({"output": tool_response}),
+            files,
+        );
+        if let Err(e) = infinite_mem.store_event(event).await {
+            tracing::warn!("Failed to store in infinite memory: {}", e);
+        }
+    }
+
+    let Some(observation) = observation else {
         tracing::debug!("Observation filtered as trivial for message {}", msg.id);
         return Ok(());
     };
@@ -138,22 +159,6 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
         .map_err(|e| anyhow::anyhow!("save observation join error: {e}"))??;
     tracing::info!("Processed pending message {} -> observation {}", msg.id, observation.id);
     drop(state.event_tx.send(serde_json::to_string(&observation)?));
-
-    if let Some(infinite_mem) = state.infinite_mem.as_ref() {
-        let event = tool_event(
-            &msg.session_id,
-            None,
-            tool_name,
-            tool_input
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or(serde_json::Value::Null),
-            serde_json::json!({"output": tool_response}),
-            observation.files_modified.clone(),
-        );
-        if let Err(e) = infinite_mem.store_event(event).await {
-            tracing::warn!("Failed to store in infinite memory: {}", e);
-        }
-    }
 
     Ok(())
 }
