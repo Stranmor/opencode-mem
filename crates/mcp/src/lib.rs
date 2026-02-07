@@ -33,6 +33,7 @@ mod tools;
 
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
+use opencode_mem_service::{ObservationService, SessionService};
 use opencode_mem_storage::Storage;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -75,6 +76,8 @@ pub fn run_mcp_server(
     storage: Arc<Storage>,
     embeddings: Option<Arc<EmbeddingService>>,
     infinite_mem: Option<Arc<InfiniteMemory>>,
+    observation_service: Arc<ObservationService>,
+    session_service: Arc<SessionService>,
     handle: Handle,
 ) {
     tracing::info!("MCP server starting on stdio");
@@ -133,6 +136,8 @@ pub fn run_mcp_server(
             &storage,
             embeddings.as_deref(),
             infinite_mem.as_deref(),
+            &observation_service,
+            &session_service,
             &handle,
             &request,
         ) {
@@ -148,6 +153,8 @@ fn handle_request(
     storage: &Storage,
     embeddings: Option<&EmbeddingService>,
     infinite_mem: Option<&InfiniteMemory>,
+    observation_service: &ObservationService,
+    session_service: &SessionService,
     handle: &Handle,
     req: &McpRequest,
 ) -> Option<McpResponse> {
@@ -173,9 +180,16 @@ fn handle_request(
             result: Some(get_tools_json()),
             error: None,
         },
-        "tools/call" => {
-            handle_tool_call(storage, embeddings, infinite_mem, handle, &req.params, id)
-        },
+        "tools/call" => handle_tool_call(
+            storage,
+            embeddings,
+            infinite_mem,
+            observation_service,
+            session_service,
+            handle,
+            &req.params,
+            id,
+        ),
         _ => McpResponse {
             jsonrpc: "2.0".to_owned(),
             id,

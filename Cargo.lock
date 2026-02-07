@@ -2215,11 +2215,19 @@ dependencies = [
  "opencode-mem-core",
  "opencode-mem-embeddings",
  "opencode-mem-infinite",
+ "opencode-mem-service",
  "opencode-mem-storage",
  "serde",
  "serde_json",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "opencode-mem-plugin"
+version = "0.1.0"
+dependencies = [
+ "opencode-mem-core",
 ]
 
 [[package]]

@@ -4,6 +4,7 @@ mod memory;
 
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
+use opencode_mem_service::{ObservationService, SessionService};
 use opencode_mem_storage::Storage;
 use serde::Serialize;
 use serde_json::json;
@@ -34,6 +35,8 @@ pub fn handle_tool_call(
     storage: &Storage,
     embeddings: Option<&EmbeddingService>,
     infinite_mem: Option<&InfiniteMemory>,
+    _observation_service: &ObservationService,
+    _session_service: &SessionService,
     handle: &Handle,
     params: &serde_json::Value,
     id: serde_json::Value,
