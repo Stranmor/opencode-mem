@@ -143,9 +143,7 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
             serde_json::json!({"output": tool_response}),
             files,
         );
-        if let Err(e) = infinite_mem.store_event(event).await {
-            tracing::warn!("Failed to store in infinite memory: {}", e);
-        }
+        infinite_mem.store_event(event).await?;
     }
 
     let Some(observation) = observation else {
