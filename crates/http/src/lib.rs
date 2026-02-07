@@ -2,28 +2,16 @@
 
 #![allow(missing_docs, reason = "Internal crate with self-explanatory API")]
 #![allow(unreachable_pub, reason = "pub items are re-exported")]
-#![allow(clippy::clone_on_ref_ptr, reason = "Arc cloning is intentional")]
 #![allow(clippy::absolute_paths, reason = "Explicit paths for clarity")]
-#![allow(clippy::map_err_ignore, reason = "Error context is added in handler")]
 #![allow(unused_results, reason = "Some results are intentionally ignored")]
 #![allow(clippy::arithmetic_side_effects, reason = "Arithmetic is safe in context")]
-#![allow(clippy::pattern_type_mismatch, reason = "Pattern matching style")]
 #![allow(clippy::exit, reason = "Exit is used for graceful shutdown")]
 #![allow(missing_copy_implementations, reason = "Types may grow")]
 #![allow(clippy::let_underscore_untyped, reason = "Type is clear from context")]
 #![allow(let_underscore_drop, reason = "Intentionally dropping values")]
-#![allow(clippy::let_underscore_must_use, reason = "Intentionally ignoring results")]
 #![allow(clippy::ref_patterns, reason = "Ref patterns are clearer")]
 #![allow(missing_debug_implementations, reason = "Internal types")]
-#![allow(clippy::too_many_lines, reason = "Handler functions are complex")]
-#![allow(clippy::manual_let_else, reason = "if let is clearer")]
-#![allow(clippy::redundant_else, reason = "Explicit else is clearer")]
-#![allow(clippy::needless_pass_by_value, reason = "API design choice")]
-#![allow(clippy::missing_errors_doc, reason = "Errors are self-explanatory")]
 #![allow(unused_imports, reason = "Imports may be used conditionally")]
-#![allow(clippy::similar_names, reason = "Variable names are clear in context")]
-#![allow(clippy::significant_drop_tightening, reason = "Drop timing is intentional")]
-#![allow(clippy::assigning_clones, reason = "Clone assignment is clearer")]
 #![allow(dead_code, reason = "Public API for future use")]
 #![allow(clippy::needless_continue, reason = "Continue is clearer in loops")]
 #![allow(clippy::missing_docs_in_private_items, reason = "Internal crate")]
@@ -33,7 +21,6 @@
 #![allow(clippy::else_if_without_else, reason = "Else not always needed")]
 #![allow(clippy::shadow_reuse, reason = "Shadowing for Arc clones is idiomatic")]
 #![allow(clippy::shadow_unrelated, reason = "Shadowing in async blocks is idiomatic")]
-#![allow(clippy::cognitive_complexity, reason = "Complex async handlers are inherent")]
 #![allow(clippy::exhaustive_structs, reason = "HTTP types are stable")]
 #![allow(clippy::single_call_fn, reason = "Helper functions improve readability")]
 
@@ -62,6 +49,35 @@ use opencode_mem_storage::Storage;
 
 pub use api_types::{ReadinessResponse, Settings, VersionResponse};
 pub use handlers::queue::{run_startup_recovery, start_background_processor};
+
+/// Spawns background task that runs infinite memory compression every 5 minutes.
+///
+/// Generates hierarchical summaries (5min → hour → day) from raw events.
+/// Errors are logged but do not stop the loop — retries on next interval.
+pub fn start_compression_pipeline(infinite_mem: Arc<InfiniteMemory>) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+        loop {
+            interval.tick().await;
+            tracing::debug!("Compression pipeline: running full compression...");
+            match infinite_mem.run_full_compression().await {
+                Ok((five_min, hour, day)) => {
+                    if five_min > 0 || hour > 0 || day > 0 {
+                        tracing::info!(
+                            "Compression pipeline: created {} 5min, {} hour, {} day summaries",
+                            five_min,
+                            hour,
+                            day,
+                        );
+                    }
+                },
+                Err(e) => {
+                    tracing::warn!("Compression pipeline error: {}", e);
+                },
+            }
+        }
+    });
+}
 
 /// Shared application state for all HTTP handlers.
 ///
@@ -109,7 +125,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/prompt/{id}", get(handlers::observations::get_prompt_by_id))
         .route("/api/search/observations", get(handlers::search::search_observations))
         .route("/api/search/by-type", get(handlers::search::search_by_type))
-        .route("/api/search/by-concept", get(handlers::search::search_by_concept))
+        .route("/api/search/by-concept", get(handlers::search::search_observations))
         .route("/api/search/sessions", get(handlers::search::search_sessions))
         .route("/api/search/prompts", get(handlers::search::search_prompts))
         .route("/api/search/by-file", get(handlers::search::search_by_file))
@@ -118,7 +134,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/timeline", get(handlers::observations::get_timeline))
         .route("/projects", get(handlers::context::get_projects))
         .route("/stats", get(handlers::context::get_stats))
-        .route("/context/inject", get(handlers::context::get_context_inject))
+        .route("/context/inject", get(handlers::context::get_context_recent))
         .route("/session/summary", post(handlers::sessions::generate_summary))
         .route("/events", get(handlers::context::sse_events))
         .route("/sessions/{sessionDbId}/init", post(handlers::sessions::session_init_legacy))
@@ -159,7 +175,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/how-it-works", get(handlers::context::get_how_it_works))
         .route("/api/context/timeline", get(handlers::context::context_timeline))
         .route("/api/context/preview", get(handlers::context::context_preview))
-        .route("/api/timeline/by-query", get(handlers::context::timeline_by_query))
+        .route("/api/timeline/by-query", get(handlers::context::context_timeline))
         .route("/api/search/help", get(handlers::context::search_help))
         .route("/api/knowledge", get(handlers::knowledge::list_knowledge))
         .route("/api/knowledge/search", get(handlers::knowledge::search_knowledge))

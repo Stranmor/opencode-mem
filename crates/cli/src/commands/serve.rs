@@ -1,7 +1,8 @@
 use anyhow::Result;
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_http::{
-    create_router, run_startup_recovery, start_background_processor, AppState, Settings,
+    create_router, run_startup_recovery, start_background_processor, start_compression_pipeline,
+    AppState, Settings,
 };
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
@@ -78,6 +79,11 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     }
 
     start_background_processor(state.clone());
+
+    if let Some(ref infinite_mem) = state.infinite_mem {
+        start_compression_pipeline(Arc::clone(infinite_mem));
+        tracing::info!("Compression pipeline started (every 5 minutes)");
+    }
 
     let router = create_router(state);
     let addr = format!("{host}:{port}");
