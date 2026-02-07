@@ -46,16 +46,6 @@ pub async fn get_stats(
     blocking_json(move || storage.get_stats()).await
 }
 
-pub async fn get_context_inject(
-    State(state): State<Arc<AppState>>,
-    Query(query): Query<ContextQuery>,
-) -> Result<Json<Vec<Observation>>, StatusCode> {
-    let storage = Arc::clone(&state.storage);
-    let project = query.project.clone();
-    let limit = query.limit;
-    blocking_json(move || storage.get_context_for_project(&project, limit)).await
-}
-
 pub async fn sse_events(
     State(state): State<Arc<AppState>>,
 ) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
@@ -153,13 +143,6 @@ pub async fn context_preview(
         observation_count: observations.len(),
         preview,
     }))
-}
-
-pub async fn timeline_by_query(
-    State(state): State<Arc<AppState>>,
-    Query(query): Query<UnifiedTimelineQuery>,
-) -> Result<Json<TimelineResult>, StatusCode> {
-    unified_timeline(State(state), Query(query)).await
 }
 
 pub async fn search_help() -> Json<SearchHelpResponse> {

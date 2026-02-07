@@ -117,20 +117,6 @@ pub async fn search_by_type(
     .await
 }
 
-pub async fn search_by_concept(
-    State(state): State<Arc<AppState>>,
-    Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    let q = if query.q.is_empty() { None } else { Some(query.q.clone()) };
-    let storage = Arc::clone(&state.storage);
-    let project = query.project.clone();
-    let limit = query.limit;
-    blocking_json(move || {
-        storage.search_with_filters(q.as_deref(), project.as_deref(), None, limit)
-    })
-    .await
-}
-
 pub async fn search_sessions(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,

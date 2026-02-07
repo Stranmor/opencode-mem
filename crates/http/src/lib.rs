@@ -57,11 +57,14 @@ pub use handlers::queue::{run_startup_recovery, start_background_processor};
 pub fn start_compression_pipeline(infinite_mem: Arc<InfiniteMemory>) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             interval.tick().await;
             tracing::debug!("Compression pipeline: running full compression...");
-            match infinite_mem.run_full_compression().await {
-                Ok((five_min, hour, day)) => {
+            let mem = Arc::clone(&infinite_mem);
+            let result = tokio::spawn(async move { mem.run_full_compression().await }).await;
+            match result {
+                Ok(Ok((five_min, hour, day))) => {
                     if five_min > 0 || hour > 0 || day > 0 {
                         tracing::info!(
                             "Compression pipeline: created {} 5min, {} hour, {} day summaries",
@@ -71,8 +74,11 @@ pub fn start_compression_pipeline(infinite_mem: Arc<InfiniteMemory>) {
                         );
                     }
                 },
+                Ok(Err(e)) => {
+                    tracing::warn!("Compression pipeline error: {e:?}");
+                },
                 Err(e) => {
-                    tracing::warn!("Compression pipeline error: {}", e);
+                    tracing::warn!("Compression pipeline panic: {e:?}");
                 },
             }
         }
