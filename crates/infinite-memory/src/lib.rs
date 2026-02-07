@@ -5,10 +5,6 @@
 
 #![allow(missing_docs, reason = "Internal crate with self-explanatory API")]
 #![allow(
-    clippy::missing_errors_doc,
-    reason = "Internal crate, errors are self-explanatory from Result types"
-)]
-#![allow(
     unreachable_pub,
     reason = "pub items in private modules are re-exported via pub use in lib.rs"
 )]
@@ -21,29 +17,12 @@
 #![allow(clippy::as_conversions, reason = "i64 to u64 conversions for timestamps are safe")]
 #![allow(clippy::needless_raw_strings, reason = "SQL strings use raw for readability")]
 #![allow(clippy::str_to_string, reason = "to_string on &str is idiomatic")]
-#![allow(
-    clippy::redundant_closure_for_method_calls,
-    reason = "Explicit closures are clearer in async contexts"
-)]
-#![allow(clippy::uninlined_format_args, reason = "Format args style preference")]
 #![allow(clippy::expect_used, reason = "Expects are used for known-valid data")]
-#![allow(clippy::use_self, reason = "Explicit type names are clearer")]
-#![allow(clippy::must_use_candidate, reason = "Internal functions")]
 #![allow(clippy::absolute_paths, reason = "Explicit paths for clarity")]
 #![allow(clippy::cast_possible_wrap, reason = "usize to i64 is safe for reasonable sizes")]
-#![allow(clippy::same_name_method, reason = "Sync methods mirror async trait methods")]
 #![allow(clippy::non_ascii_literal, reason = "Unicode in strings is intentional")]
-#![allow(clippy::doc_markdown, reason = "Technical terms don't need backticks")]
-#![allow(clippy::if_not_else, reason = "Style preference")]
 #![allow(missing_debug_implementations, reason = "Internal types")]
 #![allow(missing_copy_implementations, reason = "Types may grow")]
-#![allow(clippy::needless_raw_string_hashes, reason = "SQL strings use raw for readability")]
-#![allow(clippy::needless_pass_by_value, reason = "API design choice")]
-#![allow(clippy::map_unwrap_or, reason = "Style preference")]
-#![allow(clippy::option_if_let_else, reason = "if let is clearer")]
-#![allow(clippy::pattern_type_mismatch, reason = "Pattern matching style")]
-#![allow(clippy::missing_const_for_fn, reason = "Const fn not always beneficial")]
-#![allow(clippy::default_numeric_fallback, reason = "Numeric types are clear from context")]
 #![allow(clippy::cast_possible_truncation, reason = "Sizes are within bounds")]
 #![allow(clippy::missing_docs_in_private_items, reason = "Internal crate modules")]
 #![allow(clippy::implicit_return, reason = "Implicit return is idiomatic Rust")]
@@ -54,7 +33,6 @@
 #![allow(clippy::exhaustive_structs, reason = "Internal event types are stable")]
 #![allow(clippy::single_call_fn, reason = "Helper functions improve readability")]
 
-mod backend;
 mod compression;
 mod event_queries;
 mod event_types;
@@ -65,7 +43,6 @@ pub use event_types::{
     assistant_event, tool_event, user_event, EventType, RawEvent, StoredEvent, Summary,
     SummaryEntities,
 };
-pub use opencode_mem_core::StorageBackend;
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};

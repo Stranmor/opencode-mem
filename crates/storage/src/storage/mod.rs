@@ -3,11 +3,6 @@
 //! Split from `sqlite_monolith.rs` for maintainability.
 //! All methods are synchronous, matching the original API.
 
-// Storage is internal infrastructure - detailed error docs not needed for each DB operation
-#![allow(
-    clippy::missing_errors_doc,
-    reason = "internal storage layer - errors are self-explanatory DB/IO failures"
-)]
 // SQLite uses i64 for counts/limits, Rust uses usize - safe conversions within DB context
 #![allow(
     clippy::as_conversions,
@@ -17,47 +12,19 @@
     clippy::cast_precision_loss,
     reason = "SQLite i64 <-> Rust usize conversions are safe within DB row counts"
 )]
-// Floating point is used for search scores - acceptable for ranking
-#![allow(clippy::float_arithmetic, reason = "search relevance scores use floating point by design")]
 // Arithmetic in DB operations (pagination, counting) is bounded by DB limits
 #![allow(
     clippy::arithmetic_side_effects,
     reason = "DB row counts and pagination are bounded by SQLite limits"
 )]
-// Numeric literals in DB code are clear from context
-#![allow(
-    clippy::default_numeric_fallback,
-    reason = "numeric types are clear from DB schema context"
-)]
-// Storage module is private, pub(crate) items are effectively pub within this module
-#![allow(
-    clippy::redundant_pub_crate,
-    reason = "storage module is private, pub(crate) is intentional for internal API"
-)]
-// Long functions in search are acceptable - they're cohesive DB operations
-#![allow(clippy::too_many_lines, reason = "search functions are cohesive DB operations")]
 // Absolute paths in error handling are acceptable
 #![allow(clippy::absolute_paths, reason = "std paths in error handling are clear")]
-// Multiple impl blocks organize code by functionality
-#![allow(
-    clippy::multiple_inherent_impl,
-    reason = "impl blocks are split by functionality across files"
-)]
 // Unused results from DB operations are intentional (e.g., DELETE before INSERT)
 #![allow(
-    clippy::let_underscore_must_use,
     clippy::let_underscore_untyped,
     reason = "intentionally ignoring results from cleanup operations"
 )]
-// Sync methods have same names as async trait methods - this is intentional design
-#![allow(
-    clippy::same_name_method,
-    reason = "sync methods wrap async trait methods with same names"
-)]
-// Pattern matching on references is acceptable
-#![allow(clippy::pattern_type_mismatch, reason = "iterator patterns on references are clear")]
 
-mod backend;
 mod embeddings;
 mod knowledge;
 mod observations;

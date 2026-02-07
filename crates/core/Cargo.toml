@@ -14,4 +14,3 @@ chrono = { workspace = true }
 thiserror = { workspace = true }
 regex = { workspace = true }
 anyhow = { workspace = true }
-async-trait = { workspace = true }

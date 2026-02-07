@@ -26,7 +26,6 @@ mod storage;
 mod tests;
 mod vec_init;
 
-pub use opencode_mem_core::StorageBackend;
 pub use pending_queue::{
     default_visibility_timeout_secs, max_retry_count, PaginatedResult, PendingMessage,
     PendingMessageStatus, QueueStats, StorageStats,
