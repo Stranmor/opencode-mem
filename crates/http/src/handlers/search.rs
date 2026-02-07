@@ -7,12 +7,11 @@ use std::sync::Arc;
 use tokio::task::spawn_blocking;
 
 use opencode_mem_core::{SearchResult, SessionSummary, UserPrompt};
-use opencode_mem_embeddings::EmbeddingProvider;
 
 use crate::api_types::{
     FileSearchQuery, SearchQuery, TimelineResult, UnifiedSearchResult, UnifiedTimelineQuery,
 };
-use crate::blocking::{blocking_json, blocking_result};
+use crate::blocking::blocking_json;
 use crate::AppState;
 
 pub async fn search(
@@ -48,71 +47,17 @@ pub async fn semantic_search(
         return Ok(Json(Vec::new()));
     }
 
-    if let Some(emb) = state.embeddings.as_ref() {
-        match emb.embed(&query.q) {
-            Ok(query_vec) => {
-                let storage = Arc::clone(&state.storage);
-                let limit = query.limit;
-                match blocking_result(move || storage.semantic_search(&query_vec, limit)).await {
-                    Ok(results) if !results.is_empty() => Ok(Json(results)),
-                    Ok(_) => {
-                        let storage = Arc::clone(&state.storage);
-                        let q = query.q.clone();
-                        let limit = query.limit;
-                        blocking_json(move || storage.hybrid_search(&q, limit)).await
-                    },
-                    Err(e) => {
-                        tracing::warn!(
-                            "Semantic search storage error, falling back to hybrid: {}",
-                            e
-                        );
-                        let storage = Arc::clone(&state.storage);
-                        let q = query.q.clone();
-                        let limit = query.limit;
-                        blocking_json(move || storage.hybrid_search(&q, limit)).await
-                    },
-                }
-            },
-            Err(e) => {
-                tracing::warn!("Failed to embed query, falling back to hybrid: {}", e);
-                let storage = Arc::clone(&state.storage);
-                let q = query.q.clone();
-                let limit = query.limit;
-                blocking_json(move || storage.hybrid_search(&q, limit)).await
-            },
-        }
-    } else {
-        let storage = Arc::clone(&state.storage);
-        let q = query.q.clone();
-        let limit = query.limit;
-        blocking_json(move || storage.hybrid_search(&q, limit)).await
-    }
-}
-
-pub async fn search_observations(
-    State(state): State<Arc<AppState>>,
-    Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    let q = if query.q.is_empty() { None } else { Some(query.q.clone()) };
     let storage = Arc::clone(&state.storage);
-    let project = query.project.clone();
+    let embeddings = state.embeddings.clone();
+    let q = query.q.clone();
     let limit = query.limit;
     blocking_json(move || {
-        storage.search_with_filters(q.as_deref(), project.as_deref(), None, limit)
-    })
-    .await
-}
-
-pub async fn search_by_type(
-    State(state): State<Arc<AppState>>,
-    Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    let storage = Arc::clone(&state.storage);
-    let project = query.project.clone();
-    let obs_type = query.obs_type.clone();
-    let limit = query.limit;
-    blocking_json(move || {
-        storage.search_with_filters(None, project.as_deref(), obs_type.as_deref(), limit)
+        opencode_mem_search::run_semantic_search_with_fallback(
+            &storage,
+            embeddings.as_deref(),
+            &q,
+            limit,
+        )
     })
     .await
 }

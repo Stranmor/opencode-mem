@@ -10,6 +10,7 @@ workspace = true
 opencode-mem-core = { workspace = true }
 opencode-mem-storage = { workspace = true }
 opencode-mem-embeddings = { workspace = true }
+opencode-mem-search = { workspace = true }
 opencode-mem-infinite = { workspace = true }
 opencode-mem-service = { workspace = true }
 serde = { workspace = true }

@@ -130,6 +130,23 @@ impl HybridSearch {
         }
     }
 
+    /// Semantic search with automatic fallback to hybrid search.
+    ///
+    /// Implements 3-tier fallback chain:
+    /// 1. Try vector search via embeddings
+    /// 2. If vector results are empty → fallback to hybrid search
+    /// 3. If embedding fails → fallback to hybrid search
+    /// 4. If no embeddings service → use hybrid search directly
+    ///
+    /// Guarantees a result regardless of embeddings availability.
+    pub fn semantic_search_with_fallback(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<SearchResult>> {
+        run_semantic_search_with_fallback(&self.storage, self.embeddings.as_deref(), query, limit)
+    }
+
     /// Check if semantic search is available.
     #[must_use]
     pub const fn has_embeddings(&self) -> bool {
@@ -146,6 +163,35 @@ impl HybridSearch {
     /// Finds observations that mention the given file path in `files_read` or `files_modified`.
     pub fn search_by_file(&self, file_path: &str, limit: usize) -> Result<Vec<SearchResult>> {
         self.storage.search_by_file(file_path, limit)
+    }
+}
+
+/// Semantic search with 3-tier fallback, usable without constructing `HybridSearch`.
+///
+/// Called by both HTTP and MCP handlers that have `&Storage` references
+/// rather than `Arc<Storage>`.
+pub fn run_semantic_search_with_fallback(
+    storage: &Storage,
+    embeddings: Option<&EmbeddingService>,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<SearchResult>> {
+    match embeddings {
+        Some(emb) => match emb.embed(query) {
+            Ok(query_vec) => match storage.semantic_search(&query_vec, limit) {
+                Ok(results) if !results.is_empty() => Ok(results),
+                Ok(_) => storage.hybrid_search(query, limit),
+                Err(e) => {
+                    tracing::warn!("Semantic search storage error, falling back to hybrid: {}", e);
+                    storage.hybrid_search(query, limit)
+                },
+            },
+            Err(e) => {
+                tracing::warn!("Failed to embed query, falling back to hybrid: {}", e);
+                storage.hybrid_search(query, limit)
+            },
+        },
+        None => storage.hybrid_search(query, limit),
     }
 }
 
