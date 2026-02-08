@@ -9,7 +9,8 @@ use opencode_mem_core::{Observation, SearchResult, SessionSummary, ToolCall, Use
 use opencode_mem_storage::PaginatedResult;
 
 use crate::api_types::{
-    BatchRequest, ObserveResponse, PaginationQuery, SearchQuery, TimelineQuery,
+    BatchRequest, ObserveBatchResponse, ObserveResponse, PaginationQuery, SearchQuery,
+    TimelineQuery,
 };
 use crate::blocking::{blocking_json, blocking_result};
 use crate::AppState;
@@ -36,6 +37,36 @@ pub async fn observe(
     .await?;
 
     Ok(Json(ObserveResponse { id: message_id.to_string(), queued: true }))
+}
+
+pub async fn observe_batch(
+    State(state): State<Arc<AppState>>,
+    Json(tool_calls): Json<Vec<ToolCall>>,
+) -> Result<Json<ObserveBatchResponse>, StatusCode> {
+    let mut queued = 0usize;
+    for tool_call in &tool_calls {
+        let tool_input = serde_json::to_string(&tool_call.input).ok();
+        let session_id = tool_call.session_id.clone();
+        let tool_name = tool_call.tool.clone();
+        let tool_response = tool_call.output.clone();
+        let storage = Arc::clone(&state.storage);
+        match blocking_result(move || {
+            storage.queue_message(
+                &session_id,
+                Some(&tool_name),
+                tool_input.as_deref(),
+                Some(&tool_response),
+            )
+        })
+        .await
+        {
+            Ok(_id) => queued = queued.saturating_add(1),
+            Err(e) => {
+                tracing::error!("Failed to queue tool call {}: {:?}", tool_call.tool, e);
+            },
+        }
+    }
+    Ok(Json(ObserveBatchResponse { queued, total: tool_calls.len() }))
 }
 
 pub async fn get_observation(

@@ -12,6 +12,12 @@ pub struct ObserveResponse {
     pub queued: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ObserveBatchResponse {
+    pub queued: usize,
+    pub total: usize,
+}
+
 #[derive(Debug, Serialize)]
 pub struct SessionInitResponse {
     pub session_id: String,
