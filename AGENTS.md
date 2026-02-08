@@ -25,6 +25,7 @@ Last reviewed commit: `1341e93fcab15b9caf48bc947d8521b4a97515d8`
 | Privacy Tags | ✅ 100% | `<private>` content filtering |
 | Pending Queue | ✅ 100% | Crash recovery, visibility timeout, dead letter queue |
 | Hook System | ✅ 100% | CLI hooks: context, session-init, observe, summarize |
+| Hybrid Capture | ✅ 100% | Per-turn observation via `session.idle` + debounce + batch endpoint |
 
 ### NOT Implemented
 
@@ -54,11 +55,12 @@ crates/
 ├── core/        # Domain types (Observation, Session, etc.)
 ├── storage/     # SQLite + FTS5 + migrations
 ├── embeddings/  # Vector embeddings (fastembed AllMiniLML6V2)
-├── search/      # Hybrid search (FTS + keyword)
+├── search/      # Hybrid search (FTS + keyword + semantic)
 ├── llm/         # LLM compression (Antigravity API)
+├── service/     # Business logic layer (ObservationService, SessionService)
 ├── http/        # HTTP API (Axum)
 ├── mcp/         # MCP server (stdio)
-├── plugin/      # OpenCode plugin hooks
+├── infinite-memory/ # PostgreSQL + pgvector backend
 └── cli/         # CLI binary
 ```
 
@@ -66,7 +68,7 @@ crates/
 
 - `crates/storage/src/storage/` — modular storage (mod.rs + 10 domain modules)
 - `crates/storage/src/migrations/` — schema migrations v1-v10 (12 files)
-- `crates/mcp/src/` — MCP server: lib.rs + tools.rs + handlers.rs
-- `crates/http/src/handlers/` — HTTP handlers (10 modules)
-- `crates/llm/src/` — AI agent: client, observation, summary, knowledge
+- `crates/mcp/src/` — MCP server: lib.rs + tools.rs + handlers/
+- `crates/http/src/handlers/` — HTTP handlers (11 modules)
+- `crates/llm/src/` — AI agent: client, observation, summary, knowledge, insights
 - `crates/infinite-memory/src/` — PostgreSQL + pgvector backend

@@ -43,30 +43,28 @@ pub async fn observe_batch(
     State(state): State<Arc<AppState>>,
     Json(tool_calls): Json<Vec<ToolCall>>,
 ) -> Result<Json<ObserveBatchResponse>, StatusCode> {
-    let mut queued = 0usize;
-    for tool_call in &tool_calls {
-        let tool_input = serde_json::to_string(&tool_call.input).ok();
-        let session_id = tool_call.session_id.clone();
-        let tool_name = tool_call.tool.clone();
-        let tool_response = tool_call.output.clone();
-        let storage = Arc::clone(&state.storage);
-        match blocking_result(move || {
-            storage.queue_message(
-                &session_id,
-                Some(&tool_name),
+    let total = tool_calls.len();
+    let storage = Arc::clone(&state.storage);
+    let queued = blocking_result(move || {
+        let mut count = 0usize;
+        for tool_call in &tool_calls {
+            let tool_input = serde_json::to_string(&tool_call.input).ok();
+            match storage.queue_message(
+                &tool_call.session_id,
+                Some(&tool_call.tool),
                 tool_input.as_deref(),
-                Some(&tool_response),
-            )
-        })
-        .await
-        {
-            Ok(_id) => queued = queued.saturating_add(1),
-            Err(e) => {
-                tracing::error!("Failed to queue tool call {}: {:?}", tool_call.tool, e);
-            },
+                Some(&tool_call.output),
+            ) {
+                Ok(_id) => count = count.saturating_add(1),
+                Err(e) => {
+                    tracing::error!("Failed to queue tool call {}: {}", tool_call.tool, e);
+                },
+            }
         }
-    }
-    Ok(Json(ObserveBatchResponse { queued, total: tool_calls.len() }))
+        Ok(count)
+    })
+    .await?;
+    Ok(Json(ObserveBatchResponse { queued, total }))
 }
 
 pub async fn get_observation(
