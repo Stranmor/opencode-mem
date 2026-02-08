@@ -74,7 +74,7 @@ pub async fn compress_events(
         events_text.join("\n")
     );
 
-    let response = llm
+    let http_response = llm
         .http_client()
         .post(format!("{}/v1/chat/completions", llm.base_url()))
         .header("Authorization", format!("Bearer {}", llm.api_key()))
@@ -85,12 +85,25 @@ pub async fn compress_events(
         }))
         .send()
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to send compression request: {}", e))?
-        .error_for_status()
-        .map_err(|e| anyhow::anyhow!("AI API error for {} events: {}", events.len(), e))?
-        .json::<serde_json::Value>()
+        .map_err(|e| anyhow::anyhow!("Failed to send compression request: {}", e))?;
+
+    let status = http_response.status();
+    let body = http_response
+        .text()
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to parse AI response: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to read compression response body: {}", e))?;
+
+    if !status.is_success() {
+        anyhow::bail!("AI API error for {} events (status {}): {}", events.len(), status, body);
+    }
+
+    let response: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to parse AI response: {}. Body: {}",
+            e,
+            &body[..body.len().min(500)]
+        )
+    })?;
 
     let content = response["choices"][0]["message"]["content"].as_str().ok_or_else(|| {
         anyhow::anyhow!(
@@ -130,7 +143,7 @@ pub async fn compress_summaries(llm: &LlmClient, summaries: &[Summary]) -> Resul
         summaries_text.join("\n\n")
     );
 
-    let response = llm
+    let http_response = llm
         .http_client()
         .post(format!("{}/v1/chat/completions", llm.base_url()))
         .header("Authorization", format!("Bearer {}", llm.api_key()))
@@ -141,12 +154,30 @@ pub async fn compress_summaries(llm: &LlmClient, summaries: &[Summary]) -> Resul
         }))
         .send()
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to send summary compression request: {}", e))?
-        .error_for_status()
-        .map_err(|e| anyhow::anyhow!("AI API error for {} summaries: {}", summaries.len(), e))?
-        .json::<serde_json::Value>()
+        .map_err(|e| anyhow::anyhow!("Failed to send summary compression request: {}", e))?;
+
+    let status = http_response.status();
+    let body = http_response
+        .text()
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to parse AI response: {}", e))?;
+        .map_err(|e| anyhow::anyhow!("Failed to read summary response body: {}", e))?;
+
+    if !status.is_success() {
+        anyhow::bail!(
+            "AI API error for {} summaries (status {}): {}",
+            summaries.len(),
+            status,
+            body
+        );
+    }
+
+    let response: serde_json::Value = serde_json::from_str(&body).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to parse AI response: {}. Body: {}",
+            e,
+            &body[..body.len().min(500)]
+        )
+    })?;
 
     response["choices"][0]["message"]["content"]
         .as_str()

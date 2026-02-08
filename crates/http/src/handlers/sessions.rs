@@ -20,10 +20,13 @@ pub async fn generate_summary(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SessionSummaryRequest>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let summary = state.session_service.summarize_session(&req.session_id).await.map_err(|e| {
-        tracing::error!("Generate summary failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let summary =
+        state.session_service.summarize_session(&req.session_id, &req.session_id).await.map_err(
+            |e| {
+                tracing::error!("Generate summary failed: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            },
+        )?;
     Ok(Json(serde_json::json!({"session_id": req.session_id, "summary": summary})))
 }
 
@@ -51,10 +54,13 @@ pub async fn session_summarize_legacy(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let summary = state.session_service.summarize_session(&session_db_id).await.map_err(|e| {
-        tracing::error!("Generate summary failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let summary =
+        state.session_service.summarize_session(&session_db_id, &session_db_id).await.map_err(
+            |e| {
+                tracing::error!("Generate summary failed: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            },
+        )?;
     Ok(Json(serde_json::json!({"session_id": session_db_id, "summary": summary, "queued": true})))
 }
 

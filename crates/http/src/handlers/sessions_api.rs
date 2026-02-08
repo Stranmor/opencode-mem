@@ -50,10 +50,12 @@ pub async fn api_session_summarize(
     })?;
 
     // Generate summary from observations already in SQLite
-    let summary = state.session_service.summarize_session(&session_id).await.map_err(|e| {
-        tracing::error!("Session summarize failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let cid = content_session_id.clone();
+    let summary =
+        state.session_service.summarize_session(&session_id, &cid).await.map_err(|e| {
+            tracing::error!("Session summarize failed: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok(Json(serde_json::json!({
         "content_session_id": content_session_id,

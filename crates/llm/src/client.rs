@@ -5,7 +5,7 @@ use crate::ai_types::{ChatRequest, ChatResponse};
 /// Maximum output length for truncation.
 pub const MAX_OUTPUT_LEN: usize = 2000;
 /// Default LLM model to use.
-pub const DEFAULT_MODEL: &str = "gemini-3-pro-high";
+pub const DEFAULT_MODEL: &str = "gemini-3-flash";
 
 /// Client for LLM API calls.
 #[derive(Debug)]
@@ -20,7 +20,9 @@ impl LlmClient {
     /// Creates a new LLM client with the given API key and base URL.
     #[must_use]
     pub fn new(api_key: String, base_url: String) -> Self {
-        Self { client: reqwest::Client::new(), api_key, base_url, model: DEFAULT_MODEL.to_owned() }
+        let model =
+            std::env::var("OPENCODE_MEM_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
+        Self { client: reqwest::Client::new(), api_key, base_url, model }
     }
 
     /// Sets a custom model for this client.

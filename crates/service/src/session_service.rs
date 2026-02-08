@@ -47,8 +47,15 @@ impl SessionService {
         Ok(self.llm.generate_session_summary(observations).await?)
     }
 
-    pub async fn summarize_session(&self, session_id: &str) -> anyhow::Result<String> {
-        let observations = self.storage.get_session_observations(session_id)?;
+    pub async fn summarize_session(
+        &self,
+        session_id: &str,
+        content_session_id: &str,
+    ) -> anyhow::Result<String> {
+        let observations = self.storage.get_session_observations(content_session_id)?;
+        if observations.is_empty() {
+            return Ok("No observations in this session.".to_owned());
+        }
         let summary = self.llm.generate_session_summary(&observations).await?;
         self.storage.update_session_status_with_summary(
             session_id,
