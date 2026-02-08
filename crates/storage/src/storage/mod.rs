@@ -56,17 +56,17 @@ pub struct Storage {
 }
 
 /// Get a connection from the pool
-pub fn get_conn(pool: &Pool<SqliteConnectionManager>) -> Result<PooledConn> {
+pub(crate) fn get_conn(pool: &Pool<SqliteConnectionManager>) -> Result<PooledConn> {
     pool.get().map_err(|e| anyhow::anyhow!("Failed to get connection from pool: {e}"))
 }
 
 /// Parse JSON from string, converting error to rusqlite error
-pub fn parse_json<T: serde::de::DeserializeOwned>(s: &str) -> rusqlite::Result<T> {
+pub(crate) fn parse_json<T: serde::de::DeserializeOwned>(s: &str) -> rusqlite::Result<T> {
     serde_json::from_str(s).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
 }
 
 /// Log row read errors and filter them out
-pub fn log_row_error<T>(result: rusqlite::Result<T>) -> Option<T> {
+pub(crate) fn log_row_error<T>(result: rusqlite::Result<T>) -> Option<T> {
     match result {
         Ok(v) => Some(v),
         Err(e) => {
@@ -77,7 +77,7 @@ pub fn log_row_error<T>(result: rusqlite::Result<T>) -> Option<T> {
 }
 
 /// Map database row to `SearchResult` (6-column format: id, title, subtitle, `observation_type`, `noise_level`, score)
-pub fn map_search_result(
+pub(crate) fn map_search_result(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<opencode_mem_core::SearchResult> {
     let noise_str: Option<String> = row.get(4)?;
@@ -93,7 +93,7 @@ pub fn map_search_result(
 }
 
 /// Map database row to `SearchResult` (5-column format with default score=1.0)
-pub fn map_search_result_default_score(
+pub(crate) fn map_search_result_default_score(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<opencode_mem_core::SearchResult> {
     let noise_str: Option<String> = row.get(4)?;
@@ -109,18 +109,18 @@ pub fn map_search_result_default_score(
 }
 
 /// Escape special characters for LIKE pattern matching
-pub fn escape_like_pattern(s: &str) -> String {
+pub(crate) fn escape_like_pattern(s: &str) -> String {
     s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
 }
 
 /// Coerce a reference to `ToSql` trait object (avoids trivial cast lint)
-pub fn coerce_to_sql<T: rusqlite::ToSql>(val: &T) -> &dyn rusqlite::ToSql {
+pub(crate) fn coerce_to_sql<T: rusqlite::ToSql>(val: &T) -> &dyn rusqlite::ToSql {
     val
 }
 
 /// Build FTS5 query from whitespace-separated words
 /// Each word becomes a quoted prefix match, joined with AND
-pub fn build_fts_query(query: &str) -> String {
+pub(crate) fn build_fts_query(query: &str) -> String {
     query
         .split_whitespace()
         .map(|word| format!("\"{}\"*", word.replace('"', "")))

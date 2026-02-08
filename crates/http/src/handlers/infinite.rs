@@ -5,16 +5,15 @@ use axum::{
 };
 use std::sync::Arc;
 
-use opencode_mem_infinite::{StoredEvent, Summary};
+use opencode_mem_infinite::{InfiniteMemory, StoredEvent, Summary};
 
 use crate::api_types::{InfiniteTimeRangeQuery, SearchEntitiesQuery};
 use crate::AppState;
 
-pub async fn infinite_expand_summary(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<i64>,
-) -> Result<Json<Vec<StoredEvent>>, (StatusCode, Json<serde_json::Value>)> {
-    let infinite_mem = state.infinite_mem.as_ref().ok_or_else(|| {
+fn require_infinite_mem(
+    state: &AppState,
+) -> Result<&Arc<InfiniteMemory>, (StatusCode, Json<serde_json::Value>)> {
+    state.infinite_mem.as_ref().ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({
@@ -22,7 +21,14 @@ pub async fn infinite_expand_summary(
                 "message": "Infinite Memory not configured (INFINITE_MEMORY_URL not set)"
             })),
         )
-    })?;
+    })
+}
+
+pub async fn infinite_expand_summary(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<i64>,
+) -> Result<Json<Vec<StoredEvent>>, (StatusCode, Json<serde_json::Value>)> {
+    let infinite_mem = require_infinite_mem(&state)?;
     infinite_mem.get_events_by_summary_id(id, 1000).await.map(Json).map_err(|e| {
         tracing::error!("infinite_expand_summary failed: {}", e);
         (
@@ -36,15 +42,7 @@ pub async fn infinite_time_range(
     State(state): State<Arc<AppState>>,
     Query(query): Query<InfiniteTimeRangeQuery>,
 ) -> Result<Json<Vec<StoredEvent>>, (StatusCode, Json<serde_json::Value>)> {
-    let infinite_mem = state.infinite_mem.as_ref().ok_or_else(|| {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({
-                "error": "service_unavailable",
-                "message": "Infinite Memory not configured (INFINITE_MEMORY_URL not set)"
-            })),
-        )
-    })?;
+    let infinite_mem = require_infinite_mem(&state)?;
     let start = chrono::DateTime::parse_from_rfc3339(&query.start)
         .map_err(|e| {
             (
@@ -78,15 +76,7 @@ pub async fn infinite_drill_hour(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
 ) -> Result<Json<Vec<Summary>>, (StatusCode, Json<serde_json::Value>)> {
-    let infinite_mem = state.infinite_mem.as_ref().ok_or_else(|| {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({
-                "error": "service_unavailable",
-                "message": "Infinite Memory not configured (INFINITE_MEMORY_URL not set)"
-            })),
-        )
-    })?;
+    let infinite_mem = require_infinite_mem(&state)?;
     infinite_mem.get_5min_summaries_by_hour_id(id, 100).await.map(Json).map_err(|e| {
         tracing::error!("infinite_drill_hour failed: {}", e);
         (
@@ -100,15 +90,7 @@ pub async fn infinite_drill_day(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
 ) -> Result<Json<Vec<Summary>>, (StatusCode, Json<serde_json::Value>)> {
-    let infinite_mem = state.infinite_mem.as_ref().ok_or_else(|| {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({
-                "error": "service_unavailable",
-                "message": "Infinite Memory not configured (INFINITE_MEMORY_URL not set)"
-            })),
-        )
-    })?;
+    let infinite_mem = require_infinite_mem(&state)?;
     infinite_mem.get_hour_summaries_by_day_id(id, 100).await.map(Json).map_err(|e| {
         tracing::error!("infinite_drill_day failed: {}", e);
         (
@@ -122,15 +104,7 @@ pub async fn infinite_search_entities(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchEntitiesQuery>,
 ) -> Result<Json<Vec<Summary>>, (StatusCode, Json<serde_json::Value>)> {
-    let infinite_mem = state.infinite_mem.as_ref().ok_or_else(|| {
-        (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({
-                "error": "service_unavailable",
-                "message": "Infinite Memory not configured (INFINITE_MEMORY_URL not set)"
-            })),
-        )
-    })?;
+    let infinite_mem = require_infinite_mem(&state)?;
 
     infinite_mem
         .search_by_entity(&query.entity_type, &query.value, query.limit)

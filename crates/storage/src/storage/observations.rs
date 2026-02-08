@@ -208,24 +208,20 @@ impl Storage {
         let created_at = chrono::DateTime::parse_from_rfc3339(&created_at_str)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
             .with_timezone(&Utc);
-        Ok(Observation::new(
-            row.get(0)?,
-            row.get(1)?,
-            row.get(2)?,
-            obs_type,
-            row.get(4)?,
-            row.get(5)?,
-            row.get(6)?,
-            parse_json(&row.get::<_, String>(7)?)?,
-            parse_json(&row.get::<_, String>(8)?)?,
-            parse_json(&row.get::<_, String>(9)?)?,
-            parse_json(&row.get::<_, String>(10)?)?,
-            parse_json(&row.get::<_, String>(11)?)?,
-            row.get(12)?,
-            row.get(13)?,
-            noise_level,
-            noise_reason,
-            created_at,
-        ))
+        Ok(Observation::builder(row.get(0)?, row.get(1)?, obs_type, row.get(4)?)
+            .maybe_project(row.get(2)?)
+            .maybe_subtitle(row.get(5)?)
+            .maybe_narrative(row.get(6)?)
+            .facts(parse_json(&row.get::<_, String>(7)?)?)
+            .concepts(parse_json(&row.get::<_, String>(8)?)?)
+            .files_read(parse_json(&row.get::<_, String>(9)?)?)
+            .files_modified(parse_json(&row.get::<_, String>(10)?)?)
+            .keywords(parse_json(&row.get::<_, String>(11)?)?)
+            .maybe_prompt_number(row.get(12)?)
+            .maybe_discovery_tokens(row.get(13)?)
+            .noise_level(noise_level)
+            .maybe_noise_reason(noise_reason)
+            .created_at(created_at)
+            .build())
     }
 }

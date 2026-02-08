@@ -16,25 +16,23 @@ pub fn create_test_storage() -> (Storage, TempDir) {
 
 #[expect(dead_code, reason = "test utility function")]
 pub fn create_test_observation(id: &str, project: &str) -> Observation {
-    Observation::new(
+    Observation::builder(
         id.to_owned(),
         "test-session".to_owned(),
-        Some(project.to_owned()),
         ObservationType::Discovery,
         format!("Test observation {id}"),
-        Some("Test subtitle".to_owned()),
-        Some("Test narrative".to_owned()),
-        vec!["fact1".to_owned(), "fact2".to_owned()],
-        vec![],
-        vec!["file1.rs".to_owned()],
-        vec!["file2.rs".to_owned()],
-        vec!["test".to_owned(), "keyword".to_owned()],
-        Some(1),
-        Some(100),
-        NoiseLevel::Medium,
-        None,
-        Utc::now(),
     )
+    .project(project)
+    .subtitle("Test subtitle")
+    .narrative("Test narrative")
+    .facts(vec!["fact1".to_owned(), "fact2".to_owned()])
+    .files_read(vec!["file1.rs".to_owned()])
+    .files_modified(vec!["file2.rs".to_owned()])
+    .keywords(vec!["test".to_owned(), "keyword".to_owned()])
+    .prompt_number(1)
+    .discovery_tokens(100)
+    .noise_level(NoiseLevel::Medium)
+    .build()
 }
 
 #[expect(dead_code, reason = "test utility function")]
