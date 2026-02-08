@@ -11,5 +11,6 @@ pub mod knowledge;
 pub mod observations;
 pub mod queue;
 pub mod search;
+pub(crate) mod session_ops;
 pub mod sessions;
 pub mod sessions_api;

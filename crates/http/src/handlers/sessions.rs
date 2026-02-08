@@ -5,8 +5,6 @@ use axum::{
 };
 use std::sync::Arc;
 
-use opencode_mem_core::{Session, SessionStatus, ToolCall};
-
 use crate::api_types::{
     SessionCompleteResponse, SessionDeleteResponse, SessionInitRequest, SessionInitResponse,
     SessionObservationsRequest, SessionObservationsResponse, SessionStatusResponse,
@@ -14,6 +12,9 @@ use crate::api_types::{
 };
 use crate::blocking::blocking_result;
 use crate::AppState;
+use opencode_mem_core::SessionStatus;
+
+use super::session_ops::{create_session, spawn_observation_processing};
 
 pub async fn generate_summary(
     State(state): State<Arc<AppState>>,
@@ -31,22 +32,10 @@ pub async fn session_init_legacy(
     Path(session_db_id): Path<String>,
     Json(req): Json<SessionInitRequest>,
 ) -> Result<Json<SessionInitResponse>, StatusCode> {
-    let session = Session::new(
-        session_db_id.clone(),
-        req.content_session_id.unwrap_or_else(|| session_db_id.clone()),
-        None,
-        req.project.unwrap_or_default(),
-        req.user_prompt,
-        chrono::Utc::now(),
-        None,
-        SessionStatus::Active,
-        0,
-    );
-    state.session_service.init_session(session.clone()).map_err(|e| {
-        tracing::error!("Session init failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-    Ok(Json(SessionInitResponse { session_id: session.id, status: "active".to_owned() }))
+    let content_session_id = req.content_session_id.unwrap_or_else(|| session_db_id.clone());
+    let resp =
+        create_session(&state, session_db_id, content_session_id, req.project, req.user_prompt)?;
+    Ok(Json(resp))
 }
 
 pub async fn session_observations_legacy(
@@ -54,28 +43,8 @@ pub async fn session_observations_legacy(
     Path(session_db_id): Path<String>,
     Json(req): Json<SessionObservationsRequest>,
 ) -> Result<Json<SessionObservationsResponse>, StatusCode> {
-    let count = req.observations.len();
-    for tool_call in req.observations {
-        let id = uuid::Uuid::new_v4().to_string();
-        let service = state.observation_service.clone();
-        let semaphore = state.semaphore.clone();
-        let session_id = session_db_id.clone();
-        tokio::spawn(async move {
-            let permit = match semaphore.acquire().await {
-                Ok(p) => p,
-                Err(e) => {
-                    tracing::error!("Semaphore closed: {}", e);
-                    return;
-                },
-            };
-            let tool_call_with_session = tool_call.with_session_id(session_id.clone());
-            if let Err(e) = service.process(&id, tool_call_with_session).await {
-                tracing::error!("Failed to process observation: {}", e);
-            }
-            drop(permit);
-        });
-    }
-    Ok(Json(SessionObservationsResponse { queued: count, session_id: session_db_id }))
+    let resp = spawn_observation_processing(&state, session_db_id, req.observations);
+    Ok(Json(resp))
 }
 
 pub async fn session_summarize_legacy(
