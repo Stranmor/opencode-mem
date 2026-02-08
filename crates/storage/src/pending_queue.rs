@@ -100,6 +100,8 @@ pub struct PendingMessage {
     pub claimed_at_epoch: Option<i64>,
     /// Unix timestamp when processing completed.
     pub completed_at_epoch: Option<i64>,
+    /// Project this message belongs to.
+    pub project: Option<String>,
 }
 
 /// Returns the maximum retry count from environment or default (3).

@@ -10,6 +10,7 @@ fn test_queue_message() {
             Some("read"),
             Some(r#"{"path": "/foo"}"#),
             Some("file contents"),
+            None,
         )
         .unwrap();
     assert!(id > 0);
@@ -22,9 +23,9 @@ fn test_queue_message() {
 fn test_claim_pending_messages() {
     let (storage, _temp_dir) = create_test_storage();
 
-    storage.queue_message("s1", Some("tool1"), None, None).unwrap();
-    storage.queue_message("s2", Some("tool2"), None, None).unwrap();
-    storage.queue_message("s3", Some("tool3"), None, None).unwrap();
+    storage.queue_message("s1", Some("tool1"), None, None, None).unwrap();
+    storage.queue_message("s2", Some("tool2"), None, None, None).unwrap();
+    storage.queue_message("s3", Some("tool3"), None, None, None).unwrap();
 
     let claimed = storage.claim_pending_messages(2, 300).unwrap();
     assert_eq!(claimed.len(), 2);
@@ -39,7 +40,7 @@ fn test_claim_pending_messages() {
 fn test_complete_message() {
     let (storage, _temp_dir) = create_test_storage();
 
-    let id = storage.queue_message("s1", Some("tool"), None, None).unwrap();
+    let id = storage.queue_message("s1", Some("tool"), None, None, None).unwrap();
     let _claimed = storage.claim_pending_messages(1, 300).unwrap();
 
     storage.complete_message(id).unwrap();
@@ -52,7 +53,7 @@ fn test_complete_message() {
 fn test_fail_message_with_retry() {
     let (storage, _temp_dir) = create_test_storage();
 
-    let id = storage.queue_message("s1", Some("tool"), None, None).unwrap();
+    let id = storage.queue_message("s1", Some("tool"), None, None, None).unwrap();
     let _claimed = storage.claim_pending_messages(1, 300).unwrap();
 
     storage.fail_message(id, true).unwrap();
@@ -78,7 +79,7 @@ fn test_fail_message_with_retry() {
 fn test_release_stale_messages() {
     let (storage, _temp_dir) = create_test_storage();
 
-    storage.queue_message("s1", Some("tool"), None, None).unwrap();
+    storage.queue_message("s1", Some("tool"), None, None, None).unwrap();
     let _claimed = storage.claim_pending_messages(1, 300).unwrap();
 
     let released = storage.release_stale_messages(0).unwrap();

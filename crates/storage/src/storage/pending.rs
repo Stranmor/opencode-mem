@@ -20,6 +20,7 @@ fn row_to_pending_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<PendingMe
         created_at_epoch: row.get(7)?,
         claimed_at_epoch: row.get(8)?,
         completed_at_epoch: row.get(9)?,
+        project: row.get(10)?,
     })
 }
 
@@ -34,14 +35,15 @@ impl Storage {
         tool_name: Option<&str>,
         tool_input: Option<&str>,
         tool_response: Option<&str>,
+        project: Option<&str>,
     ) -> Result<i64> {
         let conn = get_conn(&self.pool)?;
         let now = Utc::now().timestamp();
         conn.execute(
             "INSERT INTO pending_messages 
-               (session_id, status, tool_name, tool_input, tool_response, retry_count, created_at_epoch)
-               VALUES (?1, 'pending', ?2, ?3, ?4, 0, ?5)",
-            params![session_id, tool_name, tool_input, tool_response, now],
+               (session_id, status, tool_name, tool_input, tool_response, retry_count, created_at_epoch, project)
+               VALUES (?1, 'pending', ?2, ?3, ?4, 0, ?5, ?6)",
+            params![session_id, tool_name, tool_input, tool_response, now, project],
         )?;
         Ok(conn.last_insert_rowid())
     }
@@ -70,7 +72,7 @@ impl Storage {
                    LIMIT ?3
                )
                RETURNING id, session_id, status, tool_name, tool_input, tool_response,
-                         retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch",
+                          retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch, project",
         )?;
 
         let messages: Vec<PendingMessage> = stmt
@@ -155,7 +157,7 @@ impl Storage {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, status, tool_name, tool_input, tool_response,
-                      retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch
+                      retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch, project
                FROM pending_messages
                WHERE status = 'failed'
                ORDER BY created_at_epoch DESC
@@ -176,7 +178,7 @@ impl Storage {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, status, tool_name, tool_input, tool_response,
-                      retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch
+                      retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch, project
                FROM pending_messages
                ORDER BY created_at_epoch DESC
                LIMIT ?1",

@@ -25,6 +25,7 @@ pub async fn observe(
     let session_id = tool_call.session_id.clone();
     let tool_name = tool_call.tool.clone();
     let tool_response = tool_call.output.clone();
+    let project = tool_call.project.clone();
 
     let message_id = blocking_result(move || {
         storage.queue_message(
@@ -32,6 +33,7 @@ pub async fn observe(
             Some(&tool_name),
             tool_input.as_deref(),
             Some(&tool_response),
+            project.as_deref(),
         )
     })
     .await?;
@@ -54,6 +56,7 @@ pub async fn observe_batch(
                 Some(&tool_call.tool),
                 tool_input.as_deref(),
                 Some(&tool_call.output),
+                tool_call.project.as_deref(),
             ) {
                 Ok(_id) => count = count.saturating_add(1),
                 Err(e) => {

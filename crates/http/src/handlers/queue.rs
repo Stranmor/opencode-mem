@@ -127,7 +127,8 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
     // If same message is processed twice (race condition), same observation ID is generated
     let id =
         uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, msg.id.to_string().as_bytes()).to_string();
-    let observation = state.llm.compress_to_observation(&id, &input, None).await?;
+    let observation =
+        state.llm.compress_to_observation(&id, &input, msg.project.as_deref()).await?;
 
     // Store raw event in Infinite Memory REGARDLESS of whether observation is trivial.
     // Architecture invariant: raw events are NEVER lost — drill-down must always work.
