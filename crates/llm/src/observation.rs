@@ -95,6 +95,10 @@ Return JSON:
         })?;
 
         let noise_level = NoiseLevel::from_str(&obs_json.noise_level).unwrap_or_default();
+        if noise_level == NoiseLevel::Negligible {
+            tracing::debug!(title = %obs_json.title, "Skipping negligible observation");
+            return Ok(None);
+        }
         tracing::debug!(
             "Observation noise_level={:?}, reason={:?}, title={}",
             noise_level,

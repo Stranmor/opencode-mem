@@ -40,18 +40,25 @@ pub async fn api_session_summarize(
 ) -> Result<Json<serde_json::Value>, StatusCode> {
     let content_session_id = req.content_session_id.ok_or(StatusCode::BAD_REQUEST)?;
 
-    let observations =
-        state.session_service.summarize_session_from_export(&content_session_id).await.map_err(
-            |e| {
-                tracing::error!("Session summarize failed: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            },
-        )?;
+    // Look up session by content_session_id
+    let storage = state.storage.clone();
+    let cid = content_session_id.clone();
+    let session = blocking_result(move || storage.get_session_by_content_id(&cid)).await?;
+    let session_id = session.map(|s| s.id).ok_or_else(|| {
+        tracing::warn!(content_session_id = %content_session_id, "Session not found for summarize");
+        StatusCode::NOT_FOUND
+    })?;
 
-    let count = observations.len();
+    // Generate summary from observations already in SQLite
+    let summary = state.session_service.summarize_session(&session_id).await.map_err(|e| {
+        tracing::error!("Session summarize failed: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
+
     Ok(Json(serde_json::json!({
         "content_session_id": content_session_id,
-        "insights_extracted": count,
+        "session_id": session_id,
+        "summary": summary,
         "status": "completed"
     })))
 }

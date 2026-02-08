@@ -34,7 +34,8 @@ impl Storage {
         let mut stmt = conn.prepare(
             "SELECT o.id, o.session_id, o.project, o.observation_type, o.title, o.subtitle,
                   o.narrative, o.facts, o.concepts, o.files_read, o.files_modified,
-                  o.keywords, o.prompt_number, o.discovery_tokens, o.created_at
+                  o.keywords, o.prompt_number, o.discovery_tokens,
+                  o.noise_level, o.noise_reason, o.created_at
            FROM observations o
            LEFT JOIN observations_vec v ON o.rowid = v.rowid
            WHERE v.rowid IS NULL
