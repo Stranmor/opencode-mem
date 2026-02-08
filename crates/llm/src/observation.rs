@@ -117,24 +117,25 @@ Return JSON:
                 ))
             })?;
 
-        Ok(Some(Observation::new(
-            id.to_owned(),
-            input.session_id.clone(),
-            project.map(ToOwned::to_owned),
-            observation_type,
-            obs_json.title,
-            obs_json.subtitle,
-            obs_json.narrative,
-            obs_json.facts,
-            concepts,
-            obs_json.files_read,
-            obs_json.files_modified,
-            obs_json.keywords,
-            None,
-            None,
-            noise_level,
-            obs_json.noise_reason,
-            Utc::now(),
-        )))
+        Ok(Some(
+            Observation::builder(
+                id.to_owned(),
+                input.session_id.clone(),
+                observation_type,
+                obs_json.title,
+            )
+            .maybe_project(project.map(ToOwned::to_owned))
+            .maybe_subtitle(obs_json.subtitle)
+            .maybe_narrative(obs_json.narrative)
+            .facts(obs_json.facts)
+            .concepts(concepts)
+            .files_read(obs_json.files_read)
+            .files_modified(obs_json.files_modified)
+            .keywords(obs_json.keywords)
+            .noise_level(noise_level)
+            .maybe_noise_reason(obs_json.noise_reason)
+            .created_at(Utc::now())
+            .build(),
+        ))
     }
 }

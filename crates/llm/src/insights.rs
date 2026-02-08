@@ -1,7 +1,6 @@
 use std::fmt::Write as _;
 
-use chrono::Utc;
-use opencode_mem_core::{Concept, Error, NoiseLevel, Observation, ObservationType, Result};
+use opencode_mem_core::{Concept, Error, Observation, ObservationType, Result};
 use serde::Deserialize;
 
 use crate::ai_types::{ChatRequest, Message, ResponseFormat};
@@ -110,25 +109,18 @@ fn insight_to_observation(
     let obs_type = map_insight_type(&insight.insight_type);
     let concepts = map_insight_concepts(&insight.insight_type);
 
-    Observation::new(
+    Observation::builder(
         uuid::Uuid::new_v4().to_string(),
         session_id.to_owned(),
-        Some(project_path.to_owned()),
         obs_type,
         insight.title,
-        Some(format!("[{}]", insight.insight_type)),
-        Some(insight.description),
-        vec![],
-        concepts,
-        insight.files,
-        vec![],
-        vec![],
-        None,
-        None,
-        NoiseLevel::default(),
-        None,
-        Utc::now(),
     )
+    .project(project_path)
+    .subtitle(format!("[{}]", insight.insight_type))
+    .maybe_narrative(Some(insight.description))
+    .concepts(concepts)
+    .files_read(insight.files)
+    .build()
 }
 
 impl LlmClient {
