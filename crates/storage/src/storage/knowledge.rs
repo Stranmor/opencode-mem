@@ -1,23 +1,10 @@
-use std::io::{Error as IoError, ErrorKind};
-
 use anyhow::Result;
 use chrono::Utc;
 use opencode_mem_core::{GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType};
 use rusqlite::{params, OptionalExtension};
 
+use super::knowledge_mapping::{row_to_knowledge, ExistingKnowledgeRow};
 use super::{get_conn, log_row_error, parse_json, Storage};
-
-/// Existing knowledge row data fetched from the database during upsert.
-struct ExistingKnowledgeRow {
-    id: String,
-    created_at: String,
-    triggers: Vec<String>,
-    source_projects: Vec<String>,
-    source_observations: Vec<String>,
-    confidence: f64,
-    usage_count: i64,
-    last_used_at: Option<String>,
-}
 
 impl Storage {
     /// Save new knowledge entry.
@@ -180,10 +167,20 @@ impl Storage {
         )?;
         let mut rows = stmt.query(params![id])?;
         if let Some(row) = rows.next()? {
-            Ok(Some(Self::row_to_knowledge(row)?))
+            Ok(Some(row_to_knowledge(row)?))
         } else {
             Ok(None)
         }
+    }
+
+    /// Delete knowledge by ID.
+    ///
+    /// # Errors
+    /// Returns error if database delete fails.
+    pub fn delete_knowledge(&self, id: &str) -> Result<bool> {
+        let conn = get_conn(&self.pool)?;
+        let deleted = conn.execute("DELETE FROM global_knowledge WHERE id = ?1", params![id])?;
+        Ok(deleted > 0)
     }
 
     /// Search knowledge using FTS.
@@ -222,7 +219,7 @@ impl Storage {
         let results = stmt
             .query_map(params![fts_query, limit], |row| {
                 let score: f64 = row.get(13)?;
-                Ok(KnowledgeSearchResult::new(Self::row_to_knowledge(row)?, score.abs()))
+                Ok(KnowledgeSearchResult::new(row_to_knowledge(row)?, score.abs()))
             })?
             .filter_map(log_row_error)
             .collect();
@@ -249,7 +246,7 @@ impl Storage {
                    LIMIT ?2",
             )?;
             let results = stmt
-                .query_map(params![kt.as_str(), limit], Self::row_to_knowledge)?
+                .query_map(params![kt.as_str(), limit], row_to_knowledge)?
                 .filter_map(log_row_error)
                 .collect();
             Ok(results)
@@ -263,7 +260,7 @@ impl Storage {
                    LIMIT ?1",
             )?;
             let results = stmt
-                .query_map(params![limit], Self::row_to_knowledge)?
+                .query_map(params![limit], row_to_knowledge)?
                 .filter_map(log_row_error)
                 .collect();
             Ok(results)
@@ -287,31 +284,5 @@ impl Storage {
             params![now, id],
         )?;
         Ok(())
-    }
-
-    fn row_to_knowledge(row: &rusqlite::Row<'_>) -> rusqlite::Result<GlobalKnowledge> {
-        let knowledge_type_str: String = row.get(1)?;
-        let knowledge_type = knowledge_type_str.parse::<KnowledgeType>().map_err(|e| {
-            rusqlite::Error::ToSqlConversionFailure(Box::new(IoError::new(
-                ErrorKind::InvalidData,
-                e,
-            )))
-        })?;
-
-        Ok(GlobalKnowledge::new(
-            row.get(0)?,
-            knowledge_type,
-            row.get(2)?,
-            row.get(3)?,
-            row.get(4)?,
-            parse_json(&row.get::<_, String>(5)?)?,
-            parse_json(&row.get::<_, String>(6)?)?,
-            parse_json(&row.get::<_, String>(7)?)?,
-            row.get(8)?,
-            row.get(9)?,
-            row.get(10)?,
-            row.get(11)?,
-            row.get(12)?,
-        ))
     }
 }

@@ -27,6 +27,7 @@
 
 mod embeddings;
 mod knowledge;
+mod knowledge_mapping;
 mod observations;
 mod pending;
 mod prompts;

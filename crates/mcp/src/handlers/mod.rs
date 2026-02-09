@@ -55,7 +55,7 @@ pub fn handle_tool_call(
                 result: None,
                 error: Some(McpError {
                     code: -32602,
-                        message: format!("Unknown tool: '{tool_name_str}'. Available: __IMPORTANT, search, timeline, get_observations, memory_get, memory_recent, memory_hybrid_search, memory_semantic_search, save_memory, knowledge_search, knowledge_save, knowledge_get, knowledge_list, infinite_expand, infinite_time_range, infinite_drill_hour, infinite_drill_day"),
+                    message: format!("Unknown tool: '{tool_name_str}'. Available: __IMPORTANT, search, timeline, get_observations, memory_get, memory_recent, memory_hybrid_search, memory_semantic_search, save_memory, knowledge_search, knowledge_save, knowledge_get, knowledge_list, knowledge_delete, infinite_expand, infinite_time_range, infinite_drill_hour, infinite_drill_day"),
                 }),
             };
         },
@@ -81,6 +81,7 @@ pub fn handle_tool_call(
         },
         McpTool::KnowledgeGet => knowledge::handle_knowledge_get(storage, &args),
         McpTool::KnowledgeList => knowledge::handle_knowledge_list(storage, &args),
+        McpTool::KnowledgeDelete => knowledge::handle_knowledge_delete(storage, &args),
         McpTool::InfiniteExpand => {
             return infinite::handle_infinite_expand(infinite_mem, handle, &args, id);
         },

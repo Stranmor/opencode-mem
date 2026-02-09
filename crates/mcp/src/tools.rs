@@ -17,6 +17,7 @@ pub enum McpTool {
     KnowledgeSave,
     KnowledgeGet,
     KnowledgeList,
+    KnowledgeDelete,
     InfiniteExpand,
     InfiniteTimeRange,
     InfiniteDrillHour,
@@ -42,6 +43,7 @@ impl McpTool {
             "knowledge_save" => Some(Self::KnowledgeSave),
             "knowledge_get" => Some(Self::KnowledgeGet),
             "knowledge_list" => Some(Self::KnowledgeList),
+            "knowledge_delete" => Some(Self::KnowledgeDelete),
             "infinite_expand" => Some(Self::InfiniteExpand),
             "infinite_time_range" => Some(Self::InfiniteTimeRange),
             "infinite_drill_hour" => Some(Self::InfiniteDrillHour),
@@ -214,6 +216,17 @@ pub fn get_tools_json() -> serde_json::Value {
                         "knowledge_type": { "type": "string", "enum": ["skill", "pattern", "gotcha", "architecture", "tool_usage"] },
                         "limit": { "type": "integer", "default": 20 }
                     }
+                }
+            },
+            {
+                "name": "knowledge_delete",
+                "description": "Delete knowledge entry by ID",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "string" }
+                    },
+                    "required": ["id"]
                 }
             },
             {

@@ -1,4 +1,5 @@
 use opencode_mem_storage::Storage;
+use serde_json::json;
 
 use super::{mcp_err, mcp_ok, mcp_text};
 use crate::McpResponse;
@@ -21,7 +22,10 @@ pub(super) fn handle_knowledge_get(
 ) -> serde_json::Value {
     let id_str = args.get("id").and_then(|i| i.as_str()).unwrap_or("");
     match storage.get_knowledge(id_str) {
-        Ok(Some(knowledge)) => mcp_ok(&knowledge),
+        Ok(Some(knowledge)) => {
+            let _ = storage.update_knowledge_usage(id_str);
+            mcp_ok(&knowledge)
+        },
         Ok(None) => mcp_text(&format!("Knowledge not found: {id_str}")),
         Err(e) => mcp_err(e),
     }
@@ -38,6 +42,17 @@ pub(super) fn handle_knowledge_list(
     let limit = args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(20) as usize;
     match storage.list_knowledge(knowledge_type, limit) {
         Ok(results) => mcp_ok(&results),
+        Err(e) => mcp_err(e),
+    }
+}
+
+pub(super) fn handle_knowledge_delete(
+    storage: &Storage,
+    args: &serde_json::Value,
+) -> serde_json::Value {
+    let id_str = args.get("id").and_then(|i| i.as_str()).unwrap_or("");
+    match storage.delete_knowledge(id_str) {
+        Ok(deleted) => mcp_ok(&json!({ "success": true, "id": id_str, "deleted": deleted })),
         Err(e) => mcp_err(e),
     }
 }

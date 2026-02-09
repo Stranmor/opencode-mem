@@ -187,7 +187,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/search/help", get(handlers::context::search_help))
         .route("/api/knowledge", get(handlers::knowledge::list_knowledge))
         .route("/api/knowledge/search", get(handlers::knowledge::search_knowledge))
-        .route("/api/knowledge/{id}", get(handlers::knowledge::get_knowledge_by_id))
+        .route(
+            "/api/knowledge/{id}",
+            get(handlers::knowledge::get_knowledge_by_id)
+                .delete(handlers::knowledge::delete_knowledge),
+        )
         .route("/api/knowledge", post(handlers::knowledge::save_knowledge))
         .route("/api/knowledge/{id}/usage", put(handlers::knowledge::record_knowledge_usage))
         .route(

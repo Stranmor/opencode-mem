@@ -3,6 +3,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use serde_json::json;
 use std::sync::Arc;
 
 use opencode_mem_core::{GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType};
@@ -38,6 +39,18 @@ pub async fn get_knowledge_by_id(
 ) -> Result<Json<Option<GlobalKnowledge>>, StatusCode> {
     let storage = Arc::clone(&state.storage);
     blocking_json(move || storage.get_knowledge(&id)).await
+}
+
+pub async fn delete_knowledge(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let storage = Arc::clone(&state.storage);
+    blocking_json(move || {
+        let deleted = storage.delete_knowledge(&id)?;
+        Ok(json!({ "success": true, "id": id, "deleted": deleted }))
+    })
+    .await
 }
 
 pub async fn save_knowledge(
