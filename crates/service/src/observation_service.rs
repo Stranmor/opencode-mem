@@ -116,6 +116,10 @@ impl ObservationService {
     }
 
     async fn persist_and_notify(&self, observation: &Observation) -> anyhow::Result<()> {
+        if is_low_value_observation(&observation.title) {
+            tracing::debug!("Filtered low-value observation: {}", observation.title);
+            return Ok(());
+        }
         self.storage.save_observation(observation)?;
 
         if let Some(ref emb) = self.embeddings {
@@ -153,4 +157,41 @@ impl ObservationService {
         }
         Ok(())
     }
+}
+
+fn is_low_value_observation(title: &str) -> bool {
+    let t = title.to_lowercase();
+
+    if t.contains("file edit applied successfully")
+        || t.contains("edit applied")
+        || t.contains("successful file edit")
+    {
+        return true;
+    }
+
+    if t.contains("rustfmt") && t.contains("nightly") {
+        return true;
+    }
+
+    if t.contains("task completion signal") {
+        return true;
+    }
+
+    if (t.contains("comment") || t.contains("docstring")) && t.contains("hook") {
+        return true;
+    }
+
+    if t.contains("memory classification") {
+        return true;
+    }
+
+    if t.contains("tool call observed") || t.contains("tool execution") {
+        return true;
+    }
+
+    if t.contains("no significant") {
+        return true;
+    }
+
+    false
 }
