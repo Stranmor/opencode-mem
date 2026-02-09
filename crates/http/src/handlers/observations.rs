@@ -3,14 +3,18 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use opencode_mem_embeddings::EmbeddingProvider;
 use std::sync::Arc;
+use tokio::task::spawn_blocking;
 
-use opencode_mem_core::{Observation, SearchResult, SessionSummary, ToolCall, UserPrompt};
+use opencode_mem_core::{
+    Observation, ObservationType, ProjectFilter, SearchResult, SessionSummary, ToolCall, UserPrompt,
+};
 use opencode_mem_storage::PaginatedResult;
 
 use crate::api_types::{
-    BatchRequest, ObserveBatchResponse, ObserveResponse, PaginationQuery, SearchQuery,
-    TimelineQuery,
+    BatchRequest, ObserveBatchResponse, ObserveResponse, PaginationQuery, SaveMemoryRequest,
+    SearchQuery, TimelineQuery,
 };
 use crate::blocking::{blocking_json, blocking_result};
 use crate::AppState;
@@ -19,6 +23,12 @@ pub async fn observe(
     State(state): State<Arc<AppState>>,
     Json(tool_call): Json<ToolCall>,
 ) -> Result<Json<ObserveResponse>, StatusCode> {
+    if let Some(project) = tool_call.project.as_deref() {
+        if ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project)) {
+            return Ok(Json(ObserveResponse { id: String::new(), queued: false }));
+        }
+    }
+
     // Serialize tool_call.input as tool_input for queue processing
     let tool_input = serde_json::to_string(&tool_call.input).ok();
     let storage = Arc::clone(&state.storage);
@@ -50,6 +60,11 @@ pub async fn observe_batch(
     let queued = blocking_result(move || {
         let mut count = 0usize;
         for tool_call in &tool_calls {
+            if let Some(project) = tool_call.project.as_deref() {
+                if ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project)) {
+                    continue;
+                }
+            }
             let tool_input = serde_json::to_string(&tool_call.input).ok();
             match storage.queue_message(
                 &tool_call.session_id,
@@ -68,6 +83,76 @@ pub async fn observe_batch(
     })
     .await?;
     Ok(Json(ObserveBatchResponse { queued, total }))
+}
+
+pub async fn save_memory(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<SaveMemoryRequest>,
+) -> Result<Json<Observation>, StatusCode> {
+    let text = req.text.trim().to_owned();
+    if text.is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let title = req
+        .title
+        .as_deref()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| text.chars().take(50).collect());
+    let project =
+        req.project.as_deref().map(str::trim).filter(|p| !p.is_empty()).map(ToOwned::to_owned);
+
+    let observation = Observation::builder(
+        uuid::Uuid::new_v4().to_string(),
+        "manual".to_owned(),
+        ObservationType::Discovery,
+        title,
+    )
+    .maybe_project(project)
+    .narrative(text)
+    .build();
+
+    let storage = Arc::clone(&state.storage);
+    let obs_for_save = observation.clone();
+    blocking_result(move || storage.save_observation(&obs_for_save)).await?;
+
+    if let Some(emb) = state.embeddings.clone() {
+        let embedding_text = format!(
+            "{} {} {}",
+            observation.title,
+            observation.narrative.as_deref().unwrap_or(""),
+            observation.facts.join(" ")
+        );
+        match spawn_blocking(move || emb.embed(&embedding_text)).await {
+            Ok(Ok(vec)) => {
+                let storage = Arc::clone(&state.storage);
+                let obs_id = observation.id.clone();
+                match spawn_blocking(move || storage.store_embedding(&obs_id, &vec)).await {
+                    Ok(Ok(())) => {},
+                    Ok(Err(e)) => {
+                        tracing::warn!("Failed to store embedding for {}: {}", observation.id, e);
+                    },
+                    Err(e) => {
+                        tracing::warn!(
+                            "Embedding storage join error for {}: {}",
+                            observation.id,
+                            e
+                        );
+                    },
+                }
+            },
+            Ok(Err(e)) => {
+                tracing::warn!("Failed to generate embedding for {}: {}", observation.id, e);
+            },
+            Err(e) => {
+                tracing::warn!("Embedding generation join error for {}: {}", observation.id, e);
+            },
+        }
+    }
+
+    Ok(Json(observation))
 }
 
 pub async fn get_observation(

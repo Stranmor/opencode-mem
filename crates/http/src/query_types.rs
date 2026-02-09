@@ -184,3 +184,10 @@ pub struct SaveKnowledgeRequest {
     pub source_project: Option<String>,
     pub source_observation: Option<String>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct SaveMemoryRequest {
+    pub text: String,
+    pub title: Option<String>,
+    pub project: Option<String>,
+}

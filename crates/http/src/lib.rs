@@ -120,6 +120,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/version", get(version))
         .route("/observe", post(handlers::observations::observe))
         .route("/api/observe/batch", post(handlers::observations::observe_batch))
+        .route("/api/memory/save", post(handlers::observations::save_memory))
         .route("/search", get(handlers::search::search))
         .route("/hybrid-search", get(handlers::search::hybrid_search))
         .route("/semantic-search", get(handlers::search::semantic_search))

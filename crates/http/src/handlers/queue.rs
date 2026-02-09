@@ -9,7 +9,7 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::task::spawn_blocking;
 
-use opencode_mem_core::{ObservationInput, ToolOutput};
+use opencode_mem_core::{ObservationInput, ProjectFilter, ToolOutput};
 use opencode_mem_infinite::tool_event;
 use opencode_mem_storage::{default_visibility_timeout_secs, PendingMessage};
 
@@ -105,6 +105,13 @@ pub async fn process_pending_queue(
 }
 
 pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> anyhow::Result<()> {
+    if let Some(project) = msg.project.as_deref().filter(|p| !p.is_empty() && *p != "unknown") {
+        if ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project)) {
+            tracing::debug!("Skipping excluded project '{}' for message {}", project, msg.id);
+            return Ok(());
+        }
+    }
+
     let tool_name = msg.tool_name.as_deref().unwrap_or("unknown");
     let tool_input = msg.tool_input.clone();
     let tool_response = msg.tool_response.as_deref().unwrap_or("");

@@ -104,25 +104,28 @@ impl Storage {
         let threshold = now - chrono::Duration::hours(max_age_hours);
         let threshold_str = threshold.to_rfc3339();
         let ended_at_str = now.to_rfc3339();
-        // Match both plain 'active' and legacy JSON-quoted '"active"'
+        let active_status = SessionStatus::Active.as_str();
+        let completed_status = SessionStatus::Completed.as_str();
+        let legacy_active = format!("\"{}\"", active_status);
+
         let affected = conn.execute(
-            "UPDATE sessions SET status = 'completed', ended_at = ?1 WHERE (status = 'active' OR status = '\"active\"') AND started_at < ?2",
-            rusqlite::params![ended_at_str, threshold_str],
+            "UPDATE sessions SET status = ?1, ended_at = ?2 WHERE (status = ?3 OR status = ?4) AND started_at < ?5",
+            rusqlite::params![completed_status, ended_at_str, active_status, legacy_active, threshold_str],
         )?;
         Ok(affected)
     }
 
-    fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<Session> {
+    fn row_to_session(row: &rusqlite::Row<'_>) -> Result<Session> {
         let started_at_str: String = row.get(5)?;
         let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
+            .map_err(|e| anyhow::anyhow!("Failed to parse started_at: {e}"))?
             .with_timezone(&Utc);
 
         let ended_at_str: Option<String> = row.get(6)?;
         let ended_at = ended_at_str
             .map(|s| chrono::DateTime::parse_from_rfc3339(&s))
             .transpose()
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?
+            .map_err(|e| anyhow::anyhow!("Failed to parse ended_at: {e}"))?
             .map(|d| d.with_timezone(&Utc));
 
         let status_str: String = row.get(7)?;
@@ -131,9 +134,8 @@ impl Storage {
             .or_else(|_| {
                 // Legacy: status was stored as JSON string (e.g., '"active"')
                 serde_json::from_str::<SessionStatus>(&status_str)
-                    .map_err(|e| anyhow::anyhow!("Invalid session status '{status_str}': {e}"))
             })
-            .map_err(|e: anyhow::Error| rusqlite::Error::ToSqlConversionFailure(e.into()))?;
+            .map_err(|e| anyhow::anyhow!("Invalid session status '{status_str}': {e}"))?;
 
         Ok(Session::new(
             row.get(0)?,

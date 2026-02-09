@@ -3,9 +3,21 @@ use std::io::{Error as IoError, ErrorKind};
 use anyhow::Result;
 use chrono::Utc;
 use opencode_mem_core::{GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType};
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 
 use super::{get_conn, log_row_error, parse_json, Storage};
+
+/// Existing knowledge row data fetched from the database during upsert.
+struct ExistingKnowledgeRow {
+    id: String,
+    created_at: String,
+    triggers: Vec<String>,
+    source_projects: Vec<String>,
+    source_observations: Vec<String>,
+    confidence: f64,
+    usage_count: i64,
+    last_used_at: Option<String>,
+}
 
 impl Storage {
     /// Save new knowledge entry.
@@ -13,80 +25,105 @@ impl Storage {
     /// # Errors
     /// Returns error if database insert fails.
     pub fn save_knowledge(&self, input: KnowledgeInput) -> Result<GlobalKnowledge> {
-        let conn = get_conn(&self.pool)?;
+        let mut conn = get_conn(&self.pool)?;
+        let tx = conn.transaction()?;
 
-        let mut stmt = conn.prepare(
-            "SELECT id, created_at, confidence, usage_count, last_used_at 
-             FROM global_knowledge 
-             WHERE LOWER(TRIM(title)) = LOWER(TRIM(?1))",
-        )?;
-        let mut rows = stmt.query(params![input.title])?;
-        let existing = if let Some(row) = rows.next()? {
-            Some((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, f64>(2)?,
-                row.get::<_, i64>(3)?,
-                row.get::<_, Option<String>>(4)?,
-            ))
-        } else {
-            None
-        };
+        let existing: Option<ExistingKnowledgeRow> = tx
+            .query_row(
+                "SELECT id, created_at, triggers, source_projects, source_observations, confidence, usage_count, last_used_at 
+                 FROM global_knowledge 
+                 WHERE LOWER(TRIM(title)) = LOWER(TRIM(?1))",
+                params![input.title],
+                |row| {
+                    Ok(ExistingKnowledgeRow {
+                        id: row.get(0)?,
+                        created_at: row.get(1)?,
+                        triggers: parse_json(&row.get::<_, String>(2)?)?,
+                        source_projects: parse_json(&row.get::<_, String>(3)?)?,
+                        source_observations: parse_json(&row.get::<_, String>(4)?)?,
+                        confidence: row.get(5)?,
+                        usage_count: row.get(6)?,
+                        last_used_at: row.get(7)?,
+                    })
+                },
+            )
+            .optional()?;
 
         let now = Utc::now().to_rfc3339();
-        let triggers_json = serde_json::to_string(&input.triggers)?;
-        let source_projects_json = input
-            .source_project
-            .as_ref()
-            .map(|p| serde_json::to_string(&vec![p]))
-            .transpose()?
-            .unwrap_or_else(|| "[]".to_owned());
-        let source_observations_json = input
-            .source_observation
-            .as_ref()
-            .map(|o| serde_json::to_string(&vec![o]))
-            .transpose()?
-            .unwrap_or_else(|| "[]".to_owned());
 
-        if let Some((id, created_at, confidence, usage_count, last_used_at)) = existing {
-            conn.execute(
+        if let Some(mut row) = existing {
+            for t in input.triggers {
+                if !row.triggers.contains(&t) {
+                    row.triggers.push(t);
+                }
+            }
+            if let Some(p) = input.source_project {
+                if !row.source_projects.contains(&p) {
+                    row.source_projects.push(p);
+                }
+            }
+            if let Some(o) = input.source_observation {
+                if !row.source_observations.contains(&o) {
+                    row.source_observations.push(o);
+                }
+            }
+
+            tx.execute(
                 "UPDATE global_knowledge 
-                 SET description = ?1, 
-                     instructions = ?2, 
-                     triggers = ?3, 
-                     source_projects = ?4, 
-                     source_observations = ?5,
-                     updated_at = ?6
-                 WHERE id = ?7",
+                 SET knowledge_type = ?1,
+                     description = ?2, 
+                     instructions = ?3, 
+                     triggers = ?4, 
+                     source_projects = ?5, 
+                     source_observations = ?6,
+                     updated_at = ?7
+                 WHERE id = ?8",
                 params![
+                    input.knowledge_type.as_str(),
                     input.description,
                     input.instructions,
-                    triggers_json,
-                    source_projects_json,
-                    source_observations_json,
+                    serde_json::to_string(&row.triggers)?,
+                    serde_json::to_string(&row.source_projects)?,
+                    serde_json::to_string(&row.source_observations)?,
                     now,
-                    id
+                    row.id
                 ],
             )?;
 
+            tx.commit()?;
+
             Ok(GlobalKnowledge::new(
-                id,
+                row.id,
                 input.knowledge_type,
                 input.title,
                 input.description,
                 input.instructions,
-                input.triggers,
-                input.source_project.map(|p| vec![p]).unwrap_or_default(),
-                input.source_observation.map(|o| vec![o]).unwrap_or_default(),
-                confidence,
-                usage_count,
-                last_used_at,
-                created_at,
+                row.triggers,
+                row.source_projects,
+                row.source_observations,
+                row.confidence,
+                row.usage_count,
+                row.last_used_at,
+                row.created_at,
                 now,
             ))
         } else {
             let id = uuid::Uuid::new_v4().to_string();
-            conn.execute(
+            let triggers_json = serde_json::to_string(&input.triggers)?;
+            let source_projects_json = input
+                .source_project
+                .as_ref()
+                .map(|p| serde_json::to_string(&vec![p]))
+                .transpose()?
+                .unwrap_or_else(|| "[]".to_owned());
+            let source_observations_json = input
+                .source_observation
+                .as_ref()
+                .map(|o| serde_json::to_string(&vec![o]))
+                .transpose()?
+                .unwrap_or_else(|| "[]".to_owned());
+
+            tx.execute(
                 "INSERT INTO global_knowledge 
                    (id, knowledge_type, title, description, instructions, triggers, 
                     source_projects, source_observations, confidence, usage_count, 
@@ -108,6 +145,8 @@ impl Storage {
                     now,
                 ],
             )?;
+
+            tx.commit()?;
 
             Ok(GlobalKnowledge::new(
                 id,
@@ -172,10 +211,10 @@ impl Storage {
         let mut stmt = conn.prepare(
             "SELECT k.id, k.knowledge_type, k.title, k.description, k.instructions, k.triggers,
                       k.source_projects, k.source_observations, k.confidence, k.usage_count,
-                      k.last_used_at, k.created_at, k.updated_at, bm25(global_knowledge_fts) as score
+                      k.last_used_at, k.created_at, k.updated_at, bm25(f) as score
                FROM global_knowledge_fts f
                JOIN global_knowledge k ON k.rowid = f.rowid
-               WHERE global_knowledge_fts MATCH ?1
+               WHERE f MATCH ?1
                ORDER BY score
                LIMIT ?2",
         )?;

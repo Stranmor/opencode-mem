@@ -33,7 +33,7 @@ impl Session {
     /// Creates a new session.
     #[must_use]
     #[expect(clippy::too_many_arguments, reason = "session has many fields")]
-    pub const fn new(
+    pub fn new(
         id: String,
         content_session_id: String,
         memory_session_id: Option<String>,
@@ -132,7 +132,7 @@ impl SessionSummary {
     /// Creates a new session summary.
     #[must_use]
     #[expect(clippy::too_many_arguments, reason = "summary has many fields")]
-    pub const fn new(
+    pub fn new(
         session_id: String,
         project: String,
         request: Option<String>,
@@ -186,7 +186,7 @@ pub struct UserPrompt {
 impl UserPrompt {
     /// Creates a new user prompt.
     #[must_use]
-    pub const fn new(
+    pub fn new(
         id: String,
         content_session_id: String,
         prompt_number: u32,

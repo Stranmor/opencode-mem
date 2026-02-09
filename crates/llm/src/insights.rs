@@ -25,6 +25,10 @@ fn default_medium() -> String {
     "medium".to_owned()
 }
 
+fn is_negligible_noise_level(noise_level: &str) -> bool {
+    noise_level.trim().eq_ignore_ascii_case("negligible")
+}
+
 /// LLM response containing extracted insights
 #[derive(Debug, Deserialize)]
 pub struct InsightsResponse {
@@ -129,6 +133,18 @@ fn insight_to_observation(
     .build()
 }
 
+fn insights_to_observations(
+    insights: Vec<InsightJson>,
+    session_id: &str,
+    project_path: &str,
+) -> Vec<Observation> {
+    insights
+        .into_iter()
+        .filter(|insight| !is_negligible_noise_level(&insight.noise_level))
+        .map(|insight| insight_to_observation(insight, session_id, project_path))
+        .collect()
+}
+
 impl LlmClient {
     /// Extract project-specific insights from a full session JSON export.
     ///
@@ -151,20 +167,7 @@ impl LlmClient {
 
         let insights_response = self.call_llm_for_insights(&formatted, project_path).await?;
 
-        let observations: Vec<Observation> = insights_response
-            .insights
-            .into_iter()
-            .map(|insight| {
-                (
-                    insight.noise_level.clone(),
-                    insight_to_observation(insight, session_id, project_path),
-                )
-            })
-            .filter(|(noise, _)| !noise.eq_ignore_ascii_case("negligible"))
-            .map(|(_, obs)| obs)
-            .collect();
-
-        Ok(observations)
+        Ok(insights_to_observations(insights_response.insights, session_id, project_path))
     }
 
     async fn call_llm_for_insights(
@@ -241,4 +244,66 @@ Return JSON:
 
 If no project-specific insights found, return: {{"insights": []}}"#
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_noise_level_defaults_to_medium() {
+        let json = r#"{
+  "insights": [
+    {
+      "type": "decision",
+      "title": "T",
+      "description": "D",
+      "files": []
+    }
+  ]
+}"#;
+
+        let parsed: InsightsResponse = serde_json::from_str(json).expect("valid insights JSON");
+        assert_eq!(parsed.insights.len(), 1);
+        assert_eq!(parsed.insights[0].noise_level, "medium");
+
+        let observations = insights_to_observations(parsed.insights, "s", "p");
+        assert_eq!(observations.len(), 1);
+    }
+
+    #[test]
+    fn negligible_noise_level_filtered_case_insensitive() {
+        let insights = vec![InsightJson {
+            insight_type: "decision".to_owned(),
+            title: "T".to_owned(),
+            description: "D".to_owned(),
+            files: vec![],
+            noise_level: "NEGLIGIBLE".to_owned(),
+        }];
+
+        let observations = insights_to_observations(insights, "s", "p");
+        assert!(observations.is_empty());
+    }
+
+    #[test]
+    fn llm_returns_empty_list_ok() {
+        let json = r#"{"insights": []}"#;
+        let parsed: InsightsResponse = serde_json::from_str(json).expect("valid insights JSON");
+        let observations = insights_to_observations(parsed.insights, "s", "p");
+        assert!(observations.is_empty());
+    }
+
+    #[test]
+    fn invalid_noise_level_values_are_kept() {
+        let insights = vec![InsightJson {
+            insight_type: "decision".to_owned(),
+            title: "T".to_owned(),
+            description: "D".to_owned(),
+            files: vec![],
+            noise_level: "banana".to_owned(),
+        }];
+
+        let observations = insights_to_observations(insights, "s", "p");
+        assert_eq!(observations.len(), 1);
+    }
 }

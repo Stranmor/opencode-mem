@@ -12,6 +12,7 @@ pub enum McpTool {
     MemoryRecent,
     MemoryHybridSearch,
     MemorySemanticSearch,
+    SaveMemory,
     KnowledgeSearch,
     KnowledgeSave,
     KnowledgeGet,
@@ -36,6 +37,7 @@ impl McpTool {
             "memory_recent" => Some(Self::MemoryRecent),
             "memory_hybrid_search" => Some(Self::MemoryHybridSearch),
             "memory_semantic_search" => Some(Self::MemorySemanticSearch),
+            "save_memory" => Some(Self::SaveMemory),
             "knowledge_search" => Some(Self::KnowledgeSearch),
             "knowledge_save" => Some(Self::KnowledgeSave),
             "knowledge_get" => Some(Self::KnowledgeGet),
@@ -148,6 +150,19 @@ pub fn get_tools_json() -> serde_json::Value {
                         "limit": { "type": "integer", "default": 20 }
                     },
                     "required": ["query"]
+                }
+            },
+            {
+                "name": "save_memory",
+                "description": "Save memory directly without LLM compression",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "text": { "type": "string", "description": "Memory text to save" },
+                        "title": { "type": "string", "description": "Optional title (defaults to first 50 chars of text)" },
+                        "project": { "type": "string", "description": "Optional project to associate with this memory" }
+                    },
+                    "required": ["text"]
                 }
             },
             {

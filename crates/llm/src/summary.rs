@@ -43,7 +43,8 @@ Return JSON: {{"summary": "..."}}"#
         };
 
         let content = self.chat_completion(&request).await?;
-        let summary: SummaryJson = serde_json::from_str(&content).map_err(|e| {
+        let stripped = opencode_mem_core::strip_markdown_json(&content);
+        let summary: SummaryJson = serde_json::from_str(stripped).map_err(|e| {
             Error::LlmApi(format!(
                 "Failed to parse session summary: {e} - content: {}",
                 content.get(..300).unwrap_or(&content)

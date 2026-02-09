@@ -70,32 +70,7 @@ impl ObservationService {
             tracing::debug!("Observation filtered as trivial");
             return Ok(None);
         };
-        self.storage.save_observation(&observation)?;
-
-        // Auto-generate embedding for semantic search
-        if let Some(ref emb) = self.embeddings {
-            let text = format!(
-                "{} {} {}",
-                observation.title,
-                observation.narrative.as_deref().unwrap_or(""),
-                observation.facts.join(" ")
-            );
-            match emb.embed(&text) {
-                Ok(vec) => {
-                    if let Err(e) = self.storage.store_embedding(&observation.id, &vec) {
-                        tracing::warn!("Failed to store embedding for {}: {}", observation.id, e);
-                    } else {
-                        tracing::info!("Stored embedding for {}", observation.id);
-                    }
-                },
-                Err(e) => {
-                    tracing::warn!("Failed to generate embedding for {}: {}", observation.id, e);
-                },
-            }
-        }
-
-        tracing::info!("Saved observation: {} - {}", observation.id, observation.title);
-        let _ = self.event_tx.send(serde_json::to_string(&observation)?);
+        self.persist_and_notify(&observation).await?;
         Ok(Some(observation))
     }
 
@@ -136,7 +111,11 @@ impl ObservationService {
         }
     }
 
-    pub fn save_observation(&self, observation: &Observation) -> anyhow::Result<()> {
+    pub async fn save_observation(&self, observation: &Observation) -> anyhow::Result<()> {
+        self.persist_and_notify(observation).await
+    }
+
+    async fn persist_and_notify(&self, observation: &Observation) -> anyhow::Result<()> {
         self.storage.save_observation(observation)?;
 
         if let Some(ref emb) = self.embeddings {
@@ -146,10 +125,20 @@ impl ObservationService {
                 observation.narrative.as_deref().unwrap_or(""),
                 observation.facts.join(" ")
             );
-            match emb.embed(&text) {
+
+            let emb = Arc::clone(emb);
+            let embedding = async move {
+                let embedding = tokio::task::spawn_blocking(move || emb.embed(&text)).await??;
+                Ok::<Vec<f32>, anyhow::Error>(embedding)
+            }
+            .await;
+
+            match embedding {
                 Ok(vec) => {
                     if let Err(e) = self.storage.store_embedding(&observation.id, &vec) {
                         tracing::warn!("Failed to store embedding for {}: {}", observation.id, e);
+                    } else {
+                        tracing::info!("Stored embedding for {}", observation.id);
                     }
                 },
                 Err(e) => {

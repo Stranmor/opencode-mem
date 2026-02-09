@@ -9,23 +9,25 @@ Rust port of [claude-mem](https://github.com/thedotmack/claude-mem) for OpenCode
 Upstream: https://github.com/thedotmack/claude-mem
 Last reviewed commit: `1341e93fcab15b9caf48bc947d8521b4a97515d8`
 
-## Current Status: ~98% Complete
+## Current Status: ~99% Complete
 
 ### Implemented
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| MCP Tools | ✅ 16 tools | search, timeline, get_observations, memory_*, knowledge_*, infinite_* |
+| MCP Tools | ✅ 17 tools | search, timeline, get_observations, memory_*, knowledge_*, infinite_*, save_memory |
 | Database | ✅ | SQLite + FTS5, migrations v1-v10, r2d2 pool |
 | CLI | ✅ 100% | serve, mcp, search, stats, projects, recent, get, hook (context, session-init, observe, summarize) |
-| HTTP API | ✅ 100% | 64 endpoints (upstream has 56) |
-| Storage | ✅ 100% | Core tables, session_summaries, pending queue, 1481 lines |
+| HTTP API | ✅ 100% | 65 endpoints (upstream has 56) |
+| Storage | ✅ 100% | Core tables, session_summaries, pending queue |
 | AI Agent | ✅ 100% | compress_to_observation(), generate_session_summary() |
 | Web Viewer | ✅ 100% | Dark theme UI, SSE real-time updates |
 | Privacy Tags | ✅ 100% | `<private>` content filtering |
 | Pending Queue | ✅ 100% | Crash recovery, visibility timeout, dead letter queue |
 | Hook System | ✅ 100% | CLI hooks: context, session-init, observe, summarize |
 | Hybrid Capture | ✅ 100% | Per-turn observation via `session.idle` + debounce + batch endpoint |
+| Project Exclusion | ✅ 100% | OPENCODE_MEM_EXCLUDED_PROJECTS env var, glob patterns, ~ expansion |
+| Save Memory | ✅ 100% | Direct observation storage (MCP + HTTP), bypasses LLM compression |
 
 ### NOT Implemented
 
@@ -46,7 +48,7 @@ Last reviewed commit: `1341e93fcab15b9caf48bc947d8521b4a97515d8`
 - repo: thedotmack/claude-mem
 - watch: src/services/, src/constants/
 - ignore: *.test.ts, README*, docs/
-- last_reviewed: 1341e93fcab15b9caf48bc947d8521b4a97515d8
+- last_reviewed: b2ddf59db46cf380964379e9ba2d7279c67fc12b
 
 ## Architecture
 
@@ -72,3 +74,14 @@ crates/
 - `crates/http/src/handlers/` — HTTP handlers (11 modules)
 - `crates/llm/src/` — AI agent: client, observation, summary, knowledge, insights
 - `crates/infinite-memory/src/` — PostgreSQL + pgvector backend
+
+## Tech Debt & Known Issues
+
+None currently tracked.
+
+### Resolved
+- ~~Code Duplication in observation_service.rs~~ — extracted shared `persist_and_notify` method
+- ~~Blocking I/O in observation_service.rs~~ — embedding calls wrapped in `spawn_blocking`
+- ~~Data Loss on Update in knowledge.rs~~ — implemented provenance merging logic
+- ~~SQLITE_LOCKED in knowledge.rs~~ — refactored to use transactions and `query_row`
+

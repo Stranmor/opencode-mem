@@ -104,7 +104,7 @@ impl SessionService {
             .await?;
 
         for obs in &observations {
-            self.observation_service.save_observation(obs)?;
+            self.observation_service.save_observation(obs).await?;
         }
 
         self.storage.update_session_status_with_summary(

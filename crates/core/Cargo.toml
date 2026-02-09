@@ -14,3 +14,5 @@ chrono = { workspace = true }
 thiserror = { workspace = true }
 regex = { workspace = true }
 anyhow = { workspace = true }
+dirs = { workspace = true }
+globset = { workspace = true }

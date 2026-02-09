@@ -12,6 +12,8 @@ mod json_utils;
 mod knowledge;
 /// Observation types for coding session capture.
 mod observation;
+/// Project filtering based on glob patterns from env.
+mod project_filter;
 /// Session types for memory sessions.
 mod session;
 
@@ -22,5 +24,6 @@ pub use hook::*;
 pub use json_utils::*;
 pub use knowledge::*;
 pub use observation::*;
+pub use project_filter::*;
 
 pub use session::*;

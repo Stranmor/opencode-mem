@@ -9,6 +9,7 @@ use opencode_mem_storage::Storage;
 use serde::Serialize;
 use serde_json::json;
 use std::fmt::Display;
+use std::sync::Arc;
 use tokio::runtime::Handle;
 
 use crate::tools::{McpTool, WORKFLOW_DOCS};
@@ -34,7 +35,7 @@ pub(crate) fn mcp_err(msg: impl Display) -> serde_json::Value {
 #[expect(clippy::too_many_arguments, reason = "MCP handler needs all service references")]
 pub fn handle_tool_call(
     storage: &Storage,
-    embeddings: Option<&EmbeddingService>,
+    embeddings: Option<Arc<EmbeddingService>>,
     infinite_mem: Option<&InfiniteMemory>,
     _observation_service: &ObservationService,
     _session_service: &SessionService,
@@ -54,7 +55,7 @@ pub fn handle_tool_call(
                 result: None,
                 error: Some(McpError {
                     code: -32602,
-                    message: format!("Unknown tool: '{tool_name_str}'. Available: __IMPORTANT, search, timeline, get_observations, memory_get, memory_recent, memory_hybrid_search, memory_semantic_search, knowledge_search, knowledge_save, knowledge_get, knowledge_list, infinite_expand, infinite_time_range, infinite_drill_hour, infinite_drill_day"),
+                        message: format!("Unknown tool: '{tool_name_str}'. Available: __IMPORTANT, search, timeline, get_observations, memory_get, memory_recent, memory_hybrid_search, memory_semantic_search, save_memory, knowledge_search, knowledge_save, knowledge_get, knowledge_list, infinite_expand, infinite_time_range, infinite_drill_hour, infinite_drill_day"),
                 }),
             };
         },
@@ -70,7 +71,10 @@ pub fn handle_tool_call(
         McpTool::MemoryGet => memory::handle_memory_get(storage, &args),
         McpTool::MemoryRecent => memory::handle_memory_recent(storage, &args),
         McpTool::MemoryHybridSearch => memory::handle_hybrid_search(storage, &args),
-        McpTool::MemorySemanticSearch => memory::handle_semantic_search(storage, embeddings, &args),
+        McpTool::MemorySemanticSearch => {
+            memory::handle_semantic_search(storage, embeddings.as_deref(), &args)
+        },
+        McpTool::SaveMemory => memory::handle_save_memory(storage, embeddings, handle, &args),
         McpTool::KnowledgeSearch => knowledge::handle_knowledge_search(storage, &args),
         McpTool::KnowledgeSave => {
             return knowledge::handle_knowledge_save(storage, &args, id);

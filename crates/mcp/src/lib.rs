@@ -134,7 +134,7 @@ pub fn run_mcp_server(
 
         if let Some(response) = handle_request(
             &storage,
-            embeddings.as_deref(),
+            embeddings.clone(),
             infinite_mem.as_deref(),
             &observation_service,
             &session_service,
@@ -151,7 +151,7 @@ pub fn run_mcp_server(
 
 fn handle_request(
     storage: &Storage,
-    embeddings: Option<&EmbeddingService>,
+    embeddings: Option<Arc<EmbeddingService>>,
     infinite_mem: Option<&InfiniteMemory>,
     observation_service: &ObservationService,
     session_service: &SessionService,
@@ -216,6 +216,7 @@ mod tests {
         assert_eq!(McpTool::parse("memory_recent"), Some(McpTool::MemoryRecent));
         assert_eq!(McpTool::parse("memory_hybrid_search"), Some(McpTool::MemoryHybridSearch));
         assert_eq!(McpTool::parse("memory_semantic_search"), Some(McpTool::MemorySemanticSearch));
+        assert_eq!(McpTool::parse("save_memory"), Some(McpTool::SaveMemory));
         assert_eq!(McpTool::parse("__IMPORTANT"), Some(McpTool::Important));
         assert_eq!(McpTool::parse("knowledge_search"), Some(McpTool::KnowledgeSearch));
         assert_eq!(McpTool::parse("knowledge_save"), Some(McpTool::KnowledgeSave));

@@ -1,4 +1,4 @@
-use opencode_mem_core::{strip_markdown_json, Error, Result};
+use opencode_mem_core::{Error, Result};
 
 use crate::ai_types::{ChatRequest, ChatResponse};
 
@@ -8,12 +8,22 @@ pub const MAX_OUTPUT_LEN: usize = 2000;
 pub const DEFAULT_MODEL: &str = "gemini-3-flash";
 
 /// Client for LLM API calls.
-#[derive(Debug)]
 pub struct LlmClient {
     pub(crate) client: reqwest::Client,
     pub(crate) api_key: String,
     pub(crate) base_url: String,
     pub(crate) model: String,
+}
+
+impl std::fmt::Debug for LlmClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LlmClient")
+            .field("client", &self.client)
+            .field("api_key", &"***")
+            .field("base_url", &self.base_url)
+            .field("model", &self.model)
+            .finish()
+    }
 }
 
 impl LlmClient {
@@ -22,7 +32,12 @@ impl LlmClient {
     pub fn new(api_key: String, base_url: String) -> Self {
         let model =
             std::env::var("OPENCODE_MEM_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
-        Self { client: reqwest::Client::new(), api_key, base_url, model }
+        let base_url = base_url.trim_end_matches('/').to_owned();
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(60))
+            .build()
+            .expect("failed to build HTTP client");
+        Self { client, api_key, base_url, model }
     }
 
     /// Sets a custom model for this client.
@@ -103,7 +118,7 @@ impl LlmClient {
                 let chat_response: ChatResponse = serde_json::from_str(&body).map_err(|e| {
                     Error::LlmApi(format!(
                         "Failed to parse response: {e} - body: {}",
-                        body.get(..500).unwrap_or(&body)
+                        truncate(&body, 500)
                     ))
                 })?;
 
@@ -112,7 +127,7 @@ impl LlmClient {
                     .first()
                     .ok_or_else(|| Error::LlmApi("API returned empty choices array".to_owned()))?;
 
-                return Ok(strip_markdown_json(&first_choice.message.content).to_owned());
+                return Ok(first_choice.message.content.clone());
             }
 
             let status_code = status.as_u16();

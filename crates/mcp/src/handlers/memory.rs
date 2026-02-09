@@ -1,5 +1,9 @@
+use opencode_mem_core::{Observation, ObservationType};
+use opencode_mem_embeddings::EmbeddingProvider;
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_storage::Storage;
+use std::sync::Arc;
+use tokio::runtime::Handle;
 
 use super::{mcp_err, mcp_ok, mcp_text};
 
@@ -88,4 +92,75 @@ pub(super) fn handle_semantic_search(
         Ok(results) => mcp_ok(&results),
         Err(e) => mcp_err(e),
     }
+}
+
+pub(super) fn handle_save_memory(
+    storage: &Storage,
+    embeddings: Option<Arc<EmbeddingService>>,
+    handle: &Handle,
+    args: &serde_json::Value,
+) -> serde_json::Value {
+    let raw_text = match args.get("text").and_then(|t| t.as_str()) {
+        Some(text) => text.trim(),
+        None => return mcp_err("text is required and must be a string"),
+    };
+    if raw_text.is_empty() {
+        return mcp_err("text is required and must not be empty");
+    }
+
+    let title = args
+        .get("title")
+        .and_then(|t| t.as_str())
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| raw_text.chars().take(50).collect());
+    let project = args
+        .get("project")
+        .and_then(|p| p.as_str())
+        .map(str::trim)
+        .filter(|p| !p.is_empty())
+        .map(ToOwned::to_owned);
+
+    let observation = Observation::builder(
+        uuid::Uuid::new_v4().to_string(),
+        "manual".to_owned(),
+        ObservationType::Discovery,
+        title,
+    )
+    .maybe_project(project)
+    .narrative(raw_text.to_owned())
+    .build();
+
+    if let Err(e) = storage.save_observation(&observation) {
+        return mcp_err(e);
+    }
+
+    if let Some(emb) = embeddings {
+        let embedding_text = format!(
+            "{} {} {}",
+            observation.title,
+            observation.narrative.as_deref().unwrap_or(""),
+            observation.facts.join(" ")
+        );
+        let embedding_result = handle.block_on(async move {
+            tokio::task::spawn_blocking(move || emb.embed(&embedding_text)).await
+        });
+
+        match embedding_result {
+            Ok(Ok(vec)) => {
+                if let Err(e) = storage.store_embedding(&observation.id, &vec) {
+                    tracing::warn!("Failed to store embedding for {}: {}", observation.id, e);
+                }
+            },
+            Ok(Err(e)) => {
+                tracing::warn!("Failed to generate embedding for {}: {}", observation.id, e);
+            },
+            Err(e) => {
+                tracing::warn!("Embedding task join error for {}: {}", observation.id, e);
+            },
+        }
+    }
+
+    mcp_ok(&observation)
 }

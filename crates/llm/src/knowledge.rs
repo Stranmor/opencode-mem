@@ -57,8 +57,9 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
         };
 
         let content = self.chat_completion(&request).await?;
+        let stripped = opencode_mem_core::strip_markdown_json(&content);
         let extraction: KnowledgeExtractionResult =
-            serde_json::from_str(&content).map_err(|e| {
+            serde_json::from_str(stripped).map_err(|e| {
                 Error::LlmApi(format!(
                     "Failed to parse extraction JSON: {e} - content: {}",
                     content.get(..300).unwrap_or(&content)
