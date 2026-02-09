@@ -97,7 +97,7 @@ pub(super) fn handle_semantic_search(
 pub(super) fn handle_save_memory(
     storage: &Storage,
     embeddings: Option<Arc<EmbeddingService>>,
-    handle: &Handle,
+    _handle: &Handle,
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let raw_text = match args.get("text").and_then(|t| t.as_str()) {
@@ -137,29 +137,33 @@ pub(super) fn handle_save_memory(
     }
 
     if let Some(emb) = embeddings {
+        let storage = storage.clone();
+        let obs_id = observation.id.clone();
         let embedding_text = format!(
             "{} {} {}",
             observation.title,
             observation.narrative.as_deref().unwrap_or(""),
             observation.facts.join(" ")
         );
-        let embedding_result = handle.block_on(async move {
-            tokio::task::spawn_blocking(move || emb.embed(&embedding_text)).await
-        });
 
-        match embedding_result {
-            Ok(Ok(vec)) => {
-                if let Err(e) = storage.store_embedding(&observation.id, &vec) {
-                    tracing::warn!("Failed to store embedding for {}: {}", observation.id, e);
-                }
-            },
-            Ok(Err(e)) => {
-                tracing::warn!("Failed to generate embedding for {}: {}", observation.id, e);
-            },
-            Err(e) => {
-                tracing::warn!("Embedding task join error for {}: {}", observation.id, e);
-            },
-        }
+        _handle.spawn(async move {
+            let embedding_result =
+                tokio::task::spawn_blocking(move || emb.embed(&embedding_text)).await;
+
+            match embedding_result {
+                Ok(Ok(vec)) => {
+                    if let Err(e) = storage.store_embedding(&obs_id, &vec) {
+                        tracing::warn!("Failed to store embedding for {}: {}", obs_id, e);
+                    }
+                },
+                Ok(Err(e)) => {
+                    tracing::warn!("Failed to generate embedding for {}: {}", obs_id, e);
+                },
+                Err(e) => {
+                    tracing::warn!("Embedding task join error for {}: {}", obs_id, e);
+                },
+            }
+        });
     }
 
     mcp_ok(&observation)
