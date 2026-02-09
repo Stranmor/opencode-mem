@@ -124,13 +124,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/search", get(handlers::search::search))
         .route("/hybrid-search", get(handlers::search::hybrid_search))
         .route("/semantic-search", get(handlers::search::semantic_search))
-        .route("/observations/:id", get(handlers::observations::get_observation))
+        .route("/observations/{id}", get(handlers::observations::get_observation))
         .route("/observations/batch", post(handlers::observations::get_observations_batch))
         .route("/api/observations", get(handlers::observations::get_observations_paginated))
         .route("/api/summaries", get(handlers::observations::get_summaries_paginated))
         .route("/api/prompts", get(handlers::observations::get_prompts_paginated))
-        .route("/api/session/:id", get(handlers::observations::get_session_by_id))
-        .route("/api/prompt/:id", get(handlers::observations::get_prompt_by_id))
+        .route("/api/session/{id}", get(handlers::observations::get_session_by_id))
+        .route("/api/prompt/{id}", get(handlers::observations::get_prompt_by_id))
         .route("/api/search/observations", get(handlers::search::search))
         .route("/api/search/by-type", get(handlers::search::search))
         .route("/api/search/by-concept", get(handlers::search::search))
@@ -145,18 +145,18 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/context/inject", get(handlers::context::get_context_recent))
         .route("/session/summary", post(handlers::sessions::generate_summary))
         .route("/events", get(handlers::context::sse_events))
-        .route("/sessions/:sessionDbId/init", post(handlers::sessions::session_init_legacy))
+        .route("/sessions/{sessionDbId}/init", post(handlers::sessions::session_init_legacy))
         .route(
-            "/sessions/:sessionDbId/observations",
+            "/sessions/{sessionDbId}/observations",
             post(handlers::sessions::session_observations_legacy),
         )
         .route(
-            "/sessions/:sessionDbId/summarize",
+            "/sessions/{sessionDbId}/summarize",
             post(handlers::sessions::session_summarize_legacy),
         )
-        .route("/sessions/:sessionDbId/status", get(handlers::sessions::session_status))
-        .route("/sessions/:sessionDbId", delete(handlers::sessions::session_delete))
-        .route("/sessions/:sessionDbId/complete", post(handlers::sessions::session_complete))
+        .route("/sessions/{sessionDbId}/status", get(handlers::sessions::session_status))
+        .route("/sessions/{sessionDbId}", delete(handlers::sessions::session_delete))
+        .route("/sessions/{sessionDbId}/complete", post(handlers::sessions::session_complete))
         .route("/api/sessions/init", post(handlers::sessions_api::api_session_init))
         .route("/api/sessions/observations", post(handlers::sessions_api::api_session_observations))
         .route("/api/sessions/summarize", post(handlers::sessions_api::api_session_summarize))
@@ -188,16 +188,19 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/knowledge", get(handlers::knowledge::list_knowledge))
         .route("/api/knowledge/search", get(handlers::knowledge::search_knowledge))
         .route(
-            "/api/knowledge/:id",
+            "/api/knowledge/{id}",
             get(handlers::knowledge::get_knowledge_by_id)
                 .delete(handlers::knowledge::delete_knowledge),
         )
         .route("/api/knowledge", post(handlers::knowledge::save_knowledge))
-        .route("/api/knowledge/:id/usage", put(handlers::knowledge::record_knowledge_usage))
-        .route("/api/infinite/expand_summary/:id", get(handlers::infinite::infinite_expand_summary))
+        .route("/api/knowledge/{id}/usage", put(handlers::knowledge::record_knowledge_usage))
+        .route(
+            "/api/infinite/expand_summary/{id}",
+            get(handlers::infinite::infinite_expand_summary),
+        )
         .route("/api/infinite/time_range", get(handlers::infinite::infinite_time_range))
-        .route("/api/infinite/drill_hour/:id", get(handlers::infinite::infinite_drill_hour))
-        .route("/api/infinite/drill_day/:id", get(handlers::infinite::infinite_drill_day))
+        .route("/api/infinite/drill_hour/{id}", get(handlers::infinite::infinite_drill_hour))
+        .route("/api/infinite/drill_day/{id}", get(handlers::infinite::infinite_drill_day))
         .route("/api/infinite/search_entities", get(handlers::infinite::infinite_search_entities))
         .layer(CorsLayer::permissive())
         .with_state(state)
