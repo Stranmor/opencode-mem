@@ -2,7 +2,6 @@ use opencode_mem_storage::Storage;
 use serde_json::json;
 
 use super::{mcp_err, mcp_ok, mcp_text};
-use crate::McpResponse;
 
 pub(super) fn handle_knowledge_search(
     storage: &Storage,
@@ -20,7 +19,10 @@ pub(super) fn handle_knowledge_get(
     storage: &Storage,
     args: &serde_json::Value,
 ) -> serde_json::Value {
-    let id_str = args.get("id").and_then(|i| i.as_str()).unwrap_or("");
+    let id_str = match args.get("id").and_then(|i| i.as_str()) {
+        Some(id) => id,
+        None => return mcp_err("id is required"),
+    };
     match storage.get_knowledge(id_str) {
         Ok(Some(knowledge)) => {
             let _ = storage.update_knowledge_usage(id_str);
@@ -35,10 +37,13 @@ pub(super) fn handle_knowledge_list(
     storage: &Storage,
     args: &serde_json::Value,
 ) -> serde_json::Value {
-    let knowledge_type = args
-        .get("knowledge_type")
-        .and_then(|t| t.as_str())
-        .and_then(|s| s.parse::<opencode_mem_core::KnowledgeType>().ok());
+    let knowledge_type = match args.get("knowledge_type").and_then(|t| t.as_str()) {
+        Some(s) => match s.parse::<opencode_mem_core::KnowledgeType>() {
+            Ok(kt) => Some(kt),
+            Err(e) => return mcp_err(format!("Invalid knowledge_type: {e}")),
+        },
+        None => None,
+    };
     let limit = args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(20) as usize;
     match storage.list_knowledge(knowledge_type, limit) {
         Ok(results) => mcp_ok(&results),
@@ -50,9 +55,12 @@ pub(super) fn handle_knowledge_delete(
     storage: &Storage,
     args: &serde_json::Value,
 ) -> serde_json::Value {
-    let id_str = args.get("id").and_then(|i| i.as_str()).unwrap_or("");
+    let id_str = match args.get("id").and_then(|i| i.as_str()) {
+        Some(id) => id,
+        None => return mcp_err("id is required"),
+    };
     match storage.delete_knowledge(id_str) {
-        Ok(deleted) => mcp_ok(&json!({ "success": true, "id": id_str, "deleted": deleted })),
+        Ok(deleted) => mcp_ok(&json!({ "success": deleted, "id": id_str, "deleted": deleted })),
         Err(e) => mcp_err(e),
     }
 }
@@ -60,41 +68,19 @@ pub(super) fn handle_knowledge_delete(
 pub(super) fn handle_knowledge_save(
     storage: &Storage,
     args: &serde_json::Value,
-    id: serde_json::Value,
-) -> McpResponse {
+) -> serde_json::Value {
     let knowledge_type_str = args.get("knowledge_type").and_then(|t| t.as_str()).unwrap_or("skill");
     let knowledge_type = match knowledge_type_str.parse::<opencode_mem_core::KnowledgeType>() {
         Ok(kt) => kt,
-        Err(e) => {
-            return McpResponse {
-                jsonrpc: "2.0".to_owned(),
-                id,
-                result: Some(mcp_err(format!("Invalid knowledge_type: {e}"))),
-                error: None,
-            };
-        },
+        Err(e) => return mcp_err(format!("Invalid knowledge_type: {e}")),
     };
     let title = match args.get("title").and_then(|t| t.as_str()) {
         Some(t) if !t.is_empty() => t.to_owned(),
-        _ => {
-            return McpResponse {
-                jsonrpc: "2.0".to_owned(),
-                id,
-                result: Some(mcp_err("title is required and cannot be empty")),
-                error: None,
-            };
-        },
+        _ => return mcp_err("title is required and cannot be empty"),
     };
     let description = match args.get("description").and_then(|d| d.as_str()) {
         Some(d) if !d.is_empty() => d.to_owned(),
-        _ => {
-            return McpResponse {
-                jsonrpc: "2.0".to_owned(),
-                id,
-                result: Some(mcp_err("description is required and cannot be empty")),
-                error: None,
-            };
-        },
+        _ => return mcp_err("description is required and cannot be empty"),
     };
     let instructions = args.get("instructions").and_then(|i| i.as_str()).map(ToOwned::to_owned);
     let triggers: Vec<String> = args
@@ -117,14 +103,7 @@ pub(super) fn handle_knowledge_save(
     );
 
     match storage.save_knowledge(input) {
-        Ok(knowledge) => McpResponse {
-            jsonrpc: "2.0".to_owned(),
-            id,
-            result: Some(mcp_ok(&knowledge)),
-            error: None,
-        },
-        Err(e) => {
-            McpResponse { jsonrpc: "2.0".to_owned(), id, result: Some(mcp_err(e)), error: None }
-        },
+        Ok(knowledge) => mcp_ok(&knowledge),
+        Err(e) => mcp_err(e),
     }
 }

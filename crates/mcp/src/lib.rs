@@ -72,7 +72,7 @@ pub struct McpError {
     pub message: String,
 }
 
-pub fn run_mcp_server(
+pub async fn run_mcp_server(
     storage: Arc<Storage>,
     embeddings: Option<Arc<EmbeddingService>>,
     infinite_mem: Option<Arc<InfiniteMemory>>,
@@ -140,7 +140,9 @@ pub fn run_mcp_server(
             &session_service,
             &handle,
             &request,
-        ) {
+        )
+        .await
+        {
             if let Ok(response_json) = serde_json::to_string(&response) {
                 if let Err(e) = writeln!(stdout, "{response_json}") {
                     tracing::error!("MCP stdout write error: {}", e);
@@ -155,7 +157,7 @@ pub fn run_mcp_server(
     }
 }
 
-fn handle_request(
+async fn handle_request(
     storage: &Storage,
     embeddings: Option<Arc<EmbeddingService>>,
     infinite_mem: Option<&InfiniteMemory>,
@@ -186,16 +188,19 @@ fn handle_request(
             result: Some(get_tools_json()),
             error: None,
         },
-        "tools/call" => handle_tool_call(
-            storage,
-            embeddings,
-            infinite_mem,
-            observation_service,
-            session_service,
-            handle,
-            &req.params,
-            id,
-        ),
+        "tools/call" => {
+            handle_tool_call(
+                storage,
+                embeddings,
+                infinite_mem,
+                observation_service,
+                session_service,
+                handle,
+                &req.params,
+                id,
+            )
+            .await
+        },
         _ => McpResponse {
             jsonrpc: "2.0".to_owned(),
             id,
@@ -231,7 +236,7 @@ mod tests {
         assert_eq!(McpTool::parse("infinite_expand"), Some(McpTool::InfiniteExpand));
         assert_eq!(McpTool::parse("infinite_time_range"), Some(McpTool::InfiniteTimeRange));
         assert_eq!(McpTool::parse("infinite_drill_hour"), Some(McpTool::InfiniteDrillHour));
-        assert_eq!(McpTool::parse("infinite_drill_day"), Some(McpTool::InfiniteDrillDay));
+        assert_eq!(McpTool::parse("infinite_drill_minute"), Some(McpTool::InfiniteDrillMinute));
     }
 
     #[test]

@@ -59,17 +59,8 @@ pub(crate) async fn run() -> Result<()> {
 
     let handle = tokio::runtime::Handle::current();
 
-    tokio::task::spawn_blocking(move || {
-        run_mcp_server(
-            storage,
-            embeddings,
-            infinite_mem,
-            observation_service,
-            session_service,
-            handle,
-        );
-    })
-    .await?;
+    run_mcp_server(storage, embeddings, infinite_mem, observation_service, session_service, handle)
+        .await;
 
     Ok(())
 }

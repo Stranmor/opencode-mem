@@ -17,7 +17,11 @@ pub(super) struct ExistingKnowledgeRow {
 pub(super) fn row_to_knowledge(row: &rusqlite::Row<'_>) -> rusqlite::Result<GlobalKnowledge> {
     let knowledge_type_str: String = row.get(1)?;
     let knowledge_type = knowledge_type_str.parse::<KnowledgeType>().map_err(|e| {
-        rusqlite::Error::ToSqlConversionFailure(Box::new(IoError::new(ErrorKind::InvalidData, e)))
+        rusqlite::Error::FromSqlConversionFailure(
+            1,
+            rusqlite::types::Type::Text,
+            Box::new(IoError::new(ErrorKind::InvalidData, e)),
+        )
     })?;
 
     Ok(GlobalKnowledge::new(

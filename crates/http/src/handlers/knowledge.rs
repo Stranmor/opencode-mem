@@ -16,8 +16,10 @@ pub async fn list_knowledge(
     State(state): State<Arc<AppState>>,
     Query(query): Query<KnowledgeQuery>,
 ) -> Result<Json<Vec<GlobalKnowledge>>, StatusCode> {
-    let knowledge_type =
-        query.knowledge_type.as_ref().and_then(|s| s.parse::<KnowledgeType>().ok());
+    let knowledge_type = match query.knowledge_type.as_ref() {
+        Some(s) => Some(s.parse::<KnowledgeType>().map_err(|_| StatusCode::BAD_REQUEST)?),
+        None => None,
+    };
     let storage = Arc::clone(&state.storage);
     let limit = query.limit;
     blocking_json(move || storage.list_knowledge(knowledge_type, limit)).await
@@ -48,7 +50,7 @@ pub async fn delete_knowledge(
     let storage = Arc::clone(&state.storage);
     blocking_json(move || {
         let deleted = storage.delete_knowledge(&id)?;
-        Ok(json!({ "success": true, "id": id, "deleted": deleted }))
+        Ok(json!({ "success": deleted, "id": id, "deleted": deleted }))
     })
     .await
 }

@@ -21,7 +21,7 @@ pub enum McpTool {
     InfiniteExpand,
     InfiniteTimeRange,
     InfiniteDrillHour,
-    InfiniteDrillDay,
+    InfiniteDrillMinute,
 }
 
 impl McpTool {
@@ -47,7 +47,7 @@ impl McpTool {
             "infinite_expand" => Some(Self::InfiniteExpand),
             "infinite_time_range" => Some(Self::InfiniteTimeRange),
             "infinite_drill_hour" => Some(Self::InfiniteDrillHour),
-            "infinite_drill_day" => Some(Self::InfiniteDrillDay),
+            "infinite_drill_minute" => Some(Self::InfiniteDrillMinute),
             _ => None,
         }
     }
@@ -265,7 +265,7 @@ pub fn get_tools_json() -> serde_json::Value {
                 }
             },
             {
-                "name": "infinite_drill_day",
+                "name": "infinite_drill_minute",
                 "description": "Drill down from an hour summary to its 5-minute summaries.",
                 "inputSchema": {
                     "type": "object",

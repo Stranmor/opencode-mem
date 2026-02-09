@@ -42,7 +42,6 @@ use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 use std::path::Path;
-use std::str::FromStr as _;
 
 use crate::migrations;
 use crate::vec_init::init_sqlite_vec;
@@ -82,7 +81,7 @@ pub(crate) fn map_search_result(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<opencode_mem_core::SearchResult> {
     let noise_str: Option<String> = row.get(4)?;
-    let noise_level = noise_str.and_then(|s| NoiseLevel::from_str(&s).ok()).unwrap_or_default();
+    let noise_level = noise_str.and_then(|s| s.parse::<NoiseLevel>().ok()).unwrap_or_default();
     Ok(opencode_mem_core::SearchResult::new(
         row.get(0)?,
         row.get(1)?,
@@ -98,7 +97,7 @@ pub(crate) fn map_search_result_default_score(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<opencode_mem_core::SearchResult> {
     let noise_str: Option<String> = row.get(4)?;
-    let noise_level = noise_str.and_then(|s| NoiseLevel::from_str(&s).ok()).unwrap_or_default();
+    let noise_level = noise_str.and_then(|s| s.parse::<NoiseLevel>().ok()).unwrap_or_default();
     Ok(opencode_mem_core::SearchResult::new(
         row.get(0)?,
         row.get(1)?,
@@ -131,7 +130,6 @@ pub(crate) fn build_fts_query(query: &str) -> String {
 
 /// Custom connection initializer for sqlite-vec and concurrency settings
 fn init_connection(conn: &mut Connection) -> Result<(), rusqlite::Error> {
-    init_sqlite_vec();
     conn.execute_batch(
         "PRAGMA busy_timeout = 30000;
          PRAGMA journal_mode = WAL;

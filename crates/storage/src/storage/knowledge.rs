@@ -210,10 +210,10 @@ impl Storage {
                       k.source_projects, k.source_observations, k.confidence, k.usage_count,
                       k.last_used_at, k.created_at, k.updated_at, bm25(f) as score
                FROM global_knowledge_fts f
-               JOIN global_knowledge k ON k.rowid = f.rowid
-               WHERE f MATCH ?1
-               ORDER BY score
-               LIMIT ?2",
+                JOIN global_knowledge k ON k.rowid = f.rowid
+                WHERE f MATCH ?1
+                ORDER BY score ASC
+                LIMIT ?2",
         )?;
 
         let results = stmt

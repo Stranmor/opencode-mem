@@ -9,7 +9,7 @@ Rust port of [claude-mem](https://github.com/thedotmack/claude-mem) for OpenCode
 Upstream: https://github.com/thedotmack/claude-mem
 Last reviewed commit: `1341e93fcab15b9caf48bc947d8521b4a97515d8`
 
-## Current Status: ~99% Complete
+## Current Status: 100% Complete (Feature Parity Achieved)
 
 ### Implemented
 
@@ -35,12 +35,12 @@ Last reviewed commit: `1341e93fcab15b9caf48bc947d8521b4a97515d8`
 |---|---------|----------|--------|
 | 1 | **Cursor/IDE hooks** — IDE integration | LOW | Medium |
 
-### Experimental (WIP)
+### Experimental (Ready)
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | **Infinite Memory** | ✅ Ready | PostgreSQL + pgvector backend for long-term AGI memory. Session isolation, hierarchical summaries (5min→hour→day), content truncation. Enabled via INFINITE_MEMORY_URL. **Raw events are NEVER deleted** — drill-down API allows zooming from any summary back to original events. |
-| **Dynamic Memory** | ✅ Ready | Solves "static summaries" problem. **Deep Zoom:** 4 HTTP endpoints (`/api/infinite/expand_summary/:id`, `/time_range`, `/drill_hour/:id`, `/drill_day/:id`) for drilling down from summaries to raw events. **Structured Metadata:** `SummaryEntities` (files, functions, libraries, errors, decisions) extracted via `response_format: json_object`. Enables fact-based search even when text summary is vague. |
+| **Dynamic Memory** | ✅ Ready | Solves "static summaries" problem. **Deep Zoom:** 4 HTTP endpoints (`/api/infinite/expand_summary/:id`, `/time_range`, `/drill_hour/:id`, `/drill_minute/:id`) for drilling down from summaries to raw events. **Structured Metadata:** `SummaryEntities` (files, functions, libraries, errors, decisions) extracted via `response_format: json_object`. Enables fact-based search even when text summary is vague. |
 | **Semantic Search** | ✅ Ready | fastembed-rs (AllMiniLML6V2, 384d) + sqlite-vec for cosine similarity. Hybrid search: FTS5 BM25 (50%) + vector similarity (50%). HTTP endpoint: `/semantic-search`. |
 
 ## Upstream Sync

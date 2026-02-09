@@ -68,7 +68,8 @@ fn format_part(output: &mut String, part: &serde_json::Value) {
     match part_type {
         "text" => {
             if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                output.push_str(text);
+                let preview = truncate(text, 1000);
+                output.push_str(preview);
                 output.push('\n');
             }
         },
@@ -184,13 +185,29 @@ impl LlmClient {
         };
 
         let content = self.chat_completion(&request).await?;
-        serde_json::from_str(&content).map_err(|e| {
+        let clean_json = strip_markdown_json(&content);
+        serde_json::from_str(&clean_json).map_err(|e| {
             Error::LlmApi(format!(
                 "Failed to parse insights JSON: {e} - content: {}",
-                content.get(..300).unwrap_or(&content)
+                truncate(&clean_json, 300)
             ))
         })
     }
+}
+
+fn strip_markdown_json(content: &str) -> String {
+    let content = content.trim();
+    if let Some(stripped) = content.strip_prefix("```json") {
+        if let Some(end) = stripped.rfind("```") {
+            return stripped[..end].trim().to_owned();
+        }
+    }
+    if let Some(stripped) = content.strip_prefix("```") {
+        if let Some(end) = stripped.rfind("```") {
+            return stripped[..end].trim().to_owned();
+        }
+    }
+    content.to_owned()
 }
 
 fn build_insights_prompt(formatted: &str, project_path: &str) -> String {

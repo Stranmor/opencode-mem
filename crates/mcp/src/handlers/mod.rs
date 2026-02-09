@@ -33,7 +33,7 @@ pub(crate) fn mcp_err(msg: impl Display) -> serde_json::Value {
 }
 
 #[expect(clippy::too_many_arguments, reason = "MCP handler needs all service references")]
-pub fn handle_tool_call(
+pub async fn handle_tool_call(
     storage: &Storage,
     embeddings: Option<Arc<EmbeddingService>>,
     infinite_mem: Option<&InfiniteMemory>,
@@ -55,7 +55,7 @@ pub fn handle_tool_call(
                 result: None,
                 error: Some(McpError {
                     code: -32602,
-                    message: format!("Unknown tool: '{tool_name_str}'. Available: __IMPORTANT, search, timeline, get_observations, memory_get, memory_recent, memory_hybrid_search, memory_semantic_search, save_memory, knowledge_search, knowledge_save, knowledge_get, knowledge_list, knowledge_delete, infinite_expand, infinite_time_range, infinite_drill_hour, infinite_drill_day"),
+                    message: format!("Unknown tool: '{tool_name_str}'. Available: __IMPORTANT, search, timeline, get_observations, memory_get, memory_recent, memory_hybrid_search, memory_semantic_search, save_memory, knowledge_search, knowledge_save, knowledge_get, knowledge_list, knowledge_delete, infinite_expand, infinite_time_range, infinite_drill_hour, infinite_drill_minute"),
                 }),
             };
         },
@@ -76,23 +76,21 @@ pub fn handle_tool_call(
         },
         McpTool::SaveMemory => memory::handle_save_memory(storage, embeddings, handle, &args),
         McpTool::KnowledgeSearch => knowledge::handle_knowledge_search(storage, &args),
-        McpTool::KnowledgeSave => {
-            return knowledge::handle_knowledge_save(storage, &args, id);
-        },
+        McpTool::KnowledgeSave => knowledge::handle_knowledge_save(storage, &args),
         McpTool::KnowledgeGet => knowledge::handle_knowledge_get(storage, &args),
         McpTool::KnowledgeList => knowledge::handle_knowledge_list(storage, &args),
         McpTool::KnowledgeDelete => knowledge::handle_knowledge_delete(storage, &args),
         McpTool::InfiniteExpand => {
-            return infinite::handle_infinite_expand(infinite_mem, handle, &args, id);
+            return infinite::handle_infinite_expand(infinite_mem, handle, &args, id).await;
         },
         McpTool::InfiniteTimeRange => {
-            return infinite::handle_infinite_time_range(infinite_mem, handle, &args, id);
+            return infinite::handle_infinite_time_range(infinite_mem, handle, &args, id).await;
         },
         McpTool::InfiniteDrillHour => {
-            return infinite::handle_infinite_drill_hour(infinite_mem, handle, &args, id);
+            return infinite::handle_infinite_drill_hour(infinite_mem, handle, &args, id).await;
         },
-        McpTool::InfiniteDrillDay => {
-            return infinite::handle_infinite_drill_day(infinite_mem, handle, &args, id);
+        McpTool::InfiniteDrillMinute => {
+            return infinite::handle_infinite_drill_minute(infinite_mem, handle, &args, id).await;
         },
     };
 
