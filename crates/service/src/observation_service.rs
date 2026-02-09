@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use opencode_mem_core::{Observation, ObservationInput, ToolCall, ToolOutput};
+use opencode_mem_core::{
+    is_low_value_observation, Observation, ObservationInput, ToolCall, ToolOutput,
+};
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
 use opencode_mem_infinite::{tool_event, InfiniteMemory};
 use opencode_mem_llm::LlmClient;
@@ -190,71 +192,4 @@ impl ObservationService {
 
         Ok(())
     }
-}
-
-fn is_low_value_observation(title: &str) -> bool {
-    let t = title.to_lowercase();
-
-    if t.contains("file edit applied successfully")
-        || t.contains("edit applied")
-        || t.contains("successful file edit")
-    {
-        return true;
-    }
-
-    if t.contains("rustfmt") && t.contains("nightly") {
-        return true;
-    }
-
-    if t.contains("task completion signal") {
-        return true;
-    }
-
-    if (t.contains("comment") || t.contains("docstring")) && t.contains("hook") {
-        return true;
-    }
-
-    if t.contains("memory classification") {
-        return true;
-    }
-
-    if t.contains("tool call observed") || t.contains("tool execution") {
-        return true;
-    }
-
-    if t.contains("no significant") {
-        return true;
-    }
-
-    // AGENTS.md paraphrases — agent config/behavioral rule observations
-    if t.starts_with("agent ")
-        && (t.contains("rules")
-            || t.contains("protocol")
-            || t.contains("guidelines")
-            || t.contains("doctrine")
-            || t.contains("principles")
-            || t.contains("behavioral")
-            || t.contains("operational")
-            || t.contains("workflow")
-            || t.contains("persona"))
-    {
-        return true;
-    }
-
-    // TODO/plan status updates — process noise, not knowledge
-    if t.starts_with("updated todo")
-        || t.starts_with("updated plan")
-        || t.starts_with("updated task status")
-        || t.starts_with("updated agents.md")
-        || t == "task completion"
-    {
-        return true;
-    }
-
-    // Noise level/classification meta-observations
-    if t.contains("noise level classification") || t.contains("memory storage classification") {
-        return true;
-    }
-
-    false
 }

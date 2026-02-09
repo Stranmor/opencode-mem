@@ -8,7 +8,8 @@ use std::sync::Arc;
 use tokio::task::spawn_blocking;
 
 use opencode_mem_core::{
-    Observation, ObservationType, ProjectFilter, SearchResult, SessionSummary, ToolCall, UserPrompt,
+    is_low_value_observation, Observation, ObservationType, ProjectFilter, SearchResult,
+    SessionSummary, ToolCall, UserPrompt,
 };
 use opencode_mem_storage::PaginatedResult;
 
@@ -113,6 +114,11 @@ pub async fn save_memory(
     .maybe_project(project)
     .narrative(text)
     .build();
+
+    if is_low_value_observation(&observation.title) {
+        tracing::debug!("Filtered low-value save_memory: {}", observation.title);
+        return Err(StatusCode::BAD_REQUEST);
+    }
 
     let storage = Arc::clone(&state.storage);
     let obs_for_save = observation.clone();

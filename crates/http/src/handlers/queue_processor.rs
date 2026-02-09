@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 use tokio::task::spawn_blocking;
 
-use opencode_mem_core::{ObservationInput, ProjectFilter, ToolOutput};
+use opencode_mem_core::{is_low_value_observation, ObservationInput, ProjectFilter, ToolOutput};
 use opencode_mem_infinite::tool_event;
 use opencode_mem_storage::{default_visibility_timeout_secs, PendingMessage};
 
@@ -74,6 +74,12 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
         tracing::debug!("Observation filtered as trivial for message {}", msg.id);
         return Ok(());
     };
+
+    if is_low_value_observation(&observation.title) {
+        tracing::debug!("Filtered low-value observation from queue: {}", observation.title);
+        return Ok(());
+    }
+
     let storage = Arc::clone(&state.storage);
     let obs_clone = observation.clone();
     spawn_blocking(move || storage.save_observation(&obs_clone))
