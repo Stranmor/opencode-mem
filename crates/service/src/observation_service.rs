@@ -33,6 +33,10 @@ impl ObservationService {
         tool_call: ToolCall,
     ) -> anyhow::Result<Option<Observation>> {
         if let Some(observation) = self.compress_and_save(id, &tool_call).await? {
+            if is_low_value_observation(&observation.title) {
+                tracing::debug!("Filtered low-value observation: {}", observation.title);
+                return Ok(Some(observation));
+            }
             self.extract_knowledge(&observation).await;
             self.store_infinite_memory(&tool_call, &observation).await;
             Ok(Some(observation))
@@ -70,23 +74,36 @@ impl ObservationService {
             tracing::debug!("Observation filtered as trivial");
             return Ok(None);
         };
-        self.persist_and_notify(&observation).await?;
+
+        if !is_low_value_observation(&observation.title) {
+            self.persist_and_notify(&observation).await?;
+        }
+
         Ok(Some(observation))
     }
 
     pub async fn extract_knowledge(&self, observation: &Observation) {
         match self.llm.maybe_extract_knowledge(observation).await {
-            Ok(Some(knowledge_input)) => match self.storage.save_knowledge(knowledge_input) {
-                Ok(knowledge) => {
-                    tracing::info!(
-                        "Auto-extracted knowledge: {} - {}",
-                        knowledge.id,
-                        knowledge.title
-                    );
-                },
-                Err(e) => {
-                    tracing::warn!("Failed to save extracted knowledge: {}", e);
-                },
+            Ok(Some(knowledge_input)) => {
+                let storage = Arc::clone(&self.storage);
+                let result =
+                    tokio::task::spawn_blocking(move || storage.save_knowledge(knowledge_input))
+                        .await;
+                match result {
+                    Ok(Ok(knowledge)) => {
+                        tracing::info!(
+                            "Auto-extracted knowledge: {} - {}",
+                            knowledge.id,
+                            knowledge.title
+                        );
+                    },
+                    Ok(Err(e)) => {
+                        tracing::warn!("Failed to save extracted knowledge: {}", e);
+                    },
+                    Err(e) => {
+                        tracing::error!("Blocking task failed: {}", e);
+                    },
+                }
             },
             Ok(None) => {},
             Err(e) => {
@@ -120,7 +137,15 @@ impl ObservationService {
             tracing::debug!("Filtered low-value observation: {}", observation.title);
             return Ok(());
         }
-        self.storage.save_observation(observation)?;
+
+        let storage = Arc::clone(&self.storage);
+        let obs = observation.clone();
+        tokio::task::spawn_blocking(move || storage.save_observation(&obs)).await??;
+
+        tracing::info!("Saved observation: {} - {}", observation.id, observation.title);
+        if self.event_tx.send(serde_json::to_string(observation)?).is_err() {
+            tracing::debug!("No SSE subscribers for observation event (this is normal at startup)");
+        }
 
         if let Some(ref emb) = self.embeddings {
             let text = format!(
@@ -131,18 +156,30 @@ impl ObservationService {
             );
 
             let emb = Arc::clone(emb);
-            let embedding = async move {
-                let embedding = tokio::task::spawn_blocking(move || emb.embed(&text)).await??;
-                Ok::<Vec<f32>, anyhow::Error>(embedding)
-            }
-            .await;
+            let embedding = tokio::task::spawn_blocking(move || emb.embed(&text)).await?;
 
             match embedding {
                 Ok(vec) => {
-                    if let Err(e) = self.storage.store_embedding(&observation.id, &vec) {
-                        tracing::warn!("Failed to store embedding for {}: {}", observation.id, e);
-                    } else {
-                        tracing::info!("Stored embedding for {}", observation.id);
+                    let storage = Arc::clone(&self.storage);
+                    let obs_id = observation.id.clone();
+                    let result =
+                        tokio::task::spawn_blocking(move || storage.store_embedding(&obs_id, &vec))
+                            .await;
+
+                    match result {
+                        Ok(Ok(())) => {
+                            tracing::info!("Stored embedding for {}", observation.id);
+                        },
+                        Ok(Err(e)) => {
+                            tracing::warn!(
+                                "Failed to store embedding for {}: {}",
+                                observation.id,
+                                e
+                            );
+                        },
+                        Err(e) => {
+                            tracing::error!("Blocking task failed: {}", e);
+                        },
                     }
                 },
                 Err(e) => {
@@ -151,10 +188,6 @@ impl ObservationService {
             }
         }
 
-        tracing::info!("Saved observation: {} - {}", observation.id, observation.title);
-        if self.event_tx.send(serde_json::to_string(observation)?).is_err() {
-            tracing::debug!("No SSE subscribers for observation event (this is normal at startup)");
-        }
         Ok(())
     }
 }

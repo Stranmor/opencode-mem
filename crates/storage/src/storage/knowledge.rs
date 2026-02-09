@@ -210,10 +210,10 @@ impl Storage {
         let mut stmt = conn.prepare(
             "SELECT k.id, k.knowledge_type, k.title, k.description, k.instructions, k.triggers,
                       k.source_projects, k.source_observations, k.confidence, k.usage_count,
-                      k.last_used_at, k.created_at, k.updated_at, bm25(f) as score
-               FROM global_knowledge_fts f
-                JOIN global_knowledge k ON k.rowid = f.rowid
-                WHERE f MATCH ?1
+                      k.last_used_at, k.created_at, k.updated_at, bm25(global_knowledge_fts) as score
+               FROM global_knowledge_fts
+                JOIN global_knowledge k ON k.rowid = global_knowledge_fts.rowid
+                WHERE global_knowledge_fts MATCH ?1
                 ORDER BY score ASC
                 LIMIT ?2",
         )?;
