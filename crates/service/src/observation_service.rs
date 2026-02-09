@@ -148,7 +148,9 @@ impl ObservationService {
         }
 
         tracing::info!("Saved observation: {} - {}", observation.id, observation.title);
-        let _ = self.event_tx.send(serde_json::to_string(observation)?);
+        if self.event_tx.send(serde_json::to_string(observation)?).is_err() {
+            tracing::debug!("No SSE subscribers for observation event (this is normal at startup)");
+        }
         Ok(())
     }
 }

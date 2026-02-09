@@ -142,8 +142,14 @@ pub fn run_mcp_server(
             &request,
         ) {
             if let Ok(response_json) = serde_json::to_string(&response) {
-                writeln!(stdout, "{response_json}").ok();
-                stdout.flush().ok();
+                if let Err(e) = writeln!(stdout, "{response_json}") {
+                    tracing::error!("MCP stdout write error: {}", e);
+                    break;
+                }
+                if let Err(e) = stdout.flush() {
+                    tracing::error!("MCP stdout flush error: {}", e);
+                    break;
+                }
             }
         }
     }

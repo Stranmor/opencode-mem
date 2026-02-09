@@ -10,6 +10,7 @@ pub mod infinite;
 pub mod knowledge;
 pub mod observations;
 pub mod queue;
+pub mod queue_processor;
 pub mod search;
 pub(crate) mod session_ops;
 pub mod sessions;

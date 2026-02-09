@@ -48,7 +48,7 @@ use opencode_mem_service::{ObservationService, SessionService};
 use opencode_mem_storage::Storage;
 
 pub use api_types::{ReadinessResponse, Settings, VersionResponse};
-pub use handlers::queue::{run_startup_recovery, start_background_processor};
+pub use handlers::queue_processor::{run_startup_recovery, start_background_processor};
 
 /// Spawns background task that runs infinite memory compression every 5 minutes.
 ///
