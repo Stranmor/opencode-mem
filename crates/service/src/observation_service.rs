@@ -226,5 +226,35 @@ fn is_low_value_observation(title: &str) -> bool {
         return true;
     }
 
+    // AGENTS.md paraphrases — agent config/behavioral rule observations
+    if t.starts_with("agent ")
+        && (t.contains("rules")
+            || t.contains("protocol")
+            || t.contains("guidelines")
+            || t.contains("doctrine")
+            || t.contains("principles")
+            || t.contains("behavioral")
+            || t.contains("operational")
+            || t.contains("workflow")
+            || t.contains("persona"))
+    {
+        return true;
+    }
+
+    // TODO/plan status updates — process noise, not knowledge
+    if t.starts_with("updated todo")
+        || t.starts_with("updated plan")
+        || t.starts_with("updated task status")
+        || t.starts_with("updated agents.md")
+        || t == "task completion"
+    {
+        return true;
+    }
+
+    // Noise level/classification meta-observations
+    if t.contains("noise level classification") || t.contains("memory storage classification") {
+        return true;
+    }
+
     false
 }
