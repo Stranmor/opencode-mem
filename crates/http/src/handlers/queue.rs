@@ -127,8 +127,14 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
     // If same message is processed twice (race condition), same observation ID is generated
     let id =
         uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, msg.id.to_string().as_bytes()).to_string();
-    let observation =
-        state.llm.compress_to_observation(&id, &input, msg.project.as_deref()).await?;
+    let observation = state
+        .llm
+        .compress_to_observation(
+            &id,
+            &input,
+            msg.project.as_deref().filter(|p| !p.is_empty() && *p != "unknown"),
+        )
+        .await?;
 
     // Store raw event in Infinite Memory REGARDLESS of whether observation is trivial.
     // Architecture invariant: raw events are NEVER lost — drill-down must always work.
@@ -204,6 +210,12 @@ pub fn run_startup_recovery(state: &AppState) -> anyhow::Result<usize> {
     if released > 0 {
         tracing::info!("Startup recovery: released {} stale messages back to pending", released);
     }
+
+    let closed = state.storage.close_stale_sessions(24)?;
+    if closed > 0 {
+        tracing::info!("Startup recovery: closed {} stale sessions (>24h active)", closed);
+    }
+
     Ok(released)
 }
 

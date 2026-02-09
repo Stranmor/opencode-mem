@@ -56,8 +56,14 @@ impl ObservationService {
                 tool_call.input.clone(),
             ),
         );
-        let observation = if let Some(obs) =
-            self.llm.compress_to_observation(id, &input, tool_call.project.as_deref()).await?
+        let observation = if let Some(obs) = self
+            .llm
+            .compress_to_observation(
+                id,
+                &input,
+                tool_call.project.as_deref().filter(|p| !p.is_empty() && *p != "unknown"),
+            )
+            .await?
         {
             obs
         } else {

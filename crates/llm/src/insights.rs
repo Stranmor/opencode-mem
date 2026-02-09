@@ -17,6 +17,12 @@ pub struct InsightJson {
     pub description: String,
     #[serde(default)]
     pub files: Vec<String>,
+    #[serde(default = "default_medium")]
+    pub noise_level: String,
+}
+
+fn default_medium() -> String {
+    "medium".to_owned()
 }
 
 /// LLM response containing extracted insights
@@ -148,7 +154,14 @@ impl LlmClient {
         let observations: Vec<Observation> = insights_response
             .insights
             .into_iter()
-            .map(|insight| insight_to_observation(insight, session_id, project_path))
+            .map(|insight| {
+                (
+                    insight.noise_level.clone(),
+                    insight_to_observation(insight, session_id, project_path),
+                )
+            })
+            .filter(|(noise, _)| !noise.eq_ignore_ascii_case("negligible"))
+            .map(|(_, obs)| obs)
             .collect();
 
         Ok(observations)
@@ -196,6 +209,12 @@ Extract ONLY project-specific insights that would help a new developer (or futur
 3. **Preferences** - User's coding style preferences for THIS project
 4. **Discoveries** - How specific parts of THIS codebase work
 
+Rate each insight's importance:
+- "critical"/"high": Project-specific decisions, gotchas, unique discoveries
+- "medium": Useful context (default)
+- "low": Minor observations
+- "negligible": Generic knowledge, trivial operations — SKIP these entirely
+
 ## What to SKIP
 
 - Generic programming knowledge (async patterns, error handling basics)
@@ -213,7 +232,8 @@ Return JSON:
       "type": "decision|gotcha|preference|discovery",
       "title": "Short title (5-10 words)",
       "description": "Detailed explanation",
-      "files": ["path/to/relevant/file.rs"]
+      "files": ["path/to/relevant/file.rs"],
+      "noise_level": "critical|high|medium|low|negligible"
     }}
   ]
 }}

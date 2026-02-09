@@ -94,6 +94,21 @@ impl Storage {
         Ok(affected > 0)
     }
 
+    /// Close stale sessions that have been active for longer than the given duration.
+    ///
+    /// # Errors
+    /// Returns error if database update fails.
+    pub fn close_stale_sessions(&self, max_age_hours: i64) -> Result<usize> {
+        let conn = get_conn(&self.pool)?;
+        let threshold = chrono::Utc::now() - chrono::Duration::hours(max_age_hours);
+        let threshold_str = threshold.to_rfc3339();
+        let affected = conn.execute(
+            "UPDATE sessions SET status = 'completed', ended_at = datetime('now') WHERE status = 'active' AND started_at < ?1",
+            rusqlite::params![threshold_str],
+        )?;
+        Ok(affected)
+    }
+
     fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<Session> {
         let started_at_str: String = row.get(5)?;
         let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)

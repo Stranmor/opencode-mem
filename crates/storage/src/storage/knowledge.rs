@@ -14,7 +14,25 @@ impl Storage {
     /// Returns error if database insert fails.
     pub fn save_knowledge(&self, input: KnowledgeInput) -> Result<GlobalKnowledge> {
         let conn = get_conn(&self.pool)?;
-        let id = uuid::Uuid::new_v4().to_string();
+
+        let mut stmt = conn.prepare(
+            "SELECT id, created_at, confidence, usage_count, last_used_at 
+             FROM global_knowledge 
+             WHERE LOWER(TRIM(title)) = LOWER(TRIM(?1))",
+        )?;
+        let mut rows = stmt.query(params![input.title])?;
+        let existing = if let Some(row) = rows.next()? {
+            Some((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<f64>(2)?,
+                row.get::<i64>(3)?,
+                row.get::<Option<String>>(4)?,
+            ))
+        } else {
+            None
+        };
+
         let now = Utc::now().to_rfc3339();
         let triggers_json = serde_json::to_string(&input.triggers)?;
         let source_projects_json = input
@@ -30,44 +48,83 @@ impl Storage {
             .transpose()?
             .unwrap_or_else(|| "[]".to_owned());
 
-        conn.execute(
-            "INSERT INTO global_knowledge 
-               (id, knowledge_type, title, description, instructions, triggers, 
-                source_projects, source_observations, confidence, usage_count, 
-                last_used_at, created_at, updated_at)
-               VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-            params![
+        if let Some((id, created_at, confidence, usage_count, last_used_at)) = existing {
+            conn.execute(
+                "UPDATE global_knowledge 
+                 SET description = ?1, 
+                     instructions = ?2, 
+                     triggers = ?3, 
+                     source_projects = ?4, 
+                     source_observations = ?5,
+                     updated_at = ?6
+                 WHERE id = ?7",
+                params![
+                    input.description,
+                    input.instructions,
+                    triggers_json,
+                    source_projects_json,
+                    source_observations_json,
+                    now,
+                    id
+                ],
+            )?;
+
+            Ok(GlobalKnowledge::new(
                 id,
-                input.knowledge_type.as_str(),
+                input.knowledge_type,
                 input.title,
                 input.description,
                 input.instructions,
-                triggers_json,
-                source_projects_json,
-                source_observations_json,
-                0.5f64,
-                0i64,
-                Option::<String>::None,
+                input.triggers,
+                input.source_project.map(|p| vec![p]).unwrap_or_default(),
+                input.source_observation.map(|o| vec![o]).unwrap_or_default(),
+                confidence,
+                usage_count,
+                last_used_at,
+                created_at,
                 now,
-                now,
-            ],
-        )?;
+            ))
+        } else {
+            let id = uuid::Uuid::new_v4().to_string();
+            conn.execute(
+                "INSERT INTO global_knowledge 
+                   (id, knowledge_type, title, description, instructions, triggers, 
+                    source_projects, source_observations, confidence, usage_count, 
+                    last_used_at, created_at, updated_at)
+                   VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                params![
+                    id,
+                    input.knowledge_type.as_str(),
+                    input.title,
+                    input.description,
+                    input.instructions,
+                    triggers_json,
+                    source_projects_json,
+                    source_observations_json,
+                    0.5f64,
+                    0i64,
+                    Option::<String>::None,
+                    now,
+                    now,
+                ],
+            )?;
 
-        Ok(GlobalKnowledge::new(
-            id,
-            input.knowledge_type,
-            input.title,
-            input.description,
-            input.instructions,
-            input.triggers,
-            input.source_project.map(|p| vec![p]).unwrap_or_default(),
-            input.source_observation.map(|o| vec![o]).unwrap_or_default(),
-            0.5,
-            0,
-            None,
-            now.clone(),
-            now,
-        ))
+            Ok(GlobalKnowledge::new(
+                id,
+                input.knowledge_type,
+                input.title,
+                input.description,
+                input.instructions,
+                input.triggers,
+                input.source_project.map(|p| vec![p]).unwrap_or_default(),
+                input.source_observation.map(|o| vec![o]).unwrap_or_default(),
+                0.5,
+                0,
+                None,
+                now.clone(),
+                now,
+            ))
+        }
     }
 
     /// Get knowledge by ID.
