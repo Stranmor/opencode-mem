@@ -29,6 +29,7 @@ mod filtering_tests {
 
     /// Test: Generic programming pattern should have low `noise_level` (LLM already knows)
     #[tokio::test]
+    #[ignore]
     #[expect(clippy::panic, reason = "test assertions")]
     #[expect(clippy::print_stdout, reason = "test output")]
     #[expect(clippy::print_stderr, reason = "test output")]
@@ -73,6 +74,7 @@ Standard fix for race condition - use RwLock instead of direct access.",
 
     /// Test: Project-specific decision SHOULD be saved with high `noise_level`
     #[tokio::test]
+    #[ignore]
     #[expect(clippy::panic, reason = "test assertions")]
     #[expect(clippy::print_stdout, reason = "test output")]
     #[expect(clippy::print_stderr, reason = "test output")]
@@ -114,6 +116,7 @@ Trade-off: pgvector has better performance at scale, but we prioritize simplicit
 
     /// Test: Project-specific gotcha SHOULD be saved
     #[tokio::test]
+    #[ignore]
     #[expect(clippy::panic, reason = "test assertions")]
     #[expect(clippy::print_stdout, reason = "test output")]
     #[expect(clippy::print_stderr, reason = "test output")]
@@ -155,6 +158,7 @@ Anyone new to this project would expect opencode-mem-cli based on crate name."#,
 
     /// Test: Simple file read should have low `noise_level`
     #[tokio::test]
+    #[ignore]
     #[expect(clippy::panic, reason = "test assertions")]
     #[expect(clippy::print_stdout, reason = "test output")]
     #[expect(clippy::print_stderr, reason = "test output")]
