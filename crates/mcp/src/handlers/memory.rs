@@ -164,3 +164,109 @@ pub(super) fn handle_save_memory(
 
     mcp_ok(&observation)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use tempfile::tempdir;
+
+    fn setup_storage() -> (Storage, tempfile::TempDir) {
+        let dir = tempdir().unwrap();
+        let db_path = dir.path().join("test.db");
+        let storage = Storage::new(&db_path).unwrap();
+        (storage, dir)
+    }
+
+    #[tokio::test]
+    async fn test_save_memory_missing_text() {
+        let (storage, _dir) = setup_storage();
+        let handle = tokio::runtime::Handle::current();
+        let args = json!({});
+        let result = handle_save_memory(&storage, None, &handle, &args);
+
+        assert_eq!(result["isError"].as_bool(), Some(true));
+        assert!(result["content"][0]["text"].as_str().unwrap().contains("text is required"));
+    }
+
+    #[tokio::test]
+    async fn test_save_memory_empty_text() {
+        let (storage, _dir) = setup_storage();
+        let handle = tokio::runtime::Handle::current();
+        let args = json!({ "text": "  " });
+        let result = handle_save_memory(&storage, None, &handle, &args);
+
+        assert_eq!(result["isError"].as_bool(), Some(true));
+        assert!(result["content"][0]["text"].as_str().unwrap().contains("must not be empty"));
+    }
+
+    #[tokio::test]
+    async fn test_save_memory_with_title() {
+        let (storage, _dir) = setup_storage();
+        let handle = tokio::runtime::Handle::current();
+        let args = json!({
+            "text": "some narrative",
+            "title": "custom title"
+        });
+        let result = handle_save_memory(&storage, None, &handle, &args);
+
+        assert!(result.get("isError").is_none());
+        let obs_json = result["content"][0]["text"].as_str().unwrap();
+        let obs: Observation = serde_json::from_str(obs_json).unwrap();
+        assert_eq!(obs.title, "custom title");
+        assert_eq!(obs.narrative.as_deref(), Some("some narrative"));
+
+        let saved = storage.get_by_id(&obs.id).unwrap().unwrap();
+        assert_eq!(saved.title, "custom title");
+    }
+
+    #[tokio::test]
+    async fn test_save_memory_without_title() {
+        let (storage, _dir) = setup_storage();
+        let handle = tokio::runtime::Handle::current();
+        let long_text = "A very long text that should be truncated for the title because it is more than fifty characters long.";
+        let args = json!({
+            "text": long_text
+        });
+        let result = handle_save_memory(&storage, None, &handle, &args);
+
+        assert!(result.get("isError").is_none());
+        let obs_json = result["content"][0]["text"].as_str().unwrap();
+        let obs: Observation = serde_json::from_str(obs_json).unwrap();
+        assert_eq!(obs.title.chars().count(), 50);
+        assert!(long_text.starts_with(&obs.title));
+    }
+
+    #[tokio::test]
+    async fn test_save_memory_with_project() {
+        let (storage, _dir) = setup_storage();
+        let handle = tokio::runtime::Handle::current();
+        let args = json!({
+            "text": "narrative",
+            "project": "test-project"
+        });
+        let result = handle_save_memory(&storage, None, &handle, &args);
+
+        assert!(result.get("isError").is_none());
+        let obs_json = result["content"][0]["text"].as_str().unwrap();
+        let obs: Observation = serde_json::from_str(obs_json).unwrap();
+        assert_eq!(obs.project.as_deref(), Some("test-project"));
+    }
+
+    #[tokio::test]
+    async fn test_save_memory_success_returns_observation() {
+        let (storage, _dir) = setup_storage();
+        let handle = tokio::runtime::Handle::current();
+        let args = json!({
+            "text": "success test"
+        });
+        let result = handle_save_memory(&storage, None, &handle, &args);
+
+        assert!(result.get("isError").is_none());
+        let content = &result["content"][0];
+        assert_eq!(content["type"], "text");
+        let obs_json = content["text"].as_str().unwrap();
+        let _: Observation =
+            serde_json::from_str(obs_json).expect("Should return valid Observation JSON");
+    }
+}

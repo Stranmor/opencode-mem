@@ -22,3 +22,6 @@ pub use client::LlmClient;
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod retry_tests;
