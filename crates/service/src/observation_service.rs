@@ -35,10 +35,6 @@ impl ObservationService {
         tool_call: ToolCall,
     ) -> anyhow::Result<Option<Observation>> {
         if let Some(observation) = self.compress_and_save(id, &tool_call).await? {
-            if is_low_value_observation(&observation.title) {
-                tracing::debug!("Filtered low-value observation: {}", observation.title);
-                return Ok(Some(observation));
-            }
             self.extract_knowledge(&observation).await;
             self.store_infinite_memory(&tool_call, &observation).await;
             Ok(Some(observation))
@@ -77,9 +73,7 @@ impl ObservationService {
             return Ok(None);
         };
 
-        if !is_low_value_observation(&observation.title) {
-            self.persist_and_notify(&observation).await?;
-        }
+        self.persist_and_notify(&observation).await?;
 
         Ok(Some(observation))
     }

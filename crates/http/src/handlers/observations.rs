@@ -117,7 +117,7 @@ pub async fn save_memory(
 
     if is_low_value_observation(&observation.title) {
         tracing::debug!("Filtered low-value save_memory: {}", observation.title);
-        return Err(StatusCode::BAD_REQUEST);
+        return Ok(Json(observation));
     }
 
     let storage = Arc::clone(&state.storage);

@@ -251,6 +251,23 @@ mod tests {
     }
 
     #[test]
+    fn low_value_empty_string_passes() {
+        assert!(!is_low_value_observation(""));
+    }
+
+    #[test]
+    fn low_value_case_insensitive_uppercase() {
+        assert!(is_low_value_observation("FILE EDIT APPLIED SUCCESSFULLY"));
+        assert!(is_low_value_observation("RUSTFMT NIGHTLY formatting"));
+        assert!(is_low_value_observation("UPDATED TODO list"));
+    }
+
+    #[test]
+    fn low_value_partial_match_no_significant() {
+        assert!(is_low_value_observation("There is no significant change in this update"));
+    }
+
+    #[test]
     fn filter_private_simple() {
         let input = "Hello <private>secret</private> world";
         assert_eq!(filter_private_content(input), "Hello  world");

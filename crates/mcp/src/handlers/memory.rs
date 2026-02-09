@@ -1,4 +1,4 @@
-use opencode_mem_core::{Observation, ObservationType};
+use opencode_mem_core::{is_low_value_observation, Observation, ObservationType};
 use opencode_mem_embeddings::EmbeddingProvider;
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_storage::Storage;
@@ -131,6 +131,11 @@ pub(super) fn handle_save_memory(
     .maybe_project(project)
     .narrative(raw_text.to_owned())
     .build();
+
+    if is_low_value_observation(&observation.title) {
+        tracing::debug!("Filtered low-value MCP save_memory: {}", observation.title);
+        return mcp_text("Observation filtered as low-value");
+    }
 
     if let Err(e) = storage.save_observation(&observation) {
         return mcp_err(e);
