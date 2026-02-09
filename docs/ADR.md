@@ -123,3 +123,22 @@ OpenCode → TS Plugin → HTTP :37777 → Rust Backend
 - 10x token savings vs returning full data
 - Agent filters first, then fetches details
 - Matches claude-mem API for easier porting
+
+---
+
+## ADR-007: Configurable Low-Value Observation Filter
+
+**Status:** Accepted
+
+**Context:** The low-value observation filter was embedded in a single module with hardcoded patterns. We need configurable patterns without losing composite rules that require logic beyond simple string matching.
+
+**Decision:** Extract the filter into a dedicated module with a static, env-configurable pattern set. Keep composite rules as code and expose a single public function that evaluates both composite rules and pattern-based matches.
+
+**Rationale:**
+- Single source of truth for low-value filtering
+- Enables operational tuning via environment configuration
+- Keeps complex matching logic explicit and testable
+
+**Alternatives considered:**
+- Keep everything hardcoded in one module (rejected: no runtime configurability)
+- Load filter rules from external config file (rejected: adds IO surface and deployment complexity)

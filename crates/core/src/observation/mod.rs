@@ -2,9 +2,11 @@
 
 mod builder;
 mod input;
+mod low_value_filter;
 
 pub use builder::*;
 pub use input::*;
+pub use low_value_filter::is_low_value_observation;
 
 use std::str::FromStr;
 use std::sync::LazyLock;
@@ -149,123 +151,9 @@ impl FromStr for NoiseLevel {
     }
 }
 
-/// Pre-filter for low-value observations that should not be persisted.
-/// Checked at ALL entry points (SPOT — Single Point of Truth).
-pub fn is_low_value_observation(title: &str) -> bool {
-    let t = title.to_lowercase();
-
-    if t.contains("file edit applied successfully")
-        || t.contains("edit applied")
-        || t.contains("successful file edit")
-    {
-        return true;
-    }
-
-    if t.contains("rustfmt") && t.contains("nightly") {
-        return true;
-    }
-
-    if t.contains("task completion signal") {
-        return true;
-    }
-
-    if (t.contains("comment") || t.contains("docstring")) && t.contains("hook") {
-        return true;
-    }
-
-    if t.contains("memory classification") {
-        return true;
-    }
-
-    if t.contains("tool call observed") || t.contains("tool execution") {
-        return true;
-    }
-
-    if t.contains("no significant") {
-        return true;
-    }
-
-    // AGENTS.md paraphrases — agent config/behavioral rule observations
-    if t.starts_with("agent ")
-        && (t.contains("rules")
-            || t.contains("protocol")
-            || t.contains("guidelines")
-            || t.contains("doctrine")
-            || t.contains("principles")
-            || t.contains("behavioral")
-            || t.contains("operational")
-            || t.contains("workflow")
-            || t.contains("persona"))
-    {
-        return true;
-    }
-
-    // TODO/plan status updates — process noise, not knowledge
-    if t.starts_with("updated todo")
-        || t.starts_with("updated plan")
-        || t.starts_with("updated task status")
-        || t.starts_with("updated agents.md")
-        || t == "task completion"
-    {
-        return true;
-    }
-
-    // Noise level/classification meta-observations
-    if t.contains("noise level classification") || t.contains("memory storage classification") {
-        return true;
-    }
-
-    false
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn low_value_edit_applied() {
-        assert!(is_low_value_observation("File edit applied successfully"));
-        assert!(is_low_value_observation("Edit Applied to config.rs"));
-    }
-
-    #[test]
-    fn low_value_rustfmt_nightly() {
-        assert!(is_low_value_observation("rustfmt nightly formatting"));
-    }
-
-    #[test]
-    fn low_value_agent_rules() {
-        assert!(is_low_value_observation("Agent behavioral protocol update"));
-    }
-
-    #[test]
-    fn low_value_todo_updates() {
-        assert!(is_low_value_observation("Updated TODO list"));
-        assert!(is_low_value_observation("updated plan for deployment"));
-    }
-
-    #[test]
-    fn high_value_passes_filter() {
-        assert!(!is_low_value_observation("Database migration v10 added session_summaries"));
-        assert!(!is_low_value_observation("Fixed race condition in queue processor"));
-    }
-
-    #[test]
-    fn low_value_empty_string_passes() {
-        assert!(!is_low_value_observation(""));
-    }
-
-    #[test]
-    fn low_value_case_insensitive_uppercase() {
-        assert!(is_low_value_observation("FILE EDIT APPLIED SUCCESSFULLY"));
-        assert!(is_low_value_observation("RUSTFMT NIGHTLY formatting"));
-        assert!(is_low_value_observation("UPDATED TODO list"));
-    }
-
-    #[test]
-    fn low_value_partial_match_no_significant() {
-        assert!(is_low_value_observation("There is no significant change in this update"));
-    }
 
     #[test]
     fn filter_private_simple() {

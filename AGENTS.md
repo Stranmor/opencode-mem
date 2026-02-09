@@ -6,10 +6,14 @@ Rust port of [claude-mem](https://github.com/thedotmack/claude-mem) for OpenCode
 
 **Full feature parity with claude-mem (TypeScript).**
 
+Current task: Extract low-value observation filter into a dedicated module with env-configurable patterns.
+
 Upstream: https://github.com/thedotmack/claude-mem
 Last reviewed commit: `b2ddf59db46cf380964379e9ba2d7279c67fc12b`
 
 ## Current Status: 100% Complete (Feature Parity Achieved)
+
+Current task status: Complete (100%).
 
 ### Implemented
 
@@ -77,11 +81,10 @@ crates/
 
 ## Tech Debt & Known Issues
 
-None currently tracked.
+- Local HTTP server fails to start if port 37777 is already in use; stop the existing process before starting a new server.
 
 ### Resolved
 - ~~Code Duplication in observation_service.rs~~ — extracted shared `persist_and_notify` method
 - ~~Blocking I/O in observation_service.rs~~ — embedding calls wrapped in `spawn_blocking`
 - ~~Data Loss on Update in knowledge.rs~~ — implemented provenance merging logic
 - ~~SQLITE_LOCKED in knowledge.rs~~ — refactored to use transactions and `query_row`
-
