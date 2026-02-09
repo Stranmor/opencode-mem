@@ -7,7 +7,7 @@ Rust port of [claude-mem](https://github.com/thedotmack/claude-mem) for OpenCode
 **Full feature parity with claude-mem (TypeScript).**
 
 Upstream: https://github.com/thedotmack/claude-mem
-Last reviewed commit: `1341e93fcab15b9caf48bc947d8521b4a97515d8`
+Last reviewed commit: `b2ddf59db46cf380964379e9ba2d7279c67fc12b`
 
 ## Current Status: 100% Complete (Feature Parity Achieved)
 

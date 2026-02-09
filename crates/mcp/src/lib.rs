@@ -37,8 +37,8 @@ use opencode_mem_service::{ObservationService, SessionService};
 use opencode_mem_storage::Storage;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::io::{BufRead, BufReader, Write};
 use std::sync::Arc;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::runtime::Handle;
 
 pub use tools::McpTool;
@@ -81,16 +81,11 @@ pub async fn run_mcp_server(
     handle: Handle,
 ) {
     tracing::info!("MCP server starting on stdio");
-    let stdin = std::io::stdin();
-    let mut stdout = std::io::stdout();
-    let reader = BufReader::new(stdin.lock());
+    let stdin = tokio::io::stdin();
+    let mut stdout = tokio::io::stdout();
+    let mut reader = BufReader::new(stdin).lines();
 
-    for line in reader.lines() {
-        let line = match line {
-            Ok(l) => l,
-            Err(_) => break,
-        };
-
+    while let Ok(Some(line)) = reader.next_line().await {
         if line.is_empty() {
             continue;
         }
@@ -105,8 +100,8 @@ pub async fn run_mcp_server(
                     error: Some(McpError { code: -32700, message: format!("Parse error: {e}") }),
                 };
                 if let Ok(json) = serde_json::to_string(&error_response) {
-                    let _ = writeln!(stdout, "{json}");
-                    let _ = stdout.flush();
+                    let _ = stdout.write_all(format!("{json}\n").as_bytes()).await;
+                    let _ = stdout.flush().await;
                 }
                 continue;
             },
@@ -125,8 +120,8 @@ pub async fn run_mcp_server(
                     }),
                 };
                 if let Ok(json) = serde_json::to_string(&error_response) {
-                    let _ = writeln!(stdout, "{json}");
-                    let _ = stdout.flush();
+                    let _ = stdout.write_all(format!("{json}\n").as_bytes()).await;
+                    let _ = stdout.flush().await;
                 }
                 continue;
             },
@@ -144,11 +139,11 @@ pub async fn run_mcp_server(
         .await
         {
             if let Ok(response_json) = serde_json::to_string(&response) {
-                if let Err(e) = writeln!(stdout, "{response_json}") {
+                if let Err(e) = stdout.write_all(format!("{response_json}\n").as_bytes()).await {
                     tracing::error!("MCP stdout write error: {}", e);
                     break;
                 }
-                if let Err(e) = stdout.flush() {
+                if let Err(e) = stdout.flush().await {
                     tracing::error!("MCP stdout flush error: {}", e);
                     break;
                 }

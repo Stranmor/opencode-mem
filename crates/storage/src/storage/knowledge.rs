@@ -23,14 +23,16 @@ impl Storage {
                 params![input.title],
                 |row| {
                     Ok(ExistingKnowledgeRow {
-                        id: row.get(0)?,
-                        created_at: row.get(1)?,
-                        triggers: parse_json(&row.get::<_, String>(2)?)?,
-                        source_projects: parse_json(&row.get::<_, String>(3)?)?,
-                        source_observations: parse_json(&row.get::<_, String>(4)?)?,
-                        confidence: row.get(5)?,
-                        usage_count: row.get(6)?,
-                        last_used_at: row.get(7)?,
+                        id: row.get("id")?,
+                        created_at: row.get("created_at")?,
+                        triggers: parse_json(&row.get::<_, String>("triggers")?)?,
+                        source_projects: parse_json(&row.get::<_, String>("source_projects")?)?,
+                        source_observations: parse_json(
+                            &row.get::<_, String>("source_observations")?,
+                        )?,
+                        confidence: row.get("confidence")?,
+                        usage_count: row.get("usage_count")?,
+                        last_used_at: row.get("last_used_at")?,
                     })
                 },
             )

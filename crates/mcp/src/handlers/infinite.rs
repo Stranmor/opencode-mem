@@ -12,8 +12,14 @@ pub(super) async fn handle_infinite_expand(
 ) -> McpResponse {
     match infinite_mem {
         Some(mem) => {
-            let summary_id =
-                args.get("summary_id").and_then(serde_json::Value::as_i64).unwrap_or(0);
+            let Some(summary_id) = args.get("id").and_then(serde_json::Value::as_i64) else {
+                return McpResponse {
+                    jsonrpc: "2.0".to_owned(),
+                    id,
+                    result: Some(mcp_err("Missing or invalid 'id' (summary ID)")),
+                    error: None,
+                };
+            };
             let limit = args.get("limit").and_then(serde_json::Value::as_i64).unwrap_or(1000);
             match mem.get_events_by_summary_id(summary_id, limit).await {
                 Ok(events) => McpResponse {
@@ -105,7 +111,14 @@ pub(super) async fn handle_infinite_drill_hour(
 ) -> McpResponse {
     match infinite_mem {
         Some(mem) => {
-            let day_id = args.get("id").and_then(serde_json::Value::as_i64).unwrap_or(0);
+            let Some(day_id) = args.get("id").and_then(serde_json::Value::as_i64) else {
+                return McpResponse {
+                    jsonrpc: "2.0".to_owned(),
+                    id,
+                    result: Some(mcp_err("Missing or invalid 'id' (day summary ID)")),
+                    error: None,
+                };
+            };
             let limit = args.get("limit").and_then(serde_json::Value::as_i64).unwrap_or(100);
             match mem.get_hour_summaries_by_day_id(day_id, limit).await {
                 Ok(summaries) => McpResponse {
@@ -139,7 +152,14 @@ pub(super) async fn handle_infinite_drill_minute(
 ) -> McpResponse {
     match infinite_mem {
         Some(mem) => {
-            let hour_id = args.get("id").and_then(serde_json::Value::as_i64).unwrap_or(0);
+            let Some(hour_id) = args.get("id").and_then(serde_json::Value::as_i64) else {
+                return McpResponse {
+                    jsonrpc: "2.0".to_owned(),
+                    id,
+                    result: Some(mcp_err("Missing or invalid 'id' (hour summary ID)")),
+                    error: None,
+                };
+            };
             let limit = args.get("limit").and_then(serde_json::Value::as_i64).unwrap_or(100);
             match mem.get_5min_summaries_by_hour_id(hour_id, limit).await {
                 Ok(summaries) => McpResponse {

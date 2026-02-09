@@ -29,6 +29,9 @@ pub async fn search_knowledge(
     State(state): State<Arc<AppState>>,
     Query(query): Query<KnowledgeQuery>,
 ) -> Result<Json<Vec<KnowledgeSearchResult>>, StatusCode> {
+    if query.q.trim().is_empty() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
     let storage = Arc::clone(&state.storage);
     let q = query.q.clone();
     let limit = query.limit;

@@ -1,6 +1,5 @@
 use super::parse_json;
 use opencode_mem_core::{GlobalKnowledge, KnowledgeType};
-use std::io::{Error as IoError, ErrorKind};
 
 /// Existing knowledge row data fetched from the database during upsert.
 pub(super) struct ExistingKnowledgeRow {
@@ -15,28 +14,28 @@ pub(super) struct ExistingKnowledgeRow {
 }
 
 pub(super) fn row_to_knowledge(row: &rusqlite::Row<'_>) -> rusqlite::Result<GlobalKnowledge> {
-    let knowledge_type_str: String = row.get(1)?;
+    let knowledge_type_str: String = row.get("knowledge_type")?;
     let knowledge_type = knowledge_type_str.parse::<KnowledgeType>().map_err(|e| {
         rusqlite::Error::FromSqlConversionFailure(
             1,
             rusqlite::types::Type::Text,
-            Box::new(IoError::new(ErrorKind::InvalidData, e)),
+            Box::new(std::io::Error::new(std::io::ErrorKind::InvalidData, e)),
         )
     })?;
 
     Ok(GlobalKnowledge::new(
-        row.get(0)?,
+        row.get("id")?,
         knowledge_type,
-        row.get(2)?,
-        row.get(3)?,
-        row.get(4)?,
-        parse_json(&row.get::<_, String>(5)?)?,
-        parse_json(&row.get::<_, String>(6)?)?,
-        parse_json(&row.get::<_, String>(7)?)?,
-        row.get(8)?,
-        row.get(9)?,
-        row.get(10)?,
-        row.get(11)?,
-        row.get(12)?,
+        row.get("title")?,
+        row.get("description")?,
+        row.get("instructions")?,
+        parse_json(&row.get::<_, String>("triggers")?)?,
+        parse_json(&row.get::<_, String>("source_projects")?)?,
+        parse_json(&row.get::<_, String>("source_observations")?)?,
+        row.get("confidence")?,
+        row.get("usage_count")?,
+        row.get("last_used_at")?,
+        row.get("created_at")?,
+        row.get("updated_at")?,
     ))
 }
