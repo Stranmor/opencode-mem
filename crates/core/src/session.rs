@@ -71,6 +71,18 @@ pub enum SessionStatus {
     Failed,
 }
 
+impl SessionStatus {
+    /// Returns the string representation of the session status.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match *self {
+            Self::Active => "active",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+        }
+    }
+}
+
 impl FromStr for SessionStatus {
     type Err = anyhow::Error;
 

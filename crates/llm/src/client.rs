@@ -63,35 +63,73 @@ impl LlmClient {
     /// non-success status, the response body cannot be parsed, or the choices
     /// array is empty.
     pub async fn chat_completion(&self, request: &ChatRequest) -> Result<String> {
-        let response = self
-            .client
-            .post(format!("{}/v1/chat/completions", self.base_url))
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .json(request)
-            .send()
-            .await
-            .map_err(|e| Error::LlmApi(e.to_string()))?;
+        const MAX_RETRIES: u32 = 3;
+        let mut last_error = None;
 
-        let status = response.status();
-        let body = response.text().await.map_err(|e| Error::LlmApi(e.to_string()))?;
+        for attempt in 0..=MAX_RETRIES {
+            if attempt > 0 {
+                let delay = std::time::Duration::from_secs(1 << (attempt - 1));
+                tokio::time::sleep(delay).await;
+                tracing::warn!("LLM retry attempt {attempt}/{MAX_RETRIES} after {delay:?}");
+            }
 
-        if !status.is_success() {
-            return Err(Error::LlmApi(format!("API error {status}: {body}")));
+            let response_result = self
+                .client
+                .post(format!("{}/v1/chat/completions", self.base_url))
+                .header("Authorization", format!("Bearer {}", self.api_key))
+                .json(request)
+                .send()
+                .await;
+
+            let response = match response_result {
+                Ok(r) => r,
+                Err(e) => {
+                    last_error = Some(Error::LlmApi(e.to_string()));
+                    continue;
+                },
+            };
+
+            let status = response.status();
+            if status.is_success() {
+                let body_result = response.text().await;
+                let body = match body_result {
+                    Ok(b) => b,
+                    Err(e) => {
+                        last_error = Some(Error::LlmApi(e.to_string()));
+                        continue;
+                    },
+                };
+
+                let chat_response: ChatResponse = serde_json::from_str(&body).map_err(|e| {
+                    Error::LlmApi(format!(
+                        "Failed to parse response: {e} - body: {}",
+                        body.get(..500).unwrap_or(&body)
+                    ))
+                })?;
+
+                let first_choice = chat_response
+                    .choices
+                    .first()
+                    .ok_or_else(|| Error::LlmApi("API returned empty choices array".to_owned()))?;
+
+                return Ok(strip_markdown_json(&first_choice.message.content).to_owned());
+            }
+
+            let status_code = status.as_u16();
+            let body =
+                response.text().await.unwrap_or_else(|_| "Could not read error body".to_string());
+            let err_msg = format!("API error {status}: {body}");
+
+            match status_code {
+                429 | 500 | 502 | 503 | 529 => {
+                    last_error = Some(Error::LlmApi(err_msg));
+                    continue;
+                },
+                _ => return Err(Error::LlmApi(err_msg)),
+            }
         }
 
-        let chat_response: ChatResponse = serde_json::from_str(&body).map_err(|e| {
-            Error::LlmApi(format!(
-                "Failed to parse response: {e} - body: {}",
-                body.get(..500).unwrap_or(&body)
-            ))
-        })?;
-
-        let first_choice = chat_response
-            .choices
-            .first()
-            .ok_or_else(|| Error::LlmApi("API returned empty choices array".to_owned()))?;
-
-        Ok(strip_markdown_json(&first_choice.message.content).to_owned())
+        Err(last_error.unwrap_or_else(|| Error::LlmApi("All retries exhausted".to_owned())))
     }
 }
 

@@ -25,9 +25,9 @@ impl Storage {
             Some((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
-                row.get::<f64>(2)?,
-                row.get::<i64>(3)?,
-                row.get::<Option<String>>(4)?,
+                row.get::<_, f64>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, Option<String>>(4)?,
             ))
         } else {
             None
