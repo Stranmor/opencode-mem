@@ -82,6 +82,7 @@ crates/
 ## Tech Debt & Known Issues
 
 - Local HTTP server fails to start if port 37777 is already in use; stop the existing process before starting a new server.
+- Gate MCP review tooling intermittently returns 429/502 or "Max retries exceeded", blocking automated code review.
 
 ### Resolved
 - ~~Code Duplication in observation_service.rs~~ — extracted shared `persist_and_notify` method
