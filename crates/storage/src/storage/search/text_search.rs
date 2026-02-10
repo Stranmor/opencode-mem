@@ -68,7 +68,7 @@ impl Storage {
                 let noise_str: Option<String> = row.get(4)?;
                 let noise_level =
                     noise_str.and_then(|s| NoiseLevel::from_str(&s).ok()).unwrap_or_default();
-                let obs_keywords: String = row.get(5)?;
+                let obs_keywords: Option<String> = row.get(5)?;
                 let fts_score: f64 = row.get(6)?;
                 Ok((
                     SearchResult::new(
@@ -80,19 +80,23 @@ impl Storage {
                         0.0,
                     ),
                     fts_score,
-                    obs_keywords,
+                    obs_keywords.unwrap_or_default(),
                 ))
             })?
             .filter_map(log_row_error)
-            .filter_map(|(result, fts_score, obs_keywords)| {
-                let obs_kw: HashSet<String> = match parse_json::<Vec<String>>(&obs_keywords) {
-                    Ok(v) => v.into_iter().map(|s| s.to_lowercase()).collect(),
-                    Err(e) => {
-                        tracing::warn!("Failed to parse keywords JSON: {}", e);
-                        return None;
-                    },
+            .map(|(result, fts_score, obs_keywords)| {
+                let obs_kw: HashSet<String> = if obs_keywords.is_empty() {
+                    HashSet::new()
+                } else {
+                    match parse_json::<Vec<String>>(&obs_keywords) {
+                        Ok(v) => v.into_iter().map(|s| s.to_lowercase()).collect(),
+                        Err(e) => {
+                            tracing::warn!("Failed to parse keywords JSON: {}", e);
+                            HashSet::new()
+                        },
+                    }
                 };
-                Some((result, fts_score, obs_kw))
+                (result, fts_score, obs_kw)
             })
             .collect();
 
