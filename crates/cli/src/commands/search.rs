@@ -1,5 +1,5 @@
 use anyhow::Result;
-use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
+use opencode_mem_embeddings::{EmbeddingProvider as _, EmbeddingService};
 use opencode_mem_storage::{init_sqlite_vec, Storage};
 use std::collections::HashSet;
 
@@ -77,10 +77,17 @@ pub(crate) fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
     let mut total = 0;
     let mut failed_ids: HashSet<String> = HashSet::new();
     loop {
-        let observations = storage.get_observations_without_embeddings(batch_size)?;
+        let all_observations = storage.get_observations_without_embeddings(batch_size)?;
+        if all_observations.is_empty() {
+            break;
+        }
         let observations: Vec<_> =
-            observations.into_iter().filter(|obs| !failed_ids.contains(&obs.id)).collect();
+            all_observations.into_iter().filter(|obs| !failed_ids.contains(&obs.id)).collect();
         if observations.is_empty() {
+            eprintln!(
+                "Remaining {} observations all previously failed — stopping",
+                failed_ids.len()
+            );
             break;
         }
 

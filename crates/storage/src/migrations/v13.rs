@@ -4,5 +4,8 @@
 //! index directly — no generated column needed.
 
 pub(super) const SQL: &str = "
+DELETE FROM observations WHERE rowid NOT IN (
+    SELECT MAX(rowid) FROM observations GROUP BY LOWER(TRIM(title))
+);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_observations_title_normalized ON observations(LOWER(TRIM(title)));
 ";

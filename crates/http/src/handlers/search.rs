@@ -127,7 +127,7 @@ pub async fn unified_search(
     let from = query.from.clone();
     let to = query.to.clone();
     let limit = query.limit;
-    let observations = spawn_blocking({
+    let obs_handle = spawn_blocking({
         let storage = Arc::clone(&storage);
         let q = q.clone();
         let project = project.clone();
@@ -144,35 +144,36 @@ pub async fn unified_search(
                 limit,
             )
         }
-    })
-    .await
-    .map_err(|e| {
-        tracing::error!("Unified search observations join error: {e}");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .unwrap_or_default();
-    let sessions = spawn_blocking({
+    });
+    let sess_handle = spawn_blocking({
         let storage = Arc::clone(&storage);
         let q = q.clone();
         move || storage.search_sessions(&q, limit)
-    })
-    .await
-    .map_err(|e| {
-        tracing::error!("Unified search sessions join error: {e}");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .unwrap_or_default();
-    let prompts = spawn_blocking({
+    });
+    let prompt_handle = spawn_blocking({
         let storage = Arc::clone(&storage);
         let q = q.clone();
         move || storage.search_prompts(&q, limit)
-    })
-    .await
-    .map_err(|e| {
-        tracing::error!("Unified search prompts join error: {e}");
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?
-    .unwrap_or_default();
+    });
+
+    let (obs_result, sess_result, prompt_result) =
+        tokio::try_join!(obs_handle, sess_handle, prompt_handle).map_err(|e| {
+            tracing::error!("Unified search join error: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let observations = obs_result.unwrap_or_else(|e| {
+        tracing::error!("Unified search observation query failed: {e}");
+        Vec::new()
+    });
+    let sessions = sess_result.unwrap_or_else(|e| {
+        tracing::error!("Unified search session query failed: {e}");
+        Vec::new()
+    });
+    let prompts = prompt_result.unwrap_or_else(|e| {
+        tracing::error!("Unified search prompt query failed: {e}");
+        Vec::new()
+    });
     // Build ranked list from all collections
     let mut ranked: Vec<RankedItem> = Vec::new();
 
@@ -263,35 +264,46 @@ pub async fn unified_timeline(
             1.0,
         );
 
-        let storage = Arc::clone(&state.storage);
-        let anchor_time_clone = anchor_time.clone();
         let before_limit = query.before.saturating_add(1);
-        let anchor_id = anchor_sr.id.clone();
-        let before_items = spawn_blocking(move || {
-            storage.get_timeline(None, Some(&anchor_time_clone), before_limit)
-        })
-        .await
-        .ok()
-        .and_then(Result::ok)
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|o| o.id != anchor_id)
-        .take(query.before)
-        .collect();
-
-        let storage = Arc::clone(&state.storage);
         let after_limit = query.after.saturating_add(1);
+
+        let before_handle = spawn_blocking({
+            let storage = Arc::clone(&state.storage);
+            let anchor_time_clone = anchor_time.clone();
+            move || storage.get_timeline(None, Some(&anchor_time_clone), before_limit)
+        });
+        let after_handle = spawn_blocking({
+            let storage = Arc::clone(&state.storage);
+            let anchor_time_clone = anchor_time.clone();
+            move || storage.get_timeline(Some(&anchor_time_clone), None, after_limit)
+        });
+
+        let (before_result, after_result) =
+            tokio::try_join!(before_handle, after_handle).map_err(|e| {
+                tracing::error!("Unified timeline join error: {e}");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
         let anchor_id = anchor_sr.id.clone();
-        let after_items: Vec<_> =
-            spawn_blocking(move || storage.get_timeline(Some(&anchor_time), None, after_limit))
-                .await
-                .ok()
-                .and_then(Result::ok)
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|o| o.id != anchor_id)
-                .take(query.after)
-                .collect();
+        let before_items = before_result
+            .unwrap_or_else(|e| {
+                tracing::error!("Unified timeline before query failed: {e}");
+                Vec::new()
+            })
+            .into_iter()
+            .filter(|o| o.id != anchor_id)
+            .take(query.before)
+            .collect();
+
+        let after_items: Vec<_> = after_result
+            .unwrap_or_else(|e| {
+                tracing::error!("Unified timeline after query failed: {e}");
+                Vec::new()
+            })
+            .into_iter()
+            .filter(|o| o.id != anchor_id)
+            .take(query.after)
+            .collect();
 
         (Some(anchor_sr), before_items, after_items)
     } else {

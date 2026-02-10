@@ -17,6 +17,12 @@ impl Storage {
     /// # Errors
     /// Returns error if database query fails.
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        let fts_query = build_fts_query(query);
+
+        if fts_query.is_empty() {
+            return self.get_recent(limit);
+        }
+
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
             "SELECT o.id, o.title, o.subtitle, o.observation_type, o.noise_level, bm25(observations_fts) as score
@@ -27,7 +33,7 @@ impl Storage {
                LIMIT ?2",
         )?;
         let results = stmt
-            .query_map(params![query, limit], map_search_result)?
+            .query_map(params![fts_query, limit], map_search_result)?
             .filter_map(log_row_error)
             .collect();
         Ok(results)
@@ -53,6 +59,7 @@ impl Storage {
                FROM observations_fts f
                JOIN observations o ON o.rowid = f.rowid
                WHERE observations_fts MATCH ?1
+               ORDER BY fts_score
                LIMIT ?2",
         )?;
 
@@ -136,7 +143,8 @@ impl Storage {
         }
         if let Some(t) = obs_type {
             conditions.push("o.observation_type = ?".to_owned());
-            params_vec.push(Box::new(format!("\"{t}\"")));
+            params_vec
+                .push(Box::new(serde_json::to_string(t).unwrap_or_else(|_| format!("\"{t}\""))));
         }
         if let Some(f) = from {
             conditions.push("o.created_at >= ?".to_owned());
