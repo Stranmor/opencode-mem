@@ -71,11 +71,11 @@ impl Storage {
 
         let sql = if project.is_some() {
             "SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
-                      files_read, files_modified, keywords, prompt_number, discovery_tokens, created_at
+                      files_read, files_modified, keywords, prompt_number, discovery_tokens, noise_level, noise_reason, created_at
                FROM observations WHERE project = ?1 ORDER BY created_at DESC LIMIT ?2 OFFSET ?3"
         } else {
             "SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
-                      files_read, files_modified, keywords, prompt_number, discovery_tokens, created_at
+                      files_read, files_modified, keywords, prompt_number, discovery_tokens, noise_level, noise_reason, created_at
                FROM observations ORDER BY created_at DESC LIMIT ?1 OFFSET ?2"
         };
 

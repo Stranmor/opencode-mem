@@ -8,6 +8,7 @@ mod v1;
 mod v10;
 mod v11;
 mod v12;
+mod v13;
 mod v2;
 mod v3;
 mod v4;
@@ -20,7 +21,7 @@ mod v9;
 use column_helpers::add_column_if_not_exists;
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: i32 = 12;
+pub const SCHEMA_VERSION: i32 = 13;
 
 #[expect(clippy::cognitive_complexity, reason = "Sequential migrations are inherently linear")]
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -110,6 +111,13 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     if current_version < 12i32 {
         tracing::info!("Running migration v12: project column on pending_messages");
         add_column_if_not_exists(conn, "pending_messages", v12::COLUMN_NAME, v12::COLUMN_DEF)?;
+    }
+
+    if current_version < 13i32 {
+        tracing::info!(
+            "Running migration v13: title_normalized column + UNIQUE index for atomic dedup"
+        );
+        conn.execute_batch(v13::SQL)?;
     }
 
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;

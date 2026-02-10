@@ -4,7 +4,7 @@ use opencode_mem_core::{GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, 
 use rusqlite::{params, OptionalExtension};
 
 use super::knowledge_mapping::{row_to_knowledge, ExistingKnowledgeRow};
-use super::{get_conn, log_row_error, parse_json, Storage};
+use super::{build_fts_query, get_conn, log_row_error, parse_json, Storage};
 
 impl Storage {
     /// Save new knowledge entry.
@@ -195,11 +195,7 @@ impl Storage {
         limit: usize,
     ) -> Result<Vec<KnowledgeSearchResult>> {
         let conn = get_conn(&self.pool)?;
-        let fts_query = query
-            .split_whitespace()
-            .map(|word| format!("\"{}\"*", word.replace('"', "")))
-            .collect::<Vec<_>>()
-            .join(" AND ");
+        let fts_query = build_fts_query(query);
 
         if fts_query.is_empty() {
             return self.list_knowledge(None, limit).map(|items| {

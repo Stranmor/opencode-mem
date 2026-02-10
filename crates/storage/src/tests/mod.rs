@@ -13,7 +13,6 @@ pub fn create_test_storage() -> (Storage, TempDir) {
     (storage, temp_dir)
 }
 
-#[expect(dead_code, reason = "test utility function")]
 pub fn create_test_observation(id: &str, project: &str) -> Observation {
     Observation::builder(
         id.to_owned(),
@@ -34,7 +33,6 @@ pub fn create_test_observation(id: &str, project: &str) -> Observation {
     .build()
 }
 
-#[expect(dead_code, reason = "test utility function")]
 pub fn create_test_session(id: &str) -> Session {
     Session::new(
         id.to_owned(),
@@ -49,11 +47,14 @@ pub fn create_test_session(id: &str) -> Session {
     )
 }
 
+mod observation_tests;
+mod search_tests;
+
 #[test]
 #[expect(clippy::unwrap_used, reason = "test code")]
-fn find_duplicate_title_matches_case_insensitive_trimmed() {
+fn save_observation_dedup_via_unique_index() {
     let (storage, _temp_dir) = create_test_storage();
-    let observation = Observation::builder(
+    let obs1 = Observation::builder(
         "obs-1".to_owned(),
         "session-1".to_owned(),
         ObservationType::Discovery,
@@ -61,17 +62,18 @@ fn find_duplicate_title_matches_case_insensitive_trimmed() {
     )
     .build();
 
-    storage.save_observation(&observation).unwrap();
+    assert!(storage.save_observation(&obs1).unwrap());
 
-    assert!(storage
-        .find_duplicate_title(
-            "isolationmanager uses hrw hashing for deterministic proxy assignment"
-        )
-        .unwrap());
-    assert!(storage
-        .find_duplicate_title(
-            " IsolationManager uses HRW hashing for deterministic proxy assignment "
-        )
-        .unwrap());
-    assert!(!storage.find_duplicate_title("Different title").unwrap());
+    let obs2 = Observation::builder(
+        "obs-2".to_owned(),
+        "session-1".to_owned(),
+        ObservationType::Discovery,
+        "isolationmanager uses hrw hashing for deterministic proxy assignment".to_owned(),
+    )
+    .build();
+
+    assert!(!storage.save_observation(&obs2).unwrap());
+
+    let count = storage.get_session_observation_count("session-1").unwrap();
+    assert_eq!(count, 1);
 }

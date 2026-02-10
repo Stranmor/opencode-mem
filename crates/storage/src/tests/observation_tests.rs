@@ -13,7 +13,7 @@ fn test_save_and_get_observation() {
     let (storage, _temp_dir) = create_test_storage();
     let obs = create_test_observation("obs-1", "test-project");
 
-    storage.save_observation(&obs).unwrap();
+    assert!(storage.save_observation(&obs).unwrap());
 
     let retrieved = storage.get_by_id("obs-1").unwrap();
     assert!(retrieved.is_some());
@@ -28,7 +28,7 @@ fn test_get_recent() {
 
     for i in 1..=5 {
         let obs = create_test_observation(&format!("obs-{}", i), "test-project");
-        storage.save_observation(&obs).unwrap();
+        assert!(storage.save_observation(&obs).unwrap());
     }
 
     let recent = storage.get_recent(3).unwrap();
@@ -39,9 +39,9 @@ fn test_get_recent() {
 fn test_get_all_projects() {
     let (storage, _temp_dir) = create_test_storage();
 
-    storage.save_observation(&create_test_observation("obs-1", "project-a")).unwrap();
-    storage.save_observation(&create_test_observation("obs-2", "project-b")).unwrap();
-    storage.save_observation(&create_test_observation("obs-3", "project-a")).unwrap();
+    assert!(storage.save_observation(&create_test_observation("obs-1", "project-a")).unwrap());
+    assert!(storage.save_observation(&create_test_observation("obs-2", "project-b")).unwrap());
+    assert!(storage.save_observation(&create_test_observation("obs-3", "project-a")).unwrap());
 
     let projects = storage.get_all_projects().unwrap();
     assert_eq!(projects.len(), 2);
@@ -53,7 +53,7 @@ fn test_get_all_projects() {
 fn test_get_stats() {
     let (storage, _temp_dir) = create_test_storage();
 
-    storage.save_observation(&create_test_observation("obs-1", "project-a")).unwrap();
+    assert!(storage.save_observation(&create_test_observation("obs-1", "project-a")).unwrap());
     storage.save_session(&super::create_test_session("session-1")).unwrap();
 
     let stats = storage.get_stats().unwrap();
@@ -68,7 +68,7 @@ fn test_get_observations_paginated() {
 
     for i in 1..=10 {
         let obs = create_test_observation(&format!("obs-{}", i), "test-project");
-        storage.save_observation(&obs).unwrap();
+        assert!(storage.save_observation(&obs).unwrap());
     }
 
     let page1 = storage.get_observations_paginated(0, 5, None).unwrap();
@@ -87,14 +87,14 @@ fn test_get_observations_paginated_with_project_filter() {
     let (storage, _temp_dir) = create_test_storage();
 
     for i in 1..=5 {
-        storage
+        assert!(storage
             .save_observation(&create_test_observation(&format!("obs-a-{}", i), "project-a"))
-            .unwrap();
+            .unwrap());
     }
     for i in 1..=3 {
-        storage
+        assert!(storage
             .save_observation(&create_test_observation(&format!("obs-b-{}", i), "project-b"))
-            .unwrap();
+            .unwrap());
     }
 
     let result = storage.get_observations_paginated(0, 10, Some("project-a")).unwrap();

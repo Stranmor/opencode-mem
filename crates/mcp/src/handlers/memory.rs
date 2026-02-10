@@ -137,8 +137,13 @@ pub(super) fn handle_save_memory(
         return mcp_text("Observation filtered as low-value");
     }
 
-    if let Err(e) = storage.save_observation(&observation) {
-        return mcp_err(e);
+    match storage.save_observation(&observation) {
+        Ok(true) => {},
+        Ok(false) => {
+            tracing::debug!("Duplicate MCP save_memory: {}", observation.title);
+            return mcp_text("Duplicate observation (same title already exists)");
+        },
+        Err(e) => return mcp_err(e),
     }
 
     if let Some(emb) = embeddings {

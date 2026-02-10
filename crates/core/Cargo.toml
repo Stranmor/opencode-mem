@@ -16,3 +16,4 @@ regex = { workspace = true }
 anyhow = { workspace = true }
 dirs = { workspace = true }
 globset = { workspace = true }
+unicode-normalization = "0.1"

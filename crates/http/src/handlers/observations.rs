@@ -89,7 +89,7 @@ pub async fn observe_batch(
 pub async fn save_memory(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SaveMemoryRequest>,
-) -> Result<Json<Observation>, StatusCode> {
+) -> Result<(StatusCode, Json<Observation>), StatusCode> {
     let text = req.text.trim().to_owned();
     if text.is_empty() {
         return Err(StatusCode::BAD_REQUEST);
@@ -117,23 +117,16 @@ pub async fn save_memory(
 
     if is_low_value_observation(&observation.title) {
         tracing::debug!("Filtered low-value save_memory: {}", observation.title);
-        return Ok(Json(observation));
-    }
-
-    {
-        let storage_check = Arc::clone(&state.storage);
-        let title_check = observation.title.clone();
-        let is_dup =
-            blocking_result(move || storage_check.find_duplicate_title(&title_check)).await?;
-        if is_dup {
-            tracing::debug!("Skipping duplicate save_memory: {}", observation.title);
-            return Ok(Json(observation));
-        }
+        return Ok((StatusCode::UNPROCESSABLE_ENTITY, Json(observation)));
     }
 
     let storage = Arc::clone(&state.storage);
     let obs_for_save = observation.clone();
-    blocking_result(move || storage.save_observation(&obs_for_save)).await?;
+    let inserted = blocking_result(move || storage.save_observation(&obs_for_save)).await?;
+    if !inserted {
+        tracing::debug!("Skipping duplicate save_memory: {}", observation.title);
+        return Ok((StatusCode::CONFLICT, Json(observation)));
+    }
 
     if let Some(emb) = state.embeddings.clone() {
         let embedding_text = format!(
@@ -169,7 +162,7 @@ pub async fn save_memory(
         }
     }
 
-    Ok(Json(observation))
+    Ok((StatusCode::CREATED, Json(observation)))
 }
 
 pub async fn get_observation(

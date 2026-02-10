@@ -7,14 +7,15 @@ use std::str::FromStr as _;
 use super::{coerce_to_sql, escape_like_pattern, get_conn, log_row_error, parse_json, Storage};
 
 impl Storage {
-    /// Save observation to database.
+    /// Save observation to database. Returns `true` if inserted, `false` if
+    /// duplicate title blocked the insert (UNIQUE constraint on `title_normalized`).
     ///
     /// # Errors
-    /// Returns error if database insert fails.
-    pub fn save_observation(&self, obs: &Observation) -> Result<()> {
+    /// Returns error if database operation fails.
+    pub fn save_observation(&self, obs: &Observation) -> Result<bool> {
         let conn = get_conn(&self.pool)?;
-        conn.execute(
-            "INSERT OR REPLACE INTO observations 
+        let rows = conn.execute(
+            "INSERT OR IGNORE INTO observations 
                (id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
                 files_read, files_modified, keywords, prompt_number, discovery_tokens, noise_level, noise_reason, created_at)
                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
@@ -38,22 +39,7 @@ impl Storage {
                 obs.created_at.with_timezone(&Utc).to_rfc3339(),
             ],
         )?;
-        Ok(())
-    }
-
-    /// Check if an observation with the same title already exists (case-insensitive).
-    ///
-    /// # Errors
-    /// Returns error if database query fails.
-    pub fn find_duplicate_title(&self, title: &str) -> Result<bool> {
-        let conn = get_conn(&self.pool)?;
-        let normalized = title.trim().to_lowercase();
-        let count: i64 = conn.query_row(
-            "SELECT COUNT(*) FROM observations WHERE LOWER(TRIM(title)) = ?1",
-            params![normalized],
-            |row| row.get(0),
-        )?;
-        Ok(count > 0)
+        Ok(rows > 0)
     }
 
     /// Get observation by ID.

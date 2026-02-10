@@ -1,5 +1,6 @@
 use std::env;
 use std::sync::LazyLock;
+use unicode_normalization::UnicodeNormalization;
 
 const BASE_CONTAINS: &[&str] = &[
     "code edits",
@@ -215,7 +216,7 @@ impl LowValueFilter {
 }
 
 pub fn is_low_value_observation(title: &str) -> bool {
-    let t = title.to_lowercase();
+    let t = normalize_title(title);
     if t.contains("rustfmt") && t.contains("nightly") {
         return true;
     }
@@ -246,62 +247,40 @@ pub fn is_low_value_observation(title: &str) -> bool {
     LOW_VALUE_FILTER.matches(&t)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    fn as_strs(v: &[Box<str>]) -> Vec<&str> {
-        v.iter().map(|x| x.as_ref()).collect()
-    }
-
-    #[test]
-    fn test_parsing() {
-        let f = LowValueFilter::from_pattern_str("a,^b,=c, ,a,^b,=c");
-        assert_eq!(as_strs(&f.contains), vec!["a"]);
-        assert_eq!(as_strs(&f.prefixes), vec!["b"]);
-        assert_eq!(as_strs(&f.exact), vec!["c"]);
-    }
-
-    #[test]
-    fn test_filtering() {
-        let low = [
-            "File edit applied successfully",
-            "rustfmt nightly formatting",
-            "Agent behavioral protocol update",
-            "Updated TODO list",
-            "Search results for auth",
-            "keyword frequency analysis",
-            "Successful deployment to production VPS",
-            "Task list update for tool result handling",
-            "Routine file modification",
-            "Strategy for memory deduplication",
-            "WIP: Prometheus v15 Port",
-            "Hybrid search API test execution",
-            "Explored root directory structure",
-            "Tasks marked as completed",
-            "Updated warp_provisioner.rs",
-            "Discovered ExportPreset and Exporter structures",
-            "Syntax error in crates/hermes-ai/src/model_roles.rs",
-            "Refactor plan for splitting IsolationManager",
-        ];
-        for title in low {
-            assert!(is_low_value_observation(title), "Should be low value: {}", title);
-        }
-
-        let high = [
-            "Database migration v10 added session_summaries",
-            "Fixed race condition",
-            "Fixing critical bug",
-            "Refined scoring logic",
-            "",
-        ];
-        for title in high {
-            assert!(!is_low_value_observation(title), "Should be high value: {}", title);
-        }
-    }
-
-    #[test]
-    fn test_case_and_partial() {
-        assert!(is_low_value_observation("FILE EDIT APPLIED SUCCESSFULLY"));
-        assert!(is_low_value_observation("There is no significant change"));
+fn deconfuse(c: char) -> char {
+    match c {
+        'а' => 'a',
+        'е' => 'e',
+        'о' => 'o',
+        'р' => 'p',
+        'с' => 'c',
+        'у' => 'y',
+        'х' => 'x',
+        'і' => 'i',
+        _ => c,
     }
 }
+
+fn normalize_title(title: &str) -> String {
+    title
+        .nfkd()
+        .map(deconfuse)
+        .map(|c| {
+            if c.is_control()
+                || c == '\u{200B}'
+                || c == '\u{200C}'
+                || c == '\u{200D}'
+                || c == '\u{FEFF}'
+                || matches!(c, '\u{FE00}'..='\u{FE0F}')
+            {
+                ' '
+            } else {
+                c
+            }
+        })
+        .collect::<String>()
+        .to_lowercase()
+}
+
+#[cfg(test)]
+mod tests;

@@ -3,7 +3,7 @@ use chrono::Utc;
 use opencode_mem_core::{SessionStatus, SessionSummary};
 use rusqlite::params;
 
-use super::{get_conn, log_row_error, parse_json, Storage};
+use super::{build_fts_query, get_conn, log_row_error, parse_json, Storage};
 use crate::pending_queue::PaginatedResult;
 
 impl Storage {
@@ -170,11 +170,7 @@ impl Storage {
     /// Returns error if database query fails.
     pub fn search_sessions(&self, query: &str, limit: usize) -> Result<Vec<SessionSummary>> {
         let conn = get_conn(&self.pool)?;
-        let fts_query = query
-            .split_whitespace()
-            .map(|word| format!("\"{}\"*", word.replace('"', "")))
-            .collect::<Vec<_>>()
-            .join(" AND ");
+        let fts_query = build_fts_query(query);
 
         if fts_query.is_empty() {
             return Ok(Vec::new());
