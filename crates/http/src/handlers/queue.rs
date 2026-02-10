@@ -15,7 +15,7 @@ use opencode_mem_storage::{default_visibility_timeout_secs, PendingMessage};
 
 use crate::api_types::{
     ClearQueueResponse, PendingQueueResponse, ProcessQueueResponse, ProcessingStatusResponse,
-    SearchQuery, SetProcessingRequest, SetProcessingResponse,
+    RetryQueueResponse, SearchQuery, SetProcessingRequest, SetProcessingResponse,
 };
 use crate::blocking::blocking_result;
 use crate::AppState;
@@ -114,6 +114,14 @@ pub async fn clear_failed_queue(
     let storage = Arc::clone(&state.storage);
     let cleared = blocking_result(move || storage.clear_failed_messages()).await?;
     Ok(Json(ClearQueueResponse { cleared }))
+}
+
+pub async fn retry_failed_queue(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<RetryQueueResponse>, StatusCode> {
+    let storage = Arc::clone(&state.storage);
+    let retried = blocking_result(move || storage.retry_failed_messages()).await?;
+    Ok(Json(RetryQueueResponse { retried }))
 }
 
 pub async fn clear_all_queue(

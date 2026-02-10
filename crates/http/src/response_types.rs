@@ -148,6 +148,11 @@ pub struct ClearQueueResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub struct RetryQueueResponse {
+    pub retried: usize,
+}
+
+#[derive(Debug, Serialize)]
 pub struct ProcessingStatusResponse {
     pub active: bool,
     pub pending_count: usize,

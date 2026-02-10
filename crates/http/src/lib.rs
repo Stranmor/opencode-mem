@@ -163,6 +163,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/pending-queue", get(handlers::queue::get_pending_queue))
         .route("/api/pending-queue/process", post(handlers::queue::process_pending_queue))
         .route("/api/pending-queue/failed", delete(handlers::queue::clear_failed_queue))
+        .route("/api/pending-queue/retry-failed", post(handlers::queue::retry_failed_queue))
         .route("/api/pending-queue/all", delete(handlers::queue::clear_all_queue))
         .route("/api/processing-status", get(handlers::queue::get_processing_status))
         .route("/api/processing", post(handlers::queue::set_processing_status))

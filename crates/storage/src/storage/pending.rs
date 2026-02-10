@@ -229,6 +229,19 @@ impl Storage {
         Ok(affected)
     }
 
+    /// Reset all failed messages back to pending for retry.
+    ///
+    /// # Errors
+    /// Returns error if database update fails.
+    pub fn retry_failed_messages(&self) -> Result<usize> {
+        let conn = get_conn(&self.pool)?;
+        let affected = conn.execute(
+            "UPDATE pending_messages SET status = 'pending', retry_count = 0, claimed_at_epoch = NULL WHERE status = 'failed'",
+            [],
+        )?;
+        Ok(affected)
+    }
+
     /// Clear all pending messages.
     ///
     /// # Errors
