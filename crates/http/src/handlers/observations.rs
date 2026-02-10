@@ -120,6 +120,17 @@ pub async fn save_memory(
         return Ok(Json(observation));
     }
 
+    {
+        let storage_check = Arc::clone(&state.storage);
+        let title_check = observation.title.clone();
+        let is_dup =
+            blocking_result(move || storage_check.find_duplicate_title(&title_check)).await?;
+        if is_dup {
+            tracing::debug!("Skipping duplicate save_memory: {}", observation.title);
+            return Ok(Json(observation));
+        }
+    }
+
     let storage = Arc::clone(&state.storage);
     let obs_for_save = observation.clone();
     blocking_result(move || storage.save_observation(&obs_for_save)).await?;

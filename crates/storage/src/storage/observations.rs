@@ -41,6 +41,21 @@ impl Storage {
         Ok(())
     }
 
+    /// Check if an observation with the same title already exists (case-insensitive).
+    ///
+    /// # Errors
+    /// Returns error if database query fails.
+    pub fn find_duplicate_title(&self, title: &str) -> Result<bool> {
+        let conn = get_conn(&self.pool)?;
+        let normalized = title.trim().to_lowercase();
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM observations WHERE LOWER(TRIM(title)) = ?1",
+            params![normalized],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
     /// Get observation by ID.
     ///
     /// # Errors

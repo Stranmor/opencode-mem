@@ -134,6 +134,19 @@ impl ObservationService {
             return Ok(());
         }
 
+        {
+            let storage_check = Arc::clone(&self.storage);
+            let title_check = observation.title.clone();
+            let is_dup = tokio::task::spawn_blocking(move || {
+                storage_check.find_duplicate_title(&title_check)
+            })
+            .await??;
+            if is_dup {
+                tracing::debug!("Skipping duplicate observation: {}", observation.title);
+                return Ok(());
+            }
+        }
+
         let storage = Arc::clone(&self.storage);
         let obs = observation.clone();
         tokio::task::spawn_blocking(move || storage.save_observation(&obs)).await??;

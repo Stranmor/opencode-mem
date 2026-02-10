@@ -80,6 +80,18 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
         return Ok(());
     }
 
+    {
+        let storage_check = Arc::clone(&state.storage);
+        let title_check = observation.title.clone();
+        let is_dup = spawn_blocking(move || storage_check.find_duplicate_title(&title_check))
+            .await
+            .map_err(|e| anyhow::anyhow!("dedup check join error: {e}"))??;
+        if is_dup {
+            tracing::debug!("Skipping duplicate observation: {}", observation.title);
+            return Ok(());
+        }
+    }
+
     let storage = Arc::clone(&state.storage);
     let obs_clone = observation.clone();
     spawn_blocking(move || storage.save_observation(&obs_clone))

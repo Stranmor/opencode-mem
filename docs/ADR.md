@@ -142,3 +142,24 @@ OpenCode → TS Plugin → HTTP :37777 → Rust Backend
 **Alternatives considered:**
 - Keep everything hardcoded in one module (rejected: no runtime configurability)
 - Load filter rules from external config file (rejected: adds IO surface and deployment complexity)
+
+---
+
+## ADR-008: Title-Based Observation Deduplication
+
+**Status:** Accepted
+
+**Context:** Identical observation titles are being stored multiple times across independent save paths.
+
+**Decision:** Before saving an observation, check for an existing observation with the same title using
+case-insensitive, trimmed comparison (`LOWER(TRIM(title))`). If a duplicate exists, skip the save
+and log a debug message.
+
+**Rationale:**
+- Eliminates exact duplicates without adding new storage or similarity infrastructure
+- Keeps behavior deterministic and easy to reason about
+- Applies consistently across all observation save paths
+
+**Alternatives considered:**
+- FTS/embedding similarity (rejected: out of scope for exact-duplicate fix)
+- Unique index on title (rejected: may change storage semantics and migrations)

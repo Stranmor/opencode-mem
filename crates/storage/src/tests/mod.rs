@@ -5,7 +5,6 @@ use chrono::Utc;
 use opencode_mem_core::{NoiseLevel, Observation, ObservationType, Session, SessionStatus};
 use tempfile::TempDir;
 
-#[expect(dead_code, reason = "test utility function")]
 #[expect(clippy::unwrap_used, reason = "test code")]
 pub fn create_test_storage() -> (Storage, TempDir) {
     let temp_dir = TempDir::new().unwrap();
@@ -48,4 +47,31 @@ pub fn create_test_session(id: &str) -> Session {
         SessionStatus::Active,
         0,
     )
+}
+
+#[test]
+#[expect(clippy::unwrap_used, reason = "test code")]
+fn find_duplicate_title_matches_case_insensitive_trimmed() {
+    let (storage, _temp_dir) = create_test_storage();
+    let observation = Observation::builder(
+        "obs-1".to_owned(),
+        "session-1".to_owned(),
+        ObservationType::Discovery,
+        "  IsolationManager uses HRW hashing for deterministic proxy assignment  ".to_owned(),
+    )
+    .build();
+
+    storage.save_observation(&observation).unwrap();
+
+    assert!(storage
+        .find_duplicate_title(
+            "isolationmanager uses hrw hashing for deterministic proxy assignment"
+        )
+        .unwrap());
+    assert!(storage
+        .find_duplicate_title(
+            " IsolationManager uses HRW hashing for deterministic proxy assignment "
+        )
+        .unwrap());
+    assert!(!storage.find_duplicate_title("Different title").unwrap());
 }
