@@ -18,6 +18,8 @@ pub(crate) fn run_search(
         Some(&query),
         project.as_deref(),
         obs_type.as_deref(),
+        None,
+        None,
         limit,
     )?;
     println!("{}", serde_json::to_string_pretty(&results)?);

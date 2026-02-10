@@ -1,6 +1,8 @@
-//! Migration v13: Add `title_normalized` generated column and UNIQUE index for atomic dedup.
+//! Migration v13: UNIQUE expression index on `LOWER(TRIM(title))` for atomic dedup.
+//!
+//! SQLite cannot `ALTER TABLE ADD COLUMN ... STORED`, so we use an expression
+//! index directly — no generated column needed.
 
 pub(super) const SQL: &str = "
-ALTER TABLE observations ADD COLUMN title_normalized TEXT GENERATED ALWAYS AS (LOWER(TRIM(title))) STORED;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_observations_title_normalized ON observations(title_normalized);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_observations_title_normalized ON observations(LOWER(TRIM(title)));
 ";

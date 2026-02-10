@@ -9,7 +9,8 @@ use tokio::task::spawn_blocking;
 use opencode_mem_core::{SearchResult, SessionSummary, UserPrompt};
 
 use crate::api_types::{
-    FileSearchQuery, SearchQuery, TimelineResult, UnifiedSearchResult, UnifiedTimelineQuery,
+    FileSearchQuery, RankedItem, SearchQuery, TimelineResult, UnifiedSearchResult,
+    UnifiedTimelineQuery,
 };
 use crate::blocking::blocking_json;
 use crate::AppState;
@@ -22,9 +23,18 @@ pub async fn search(
     let storage = Arc::clone(&state.storage);
     let project = query.project.clone();
     let obs_type = query.obs_type.clone();
+    let from = query.from.clone();
+    let to = query.to.clone();
     let limit = query.limit;
     blocking_json(move || {
-        storage.search_with_filters(q.as_deref(), project.as_deref(), obs_type.as_deref(), limit)
+        storage.search_with_filters(
+            q.as_deref(),
+            project.as_deref(),
+            obs_type.as_deref(),
+            from.as_deref(),
+            to.as_deref(),
+            limit,
+        )
     })
     .await
 }
@@ -107,20 +117,32 @@ pub async fn unified_search(
             observations: Vec::new(),
             sessions: Vec::new(),
             prompts: Vec::new(),
+            ranked: Vec::new(),
         }));
     }
     let storage = Arc::clone(&state.storage);
     let q = query.q.clone();
     let project = query.project.clone();
     let obs_type = query.obs_type.clone();
+    let from = query.from.clone();
+    let to = query.to.clone();
     let limit = query.limit;
     let observations = spawn_blocking({
         let storage = Arc::clone(&storage);
         let q = q.clone();
         let project = project.clone();
         let obs_type = obs_type.clone();
+        let from = from.clone();
+        let to = to.clone();
         move || {
-            storage.search_with_filters(Some(&q), project.as_deref(), obs_type.as_deref(), limit)
+            storage.search_with_filters(
+                Some(&q),
+                project.as_deref(),
+                obs_type.as_deref(),
+                from.as_deref(),
+                to.as_deref(),
+                limit,
+            )
         }
     })
     .await
@@ -151,7 +173,56 @@ pub async fn unified_search(
         StatusCode::INTERNAL_SERVER_ERROR
     })?
     .unwrap_or_default();
-    Ok(Json(UnifiedSearchResult { observations, sessions, prompts }))
+    // Build ranked list from all collections
+    let mut ranked: Vec<RankedItem> = Vec::new();
+
+    // Observations already have relevance scores
+    for obs in &observations {
+        ranked.push(RankedItem {
+            id: obs.id.clone(),
+            title: obs.title.clone(),
+            subtitle: obs.subtitle.clone(),
+            collection: "observation".to_owned(),
+            score: obs.score,
+        });
+    }
+
+    // Sessions: position-based scoring (first = 1.0, last = 0.1)
+    for (i, session) in sessions.iter().enumerate() {
+        let position_score = if sessions.len() <= 1 {
+            1.0
+        } else {
+            1.0 - (i as f64 / (sessions.len() - 1) as f64) * 0.9
+        };
+        ranked.push(RankedItem {
+            id: session.session_id.clone(),
+            title: session.request.clone().unwrap_or_default(),
+            subtitle: Some(session.project.clone()),
+            collection: "session".to_owned(),
+            score: position_score,
+        });
+    }
+
+    // Prompts: position-based scoring
+    for (i, prompt) in prompts.iter().enumerate() {
+        let position_score = if prompts.len() <= 1 {
+            1.0
+        } else {
+            1.0 - (i as f64 / (prompts.len() - 1) as f64) * 0.9
+        };
+        ranked.push(RankedItem {
+            id: prompt.id.clone(),
+            title: prompt.prompt_text.chars().take(100).collect(),
+            subtitle: prompt.project.clone(),
+            collection: "prompt".to_owned(),
+            score: position_score,
+        });
+    }
+
+    // Sort by score descending
+    ranked.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
+    Ok(Json(UnifiedSearchResult { observations, sessions, prompts, ranked }))
 }
 
 pub async fn unified_timeline(

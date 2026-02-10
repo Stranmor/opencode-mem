@@ -32,6 +32,8 @@ pub struct SearchQuery {
     pub project: Option<String>,
     #[serde(rename = "type")]
     pub obs_type: Option<String>,
+    pub from: Option<String>,
+    pub to: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

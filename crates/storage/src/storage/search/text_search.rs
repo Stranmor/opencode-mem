@@ -121,6 +121,8 @@ impl Storage {
         query: Option<&str>,
         project: Option<&str>,
         obs_type: Option<&str>,
+        from: Option<&str>,
+        to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
         let conn = get_conn(&self.pool)?;
@@ -135,6 +137,14 @@ impl Storage {
         if let Some(t) = obs_type {
             conditions.push("o.observation_type = ?".to_owned());
             params_vec.push(Box::new(format!("\"{t}\"")));
+        }
+        if let Some(f) = from {
+            conditions.push("o.created_at >= ?".to_owned());
+            params_vec.push(Box::new(f.to_owned()));
+        }
+        if let Some(t) = to {
+            conditions.push("o.created_at <= ?".to_owned());
+            params_vec.push(Box::new(t.to_owned()));
         }
 
         if let Some(q) = query {

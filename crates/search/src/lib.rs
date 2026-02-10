@@ -98,21 +98,25 @@ impl HybridSearch {
         self.storage.get_recent(limit)
     }
 
-    /// Search with additional filters (project, observation type).
+    /// Search with additional filters (project, observation type, date range).
     ///
     /// # Arguments
     /// * `query` - Optional search query
     /// * `project` - Optional project filter
     /// * `obs_type` - Optional observation type filter
+    /// * `from` - Optional start date (ISO 8601)
+    /// * `to` - Optional end date (ISO 8601)
     /// * `limit` - Maximum number of results
     pub fn search_with_filters(
         &self,
         query: Option<&str>,
         project: Option<&str>,
         obs_type: Option<&str>,
+        from: Option<&str>,
+        to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
-        self.storage.search_with_filters(query, project, obs_type, limit)
+        self.storage.search_with_filters(query, project, obs_type, from, to, limit)
     }
 
     /// Pure semantic search using vector similarity only.

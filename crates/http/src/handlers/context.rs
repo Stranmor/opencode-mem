@@ -73,7 +73,14 @@ pub async fn get_decisions(
     let project = query.project.clone();
     let limit = query.limit;
     blocking_json(move || {
-        storage.search_with_filters(q.as_deref(), project.as_deref(), Some("decision"), limit)
+        storage.search_with_filters(
+            q.as_deref(),
+            project.as_deref(),
+            Some("decision"),
+            None,
+            None,
+            limit,
+        )
     })
     .await
 }
@@ -87,7 +94,14 @@ pub async fn get_changes(
     let project = query.project.clone();
     let limit = query.limit;
     blocking_json(move || {
-        storage.search_with_filters(q.as_deref(), project.as_deref(), Some("change"), limit)
+        storage.search_with_filters(
+            q.as_deref(),
+            project.as_deref(),
+            Some("change"),
+            None,
+            None,
+            limit,
+        )
     })
     .await
 }

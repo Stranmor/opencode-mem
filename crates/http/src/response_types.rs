@@ -80,10 +80,20 @@ pub struct Settings {
 }
 
 #[derive(Debug, Serialize)]
+pub struct RankedItem {
+    pub id: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub collection: String,
+    pub score: f64,
+}
+
+#[derive(Debug, Serialize)]
 pub struct UnifiedSearchResult {
     pub observations: Vec<SearchResult>,
     pub sessions: Vec<SessionSummary>,
     pub prompts: Vec<UserPrompt>,
+    pub ranked: Vec<RankedItem>,
 }
 
 #[derive(Debug, Serialize)]

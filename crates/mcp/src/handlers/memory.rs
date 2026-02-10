@@ -7,12 +7,31 @@ use tokio::runtime::Handle;
 
 use super::{mcp_err, mcp_ok, mcp_text};
 
-pub(super) fn handle_search(storage: &Storage, args: &serde_json::Value) -> serde_json::Value {
+pub(super) fn handle_search(
+    storage: &Storage,
+    embeddings: Option<&EmbeddingService>,
+    args: &serde_json::Value,
+) -> serde_json::Value {
     let query = args.get("query").and_then(|q| q.as_str());
     let limit = args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(50) as usize;
     let project = args.get("project").and_then(|p| p.as_str());
     let obs_type = args.get("type").and_then(|t| t.as_str());
-    match storage.search_with_filters(query, project, obs_type, limit) {
+    let from = args.get("from").and_then(|f| f.as_str());
+    let to = args.get("to").and_then(|t| t.as_str());
+
+    // Use semantic search when no filters are active and query is present
+    if project.is_none() && obs_type.is_none() && from.is_none() && to.is_none() {
+        if let Some(q) = query {
+            return match opencode_mem_search::run_semantic_search_with_fallback(
+                storage, embeddings, q, limit,
+            ) {
+                Ok(results) => mcp_ok(&results),
+                Err(e) => mcp_err(e),
+            };
+        }
+    }
+
+    match storage.search_with_filters(query, project, obs_type, from, to, limit) {
         Ok(results) => mcp_ok(&results),
         Err(e) => mcp_err(e),
     }
@@ -282,5 +301,40 @@ mod tests {
         let obs_json = content["text"].as_str().unwrap();
         let _: Observation =
             serde_json::from_str(obs_json).expect("Should return valid Observation JSON");
+    }
+
+    #[test]
+    #[expect(clippy::unwrap_used, reason = "test code")]
+    fn test_search_with_date_filters() {
+        let (storage, _dir) = setup_storage();
+
+        let obs = Observation::builder(
+            "obs-date-1".to_owned(),
+            "session-1".to_owned(),
+            ObservationType::Discovery,
+            "date filter test observation".to_owned(),
+        )
+        .build();
+        assert!(storage.save_observation(&obs).unwrap());
+
+        let result = handle_search(
+            &storage,
+            None,
+            &json!({"query": "date filter test", "from": "2020-01-01"}),
+        );
+        assert!(result.get("isError").is_none());
+        let content_text = result["content"][0]["text"].as_str().unwrap();
+        let results: Vec<serde_json::Value> = serde_json::from_str(content_text).unwrap();
+        assert_eq!(results.len(), 1);
+
+        let result = handle_search(
+            &storage,
+            None,
+            &json!({"query": "date filter test", "to": "2020-01-01"}),
+        );
+        assert!(result.get("isError").is_none());
+        let content_text = result["content"][0]["text"].as_str().unwrap();
+        let results: Vec<serde_json::Value> = serde_json::from_str(content_text).unwrap();
+        assert!(results.is_empty());
     }
 }

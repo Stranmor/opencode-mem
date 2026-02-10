@@ -65,7 +65,7 @@ pub async fn handle_tool_call(
         McpTool::Important => {
             json!({ "content": [{ "type": "text", "text": WORKFLOW_DOCS }] })
         },
-        McpTool::Search => memory::handle_search(storage, &args),
+        McpTool::Search => memory::handle_search(storage, embeddings.as_deref(), &args),
         McpTool::Timeline => memory::handle_timeline(storage, &args),
         McpTool::GetObservations => memory::handle_get_observations(storage, &args),
         McpTool::MemoryGet => memory::handle_memory_get(storage, &args),

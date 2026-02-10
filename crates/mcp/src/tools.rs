@@ -70,14 +70,16 @@ pub fn get_tools_json() -> serde_json::Value {
             },
             {
                 "name": "search",
-                "description": "Step 1: Search memory. Returns index with IDs. Params: query (required), limit, project, type",
+                "description": "Step 1: Search memory. Returns index with IDs. Uses semantic search when available, falls back to text search. Params: query (required), limit, project, type, from, to",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "query": { "type": "string", "description": "Search query" },
                         "limit": { "type": "integer", "default": 50 },
                         "project": { "type": "string", "description": "Filter by project" },
-                        "type": { "type": "string", "description": "Filter by observation type (bugfix, feature, refactor, discovery, decision, change)" }
+                        "type": { "type": "string", "description": "Filter by observation type (bugfix, feature, refactor, discovery, decision, change)" },
+                        "from": { "type": "string", "description": "Start date (ISO 8601)" },
+                        "to": { "type": "string", "description": "End date (ISO 8601)" }
                     },
                     "required": ["query"]
                 }
