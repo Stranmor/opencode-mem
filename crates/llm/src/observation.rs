@@ -44,6 +44,22 @@ Tool: {}
 Output Title: {}
 Output Content: {}
 
+TITLE RULES:
+- The title MUST describe WHAT WAS LEARNED or DECIDED, NOT what action was performed.
+- BAD titles to avoid:
+  - "Updated warp_provisioner.rs" (narrates an action)
+  - "Discovered ExportPreset structures" (narrates reading code)
+  - "Syntax error in model_roles.rs" (transient compilation error)
+  - "File edit successful" (tool status message)
+  - "Refactored error handling" (narrates a code change)
+  - "Read configuration file" (narrates a file read)
+- GOOD titles to emulate:
+  - "IsolationManager uses HRW hashing for deterministic proxy assignment"
+  - "PostgreSQL streaming replication requires wal_level=replica on primary"
+  - "fastembed-rs AllMiniLML6V2 produces 384-dimensional vectors"
+  - "SQLite FTS5 MATCH syntax requires double-quoting phrases"
+  - "Axum path params migrated from :param to {{param}} syntax"
+
 NOISE LEVELS (from most to least important):
 - "critical": Major architectural decisions, breaking changes, security issues
 - "high": Project-specific gotchas, user preferences, unique discoveries
@@ -62,6 +78,17 @@ CLASSIFY AS LOW/NEGLIGIBLE if:
 - Common library usage (how to use tokio, reqwest, serde)
 - Routine operations (file reads, git commands, builds)
 - Obvious facts (Rust needs cargo, Python needs pip)
+
+The following MUST be negligible:
+- File edit confirmations ("file was modified", "edit applied")
+- Build/compilation output (success or failure)
+- Transient errors (syntax errors, type errors that will be fixed)
+- Tool status messages (read complete, write complete)
+- File/directory listings without insights
+- Git operations (commit, push, status) without decisions
+- TODO/task list updates
+
+If the tool output does not contain any project-specific insight, architectural decision, gotcha, or factual discovery — classify as negligible.
 
 Return JSON:
 - noise_level: one of "critical", "high", "medium", "low", "negligible"
