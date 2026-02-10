@@ -2,20 +2,138 @@ use std::env;
 use std::sync::LazyLock;
 
 const BASE_CONTAINS: &[&str] = &[
-    "file edit applied successfully",
+    "code edits",
+    "code quality",
+    "code review",
+    "compilation ",
+    "component frequency",
+    "documentation index",
     "edit applied",
-    "successful file edit",
-    "task completion signal",
+    "file edit applied successfully",
+    "keyword frequency",
+    "knowledge index",
     "memory classification",
-    "tool call observed",
-    "tool execution",
+    "memory storage classification",
     "no significant",
     "noise level classification",
-    "memory storage classification",
+    "standardized ",
+    "successful file edit",
+    "task completion signal",
+    "term frequency",
+    "tool call observed",
+    "tool execution",
 ];
 
-const BASE_PREFIXES: &[&str] =
-    &["updated todo", "updated plan", "updated task status", "updated agents.md"];
+const BASE_PREFIXES: &[&str] = &[
+    "active ",
+    "added ",
+    "agentic ",
+    "analyzed ",
+    "application ",
+    "applied ",
+    "architectural ",
+    "audit of ",
+    "backend ",
+    "broken ",
+    "build ",
+    "centralizing ",
+    "checked ",
+    "cleanup ",
+    "closed ",
+    "codebase ",
+    "committed ",
+    "completed ",
+    "comprehensive ",
+    "confirmed ",
+    "created ",
+    "definition ",
+    "delegated ",
+    "deleted ",
+    "deployment ",
+    "detected ",
+    "development ",
+    "discovery of ",
+    "documented ",
+    "draft ",
+    "established ",
+    "evolution ",
+    "examined ",
+    "executed ",
+    "extracted ",
+    "fetched ",
+    "finished ",
+    "fixing ",
+    "found ",
+    "frequency ",
+    "frontend ",
+    "generated ",
+    "identification ",
+    "identified ",
+    "implemented ",
+    "implementing ",
+    "improved ",
+    "index of ",
+    "initiated ",
+    "inspected ",
+    "integrated ",
+    "inventory of ",
+    "launched ",
+    "linter ",
+    "linting ",
+    "list of ",
+    "located ",
+    "location ",
+    "mandatory ",
+    "manual ",
+    "map of ",
+    "mapping of ",
+    "marked ",
+    "merged ",
+    "migrated ",
+    "modified ",
+    "module ",
+    "moved ",
+    "multiple ",
+    "new ",
+    "observed ",
+    "opened ",
+    "overview of ",
+    "pending ",
+    "planned ",
+    "progress ",
+    "prohibition ",
+    "pulled ",
+    "pushed ",
+    "ran ",
+    "read ",
+    "recent ",
+    "refactored ",
+    "refactoring ",
+    "removed ",
+    "renamed ",
+    "resolved ",
+    "retrieved ",
+    "roadmap for ",
+    "roadmap: ",
+    "robust ",
+    "scanned ",
+    "shared ",
+    "started ",
+    "status ",
+    "stopped ",
+    "structure ",
+    "summary of ",
+    "tracking ",
+    "transition ",
+    "updated agents.md",
+    "updated plan",
+    "updated task status",
+    "updated todo",
+    "verification ",
+    "verified ",
+    "workflow ",
+    "wrote ",
+];
 
 const BASE_EXACT: &[&str] = &["task completion"];
 
@@ -122,6 +240,16 @@ pub fn is_low_value_observation(title: &str) -> bool {
     }
 
     if (t.contains("comment") || t.contains("docstring")) && t.contains("hook") {
+        return true;
+    }
+
+    if t.starts_with("refined ") && !t.contains("logic") && !t.contains("formula") {
+        return true;
+    }
+
+    if t.starts_with("search ")
+        && (t.contains("results") || t.contains("failed") || t.contains("yielded"))
+    {
         return true;
     }
 
@@ -233,5 +361,17 @@ mod tests {
     #[test]
     fn low_value_partial_match_no_significant() {
         assert!(is_low_value_observation("There is no significant change in this update"));
+    }
+
+    #[test]
+    fn low_value_new_patterns() {
+        assert!(is_low_value_observation("Located auth_middleware definition"));
+        assert!(is_low_value_observation("Index of project components"));
+        assert!(is_low_value_observation("Completed extract_post_body implementation"));
+        assert!(is_low_value_observation("Recent SMM Evolution"));
+        assert!(is_low_value_observation("Refined scoring calibration"));
+        assert!(!is_low_value_observation("Refined scoring logic for v6"));
+        assert!(is_low_value_observation("Search results for auth"));
+        assert!(is_low_value_observation("keyword frequency analysis"));
     }
 }
