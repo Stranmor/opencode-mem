@@ -100,16 +100,20 @@ impl Storage {
             })
             .collect();
 
-        // Find max FTS score for normalization (BM25 is unbounded, keyword score is 0-1)
-        let max_fts_score: f64 =
-            raw_results.iter().map(|(_, fts, _)| fts.abs()).fold(0.0, f64::max);
+        // BM25 scores: more negative = better match. Normalize to 0..1 range.
+        let (min_fts, max_fts) =
+            raw_results.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(mn, mx), (_, fts, _)| {
+                (mn.min(*fts), mx.max(*fts))
+            });
+        let fts_range = max_fts - min_fts;
 
         // Second pass: normalize FTS scores and combine with keyword scores
         let mut results: Vec<(SearchResult, f64)> = raw_results
             .into_iter()
             .map(|(mut result, fts_score, obs_kw)| {
+                // Invert: best (most negative) → 1.0, worst (least negative) → 0.0
                 let fts_normalized =
-                    if max_fts_score > 0.0 { fts_score.abs() / max_fts_score } else { 0.0 };
+                    if fts_range > 0.0 { (max_fts - fts_score) / fts_range } else { 1.0 };
                 let keyword_overlap = keywords.intersection(&obs_kw).count() as f64;
                 let keyword_score =
                     if keywords.is_empty() { 0.0 } else { keyword_overlap / keywords.len() as f64 };
