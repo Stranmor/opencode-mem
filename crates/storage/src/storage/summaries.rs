@@ -70,31 +70,30 @@ impl Storage {
         conn.execute(
             "UPDATE sessions SET status = ?1, ended_at = ?2 WHERE id = ?3",
             params![
-                serde_json::to_string(&status)?,
+                status.as_str(),
                 (status != SessionStatus::Active).then(|| Utc::now().to_rfc3339()),
                 session_id
             ],
         )?;
 
         if let Some(s) = summary {
-            let project: Option<String> = conn
+            let project: String = conn
                 .query_row(
                     "SELECT project FROM sessions WHERE id = ?1",
                     params![session_id],
                     |row| row.get(0),
                 )
-                .ok();
+                .unwrap_or_default();
 
-            if let Some(proj) = project {
-                let now = Utc::now();
-                conn.execute(
+            let now = Utc::now();
+            conn.execute(
                     "INSERT OR REPLACE INTO session_summaries 
                        (session_id, project, request, investigated, learned, completed, next_steps, notes, 
                         files_read, files_edited, prompt_number, discovery_tokens, created_at)
                        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                     params![
                         session_id,
-                        proj,
+                        project,
                         Option::<String>::None,
                         Option::<String>::None,
                         Some(s),
@@ -108,7 +107,6 @@ impl Storage {
                         now.to_rfc3339(),
                     ],
                 )?;
-            }
         }
         Ok(())
     }

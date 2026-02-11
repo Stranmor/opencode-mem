@@ -7,8 +7,6 @@ use opencode_mem_storage::StorageBackend;
 use regex::Regex;
 use std::path::Path;
 
-use crate::{ensure_db_dir, get_db_path};
-
 /// Parsed insight from markdown
 struct ParsedInsight {
     title: String,
@@ -155,9 +153,7 @@ async fn import_file(storage: &StorageBackend, path: &Path) -> Result<(usize, us
 
 /// Run import-insights command
 pub(crate) async fn run(file: Option<String>, dir: Option<String>) -> Result<()> {
-    let db_path = get_db_path();
-    ensure_db_dir(&db_path)?;
-    let storage = StorageBackend::new_sqlite(&db_path)?;
+    let storage = crate::create_storage().await?;
 
     let mut total_imported = 0;
     let mut total_skipped = 0;

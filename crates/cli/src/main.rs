@@ -35,6 +35,7 @@ mod commands;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use commands::hook::HookCommands;
+use opencode_mem_storage::StorageBackend;
 use std::path::PathBuf;
 use tracing_subscriber::EnvFilter;
 
@@ -116,6 +117,25 @@ pub fn ensure_db_dir(db_path: &std::path::Path) -> Result<()> {
         std::fs::create_dir_all(parent)?;
     }
     Ok(())
+}
+
+pub async fn create_storage() -> Result<StorageBackend> {
+    #[cfg(feature = "postgres")]
+    if let Ok(url) = std::env::var("DATABASE_URL") {
+        tracing::info!("Using PostgreSQL backend");
+        return StorageBackend::new_postgres(&url).await;
+    }
+
+    #[cfg(feature = "sqlite")]
+    {
+        let db_path = get_db_path();
+        ensure_db_dir(&db_path)?;
+        tracing::info!("Using SQLite backend: {}", db_path.display());
+        return StorageBackend::new_sqlite(&db_path);
+    }
+
+    #[allow(unreachable_code)]
+    Err(anyhow::anyhow!("No storage backend enabled. Enable 'sqlite' or 'postgres' feature."))
 }
 
 #[tokio::main]

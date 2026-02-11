@@ -1,10 +1,7 @@
 use anyhow::Result;
 use opencode_mem_embeddings::{EmbeddingProvider as _, EmbeddingService};
 use opencode_mem_storage::traits::{EmbeddingStore, ObservationStore, SearchStore, StatsStore};
-use opencode_mem_storage::{init_sqlite_vec, StorageBackend};
 use std::collections::HashSet;
-
-use crate::{ensure_db_dir, get_db_path};
 
 pub(crate) async fn run_search(
     query: String,
@@ -12,9 +9,7 @@ pub(crate) async fn run_search(
     project: Option<String>,
     obs_type: Option<String>,
 ) -> Result<()> {
-    let db_path = get_db_path();
-    ensure_db_dir(&db_path)?;
-    let storage = StorageBackend::new_sqlite(&db_path)?;
+    let storage = crate::create_storage().await?;
     let results = storage
         .search_with_filters(
             Some(&query),
@@ -30,36 +25,28 @@ pub(crate) async fn run_search(
 }
 
 pub(crate) async fn run_stats() -> Result<()> {
-    let db_path = get_db_path();
-    ensure_db_dir(&db_path)?;
-    let storage = StorageBackend::new_sqlite(&db_path)?;
+    let storage = crate::create_storage().await?;
     let stats = storage.get_stats().await?;
     println!("{}", serde_json::to_string_pretty(&stats)?);
     Ok(())
 }
 
 pub(crate) async fn run_projects() -> Result<()> {
-    let db_path = get_db_path();
-    ensure_db_dir(&db_path)?;
-    let storage = StorageBackend::new_sqlite(&db_path)?;
+    let storage = crate::create_storage().await?;
     let projects = storage.get_all_projects().await?;
     println!("{}", serde_json::to_string_pretty(&projects)?);
     Ok(())
 }
 
 pub(crate) async fn run_recent(limit: usize) -> Result<()> {
-    let db_path = get_db_path();
-    ensure_db_dir(&db_path)?;
-    let storage = StorageBackend::new_sqlite(&db_path)?;
+    let storage = crate::create_storage().await?;
     let results = storage.get_recent(limit).await?;
     println!("{}", serde_json::to_string_pretty(&results)?);
     Ok(())
 }
 
 pub(crate) async fn run_get(id: String) -> Result<()> {
-    let db_path = get_db_path();
-    ensure_db_dir(&db_path)?;
-    let storage = StorageBackend::new_sqlite(&db_path)?;
+    let storage = crate::create_storage().await?;
     match storage.get_by_id(&id).await? {
         Some(obs) => println!("{}", serde_json::to_string_pretty(&obs)?),
         None => println!("Observation not found: {id}"),
@@ -68,11 +55,10 @@ pub(crate) async fn run_get(id: String) -> Result<()> {
 }
 
 pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
-    init_sqlite_vec();
+    #[cfg(feature = "sqlite")]
+    opencode_mem_storage::init_sqlite_vec();
 
-    let db_path = get_db_path();
-    ensure_db_dir(&db_path)?;
-    let storage = StorageBackend::new_sqlite(&db_path)?;
+    let storage = crate::create_storage().await?;
 
     println!("Initializing embedding model (first run downloads ~100MB)...");
     let embeddings = EmbeddingService::new()?;

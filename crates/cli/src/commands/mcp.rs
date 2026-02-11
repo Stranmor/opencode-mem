@@ -4,18 +4,16 @@ use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_mcp::run_mcp_server;
 use opencode_mem_service::{ObservationService, SessionService};
-use opencode_mem_storage::{init_sqlite_vec, StorageBackend};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
-use crate::{ensure_db_dir, get_api_key, get_base_url, get_db_path};
+use crate::{get_api_key, get_base_url};
 
 pub(crate) async fn run() -> Result<()> {
-    init_sqlite_vec();
+    #[cfg(feature = "sqlite")]
+    opencode_mem_storage::init_sqlite_vec();
 
-    let db_path = get_db_path();
-    ensure_db_dir(&db_path)?;
-    let storage = Arc::new(StorageBackend::new_sqlite(&db_path)?);
+    let storage = Arc::new(crate::create_storage().await?);
 
     let api_key = get_api_key()?;
     let llm = Arc::new(LlmClient::new(api_key, get_base_url()));

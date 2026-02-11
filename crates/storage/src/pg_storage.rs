@@ -734,7 +734,7 @@ impl SummaryStore for PgStorage {
     ) -> Result<()> {
         let ended_at: Option<DateTime<Utc>> = (status != SessionStatus::Active).then(Utc::now);
         sqlx::query("UPDATE sessions SET status = $1, ended_at = $2 WHERE id = $3")
-            .bind(serde_json::to_string(&status)?)
+            .bind(status.as_str())
             .bind(ended_at)
             .bind(session_id)
             .execute(&self.pool)

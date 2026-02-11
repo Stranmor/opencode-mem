@@ -64,7 +64,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Internal crates
 opencode-mem-core = { path = "crates/core" }
-opencode-mem-storage = { path = "crates/storage" }
+opencode-mem-storage = { path = "crates/storage", default-features = false }
 opencode-mem-embeddings = { path = "crates/embeddings" }
 opencode-mem-search = { path = "crates/search" }
 opencode-mem-llm = { path = "crates/llm" }

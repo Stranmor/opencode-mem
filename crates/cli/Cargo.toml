@@ -10,9 +10,14 @@ workspace = true
 name = "opencode-mem"
 path = "src/main.rs"
 
+[features]
+default = ["sqlite"]
+sqlite = ["opencode-mem-storage/sqlite"]
+postgres = ["opencode-mem-storage/postgres"]
+
 [dependencies]
 opencode-mem-core = { workspace = true }
-opencode-mem-storage = { workspace = true }
+opencode-mem-storage = { workspace = true, default-features = false }
 opencode-mem-llm = { workspace = true }
 opencode-mem-http = { workspace = true }
 opencode-mem-mcp = { workspace = true }
