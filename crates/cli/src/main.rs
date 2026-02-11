@@ -135,25 +135,25 @@ async fn main() -> Result<()> {
             commands::mcp::run().await?;
         },
         Commands::Search { query, limit, project, obs_type } => {
-            commands::search::run_search(query, limit, project, obs_type)?;
+            commands::search::run_search(query, limit, project, obs_type).await?;
         },
         Commands::Stats => {
-            commands::search::run_stats()?;
+            commands::search::run_stats().await?;
         },
         Commands::Projects => {
-            commands::search::run_projects()?;
+            commands::search::run_projects().await?;
         },
         Commands::Recent { limit } => {
-            commands::search::run_recent(limit)?;
+            commands::search::run_recent(limit).await?;
         },
         Commands::Get { id } => {
-            commands::search::run_get(id)?;
+            commands::search::run_get(id).await?;
         },
         Commands::BackfillEmbeddings { batch_size } => {
-            commands::search::run_backfill_embeddings(batch_size)?;
+            commands::search::run_backfill_embeddings(batch_size).await?;
         },
         Commands::ImportInsights { file, dir } => {
-            commands::import_insights::run(file, dir)?;
+            commands::import_insights::run(file, dir).await?;
         },
         Commands::Hook(hook_cmd) => {
             commands::hook::run(hook_cmd).await?;

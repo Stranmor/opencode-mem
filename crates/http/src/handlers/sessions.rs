@@ -10,9 +10,9 @@ use crate::api_types::{
     SessionObservationsRequest, SessionObservationsResponse, SessionStatusResponse,
     SessionSummaryRequest,
 };
-use crate::blocking::blocking_result;
 use crate::AppState;
 use opencode_mem_core::SessionStatus;
+use opencode_mem_storage::{ObservationStore, SessionStore};
 
 use super::session_ops::{create_session, spawn_observation_processing};
 
@@ -38,7 +38,8 @@ pub async fn session_init_legacy(
 ) -> Result<Json<SessionInitResponse>, StatusCode> {
     let content_session_id = req.content_session_id.unwrap_or_else(|| session_db_id.clone());
     let resp =
-        create_session(&state, session_db_id, content_session_id, req.project, req.user_prompt)?;
+        create_session(&state, session_db_id, content_session_id, req.project, req.user_prompt)
+            .await?;
     Ok(Json(resp))
 }
 
@@ -70,16 +71,14 @@ pub async fn session_status(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
 ) -> Result<Json<SessionStatusResponse>, StatusCode> {
-    let storage = state.storage.clone();
-    let id = session_db_id.clone();
-    let session = blocking_result(move || storage.get_session(&id)).await?;
+    let session = state.storage.get_session(&session_db_id).await.map_err(|e| {
+        tracing::error!("Get session error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     match session {
         Some(s) => {
-            let storage = state.storage.clone();
-            let id = session_db_id.clone();
-            let obs_count = blocking_result(move || storage.get_session_observation_count(&id))
-                .await
-                .unwrap_or(0);
+            let obs_count =
+                state.storage.get_session_observation_count(&session_db_id).await.unwrap_or(0);
             Ok(Json(SessionStatusResponse {
                 session_id: s.id,
                 status: s.status,
@@ -96,9 +95,10 @@ pub async fn session_delete(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
 ) -> Result<Json<SessionDeleteResponse>, StatusCode> {
-    let storage = state.storage.clone();
-    let id = session_db_id.clone();
-    let deleted = blocking_result(move || storage.delete_session(&id)).await?;
+    let deleted = state.storage.delete_session(&session_db_id).await.map_err(|e| {
+        tracing::error!("Delete session error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
     Ok(Json(SessionDeleteResponse { deleted, session_id: session_db_id }))
 }
 

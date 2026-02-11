@@ -17,15 +17,16 @@ use std::sync::Arc;
 use anyhow::Result;
 use opencode_mem_core::{Observation, SearchResult};
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
-use opencode_mem_storage::Storage;
+use opencode_mem_storage::traits::{ObservationStore, SearchStore};
+use opencode_mem_storage::StorageBackend;
 
 /// High-level search facade combining FTS5 and vector similarity.
 ///
-/// Wraps Storage and optional `EmbeddingService` to provide unified search API.
+/// Wraps `StorageBackend` and optional `EmbeddingService` to provide unified search API.
 /// When embeddings are available, uses `hybrid_search_v2` (FTS + vector).
 /// Otherwise falls back to text-only `hybrid_search`.
 pub struct HybridSearch {
-    storage: Arc<Storage>,
+    storage: Arc<StorageBackend>,
     embeddings: Option<Arc<EmbeddingService>>,
 }
 
@@ -36,7 +37,7 @@ impl HybridSearch {
     /// * `storage` - Storage backend for database operations
     /// * `embeddings` - Optional embedding service for semantic search
     #[must_use]
-    pub const fn new(storage: Arc<Storage>, embeddings: Option<Arc<EmbeddingService>>) -> Self {
+    pub fn new(storage: Arc<StorageBackend>, embeddings: Option<Arc<EmbeddingService>>) -> Self {
         Self { storage, embeddings }
     }
 
@@ -48,16 +49,16 @@ impl HybridSearch {
     /// If embeddings are available, generates query embedding and uses
     /// `hybrid_search_v2` (50% FTS BM25 + 50% vector cosine similarity).
     /// Otherwise falls back to text-only `hybrid_search` (70% FTS + 30% keyword overlap).
-    pub fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+    pub async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         match &self.embeddings {
             Some(emb) => {
                 // Generate query embedding for semantic search
                 let query_vec = emb.embed(query)?;
-                self.storage.hybrid_search_v2(query, &query_vec, limit)
+                self.storage.hybrid_search_v2(query, &query_vec, limit).await
             },
             None => {
                 // Fall back to text-only hybrid search
-                self.storage.hybrid_search(query, limit)
+                self.storage.hybrid_search(query, limit).await
             },
         }
     }
@@ -71,13 +72,13 @@ impl HybridSearch {
     /// * `from` - Optional start time (ISO 8601 format)
     /// * `to` - Optional end time (ISO 8601 format)
     /// * `limit` - Maximum number of results
-    pub fn timeline(
+    pub async fn timeline(
         &self,
         from: Option<&str>,
         to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
-        self.storage.get_timeline(from, to, limit)
+        self.storage.get_timeline(from, to, limit).await
     }
 
     /// Step 3: Fetch full observations by IDs.
@@ -87,15 +88,15 @@ impl HybridSearch {
     ///
     /// # Arguments
     /// * `ids` - List of observation IDs to fetch
-    pub fn get_full(&self, ids: &[String]) -> Result<Vec<Observation>> {
-        self.storage.get_observations_by_ids(ids)
+    pub async fn get_full(&self, ids: &[String]) -> Result<Vec<Observation>> {
+        self.storage.get_observations_by_ids(ids).await
     }
 
     /// Get recent observations (convenience method).
     ///
     /// Returns the most recent observations without any search query.
-    pub fn recent(&self, limit: usize) -> Result<Vec<SearchResult>> {
-        self.storage.get_recent(limit)
+    pub async fn recent(&self, limit: usize) -> Result<Vec<SearchResult>> {
+        self.storage.get_recent(limit).await
     }
 
     /// Search with additional filters (project, observation type, date range).
@@ -107,7 +108,7 @@ impl HybridSearch {
     /// * `from` - Optional start date (ISO 8601)
     /// * `to` - Optional end date (ISO 8601)
     /// * `limit` - Maximum number of results
-    pub fn search_with_filters(
+    pub async fn search_with_filters(
         &self,
         query: Option<&str>,
         project: Option<&str>,
@@ -116,18 +117,22 @@ impl HybridSearch {
         to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
-        self.storage.search_with_filters(query, project, obs_type, from, to, limit)
+        self.storage.search_with_filters(query, project, obs_type, from, to, limit).await
     }
 
     /// Pure semantic search using vector similarity only.
     ///
     /// Returns None if embeddings are not available.
     /// Use `search()` for hybrid FTS + semantic search.
-    pub fn semantic_search(&self, query: &str, limit: usize) -> Result<Option<Vec<SearchResult>>> {
+    pub async fn semantic_search(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Option<Vec<SearchResult>>> {
         match &self.embeddings {
             Some(emb) => {
                 let query_vec = emb.embed(query)?;
-                let results = self.storage.semantic_search(&query_vec, limit)?;
+                let results = self.storage.semantic_search(&query_vec, limit).await?;
                 Ok(Some(results))
             },
             None => Ok(None),
@@ -143,12 +148,13 @@ impl HybridSearch {
     /// 4. If no embeddings service → use hybrid search directly
     ///
     /// Guarantees a result regardless of embeddings availability.
-    pub fn semantic_search_with_fallback(
+    pub async fn semantic_search_with_fallback(
         &self,
         query: &str,
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
         run_semantic_search_with_fallback(&self.storage, self.embeddings.as_deref(), query, limit)
+            .await
     }
 
     /// Check if semantic search is available.
@@ -158,44 +164,44 @@ impl HybridSearch {
     }
 
     /// Get a single observation by ID.
-    pub fn get_by_id(&self, id: &str) -> Result<Option<Observation>> {
-        self.storage.get_by_id(id)
+    pub async fn get_by_id(&self, id: &str) -> Result<Option<Observation>> {
+        self.storage.get_by_id(id).await
     }
 
     /// Search by file path.
     ///
     /// Finds observations that mention the given file path in `files_read` or `files_modified`.
-    pub fn search_by_file(&self, file_path: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        self.storage.search_by_file(file_path, limit)
+    pub async fn search_by_file(&self, file_path: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        self.storage.search_by_file(file_path, limit).await
     }
 }
 
 /// Semantic search with 3-tier fallback, usable without constructing `HybridSearch`.
 ///
-/// Called by both HTTP and MCP handlers that have `&Storage` references
-/// rather than `Arc<Storage>`.
-pub fn run_semantic_search_with_fallback(
-    storage: &Storage,
+/// Called by both HTTP and MCP handlers that have `&StorageBackend` references
+/// rather than `Arc<StorageBackend>`.
+pub async fn run_semantic_search_with_fallback(
+    storage: &StorageBackend,
     embeddings: Option<&EmbeddingService>,
     query: &str,
     limit: usize,
 ) -> Result<Vec<SearchResult>> {
     match embeddings {
         Some(emb) => match emb.embed(query) {
-            Ok(query_vec) => match storage.semantic_search(&query_vec, limit) {
+            Ok(query_vec) => match storage.semantic_search(&query_vec, limit).await {
                 Ok(results) if !results.is_empty() => Ok(results),
-                Ok(_) => storage.hybrid_search(query, limit),
+                Ok(_) => storage.hybrid_search(query, limit).await,
                 Err(e) => {
                     tracing::warn!("Semantic search storage error, falling back to hybrid: {}", e);
-                    storage.hybrid_search(query, limit)
+                    storage.hybrid_search(query, limit).await
                 },
             },
             Err(e) => {
                 tracing::warn!("Failed to embed query, falling back to hybrid: {}", e);
-                storage.hybrid_search(query, limit)
+                storage.hybrid_search(query, limit).await
             },
         },
-        None => storage.hybrid_search(query, limit),
+        None => storage.hybrid_search(query, limit).await,
     }
 }
 
@@ -205,10 +211,10 @@ mod tests {
     use tempfile::TempDir;
 
     #[expect(clippy::expect_used, reason = "test code")]
-    fn create_test_storage() -> (TempDir, Arc<Storage>) {
+    fn create_test_storage() -> (TempDir, Arc<StorageBackend>) {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let db_path = temp_dir.path().join("test.db");
-        let storage = Storage::new(&db_path).expect("Failed to create storage");
+        let storage = StorageBackend::new_sqlite(&db_path).expect("Failed to create storage");
         (temp_dir, Arc::new(storage))
     }
 
@@ -219,44 +225,44 @@ mod tests {
         assert!(!search.has_embeddings());
     }
 
-    #[test]
+    #[tokio::test]
     #[expect(clippy::expect_used, reason = "test code")]
-    fn test_search_without_embeddings() {
+    async fn test_search_without_embeddings() {
         let (_temp, storage) = create_test_storage();
         let search = HybridSearch::new(storage, None);
 
         // Should not panic, returns empty results
-        let results = search.search("test query", 10).expect("Search failed");
+        let results = search.search("test query", 10).await.expect("Search failed");
         assert!(results.is_empty());
     }
 
-    #[test]
+    #[tokio::test]
     #[expect(clippy::expect_used, reason = "test code")]
-    fn test_timeline_empty() {
+    async fn test_timeline_empty() {
         let (_temp, storage) = create_test_storage();
         let search = HybridSearch::new(storage, None);
 
-        let results = search.timeline(None, None, 10).expect("Timeline failed");
+        let results = search.timeline(None, None, 10).await.expect("Timeline failed");
         assert!(results.is_empty());
     }
 
-    #[test]
+    #[tokio::test]
     #[expect(clippy::expect_used, reason = "test code")]
-    fn test_get_full_empty() {
+    async fn test_get_full_empty() {
         let (_temp, storage) = create_test_storage();
         let search = HybridSearch::new(storage, None);
 
-        let results = search.get_full(&[]).expect("Get full failed");
+        let results = search.get_full(&[]).await.expect("Get full failed");
         assert!(results.is_empty());
     }
 
-    #[test]
+    #[tokio::test]
     #[expect(clippy::expect_used, reason = "test code")]
-    fn test_semantic_search_without_embeddings() {
+    async fn test_semantic_search_without_embeddings() {
         let (_temp, storage) = create_test_storage();
         let search = HybridSearch::new(storage, None);
 
-        let result = search.semantic_search("test", 10).expect("Semantic search failed");
+        let result = search.semantic_search("test", 10).await.expect("Semantic search failed");
         assert!(result.is_none());
     }
 }

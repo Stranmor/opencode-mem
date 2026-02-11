@@ -1,14 +1,15 @@
 use opencode_mem_core::{is_low_value_observation, Observation, ObservationType};
 use opencode_mem_embeddings::EmbeddingProvider;
 use opencode_mem_embeddings::EmbeddingService;
-use opencode_mem_storage::Storage;
+use opencode_mem_storage::traits::{EmbeddingStore, ObservationStore, SearchStore};
+use opencode_mem_storage::StorageBackend;
 use std::sync::Arc;
 use tokio::runtime::Handle;
 
 use super::{mcp_err, mcp_ok, mcp_text};
 
-pub(super) fn handle_search(
-    storage: &Storage,
+pub(super) async fn handle_search(
+    storage: &StorageBackend,
     embeddings: Option<&EmbeddingService>,
     args: &serde_json::Value,
 ) -> serde_json::Value {
@@ -24,31 +25,36 @@ pub(super) fn handle_search(
         if let Some(q) = query {
             return match opencode_mem_search::run_semantic_search_with_fallback(
                 storage, embeddings, q, limit,
-            ) {
+            )
+            .await
+            {
                 Ok(results) => mcp_ok(&results),
                 Err(e) => mcp_err(e),
             };
         }
     }
 
-    match storage.search_with_filters(query, project, obs_type, from, to, limit) {
+    match storage.search_with_filters(query, project, obs_type, from, to, limit).await {
         Ok(results) => mcp_ok(&results),
         Err(e) => mcp_err(e),
     }
 }
 
-pub(super) fn handle_timeline(storage: &Storage, args: &serde_json::Value) -> serde_json::Value {
+pub(super) async fn handle_timeline(
+    storage: &StorageBackend,
+    args: &serde_json::Value,
+) -> serde_json::Value {
     let from = args.get("from").and_then(|f| f.as_str());
     let to = args.get("to").and_then(|t| t.as_str());
     let limit = args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(50) as usize;
-    match storage.get_timeline(from, to, limit) {
+    match storage.get_timeline(from, to, limit).await {
         Ok(results) => mcp_ok(&results),
         Err(e) => mcp_err(e),
     }
 }
 
-pub(super) fn handle_get_observations(
-    storage: &Storage,
+pub(super) async fn handle_get_observations(
+    storage: &StorageBackend,
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let ids: Vec<String> = args
@@ -59,47 +65,50 @@ pub(super) fn handle_get_observations(
     if ids.is_empty() {
         mcp_err("ids array is required and must not be empty")
     } else {
-        match storage.get_observations_by_ids(&ids) {
+        match storage.get_observations_by_ids(&ids).await {
             Ok(results) => mcp_ok(&results),
             Err(e) => mcp_err(e),
         }
     }
 }
 
-pub(super) fn handle_memory_get(storage: &Storage, args: &serde_json::Value) -> serde_json::Value {
+pub(super) async fn handle_memory_get(
+    storage: &StorageBackend,
+    args: &serde_json::Value,
+) -> serde_json::Value {
     let id_str = args.get("id").and_then(|i| i.as_str()).unwrap_or("");
-    match storage.get_by_id(id_str) {
+    match storage.get_by_id(id_str).await {
         Ok(Some(obs)) => mcp_ok(&obs),
         Ok(None) => mcp_text(&format!("Observation not found: {id_str}")),
         Err(e) => mcp_err(e),
     }
 }
 
-pub(super) fn handle_memory_recent(
-    storage: &Storage,
+pub(super) async fn handle_memory_recent(
+    storage: &StorageBackend,
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let limit = args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(10) as usize;
-    match storage.get_recent(limit) {
+    match storage.get_recent(limit).await {
         Ok(results) => mcp_ok(&results),
         Err(e) => mcp_err(e),
     }
 }
 
-pub(super) fn handle_hybrid_search(
-    storage: &Storage,
+pub(super) async fn handle_hybrid_search(
+    storage: &StorageBackend,
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let query = args.get("query").and_then(|q| q.as_str()).unwrap_or("");
     let limit = args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(20) as usize;
-    match storage.hybrid_search(query, limit) {
+    match storage.hybrid_search(query, limit).await {
         Ok(results) => mcp_ok(&results),
         Err(e) => mcp_err(e),
     }
 }
 
-pub(super) fn handle_semantic_search(
-    storage: &Storage,
+pub(super) async fn handle_semantic_search(
+    storage: &StorageBackend,
     embeddings: Option<&EmbeddingService>,
     args: &serde_json::Value,
 ) -> serde_json::Value {
@@ -107,14 +116,15 @@ pub(super) fn handle_semantic_search(
     let limit = args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(20) as usize;
 
     match opencode_mem_search::run_semantic_search_with_fallback(storage, embeddings, query, limit)
+        .await
     {
         Ok(results) => mcp_ok(&results),
         Err(e) => mcp_err(e),
     }
 }
 
-pub(super) fn handle_save_memory(
-    storage: &Storage,
+pub(super) async fn handle_save_memory(
+    storage: &StorageBackend,
     embeddings: Option<Arc<EmbeddingService>>,
     _handle: &Handle,
     args: &serde_json::Value,
@@ -156,7 +166,7 @@ pub(super) fn handle_save_memory(
         return mcp_text("Observation filtered as low-value");
     }
 
-    match storage.save_observation(&observation) {
+    match storage.save_observation(&observation).await {
         Ok(true) => {},
         Ok(false) => {
             tracing::debug!("Duplicate MCP save_memory: {}", observation.title);
@@ -175,13 +185,13 @@ pub(super) fn handle_save_memory(
             observation.facts.join(" ")
         );
 
-        _handle.spawn(async move {
+        tokio::spawn(async move {
             let embedding_result =
                 tokio::task::spawn_blocking(move || emb.embed(&embedding_text)).await;
 
             match embedding_result {
                 Ok(Ok(vec)) => {
-                    if let Err(e) = storage.store_embedding(&obs_id, &vec) {
+                    if let Err(e) = storage.store_embedding(&obs_id, &vec).await {
                         tracing::warn!("Failed to store embedding for {}: {}", obs_id, e);
                     }
                 },
@@ -201,22 +211,24 @@ pub(super) fn handle_save_memory(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use opencode_mem_storage::Storage;
     use serde_json::json;
     use tempfile::tempdir;
 
-    fn setup_storage() -> (Storage, tempfile::TempDir) {
+    fn setup_storage() -> (Storage, StorageBackend, tempfile::TempDir) {
         let dir = tempdir().unwrap();
         let db_path = dir.path().join("test.db");
         let storage = Storage::new(&db_path).unwrap();
-        (storage, dir)
+        let backend = StorageBackend::Sqlite(storage.clone());
+        (storage, backend, dir)
     }
 
     #[tokio::test]
     async fn test_save_memory_missing_text() {
-        let (storage, _dir) = setup_storage();
+        let (_storage, backend, _dir) = setup_storage();
         let handle = tokio::runtime::Handle::current();
         let args = json!({});
-        let result = handle_save_memory(&storage, None, &handle, &args);
+        let result = handle_save_memory(&backend, None, &handle, &args).await;
 
         assert_eq!(result["isError"].as_bool(), Some(true));
         assert!(result["content"][0]["text"].as_str().unwrap().contains("text is required"));
@@ -224,10 +236,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_save_memory_empty_text() {
-        let (storage, _dir) = setup_storage();
+        let (_storage, backend, _dir) = setup_storage();
         let handle = tokio::runtime::Handle::current();
         let args = json!({ "text": "  " });
-        let result = handle_save_memory(&storage, None, &handle, &args);
+        let result = handle_save_memory(&backend, None, &handle, &args).await;
 
         assert_eq!(result["isError"].as_bool(), Some(true));
         assert!(result["content"][0]["text"].as_str().unwrap().contains("must not be empty"));
@@ -235,13 +247,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_save_memory_with_title() {
-        let (storage, _dir) = setup_storage();
+        let (storage, backend, _dir) = setup_storage();
         let handle = tokio::runtime::Handle::current();
         let args = json!({
             "text": "some narrative",
             "title": "custom title"
         });
-        let result = handle_save_memory(&storage, None, &handle, &args);
+        let result = handle_save_memory(&backend, None, &handle, &args).await;
 
         assert!(result.get("isError").is_none());
         let obs_json = result["content"][0]["text"].as_str().unwrap();
@@ -255,13 +267,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_save_memory_without_title() {
-        let (storage, _dir) = setup_storage();
+        let (_storage, backend, _dir) = setup_storage();
         let handle = tokio::runtime::Handle::current();
         let long_text = "A very long text that should be truncated for the title because it is more than fifty characters long.";
         let args = json!({
             "text": long_text
         });
-        let result = handle_save_memory(&storage, None, &handle, &args);
+        let result = handle_save_memory(&backend, None, &handle, &args).await;
 
         assert!(result.get("isError").is_none());
         let obs_json = result["content"][0]["text"].as_str().unwrap();
@@ -272,13 +284,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_save_memory_with_project() {
-        let (storage, _dir) = setup_storage();
+        let (_storage, backend, _dir) = setup_storage();
         let handle = tokio::runtime::Handle::current();
         let args = json!({
             "text": "narrative",
             "project": "test-project"
         });
-        let result = handle_save_memory(&storage, None, &handle, &args);
+        let result = handle_save_memory(&backend, None, &handle, &args).await;
 
         assert!(result.get("isError").is_none());
         let obs_json = result["content"][0]["text"].as_str().unwrap();
@@ -288,12 +300,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_save_memory_success_returns_observation() {
-        let (storage, _dir) = setup_storage();
+        let (_storage, backend, _dir) = setup_storage();
         let handle = tokio::runtime::Handle::current();
         let args = json!({
             "text": "success test"
         });
-        let result = handle_save_memory(&storage, None, &handle, &args);
+        let result = handle_save_memory(&backend, None, &handle, &args).await;
 
         assert!(result.get("isError").is_none());
         let content = &result["content"][0];
@@ -303,10 +315,10 @@ mod tests {
             serde_json::from_str(obs_json).expect("Should return valid Observation JSON");
     }
 
-    #[test]
+    #[tokio::test]
     #[expect(clippy::unwrap_used, reason = "test code")]
-    fn test_search_with_date_filters() {
-        let (storage, _dir) = setup_storage();
+    async fn test_search_with_date_filters() {
+        let (storage, backend, _dir) = setup_storage();
 
         let obs = Observation::builder(
             "obs-date-1".to_owned(),
@@ -318,20 +330,22 @@ mod tests {
         assert!(storage.save_observation(&obs).unwrap());
 
         let result = handle_search(
-            &storage,
+            &backend,
             None,
             &json!({"query": "date filter test", "from": "2020-01-01"}),
-        );
+        )
+        .await;
         assert!(result.get("isError").is_none());
         let content_text = result["content"][0]["text"].as_str().unwrap();
         let results: Vec<serde_json::Value> = serde_json::from_str(content_text).unwrap();
         assert_eq!(results.len(), 1);
 
         let result = handle_search(
-            &storage,
+            &backend,
             None,
             &json!({"query": "date filter test", "to": "2020-01-01"}),
-        );
+        )
+        .await;
         assert!(result.get("isError").is_none());
         let content_text = result["content"][0]["text"].as_str().unwrap();
         let results: Vec<serde_json::Value> = serde_json::from_str(content_text).unwrap();

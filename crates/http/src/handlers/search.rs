@@ -4,49 +4,47 @@ use axum::{
     Json,
 };
 use std::sync::Arc;
-use tokio::task::spawn_blocking;
 
 use opencode_mem_core::{SearchResult, SessionSummary, UserPrompt};
+use opencode_mem_storage::{ObservationStore, PromptStore, SearchStore, SummaryStore};
 
 use crate::api_types::{
     FileSearchQuery, RankedItem, SearchQuery, TimelineResult, UnifiedSearchResult,
     UnifiedTimelineQuery,
 };
-use crate::blocking::blocking_json;
 use crate::AppState;
 
 pub async fn search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    let q = if query.q.is_empty() { None } else { Some(query.q.clone()) };
-    let storage = Arc::clone(&state.storage);
-    let project = query.project.clone();
-    let obs_type = query.obs_type.clone();
-    let from = query.from.clone();
-    let to = query.to.clone();
-    let limit = query.limit;
-    blocking_json(move || {
-        storage.search_with_filters(
-            q.as_deref(),
-            project.as_deref(),
-            obs_type.as_deref(),
-            from.as_deref(),
-            to.as_deref(),
-            limit,
+    let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
+    state
+        .storage
+        .search_with_filters(
+            q,
+            query.project.as_deref(),
+            query.obs_type.as_deref(),
+            query.from.as_deref(),
+            query.to.as_deref(),
+            query.limit,
         )
-    })
-    .await
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Search error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
 }
 
 pub async fn hybrid_search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    let storage = Arc::clone(&state.storage);
-    let q = query.q.clone();
-    let limit = query.limit;
-    blocking_json(move || storage.hybrid_search(&q, limit)).await
+    state.storage.hybrid_search(&query.q, query.limit).await.map(Json).map_err(|e| {
+        tracing::error!("Hybrid search error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 pub async fn semantic_search(
@@ -57,19 +55,18 @@ pub async fn semantic_search(
         return Ok(Json(Vec::new()));
     }
 
-    let storage = Arc::clone(&state.storage);
-    let embeddings = state.embeddings.clone();
-    let q = query.q.clone();
-    let limit = query.limit;
-    blocking_json(move || {
-        opencode_mem_search::run_semantic_search_with_fallback(
-            &storage,
-            embeddings.as_deref(),
-            &q,
-            limit,
-        )
-    })
+    opencode_mem_search::run_semantic_search_with_fallback(
+        &state.storage,
+        state.embeddings.as_deref(),
+        &query.q,
+        query.limit,
+    )
     .await
+    .map(Json)
+    .map_err(|e| {
+        tracing::error!("Semantic search error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 pub async fn search_sessions(
@@ -79,10 +76,10 @@ pub async fn search_sessions(
     if query.q.is_empty() {
         return Ok(Json(Vec::new()));
     }
-    let storage = Arc::clone(&state.storage);
-    let q = query.q.clone();
-    let limit = query.limit;
-    blocking_json(move || storage.search_sessions(&q, limit)).await
+    state.storage.search_sessions(&query.q, query.limit).await.map(Json).map_err(|e| {
+        tracing::error!("Search sessions error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 pub async fn search_prompts(
@@ -92,20 +89,20 @@ pub async fn search_prompts(
     if query.q.is_empty() {
         return Ok(Json(Vec::new()));
     }
-    let storage = Arc::clone(&state.storage);
-    let q = query.q.clone();
-    let limit = query.limit;
-    blocking_json(move || storage.search_prompts(&q, limit)).await
+    state.storage.search_prompts(&query.q, query.limit).await.map(Json).map_err(|e| {
+        tracing::error!("Search prompts error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 pub async fn search_by_file(
     State(state): State<Arc<AppState>>,
     Query(query): Query<FileSearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    let storage = Arc::clone(&state.storage);
-    let file_path = query.file_path.clone();
-    let limit = query.limit;
-    blocking_json(move || storage.search_by_file(&file_path, limit)).await
+    state.storage.search_by_file(&query.file_path, query.limit).await.map(Json).map_err(|e| {
+        tracing::error!("Search by file error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 pub async fn unified_search(
@@ -120,47 +117,21 @@ pub async fn unified_search(
             ranked: Vec::new(),
         }));
     }
-    let storage = Arc::clone(&state.storage);
-    let q = query.q.clone();
-    let project = query.project.clone();
-    let obs_type = query.obs_type.clone();
-    let from = query.from.clone();
-    let to = query.to.clone();
+    let q = &query.q;
     let limit = query.limit;
-    let obs_handle = spawn_blocking({
-        let storage = Arc::clone(&storage);
-        let q = q.clone();
-        let project = project.clone();
-        let obs_type = obs_type.clone();
-        let from = from.clone();
-        let to = to.clone();
-        move || {
-            storage.search_with_filters(
-                Some(&q),
-                project.as_deref(),
-                obs_type.as_deref(),
-                from.as_deref(),
-                to.as_deref(),
-                limit,
-            )
-        }
-    });
-    let sess_handle = spawn_blocking({
-        let storage = Arc::clone(&storage);
-        let q = q.clone();
-        move || storage.search_sessions(&q, limit)
-    });
-    let prompt_handle = spawn_blocking({
-        let storage = Arc::clone(&storage);
-        let q = q.clone();
-        move || storage.search_prompts(&q, limit)
-    });
 
-    let (obs_result, sess_result, prompt_result) =
-        tokio::try_join!(obs_handle, sess_handle, prompt_handle).map_err(|e| {
-            tracing::error!("Unified search join error: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let (obs_result, sess_result, prompt_result) = tokio::join!(
+        state.storage.search_with_filters(
+            Some(q.as_str()),
+            query.project.as_deref(),
+            query.obs_type.as_deref(),
+            query.from.as_deref(),
+            query.to.as_deref(),
+            limit,
+        ),
+        state.storage.search_sessions(q, limit),
+        state.storage.search_prompts(q, limit),
+    );
 
     let observations = obs_result.unwrap_or_else(|e| {
         tracing::error!("Unified search observation query failed: {e}");
@@ -231,21 +202,12 @@ pub async fn unified_timeline(
     Query(query): Query<UnifiedTimelineQuery>,
 ) -> Result<Json<TimelineResult>, StatusCode> {
     let anchor_obs = if let Some(ref id) = query.anchor {
-        let storage = Arc::clone(&state.storage);
-        let id = id.clone();
-        spawn_blocking(move || storage.get_by_id(&id)).await.ok().and_then(Result::ok).flatten()
+        state.storage.get_by_id(id).await.ok().flatten()
     } else if let Some(ref q) = query.q {
-        let storage = Arc::clone(&state.storage);
-        let q = q.clone();
-        let search_result = spawn_blocking(move || storage.hybrid_search(&q, 1))
-            .await
-            .ok()
-            .and_then(Result::ok)
-            .and_then(|r| r.into_iter().next());
+        let search_result =
+            state.storage.hybrid_search(q, 1).await.ok().and_then(|r| r.into_iter().next());
         if let Some(sr) = search_result {
-            let storage = Arc::clone(&state.storage);
-            let id = sr.id;
-            spawn_blocking(move || storage.get_by_id(&id)).await.ok().and_then(Result::ok).flatten()
+            state.storage.get_by_id(&sr.id).await.ok().flatten()
         } else {
             None
         }
@@ -267,22 +229,10 @@ pub async fn unified_timeline(
         let before_limit = query.before.saturating_add(1);
         let after_limit = query.after.saturating_add(1);
 
-        let before_handle = spawn_blocking({
-            let storage = Arc::clone(&state.storage);
-            let anchor_time_clone = anchor_time.clone();
-            move || storage.get_timeline(None, Some(&anchor_time_clone), before_limit)
-        });
-        let after_handle = spawn_blocking({
-            let storage = Arc::clone(&state.storage);
-            let anchor_time_clone = anchor_time.clone();
-            move || storage.get_timeline(Some(&anchor_time_clone), None, after_limit)
-        });
-
-        let (before_result, after_result) =
-            tokio::try_join!(before_handle, after_handle).map_err(|e| {
-                tracing::error!("Unified timeline join error: {e}");
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+        let (before_result, after_result) = tokio::join!(
+            state.storage.get_timeline(None, Some(&anchor_time), before_limit),
+            state.storage.get_timeline(Some(&anchor_time), None, after_limit),
+        );
 
         let anchor_id = anchor_sr.id.clone();
         let before_items = before_result

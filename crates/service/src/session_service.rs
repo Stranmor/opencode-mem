@@ -3,12 +3,13 @@ use std::sync::Arc;
 
 use opencode_mem_core::{Observation, Session, SessionStatus};
 use opencode_mem_llm::LlmClient;
-use opencode_mem_storage::Storage;
+use opencode_mem_storage::traits::{ObservationStore, SessionStore, SummaryStore};
+use opencode_mem_storage::StorageBackend;
 
 use crate::observation_service::ObservationService;
 
 pub struct SessionService {
-    storage: Arc<Storage>,
+    storage: Arc<StorageBackend>,
     llm: Arc<LlmClient>,
     observation_service: Arc<ObservationService>,
 }
@@ -16,30 +17,32 @@ pub struct SessionService {
 impl SessionService {
     #[must_use]
     pub const fn new(
-        storage: Arc<Storage>,
+        storage: Arc<StorageBackend>,
         llm: Arc<LlmClient>,
         observation_service: Arc<ObservationService>,
     ) -> Self {
         Self { storage, llm, observation_service }
     }
 
-    pub fn init_session(&self, session: Session) -> anyhow::Result<Session> {
-        self.storage.save_session(&session)?;
+    pub async fn init_session(&self, session: Session) -> anyhow::Result<Session> {
+        self.storage.save_session(&session).await?;
         Ok(session)
     }
 
     pub async fn complete_session(&self, session_id: &str) -> anyhow::Result<Option<String>> {
-        let observations = self.storage.get_session_observations(session_id)?;
+        let observations = self.storage.get_session_observations(session_id).await?;
         let summary = if observations.is_empty() {
             None
         } else {
             Some(self.generate_summary(&observations).await?)
         };
-        self.storage.update_session_status_with_summary(
-            session_id,
-            SessionStatus::Completed,
-            summary.as_deref(),
-        )?;
+        self.storage
+            .update_session_status_with_summary(
+                session_id,
+                SessionStatus::Completed,
+                summary.as_deref(),
+            )
+            .await?;
         Ok(summary)
     }
 
@@ -52,16 +55,18 @@ impl SessionService {
         session_id: &str,
         content_session_id: &str,
     ) -> anyhow::Result<String> {
-        let observations = self.storage.get_session_observations(content_session_id)?;
+        let observations = self.storage.get_session_observations(content_session_id).await?;
         if observations.is_empty() {
             return Ok("No observations in this session.".to_owned());
         }
         let summary = self.llm.generate_session_summary(&observations).await?;
-        self.storage.update_session_status_with_summary(
-            session_id,
-            SessionStatus::Completed,
-            Some(&summary),
-        )?;
+        self.storage
+            .update_session_status_with_summary(
+                session_id,
+                SessionStatus::Completed,
+                Some(&summary),
+            )
+            .await?;
         Ok(summary)
     }
 
@@ -78,7 +83,7 @@ impl SessionService {
 
         let session_json = String::from_utf8(output.stdout)?;
 
-        let session = self.storage.get_session_by_content_id(content_session_id)?;
+        let session = self.storage.get_session_by_content_id(content_session_id).await?;
         let (session_id, project_path) = if let Some(s) = session {
             (s.id, s.project)
         } else {
@@ -94,7 +99,7 @@ impl SessionService {
                 SessionStatus::Active,
                 0,
             );
-            self.storage.save_session(&new_session)?;
+            self.storage.save_session(&new_session).await?;
             (id, String::new())
         };
 
@@ -107,11 +112,9 @@ impl SessionService {
             self.observation_service.save_observation(obs).await?;
         }
 
-        self.storage.update_session_status_with_summary(
-            &session_id,
-            SessionStatus::Completed,
-            None,
-        )?;
+        self.storage
+            .update_session_status_with_summary(&session_id, SessionStatus::Completed, None)
+            .await?;
 
         Ok(observations)
     }

@@ -7,7 +7,7 @@ use opencode_mem_http::{
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_service::{ObservationService, SessionService};
-use opencode_mem_storage::Storage;
+use opencode_mem_storage::StorageBackend;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock, Semaphore};
@@ -17,7 +17,7 @@ use crate::{ensure_db_dir, get_api_key, get_base_url, get_db_path};
 pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     let db_path = get_db_path();
     ensure_db_dir(&db_path)?;
-    let storage = Arc::new(Storage::new(&db_path)?);
+    let storage = Arc::new(StorageBackend::new_sqlite(&db_path)?);
 
     let api_key = get_api_key()?;
     let llm = Arc::new(LlmClient::new(api_key.clone(), get_base_url()));
@@ -74,7 +74,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         embeddings,
     });
 
-    if let Err(e) = run_startup_recovery(&state) {
+    if let Err(e) = run_startup_recovery(&state).await {
         tracing::warn!("Startup recovery failed: {}", e);
     }
 

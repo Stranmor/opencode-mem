@@ -18,6 +18,8 @@ chrono = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 uuid = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
 sqlite-vec = "0.1"
 zerocopy = { version = "0.8", features = ["derive"] }
 

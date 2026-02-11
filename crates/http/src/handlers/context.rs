@@ -10,13 +10,12 @@ use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
 
 use opencode_mem_core::{Observation, SearchResult};
-use opencode_mem_storage::StorageStats;
+use opencode_mem_storage::{ObservationStore, SearchStore, StatsStore, StorageStats};
 
 use crate::api_types::{
     ContextPreview, ContextPreviewQuery, ContextQuery, SearchHelpResponse, SearchQuery,
     TimelineResult, UnifiedTimelineQuery,
 };
-use crate::blocking::{blocking_json, blocking_result};
 use crate::AppState;
 
 use super::api_docs::get_search_help;
@@ -26,24 +25,30 @@ pub async fn get_context_recent(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextQuery>,
 ) -> Result<Json<Vec<Observation>>, StatusCode> {
-    let storage = Arc::clone(&state.storage);
-    let project = query.project.clone();
-    let limit = query.limit;
-    blocking_json(move || storage.get_context_for_project(&project, limit)).await
+    state.storage.get_context_for_project(&query.project, query.limit).await.map(Json).map_err(
+        |e| {
+            tracing::error!("Get context error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+    )
 }
 
 pub async fn get_projects(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<String>>, StatusCode> {
-    let storage = Arc::clone(&state.storage);
-    blocking_json(move || storage.get_all_projects()).await
+    state.storage.get_all_projects().await.map(Json).map_err(|e| {
+        tracing::error!("Get projects error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 pub async fn get_stats(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<StorageStats>, StatusCode> {
-    let storage = Arc::clone(&state.storage);
-    blocking_json(move || storage.get_stats()).await
+    state.storage.get_stats().await.map(Json).map_err(|e| {
+        tracing::error!("Get stats error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 pub async fn sse_events(
@@ -68,42 +73,32 @@ pub async fn get_decisions(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    let q = if query.q.is_empty() { None } else { Some(query.q.clone()) };
-    let storage = Arc::clone(&state.storage);
-    let project = query.project.clone();
-    let limit = query.limit;
-    blocking_json(move || {
-        storage.search_with_filters(
-            q.as_deref(),
-            project.as_deref(),
-            Some("decision"),
-            None,
-            None,
-            limit,
-        )
-    })
-    .await
+    let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
+    state
+        .storage
+        .search_with_filters(q, query.project.as_deref(), Some("decision"), None, None, query.limit)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Get decisions error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
 }
 
 pub async fn get_changes(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    let q = if query.q.is_empty() { None } else { Some(query.q.clone()) };
-    let storage = Arc::clone(&state.storage);
-    let project = query.project.clone();
-    let limit = query.limit;
-    blocking_json(move || {
-        storage.search_with_filters(
-            q.as_deref(),
-            project.as_deref(),
-            Some("change"),
-            None,
-            None,
-            limit,
-        )
-    })
-    .await
+    let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
+    state
+        .storage
+        .search_with_filters(q, query.project.as_deref(), Some("change"), None, None, query.limit)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Get changes error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
 }
 
 pub async fn get_how_it_works(
@@ -115,9 +110,10 @@ pub async fn get_how_it_works(
     } else {
         format!("{} how-it-works", query.q)
     };
-    let storage = Arc::clone(&state.storage);
-    let limit = query.limit;
-    blocking_json(move || storage.hybrid_search(&search_query, limit)).await
+    state.storage.hybrid_search(&search_query, query.limit).await.map(Json).map_err(|e| {
+        tracing::error!("How it works search error: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })
 }
 
 pub async fn context_timeline(
@@ -131,11 +127,11 @@ pub async fn context_preview(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextPreviewQuery>,
 ) -> Result<Json<ContextPreview>, StatusCode> {
-    let storage = Arc::clone(&state.storage);
-    let project = query.project.clone();
-    let limit = query.limit;
     let observations =
-        blocking_result(move || storage.get_context_for_project(&project, limit)).await?;
+        state.storage.get_context_for_project(&query.project, query.limit).await.map_err(|e| {
+            tracing::error!("Context preview error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     let preview = if query.format == "full" {
         observations
             .iter()

@@ -5,7 +5,7 @@ mod memory;
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_service::{ObservationService, SessionService};
-use opencode_mem_storage::Storage;
+use opencode_mem_storage::StorageBackend;
 use serde::Serialize;
 use serde_json::json;
 use std::fmt::Display;
@@ -34,7 +34,7 @@ pub(crate) fn mcp_err(msg: impl Display) -> serde_json::Value {
 
 #[expect(clippy::too_many_arguments, reason = "MCP handler needs all service references")]
 pub async fn handle_tool_call(
-    storage: &Storage,
+    storage: &StorageBackend,
     embeddings: Option<Arc<EmbeddingService>>,
     infinite_mem: Option<&InfiniteMemory>,
     _observation_service: &ObservationService,
@@ -65,21 +65,21 @@ pub async fn handle_tool_call(
         McpTool::Important => {
             json!({ "content": [{ "type": "text", "text": WORKFLOW_DOCS }] })
         },
-        McpTool::Search => memory::handle_search(storage, embeddings.as_deref(), &args),
-        McpTool::Timeline => memory::handle_timeline(storage, &args),
-        McpTool::GetObservations => memory::handle_get_observations(storage, &args),
-        McpTool::MemoryGet => memory::handle_memory_get(storage, &args),
-        McpTool::MemoryRecent => memory::handle_memory_recent(storage, &args),
-        McpTool::MemoryHybridSearch => memory::handle_hybrid_search(storage, &args),
+        McpTool::Search => memory::handle_search(storage, embeddings.as_deref(), &args).await,
+        McpTool::Timeline => memory::handle_timeline(storage, &args).await,
+        McpTool::GetObservations => memory::handle_get_observations(storage, &args).await,
+        McpTool::MemoryGet => memory::handle_memory_get(storage, &args).await,
+        McpTool::MemoryRecent => memory::handle_memory_recent(storage, &args).await,
+        McpTool::MemoryHybridSearch => memory::handle_hybrid_search(storage, &args).await,
         McpTool::MemorySemanticSearch => {
-            memory::handle_semantic_search(storage, embeddings.as_deref(), &args)
+            memory::handle_semantic_search(storage, embeddings.as_deref(), &args).await
         },
-        McpTool::SaveMemory => memory::handle_save_memory(storage, embeddings, handle, &args),
-        McpTool::KnowledgeSearch => knowledge::handle_knowledge_search(storage, &args),
-        McpTool::KnowledgeSave => knowledge::handle_knowledge_save(storage, &args),
-        McpTool::KnowledgeGet => knowledge::handle_knowledge_get(storage, &args),
-        McpTool::KnowledgeList => knowledge::handle_knowledge_list(storage, &args),
-        McpTool::KnowledgeDelete => knowledge::handle_knowledge_delete(storage, &args),
+        McpTool::SaveMemory => memory::handle_save_memory(storage, embeddings, handle, &args).await,
+        McpTool::KnowledgeSearch => knowledge::handle_knowledge_search(storage, &args).await,
+        McpTool::KnowledgeSave => knowledge::handle_knowledge_save(storage, &args).await,
+        McpTool::KnowledgeGet => knowledge::handle_knowledge_get(storage, &args).await,
+        McpTool::KnowledgeList => knowledge::handle_knowledge_list(storage, &args).await,
+        McpTool::KnowledgeDelete => knowledge::handle_knowledge_delete(storage, &args).await,
         McpTool::InfiniteExpand => {
             return infinite::handle_infinite_expand(infinite_mem, handle, &args, id).await;
         },

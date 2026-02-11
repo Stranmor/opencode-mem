@@ -5,8 +5,8 @@ use crate::api_types::{
     SessionInitRequest, SessionInitResponse, SessionObservationsRequest,
     SessionObservationsResponse, SessionSummarizeRequest,
 };
-use crate::blocking::blocking_result;
 use crate::AppState;
+use opencode_mem_storage::SessionStore;
 
 use super::session_ops::{create_session, spawn_observation_processing};
 
@@ -16,8 +16,8 @@ pub async fn api_session_init(
 ) -> Result<Json<SessionInitResponse>, StatusCode> {
     let content_session_id = req.content_session_id.ok_or(StatusCode::BAD_REQUEST)?;
     let session_id = uuid::Uuid::new_v4().to_string();
-    let resp =
-        create_session(&state, session_id, content_session_id, req.project, req.user_prompt)?;
+    let resp = create_session(&state, session_id, content_session_id, req.project, req.user_prompt)
+        .await?;
     Ok(Json(resp))
 }
 
@@ -26,9 +26,11 @@ pub async fn api_session_observations(
     Json(req): Json<SessionObservationsRequest>,
 ) -> Result<Json<SessionObservationsResponse>, StatusCode> {
     let content_session_id = req.content_session_id.ok_or(StatusCode::BAD_REQUEST)?;
-    let storage = state.storage.clone();
-    let cid = content_session_id.clone();
-    let session = blocking_result(move || storage.get_session_by_content_id(&cid)).await?;
+    let session =
+        state.storage.get_session_by_content_id(&content_session_id).await.map_err(|e| {
+            tracing::error!("Get session by content id error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     let session_id = session.map(|s| s.id).ok_or(StatusCode::NOT_FOUND)?;
     let resp = spawn_observation_processing(&state, session_id, req.observations);
     Ok(Json(resp))
@@ -41,15 +43,16 @@ pub async fn api_session_summarize(
     let content_session_id = req.content_session_id.ok_or(StatusCode::BAD_REQUEST)?;
 
     // Look up session by content_session_id
-    let storage = state.storage.clone();
-    let cid = content_session_id.clone();
-    let session = blocking_result(move || storage.get_session_by_content_id(&cid)).await?;
+    let session =
+        state.storage.get_session_by_content_id(&content_session_id).await.map_err(|e| {
+            tracing::error!("Get session by content id error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     let session_id = session.map(|s| s.id).ok_or_else(|| {
         tracing::warn!(content_session_id = %content_session_id, "Session not found for summarize");
         StatusCode::NOT_FOUND
     })?;
 
-    // Generate summary from observations already in SQLite
     let cid = content_session_id.clone();
     let summary =
         state.session_service.summarize_session(&session_id, &cid).await.map_err(|e| {

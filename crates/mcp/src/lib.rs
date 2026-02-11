@@ -34,7 +34,7 @@ mod tools;
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_service::{ObservationService, SessionService};
-use opencode_mem_storage::Storage;
+use opencode_mem_storage::StorageBackend;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -73,7 +73,7 @@ pub struct McpError {
 }
 
 pub async fn run_mcp_server(
-    storage: Arc<Storage>,
+    storage: Arc<StorageBackend>,
     embeddings: Option<Arc<EmbeddingService>>,
     infinite_mem: Option<Arc<InfiniteMemory>>,
     observation_service: Arc<ObservationService>,
@@ -153,7 +153,7 @@ pub async fn run_mcp_server(
 }
 
 async fn handle_request(
-    storage: &Storage,
+    storage: &StorageBackend,
     embeddings: Option<Arc<EmbeddingService>>,
     infinite_mem: Option<&InfiniteMemory>,
     observation_service: &ObservationService,

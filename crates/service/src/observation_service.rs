@@ -6,11 +6,12 @@ use opencode_mem_core::{
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
 use opencode_mem_infinite::{tool_event, InfiniteMemory};
 use opencode_mem_llm::LlmClient;
-use opencode_mem_storage::Storage;
+use opencode_mem_storage::traits::{EmbeddingStore, KnowledgeStore, ObservationStore};
+use opencode_mem_storage::StorageBackend;
 use tokio::sync::broadcast;
 
 pub struct ObservationService {
-    storage: Arc<Storage>,
+    storage: Arc<StorageBackend>,
     llm: Arc<LlmClient>,
     infinite_mem: Option<Arc<InfiniteMemory>>,
     event_tx: broadcast::Sender<String>,
@@ -20,7 +21,7 @@ pub struct ObservationService {
 impl ObservationService {
     #[must_use]
     pub const fn new(
-        storage: Arc<Storage>,
+        storage: Arc<StorageBackend>,
         llm: Arc<LlmClient>,
         infinite_mem: Option<Arc<InfiniteMemory>>,
         event_tx: broadcast::Sender<String>,
@@ -80,26 +81,17 @@ impl ObservationService {
 
     pub async fn extract_knowledge(&self, observation: &Observation) {
         match self.llm.maybe_extract_knowledge(observation).await {
-            Ok(Some(knowledge_input)) => {
-                let storage = Arc::clone(&self.storage);
-                let result =
-                    tokio::task::spawn_blocking(move || storage.save_knowledge(knowledge_input))
-                        .await;
-                match result {
-                    Ok(Ok(knowledge)) => {
-                        tracing::info!(
-                            "Auto-extracted knowledge: {} - {}",
-                            knowledge.id,
-                            knowledge.title
-                        );
-                    },
-                    Ok(Err(e)) => {
-                        tracing::warn!("Failed to save extracted knowledge: {}", e);
-                    },
-                    Err(e) => {
-                        tracing::error!("Blocking task failed: {}", e);
-                    },
-                }
+            Ok(Some(knowledge_input)) => match self.storage.save_knowledge(knowledge_input).await {
+                Ok(knowledge) => {
+                    tracing::info!(
+                        "Auto-extracted knowledge: {} - {}",
+                        knowledge.id,
+                        knowledge.title
+                    );
+                },
+                Err(e) => {
+                    tracing::warn!("Failed to save extracted knowledge: {}", e);
+                },
             },
             Ok(None) => {},
             Err(e) => {
@@ -134,10 +126,7 @@ impl ObservationService {
             return Ok(());
         }
 
-        let storage = Arc::clone(&self.storage);
-        let obs = observation.clone();
-        let inserted =
-            tokio::task::spawn_blocking(move || storage.save_observation(&obs)).await??;
+        let inserted = self.storage.save_observation(observation).await?;
         if !inserted {
             tracing::debug!("Skipping duplicate observation: {}", observation.title);
             return Ok(());
@@ -160,28 +149,13 @@ impl ObservationService {
             let embedding = tokio::task::spawn_blocking(move || emb.embed(&text)).await?;
 
             match embedding {
-                Ok(vec) => {
-                    let storage = Arc::clone(&self.storage);
-                    let obs_id = observation.id.clone();
-                    let result =
-                        tokio::task::spawn_blocking(move || storage.store_embedding(&obs_id, &vec))
-                            .await;
-
-                    match result {
-                        Ok(Ok(())) => {
-                            tracing::info!("Stored embedding for {}", observation.id);
-                        },
-                        Ok(Err(e)) => {
-                            tracing::warn!(
-                                "Failed to store embedding for {}: {}",
-                                observation.id,
-                                e
-                            );
-                        },
-                        Err(e) => {
-                            tracing::error!("Blocking task failed: {}", e);
-                        },
-                    }
+                Ok(vec) => match self.storage.store_embedding(&observation.id, &vec).await {
+                    Ok(()) => {
+                        tracing::info!("Stored embedding for {}", observation.id);
+                    },
+                    Err(e) => {
+                        tracing::warn!("Failed to store embedding for {}: {}", observation.id, e);
+                    },
                 },
                 Err(e) => {
                     tracing::warn!("Failed to generate embedding for {}: {}", observation.id, e);

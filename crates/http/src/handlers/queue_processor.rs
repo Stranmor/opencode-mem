@@ -2,11 +2,13 @@ use std::env;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
-use tokio::task::spawn_blocking;
 
 use opencode_mem_core::{is_low_value_observation, ObservationInput, ProjectFilter, ToolOutput};
 use opencode_mem_infinite::tool_event;
-use opencode_mem_storage::{default_visibility_timeout_secs, PendingMessage};
+use opencode_mem_storage::{
+    default_visibility_timeout_secs, ObservationStore, PendingMessage, PendingQueueStore,
+    SessionStore,
+};
 
 use crate::AppState;
 
@@ -80,11 +82,8 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
         return Ok(());
     }
 
-    let storage = Arc::clone(&state.storage);
     let obs_clone = observation.clone();
-    let inserted = spawn_blocking(move || storage.save_observation(&obs_clone))
-        .await
-        .map_err(|e| anyhow::anyhow!("save observation join error: {e}"))??;
+    let inserted = state.storage.save_observation(&obs_clone).await?;
     if !inserted {
         tracing::debug!("Skipping duplicate observation: {}", observation.title);
         return Ok(());
@@ -108,20 +107,15 @@ pub fn start_background_processor(state: Arc<AppState>) {
             }
             tracing::debug!("Background processor: checking queue...");
 
-            let storage = Arc::clone(&state.storage);
             let max_workers = max_queue_workers();
-            let messages = match spawn_blocking(move || {
-                storage.claim_pending_messages(max_workers, default_visibility_timeout_secs())
-            })
-            .await
+            let messages = match state
+                .storage
+                .claim_pending_messages(max_workers, default_visibility_timeout_secs())
+                .await
             {
-                Ok(Ok(msgs)) => msgs,
-                Ok(Err(e)) => {
-                    tracing::error!("Background processor: claim failed: {}", e);
-                    continue;
-                },
+                Ok(msgs) => msgs,
                 Err(e) => {
-                    tracing::error!("Background processor: join error: {}", e);
+                    tracing::error!("Background processor: claim failed: {}", e);
                     continue;
                 },
             };
@@ -145,13 +139,7 @@ pub fn start_background_processor(state: Arc<AppState>) {
                     let result = process_pending_message(&state_clone, &msg).await;
                     match result {
                         Ok(()) => {
-                            let storage = Arc::clone(&state_clone.storage);
-                            let msg_id = msg.id;
-                            if let Err(e) = spawn_blocking(move || storage.complete_message(msg_id))
-                                .await
-                                .map_err(|e| anyhow::anyhow!("join error: {e}"))
-                                .and_then(|r| r.map_err(|e| anyhow::anyhow!("{e}")))
-                            {
+                            if let Err(e) = state_clone.storage.complete_message(msg.id).await {
                                 tracing::error!(
                                     "Background: complete message {} error: {}",
                                     msg.id,
@@ -161,14 +149,7 @@ pub fn start_background_processor(state: Arc<AppState>) {
                         },
                         Err(e) => {
                             tracing::error!("Background: process message {} failed: {}", msg.id, e);
-                            let storage = Arc::clone(&state_clone.storage);
-                            let msg_id = msg.id;
-                            if let Err(e) =
-                                spawn_blocking(move || storage.fail_message(msg_id, true))
-                                    .await
-                                    .map_err(|e| anyhow::anyhow!("join error: {e}"))
-                                    .and_then(|r| r.map_err(|e| anyhow::anyhow!("{e}")))
-                            {
+                            if let Err(e) = state_clone.storage.fail_message(msg.id, true).await {
                                 tracing::error!("Background: fail message {} error: {}", msg.id, e);
                             }
                         },
@@ -192,13 +173,13 @@ pub fn start_background_processor(state: Arc<AppState>) {
 ///
 /// # Errors
 /// Returns error if database operation fails.
-pub fn run_startup_recovery(state: &AppState) -> anyhow::Result<usize> {
-    let released = state.storage.release_stale_messages(default_visibility_timeout_secs())?;
+pub async fn run_startup_recovery(state: &AppState) -> anyhow::Result<usize> {
+    let released = state.storage.release_stale_messages(default_visibility_timeout_secs()).await?;
     if released > 0 {
         tracing::info!("Startup recovery: released {} stale messages back to pending", released);
     }
 
-    let closed = state.storage.close_stale_sessions(24)?;
+    let closed = state.storage.close_stale_sessions(24).await?;
     if closed > 0 {
         tracing::info!("Startup recovery: closed {} stale sessions (>24h active)", closed);
     }

@@ -45,7 +45,7 @@ use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_service::{ObservationService, SessionService};
-use opencode_mem_storage::Storage;
+use opencode_mem_storage::StorageBackend;
 
 pub use api_types::{ReadinessResponse, Settings, VersionResponse};
 pub use handlers::queue_processor::{run_startup_recovery, start_background_processor};
@@ -90,8 +90,8 @@ pub fn start_compression_pipeline(infinite_mem: Arc<InfiniteMemory>) {
 /// Contains database connections, LLM client, and service instances.
 /// Wrapped in `Arc` for thread-safe sharing across handlers.
 pub struct AppState {
-    /// `SQLite` storage with connection pool
-    pub storage: Arc<Storage>,
+    /// Storage backend (SQLite or PostgreSQL)
+    pub storage: Arc<StorageBackend>,
     /// LLM client for AI operations (compression, knowledge extraction)
     pub llm: Arc<LlmClient>,
     /// Semaphore limiting concurrent queue processing

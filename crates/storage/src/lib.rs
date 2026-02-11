@@ -19,16 +19,24 @@
 #![allow(clippy::single_call_fn, reason = "Helper functions improve readability")]
 #![allow(clippy::undocumented_unsafe_blocks, reason = "FFI safety is documented in vec_init")]
 
+pub mod backend;
 mod migrations;
 mod pending_queue;
+mod sqlite_async;
 mod storage;
 #[cfg(test)]
 mod tests;
+pub mod traits;
 mod vec_init;
 
+pub use backend::StorageBackend;
 pub use pending_queue::{
     default_visibility_timeout_secs, max_retry_count, PaginatedResult, PendingMessage,
     PendingMessageStatus, QueueStats, StorageStats,
 };
 pub use storage::Storage;
+pub use traits::{
+    EmbeddingStore, KnowledgeStore, ObservationStore, PendingQueueStore, PromptStore, SearchStore,
+    SessionStore, StatsStore, SummaryStore,
+};
 pub use vec_init::init_sqlite_vec;

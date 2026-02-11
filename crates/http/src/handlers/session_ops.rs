@@ -11,7 +11,7 @@ use crate::AppState;
 /// Both legacy (path-based `session_db_id`) and API (generated UUID) handlers
 /// provide their own `session_db_id` and `content_session_id` — this function
 /// handles the shared `Session::new()` + `init_session()` logic.
-pub(crate) fn create_session(
+pub(crate) async fn create_session(
     state: &Arc<AppState>,
     session_db_id: String,
     content_session_id: String,
@@ -29,7 +29,7 @@ pub(crate) fn create_session(
         SessionStatus::Active,
         0,
     );
-    state.session_service.init_session(session).map_err(|e| {
+    state.session_service.init_session(session).await.map_err(|e| {
         tracing::error!("Session init failed: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;

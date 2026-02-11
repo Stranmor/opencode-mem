@@ -1,11 +1,12 @@
 use anyhow::Result;
 use opencode_mem_embeddings::{EmbeddingProvider as _, EmbeddingService};
-use opencode_mem_storage::{init_sqlite_vec, Storage};
+use opencode_mem_storage::traits::{EmbeddingStore, ObservationStore, SearchStore, StatsStore};
+use opencode_mem_storage::{init_sqlite_vec, StorageBackend};
 use std::collections::HashSet;
 
 use crate::{ensure_db_dir, get_db_path};
 
-pub(crate) fn run_search(
+pub(crate) async fn run_search(
     query: String,
     limit: usize,
     project: Option<String>,
@@ -13,63 +14,65 @@ pub(crate) fn run_search(
 ) -> Result<()> {
     let db_path = get_db_path();
     ensure_db_dir(&db_path)?;
-    let storage = Storage::new(&db_path)?;
-    let results = storage.search_with_filters(
-        Some(&query),
-        project.as_deref(),
-        obs_type.as_deref(),
-        None,
-        None,
-        limit,
-    )?;
+    let storage = StorageBackend::new_sqlite(&db_path)?;
+    let results = storage
+        .search_with_filters(
+            Some(&query),
+            project.as_deref(),
+            obs_type.as_deref(),
+            None,
+            None,
+            limit,
+        )
+        .await?;
     println!("{}", serde_json::to_string_pretty(&results)?);
     Ok(())
 }
 
-pub(crate) fn run_stats() -> Result<()> {
+pub(crate) async fn run_stats() -> Result<()> {
     let db_path = get_db_path();
     ensure_db_dir(&db_path)?;
-    let storage = Storage::new(&db_path)?;
-    let stats = storage.get_stats()?;
+    let storage = StorageBackend::new_sqlite(&db_path)?;
+    let stats = storage.get_stats().await?;
     println!("{}", serde_json::to_string_pretty(&stats)?);
     Ok(())
 }
 
-pub(crate) fn run_projects() -> Result<()> {
+pub(crate) async fn run_projects() -> Result<()> {
     let db_path = get_db_path();
     ensure_db_dir(&db_path)?;
-    let storage = Storage::new(&db_path)?;
-    let projects = storage.get_all_projects()?;
+    let storage = StorageBackend::new_sqlite(&db_path)?;
+    let projects = storage.get_all_projects().await?;
     println!("{}", serde_json::to_string_pretty(&projects)?);
     Ok(())
 }
 
-pub(crate) fn run_recent(limit: usize) -> Result<()> {
+pub(crate) async fn run_recent(limit: usize) -> Result<()> {
     let db_path = get_db_path();
     ensure_db_dir(&db_path)?;
-    let storage = Storage::new(&db_path)?;
-    let results = storage.get_recent(limit)?;
+    let storage = StorageBackend::new_sqlite(&db_path)?;
+    let results = storage.get_recent(limit).await?;
     println!("{}", serde_json::to_string_pretty(&results)?);
     Ok(())
 }
 
-pub(crate) fn run_get(id: String) -> Result<()> {
+pub(crate) async fn run_get(id: String) -> Result<()> {
     let db_path = get_db_path();
     ensure_db_dir(&db_path)?;
-    let storage = Storage::new(&db_path)?;
-    match storage.get_by_id(&id)? {
+    let storage = StorageBackend::new_sqlite(&db_path)?;
+    match storage.get_by_id(&id).await? {
         Some(obs) => println!("{}", serde_json::to_string_pretty(&obs)?),
         None => println!("Observation not found: {id}"),
     }
     Ok(())
 }
 
-pub(crate) fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
+pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
     init_sqlite_vec();
 
     let db_path = get_db_path();
     ensure_db_dir(&db_path)?;
-    let storage = Storage::new(&db_path)?;
+    let storage = StorageBackend::new_sqlite(&db_path)?;
 
     println!("Initializing embedding model (first run downloads ~100MB)...");
     let embeddings = EmbeddingService::new()?;
@@ -77,7 +80,7 @@ pub(crate) fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
     let mut total = 0;
     let mut failed_ids: HashSet<String> = HashSet::new();
     loop {
-        let all_observations = storage.get_observations_without_embeddings(batch_size)?;
+        let all_observations = storage.get_observations_without_embeddings(batch_size).await?;
         if all_observations.is_empty() {
             break;
         }
@@ -101,7 +104,7 @@ pub(crate) fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
 
             match embeddings.embed(&text) {
                 Ok(vec) => {
-                    if let Err(e) = storage.store_embedding(&obs.id, &vec) {
+                    if let Err(e) = storage.store_embedding(&obs.id, &vec).await {
                         eprintln!("Failed to store embedding for {}: {}", obs.id, e);
                         failed_ids.insert(obs.id.clone());
                     } else {

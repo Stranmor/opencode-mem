@@ -2,7 +2,8 @@
 
 use anyhow::{Context, Result};
 use opencode_mem_core::{KnowledgeInput, KnowledgeType};
-use opencode_mem_storage::Storage;
+use opencode_mem_storage::traits::KnowledgeStore;
+use opencode_mem_storage::StorageBackend;
 use regex::Regex;
 use std::path::Path;
 
@@ -105,15 +106,16 @@ fn parse_insights(content: &str) -> Vec<ParsedInsight> {
 }
 
 /// Check if knowledge with given title already exists
-fn title_exists(storage: &Storage, title: &str) -> bool {
+async fn title_exists(storage: &StorageBackend, title: &str) -> bool {
     storage
         .search_knowledge(title, 10)
+        .await
         .map(|results| results.iter().any(|r| r.knowledge.title == title))
         .unwrap_or(false)
 }
 
 /// Import insights from a single file
-fn import_file(storage: &Storage, path: &Path) -> Result<(usize, usize)> {
+async fn import_file(storage: &StorageBackend, path: &Path) -> Result<(usize, usize)> {
     let content = std::fs::read_to_string(path)
         .with_context(|| format!("Failed to read file: {}", path.display()))?;
 
@@ -122,7 +124,7 @@ fn import_file(storage: &Storage, path: &Path) -> Result<(usize, usize)> {
     let mut skipped = 0;
 
     for insight in insights {
-        if title_exists(storage, &insight.title) {
+        if title_exists(storage, &insight.title).await {
             skipped += 1;
             continue;
         }
@@ -144,7 +146,7 @@ fn import_file(storage: &Storage, path: &Path) -> Result<(usize, usize)> {
             None,
         );
 
-        storage.save_knowledge(input)?;
+        storage.save_knowledge(input).await?;
         imported += 1;
     }
 
@@ -152,17 +154,17 @@ fn import_file(storage: &Storage, path: &Path) -> Result<(usize, usize)> {
 }
 
 /// Run import-insights command
-pub(crate) fn run(file: Option<String>, dir: Option<String>) -> Result<()> {
+pub(crate) async fn run(file: Option<String>, dir: Option<String>) -> Result<()> {
     let db_path = get_db_path();
     ensure_db_dir(&db_path)?;
-    let storage = Storage::new(&db_path)?;
+    let storage = StorageBackend::new_sqlite(&db_path)?;
 
     let mut total_imported = 0;
     let mut total_skipped = 0;
 
     if let Some(file_path) = file {
         let path = Path::new(&file_path);
-        let (imported, skipped) = import_file(&storage, path)?;
+        let (imported, skipped) = import_file(&storage, path).await?;
         total_imported += imported;
         total_skipped += skipped;
         println!("Processed: {}", path.display());
@@ -174,7 +176,7 @@ pub(crate) fn run(file: Option<String>, dir: Option<String>) -> Result<()> {
             let entry = entry?;
             let path = entry.path();
             if path.extension().is_some_and(|e| e == "md") {
-                match import_file(&storage, &path) {
+                match import_file(&storage, &path).await {
                     Ok((imported, skipped)) => {
                         total_imported += imported;
                         total_skipped += skipped;
