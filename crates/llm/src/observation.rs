@@ -38,70 +38,55 @@ impl LlmClient {
         let filtered_title = filter_private_content(&input.output.title);
 
         let prompt = format!(
-            r#"Analyze this tool execution and classify its noise level for memory storage.
+            r#"You are a STRICT memory filter. Your job is to decide if this tool output contains a LESSON WORTH REMEMBERING across sessions.
 
 Tool: {}
 Output Title: {}
 Output Content: {}
 
-TITLE RULES:
-- The title MUST describe WHAT WAS LEARNED or DECIDED, NOT what action was performed.
-- BAD titles to avoid:
-  - "Updated warp_provisioner.rs" (narrates an action)
-  - "Discovered ExportPreset structures" (narrates reading code)
-  - "Syntax error in model_roles.rs" (transient compilation error)
-  - "File edit successful" (tool status message)
-  - "Refactored error handling" (narrates a code change)
-  - "Read configuration file" (narrates a file read)
-- GOOD titles to emulate:
-  - "IsolationManager uses HRW hashing for deterministic proxy assignment"
-  - "PostgreSQL streaming replication requires wal_level=replica on primary"
-  - "fastembed-rs AllMiniLML6V2 produces 384-dimensional vectors"
-  - "SQLite FTS5 MATCH syntax requires double-quoting phrases"
-  - "Axum path params migrated from :param to {{param}} syntax"
+ONLY SAVE observations that match ONE of these categories:
 
-NOISE LEVELS (from most to least important):
-- "critical": Major architectural decisions, breaking changes, security issues
-- "high": Project-specific gotchas, user preferences, unique discoveries
-- "medium": Useful context that might help later (default)
-- "low": Routine operations, common patterns, obvious facts
-- "negligible": Pure noise - file listings, build output, trivial reads
+1. GOTCHA: Something that broke, surprised you, or behaved unexpectedly.
+   "SQLite ALTER TABLE does not support adding STORED generated columns"
+   "Claude thinking blocks cause Vertex AI API rejection"
+   "Lock ordering must be assignments→usage→proxy_pool to avoid deadlocks"
 
-CLASSIFY AS CRITICAL/HIGH if it contains:
-- PROJECT DECISION: Why this project chose X over Y (architecture, library, pattern)
-- PROJECT-SPECIFIC GOTCHA: Something unique to THIS codebase/API
-- USER PREFERENCE: How this user likes things done
-- UNIQUE DISCOVERY: Something about THIS project's dependencies/APIs
+2. BUGFIX: A bug was found AND fixed. What was wrong, why, and how it was solved.
+   "Advisory lock leak on connection drop — fixed with after_release hook"
+   "Stream timeout sent end_turn causing agents to stop — changed to max_tokens"
 
-CLASSIFY AS LOW/NEGLIGIBLE if:
-- Generic programming patterns (async/await, error handling)
-- Common library usage (how to use tokio, reqwest, serde)
-- Routine operations (file reads, git commands, builds)
-- Obvious facts (Rust needs cargo, Python needs pip)
+3. DECISION (critical only): An irreversible architectural choice with clear reasoning.
+   "Chose sqlite-vec over ChromaDB for vector storage — no external dependency"
+   "Hermes Core uses isolation-only design to prevent Telegram account bans"
 
-The following MUST be negligible:
-- File edit confirmations ("file was modified", "edit applied")
-- Build/compilation output (success or failure)
-- Transient errors (syntax errors, type errors that will be fixed)
-- Tool status messages (read complete, write complete)
-- File/directory listings without insights
-- Git operations (commit, push, status) without decisions
-- TODO/task list updates
+4. FEATURE (critical only): A significant new capability was completed.
+   "Implemented hybrid search: FTS5 BM25 50% + vector cosine similarity 50%"
 
-If the tool output does not contain any project-specific insight, architectural decision, gotcha, or factual discovery — classify as negligible.
+EVERYTHING ELSE IS NEGLIGIBLE. Specifically, ALWAYS mark as negligible:
+- Reading/writing files (routine work, not a lesson)
+- Code structure descriptions ("module X exports Y") — that's what code is for
+- Build/test output (pass or fail)
+- Refactoring without a lesson ("extracted method X")
+- Configuration changes without a gotcha
+- Generic programming knowledge (how async works, how to use serde)
+- Discovering how existing code works (read the code next time)
+- Status updates, progress reports, task lists
+- Metadata about the system itself ("database has N records")
+
+THE DEFAULT IS NEGLIGIBLE. When in doubt, discard. Only save what would genuinely help a future agent avoid a mistake or understand a non-obvious decision.
 
 Return JSON:
-- noise_level: one of "critical", "high", "medium", "low", "negligible"
-- noise_reason: brief explanation of classification (max 100 chars)
-- type: one of "decision", "discovery", "gotcha", "preference", "change", "bugfix", "refactor", "feature"
-- title: what was learned (max 80 chars)
+- noise_level: "critical", "high", or "negligible" (NO medium/low — binary choice: worth saving or not)
+- noise_reason: why this is/isn't worth remembering (max 100 chars)
+- type: "gotcha", "bugfix", "decision", or "feature"
+- title: the lesson learned (max 80 chars, must be a complete statement of fact)
 - subtitle: project/context this applies to
-- narrative: why this matters
-- facts: actionable facts
-- concepts: from ["how-it-works", "why-it-exists", "what-changed", "problem-solution", "gotcha", "pattern", "trade-off"]
-- files_read: file paths
-- files_modified: file paths
-- keywords: terms for search"#,
+- narrative: the full lesson — what happened, why, and what to do differently
+- facts: specific actionable facts (file paths, commands, error messages)
+- concepts: from ["problem-solution", "gotcha", "pattern", "trade-off"]
+- files_read: file paths involved
+- files_modified: file paths changed
+- keywords: search terms"#,
             input.tool,
             filtered_title,
             truncate(&filtered_output, MAX_OUTPUT_LEN),
