@@ -20,13 +20,21 @@
 #![allow(clippy::undocumented_unsafe_blocks, reason = "FFI safety is documented in vec_init")]
 
 pub mod backend;
+#[cfg(feature = "sqlite")]
 mod migrations;
 mod pending_queue;
+#[cfg(feature = "postgres")]
+pub mod pg_migrations;
+#[cfg(feature = "postgres")]
+pub mod pg_storage;
+#[cfg(feature = "sqlite")]
 mod sqlite_async;
+#[cfg(feature = "sqlite")]
 mod storage;
 #[cfg(test)]
 mod tests;
 pub mod traits;
+#[cfg(feature = "sqlite")]
 mod vec_init;
 
 pub use backend::StorageBackend;
@@ -34,9 +42,13 @@ pub use pending_queue::{
     default_visibility_timeout_secs, max_retry_count, PaginatedResult, PendingMessage,
     PendingMessageStatus, QueueStats, StorageStats,
 };
+#[cfg(feature = "postgres")]
+pub use pg_storage::PgStorage;
+#[cfg(feature = "sqlite")]
 pub use storage::Storage;
 pub use traits::{
     EmbeddingStore, KnowledgeStore, ObservationStore, PendingQueueStore, PromptStore, SearchStore,
     SessionStore, StatsStore, SummaryStore,
 };
+#[cfg(feature = "sqlite")]
 pub use vec_init::init_sqlite_vec;

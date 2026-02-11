@@ -1,5 +1,6 @@
 //! Unified storage backend with enum dispatch.
 
+#[cfg(feature = "sqlite")]
 use std::path::Path;
 
 use anyhow::Result;
@@ -15,29 +16,34 @@ use crate::traits::{
     SessionStore, StatsStore, SummaryStore,
 };
 
-/// Dispatch a trait method call to the active backend variant.
 macro_rules! dispatch {
     ($self:expr, $trait:path, $method:ident ( $($arg:expr),* $(,)? )) => {
         match $self {
+            #[cfg(feature = "sqlite")]
             StorageBackend::Sqlite(s) => <crate::Storage as $trait>::$method(s, $($arg),*).await,
+            #[cfg(feature = "postgres")]
+            StorageBackend::Postgres(s) => <crate::pg_storage::PgStorage as $trait>::$method(s, $($arg),*).await,
         }
     };
 }
 
-/// Backend-agnostic storage. Currently supports SQLite; PostgreSQL variant
-/// will be added in a later phase.
 #[derive(Clone, Debug)]
 pub enum StorageBackend {
+    #[cfg(feature = "sqlite")]
     Sqlite(crate::Storage),
+    #[cfg(feature = "postgres")]
+    Postgres(crate::pg_storage::PgStorage),
 }
 
 impl StorageBackend {
-    /// Create a new SQLite-backed storage.
-    ///
-    /// # Errors
-    /// Returns error if database initialization fails.
+    #[cfg(feature = "sqlite")]
     pub fn new_sqlite(db_path: &Path) -> Result<Self> {
         Ok(Self::Sqlite(crate::Storage::new(db_path)?))
+    }
+
+    #[cfg(feature = "postgres")]
+    pub async fn new_postgres(database_url: &str) -> Result<Self> {
+        Ok(Self::Postgres(crate::pg_storage::PgStorage::new(database_url).await?))
     }
 }
 
