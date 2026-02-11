@@ -8,7 +8,7 @@ use std::str::FromStr as _;
 
 use crate::storage::{
     build_fts_query, coerce_to_sql, get_conn, log_row_error, map_search_result,
-    map_search_result_default_score, parse_json, Storage,
+    map_search_result_default_score, parse_json, parse_observation_type, Storage,
 };
 
 impl Storage {
@@ -75,7 +75,8 @@ impl Storage {
                         row.get(0)?,
                         row.get(1)?,
                         row.get(2)?,
-                        parse_json(&row.get::<_, String>(3)?)?,
+                        parse_observation_type(&row.get::<_, String>(3)?)
+                            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?,
                         noise_level,
                         0.0,
                     ),

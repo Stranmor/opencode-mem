@@ -4,7 +4,10 @@ use opencode_mem_core::{NoiseLevel, Observation, ObservationType, SearchResult};
 use rusqlite::params;
 use std::str::FromStr as _;
 
-use super::{coerce_to_sql, escape_like_pattern, get_conn, log_row_error, parse_json, Storage};
+use super::{
+    coerce_to_sql, escape_like_pattern, get_conn, log_row_error, parse_json,
+    parse_observation_type, Storage,
+};
 
 impl Storage {
     /// Save observation to database. Returns `true` if inserted, `false` if
@@ -23,7 +26,7 @@ impl Storage {
                 obs.id,
                 obs.session_id,
                 obs.project,
-                serde_json::to_string(&obs.observation_type)?,
+                obs.observation_type.as_str(),
                 obs.title,
                 obs.subtitle,
                 obs.narrative,
@@ -80,7 +83,8 @@ impl Storage {
                     row.get(0)?,
                     row.get(1)?,
                     row.get(2)?,
-                    parse_json(&row.get::<_, String>(3)?)?,
+                    parse_observation_type(&row.get::<_, String>(3)?)
+                        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?,
                     noise_level,
                     1.0,
                 ))
@@ -188,7 +192,8 @@ impl Storage {
                     row.get(0)?,
                     row.get(1)?,
                     row.get(2)?,
-                    parse_json(&row.get::<_, String>(3)?)?,
+                    parse_observation_type(&row.get::<_, String>(3)?)
+                        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?,
                     noise_level,
                     1.0,
                 ))
@@ -200,8 +205,8 @@ impl Storage {
 
     pub(crate) fn row_to_observation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Observation> {
         let obs_type_str: String = row.get(3)?;
-        let obs_type: ObservationType = serde_json::from_str(&obs_type_str)
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+        let obs_type: ObservationType = parse_observation_type(&obs_type_str)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?;
         let noise_str: Option<String> = row.get(14)?;
         let noise_level = noise_str.and_then(|s| NoiseLevel::from_str(&s).ok()).unwrap_or_default();
         let noise_reason: Option<String> = row.get(15)?;

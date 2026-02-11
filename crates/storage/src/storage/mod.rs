@@ -38,10 +38,12 @@ mod summaries;
 
 use anyhow::Result;
 use opencode_mem_core::NoiseLevel;
+use opencode_mem_core::ObservationType;
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
 use std::path::Path;
+use std::str::FromStr as _;
 
 use crate::migrations;
 use crate::vec_init::init_sqlite_vec;
@@ -65,6 +67,15 @@ pub(crate) fn parse_json<T: serde::de::DeserializeOwned>(s: &str) -> rusqlite::R
     serde_json::from_str(s).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))
 }
 
+/// Parse `ObservationType` from a DB column value.
+///
+/// Handles both legacy format (JSON-quoted `"discovery"`) and
+/// current format (plain string `discovery`).
+pub(crate) fn parse_observation_type(s: &str) -> std::result::Result<ObservationType, String> {
+    let stripped = s.trim_matches('"');
+    ObservationType::from_str(stripped)
+}
+
 /// Log row read errors and filter them out
 pub(crate) fn log_row_error<T>(result: rusqlite::Result<T>) -> Option<T> {
     match result {
@@ -86,7 +97,8 @@ pub(crate) fn map_search_result(
         row.get(0)?,
         row.get(1)?,
         row.get(2)?,
-        parse_json(&row.get::<_, String>(3)?)?,
+        parse_observation_type(&row.get::<_, String>(3)?)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?,
         noise_level,
         row.get(5)?,
     ))
@@ -102,7 +114,8 @@ pub(crate) fn map_search_result_default_score(
         row.get(0)?,
         row.get(1)?,
         row.get(2)?,
-        parse_json(&row.get::<_, String>(3)?)?,
+        parse_observation_type(&row.get::<_, String>(3)?)
+            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?,
         noise_level,
         1.0,
     ))

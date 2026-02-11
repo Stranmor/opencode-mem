@@ -263,4 +263,7 @@ pub trait EmbeddingStore: Send + Sync {
 
     /// Get observations that don't have embeddings yet.
     async fn get_observations_without_embeddings(&self, limit: usize) -> Result<Vec<Observation>>;
+
+    /// Drop and recreate the embedding index, forcing re-embedding of all observations.
+    async fn clear_embeddings(&self) -> Result<()>;
 }

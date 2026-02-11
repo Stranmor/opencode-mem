@@ -25,6 +25,22 @@ impl Storage {
         Ok(())
     }
 
+    /// Drops and recreates the `observations_vec` virtual table,
+    /// causing all observations to be re-embedded by the background loop.
+    ///
+    /// # Errors
+    /// Returns error if database operation fails.
+    pub fn clear_embeddings(&self) -> Result<()> {
+        let conn = get_conn(&self.pool)?;
+        conn.execute_batch(
+            "DROP TABLE IF EXISTS observations_vec;
+             CREATE VIRTUAL TABLE IF NOT EXISTS observations_vec USING vec0(
+                 embedding float[384] distance_metric=cosine
+             );",
+        )?;
+        Ok(())
+    }
+
     /// Returns observations that don't have embeddings yet.
     ///
     /// # Errors

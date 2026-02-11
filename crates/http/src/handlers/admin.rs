@@ -18,6 +18,7 @@ use crate::api_types::{
     ToggleMcpRequest, UpdateBranchResponse, UpdateSettingsRequest,
 };
 use crate::AppState;
+use opencode_mem_storage::EmbeddingStore;
 
 pub async fn get_settings(
     State(state): State<Arc<AppState>>,
@@ -205,6 +206,16 @@ pub async fn admin_restart(
     Ok(Json(AdminResponse {
         success: true,
         message: "Restart initiated (process will exit, systemd will restart)".to_owned(),
+    }))
+}
+
+pub async fn rebuild_embeddings(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<AdminResponse>, StatusCode> {
+    state.storage.clear_embeddings().await.map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(AdminResponse {
+        success: true,
+        message: "Embeddings cleared. Re-embedding will start automatically.".to_owned(),
     }))
 }
 

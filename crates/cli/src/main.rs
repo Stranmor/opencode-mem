@@ -86,6 +86,8 @@ enum Commands {
     },
     #[command(subcommand)]
     Hook(HookCommands),
+    #[cfg(all(feature = "sqlite", feature = "postgres"))]
+    Migrate,
 }
 
 #[must_use]
@@ -177,6 +179,10 @@ async fn main() -> Result<()> {
         },
         Commands::Hook(hook_cmd) => {
             commands::hook::run(hook_cmd).await?;
+        },
+        #[cfg(all(feature = "sqlite", feature = "postgres"))]
+        Commands::Migrate => {
+            commands::migrate::run().await?;
         },
     }
 

@@ -367,4 +367,8 @@ impl EmbeddingStore for StorageBackend {
     async fn get_observations_without_embeddings(&self, limit: usize) -> Result<Vec<Observation>> {
         dispatch!(self, EmbeddingStore, get_observations_without_embeddings(limit))
     }
+
+    async fn clear_embeddings(&self) -> Result<()> {
+        dispatch!(self, EmbeddingStore, clear_embeddings())
+    }
 }

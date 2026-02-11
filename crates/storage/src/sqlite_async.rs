@@ -457,4 +457,9 @@ impl EmbeddingStore for Storage {
         let s = self.clone();
         blocking(move || s.get_observations_without_embeddings(limit)).await
     }
+
+    async fn clear_embeddings(&self) -> Result<()> {
+        let s = self.clone();
+        blocking(move || s.clear_embeddings()).await
+    }
 }

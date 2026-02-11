@@ -177,6 +177,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/instructions", get(handlers::admin::get_instructions))
         .route("/api/admin/restart", post(handlers::admin::admin_restart))
         .route("/api/admin/shutdown", post(handlers::admin::admin_shutdown))
+        .route("/api/admin/rebuild-embeddings", post(handlers::admin::rebuild_embeddings))
         .route("/api/unified-search", get(handlers::search::unified_search))
         .route("/api/unified-timeline", get(handlers::search::unified_timeline))
         .route("/api/decisions", get(handlers::context::get_decisions))

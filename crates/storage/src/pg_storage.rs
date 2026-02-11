@@ -176,7 +176,7 @@ fn row_to_knowledge(row: &sqlx::postgres::PgRow) -> Result<GlobalKnowledge> {
         parse_json_value(&source_projects),
         parse_json_value(&source_observations),
         row.try_get("confidence")?,
-        row.try_get("usage_count")?,
+        i64::from(row.try_get::<i32, _>("usage_count")?),
         last_used_at.map(|d| d.to_rfc3339()),
         created_at.to_rfc3339(),
         updated_at.to_rfc3339(),
@@ -249,7 +249,7 @@ impl ObservationStore for PgStorage {
         .bind(&obs.id)
         .bind(&obs.session_id)
         .bind(&obs.project)
-        .bind(serde_json::to_string(&obs.observation_type)?)
+        .bind(obs.observation_type.as_str())
         .bind(&obs.title)
         .bind(&obs.subtitle)
         .bind(&obs.narrative)
@@ -465,7 +465,7 @@ impl KnowledgeStore for PgStorage {
             serde_json::Value,
             serde_json::Value,
             f64,
-            i64,
+            i32,
             Option<DateTime<Utc>>,
         )> = sqlx::query_as(
             "SELECT id, created_at, triggers, source_projects, source_observations,
@@ -538,7 +538,7 @@ impl KnowledgeStore for PgStorage {
                 source_projects,
                 source_observations,
                 confidence,
-                usage_count,
+                i64::from(usage_count),
                 last_used_at.map(|d| d.to_rfc3339()),
                 created_at.to_rfc3339(),
                 now.to_rfc3339(),
@@ -620,7 +620,7 @@ impl KnowledgeStore for PgStorage {
         }
         let rows = sqlx::query(&format!(
             "SELECT {KNOWLEDGE_COLUMNS},
-                    ts_rank_cd(search_vec, to_tsquery('english', $1)) as score
+                    ts_rank_cd(search_vec, to_tsquery('english', $1))::float8 as score
              FROM global_knowledge
              WHERE search_vec @@ to_tsquery('english', $1)
              ORDER BY score DESC
@@ -1653,5 +1653,10 @@ impl EmbeddingStore for PgStorage {
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_observation).collect()
+    }
+
+    async fn clear_embeddings(&self) -> Result<()> {
+        sqlx::query("UPDATE observations SET embedding = NULL").execute(&self.pool).await?;
+        Ok(())
     }
 }

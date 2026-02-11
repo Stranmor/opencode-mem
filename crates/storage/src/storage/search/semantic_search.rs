@@ -9,7 +9,8 @@ use opencode_mem_core::{NoiseLevel, SearchResult};
 use rusqlite::params;
 
 use crate::storage::{
-    build_fts_query, coerce_to_sql, get_conn, log_row_error, map_search_result, parse_json, Storage,
+    build_fts_query, coerce_to_sql, get_conn, log_row_error, map_search_result,
+    parse_observation_type, Storage,
 };
 
 impl Storage {
@@ -214,7 +215,8 @@ impl Storage {
                     id,
                     row.get(1)?,
                     row.get(2)?,
-                    parse_json(&row.get::<_, String>(3)?)?,
+                    parse_observation_type(&row.get::<_, String>(3)?)
+                        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?,
                     noise_level,
                     score,
                 ))
