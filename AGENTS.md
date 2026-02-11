@@ -16,7 +16,7 @@ Last reviewed commit: `b2ddf59db46cf380964379e9ba2d7279c67fc12b`
 | Component | Status | Details |
 |-----------|--------|---------|
 | MCP Tools | ✅ 17 tools | search, timeline, get_observations, memory_*, knowledge_*, infinite_*, save_memory |
-| Database | ✅ | SQLite + FTS5, migrations v1-v10, r2d2 pool |
+| Database | ✅ | PostgreSQL primary (pgvector + tsvector/GIN) + SQLite fallback (FTS5 + sqlite-vec), enum dispatch |
 | CLI | ✅ 100% | serve, mcp, search, stats, projects, recent, get, hook (context, session-init, observe, summarize) |
 | HTTP API | ✅ 100% | 65 endpoints (upstream has 56) |
 | Storage | ✅ 100% | Core tables, session_summaries, pending queue |
@@ -41,7 +41,7 @@ Last reviewed commit: `b2ddf59db46cf380964379e9ba2d7279c67fc12b`
 |---------|--------|-------|
 | **Infinite Memory** | ✅ Ready | PostgreSQL + pgvector backend for long-term AGI memory. Session isolation, hierarchical summaries (5min→hour→day), content truncation. Enabled via INFINITE_MEMORY_URL. **Raw events are NEVER deleted** — drill-down API allows zooming from any summary back to original events. |
 | **Dynamic Memory** | ✅ Ready | Solves "static summaries" problem. **Deep Zoom:** 4 HTTP endpoints (`/api/infinite/expand_summary/:id`, `/time_range`, `/drill_hour/:id`, `/drill_minute/:id`) for drilling down from summaries to raw events. **Structured Metadata:** `SummaryEntities` (files, functions, libraries, errors, decisions) extracted via `response_format: json_object`. Enables fact-based search even when text summary is vague. |
-| **Semantic Search** | ✅ Ready | fastembed-rs (AllMiniLML6V2, 384d) + sqlite-vec for cosine similarity. Hybrid search: FTS5 BM25 (50%) + vector similarity (50%). HTTP endpoint: `/semantic-search`. |
+| **Semantic Search** | ✅ Ready | fastembed-rs (AllMiniLML6V2, 384d). SQLite: sqlite-vec. PostgreSQL: pgvector. Hybrid search: FTS BM25 (50%) + vector similarity (50%). HTTP endpoint: `/semantic-search?q=...`. |
 
 ## Upstream Sync
 

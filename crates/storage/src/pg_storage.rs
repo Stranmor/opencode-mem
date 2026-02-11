@@ -1231,7 +1231,7 @@ impl SearchStore for PgStorage {
         }
         let rows = sqlx::query(
             "SELECT id, title, subtitle, observation_type, noise_level,
-                    ts_rank_cd(search_vec, to_tsquery('english', $1)) as score
+                    ts_rank_cd(search_vec, to_tsquery('english', $1))::float8 as score
                FROM observations
                WHERE search_vec @@ to_tsquery('english', $1)
                ORDER BY score DESC
@@ -1253,7 +1253,7 @@ impl SearchStore for PgStorage {
 
         let rows = sqlx::query(
             "SELECT id, title, subtitle, observation_type, noise_level, keywords,
-                    ts_rank_cd(search_vec, to_tsquery('english', $1)) as fts_score
+                    ts_rank_cd(search_vec, to_tsquery('english', $1))::float8 as fts_score
                FROM observations
                WHERE search_vec @@ to_tsquery('english', $1)
                ORDER BY fts_score DESC
@@ -1356,7 +1356,7 @@ impl SearchStore for PgStorage {
                 let fts_cond = format!("search_vec @@ to_tsquery('english', ${param_idx})");
                 param_idx += 1;
                 let score_expr = format!(
-                    "ts_rank_cd(search_vec, to_tsquery('english', ${})) as score",
+                    "ts_rank_cd(search_vec, to_tsquery('english', ${}))::float8 as score",
                     param_idx - 1
                 );
                 let extra_where = if conditions.is_empty() {
@@ -1504,7 +1504,7 @@ impl SearchStore for PgStorage {
 
         if !tsquery.is_empty() {
             let fts_rows = sqlx::query(
-                "SELECT id, ts_rank_cd(search_vec, to_tsquery('english', $1)) as fts_score
+                "SELECT id, ts_rank_cd(search_vec, to_tsquery('english', $1))::float8 as fts_score
                    FROM observations
                    WHERE search_vec @@ to_tsquery('english', $1)
                    LIMIT $2",
