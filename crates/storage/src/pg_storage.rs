@@ -31,7 +31,13 @@ pub struct PgStorage {
 
 impl PgStorage {
     pub async fn new(database_url: &str) -> Result<Self> {
-        let pool = PgPoolOptions::new().max_connections(8).connect(database_url).await?;
+        let pool = PgPoolOptions::new()
+            .max_connections(8)
+            .acquire_timeout(std::time::Duration::from_secs(10))
+            .idle_timeout(std::time::Duration::from_secs(300))
+            .test_before_acquire(true)
+            .connect(database_url)
+            .await?;
         run_pg_migrations(&pool).await?;
         tracing::info!("PgStorage initialized");
         Ok(Self { pool })

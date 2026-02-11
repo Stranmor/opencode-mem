@@ -58,7 +58,13 @@ pub struct InfiniteMemory {
 
 impl InfiniteMemory {
     pub async fn new(database_url: &str, llm: Arc<LlmClient>) -> Result<Self> {
-        let pool = PgPoolOptions::new().max_connections(5).connect(database_url).await?;
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .acquire_timeout(std::time::Duration::from_secs(10))
+            .idle_timeout(std::time::Duration::from_secs(300))
+            .test_before_acquire(true)
+            .connect(database_url)
+            .await?;
 
         Ok(Self { pool, llm })
     }
