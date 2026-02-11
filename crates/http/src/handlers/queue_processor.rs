@@ -4,10 +4,11 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 use opencode_mem_core::{is_low_value_observation, ObservationInput, ProjectFilter, ToolOutput};
+use opencode_mem_embeddings::EmbeddingProvider;
 use opencode_mem_infinite::tool_event;
 use opencode_mem_storage::{
-    default_visibility_timeout_secs, ObservationStore, PendingMessage, PendingQueueStore,
-    SessionStore,
+    default_visibility_timeout_secs, EmbeddingStore, ObservationStore, PendingMessage,
+    PendingQueueStore, SessionStore,
 };
 
 use crate::AppState;
@@ -89,6 +90,26 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
         return Ok(());
     }
     tracing::info!("Processed pending message {} -> observation {}", msg.id, observation.id);
+
+    // Generate embedding for semantic search
+    if let Some(emb) = state.embeddings.clone() {
+        let embedding_text = format!(
+            "{} {} {}",
+            observation.title,
+            observation.narrative.as_deref().unwrap_or(""),
+            observation.facts.join(" ")
+        );
+        let obs_id = observation.id.clone();
+        match tokio::task::spawn_blocking(move || emb.embed(&embedding_text)).await {
+            Ok(Ok(vec)) => match state.storage.store_embedding(&obs_id, &vec).await {
+                Ok(()) => tracing::debug!("Stored embedding for {}", obs_id),
+                Err(e) => tracing::warn!("Failed to store embedding for {}: {}", obs_id, e),
+            },
+            Ok(Err(e)) => tracing::warn!("Failed to generate embedding: {}", e),
+            Err(e) => tracing::warn!("Embedding task panicked: {}", e),
+        }
+    }
+
     if let Err(e) = state.event_tx.send(serde_json::to_string(&observation)?) {
         tracing::debug!("No SSE subscribers for observation event: {}", e);
     }
