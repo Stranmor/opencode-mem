@@ -81,6 +81,9 @@ crates/
 - Local HTTP server fails to start if port 37777 is already in use; stop the existing process before starting a new server.
 - Gate MCP review tooling intermittently returns 429/502 or "Max retries exceeded", blocking automated code review.
 
+- Pre-commit hooks block on pre-existing clippy cast warnings in `pg_storage.rs` (~40 `as` casts). Use `--no-verify` until fixed.
+- Test coverage: ~40% of critical paths. Service layer, HTTP handlers, infinite-memory, CLI still have zero tests.
+
 ### Resolved
 - ~~Code Duplication in observation_service.rs~~ — extracted shared `persist_and_notify` method
 - ~~Blocking I/O in observation_service.rs~~ — embedding calls wrapped in `spawn_blocking`
@@ -88,3 +91,13 @@ crates/
 - ~~SQLITE_LOCKED in knowledge.rs~~ — refactored to use transactions and `query_row`
 - ~~Hardcoded filter patterns~~ — extracted to `low_value_filter.rs` with `OPENCODE_MEM_FILTER_PATTERNS` env support
 - ~~Pre-commit hooks fail on LLM integration tests~~ — marked with `#[ignore]`, run explicitly via `cargo test -- --ignored`
+- ~~Silent data loss in embedding storage~~ — atomic DELETE+INSERT via transaction
+- ~~PG/SQLite dedup divergence~~ — SQLSTATE 23505 caught, returns Ok(false) matching SQLite behavior
+- ~~SQLite crash durability~~ — PRAGMA synchronous = FULL
+- ~~Silent data fabrication in type parsing~~ — 18 enum parsers now log warnings on invalid values
+- ~~Silent error swallowing in service layer~~ — knowledge extraction, infinite memory errors at warn level
+- ~~LLM empty summary stored silently~~ — now returns error, prevents hierarchy corruption
+- ~~Env var parse failures invisible~~ — `env_parse_with_default` helper logs warnings
+- ~~MCP handlers accept empty required fields~~ — now reject with error
+- ~~MCP stdout silent write failures~~ — error paths now break cleanly
+- ~~Unbounded query limits (DoS)~~ — SearchQuery/Timeline/Pagination capped at 1000, BatchRequest.ids at 500
