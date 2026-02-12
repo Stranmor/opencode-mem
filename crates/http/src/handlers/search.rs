@@ -27,7 +27,7 @@ pub async fn search(
             query.obs_type.as_deref(),
             query.from.as_deref(),
             query.to.as_deref(),
-            query.limit,
+            query.capped_limit(),
         )
         .await
         .map(Json)
@@ -41,7 +41,7 @@ pub async fn hybrid_search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    state.storage.hybrid_search(&query.q, query.limit).await.map(Json).map_err(|e| {
+    state.storage.hybrid_search(&query.q, query.capped_limit()).await.map(Json).map_err(|e| {
         tracing::error!("Hybrid search error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })
@@ -59,7 +59,7 @@ pub async fn semantic_search(
         &state.storage,
         state.embeddings.as_deref(),
         &query.q,
-        query.limit,
+        query.capped_limit(),
     )
     .await
     .map(Json)
@@ -76,7 +76,7 @@ pub async fn search_sessions(
     if query.q.is_empty() {
         return Ok(Json(Vec::new()));
     }
-    state.storage.search_sessions(&query.q, query.limit).await.map(Json).map_err(|e| {
+    state.storage.search_sessions(&query.q, query.capped_limit()).await.map(Json).map_err(|e| {
         tracing::error!("Search sessions error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })
@@ -89,7 +89,7 @@ pub async fn search_prompts(
     if query.q.is_empty() {
         return Ok(Json(Vec::new()));
     }
-    state.storage.search_prompts(&query.q, query.limit).await.map(Json).map_err(|e| {
+    state.storage.search_prompts(&query.q, query.capped_limit()).await.map(Json).map_err(|e| {
         tracing::error!("Search prompts error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })
@@ -99,10 +99,12 @@ pub async fn search_by_file(
     State(state): State<Arc<AppState>>,
     Query(query): Query<FileSearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    state.storage.search_by_file(&query.file_path, query.limit).await.map(Json).map_err(|e| {
-        tracing::error!("Search by file error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    state.storage.search_by_file(&query.file_path, query.limit.min(1000)).await.map(Json).map_err(
+        |e| {
+            tracing::error!("Search by file error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+    )
 }
 
 pub async fn unified_search(
@@ -118,7 +120,7 @@ pub async fn unified_search(
         }));
     }
     let q = &query.q;
-    let limit = query.limit;
+    let limit = query.capped_limit();
 
     let (obs_result, sess_result, prompt_result) = tokio::join!(
         state.storage.search_with_filters(

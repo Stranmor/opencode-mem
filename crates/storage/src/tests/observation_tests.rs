@@ -83,6 +83,33 @@ fn test_get_observations_paginated() {
 }
 
 #[test]
+#[expect(clippy::unwrap_used, reason = "test code")]
+fn test_store_embedding_overwrites_existing() {
+    let (storage, _temp_dir) = create_test_storage();
+    let obs = create_test_observation("obs-emb-1", "project-a");
+    assert!(storage.save_observation(&obs).unwrap());
+
+    // given: an observation with an existing embedding
+    let embedding_v1: Vec<f32> = (0..384).map(|i| i as f32 * 0.001).collect();
+    storage.store_embedding("obs-emb-1", &embedding_v1).unwrap();
+    let without = storage.get_observations_without_embeddings(100).unwrap();
+    assert!(without.iter().all(|o| o.id != "obs-emb-1"));
+
+    // when: overwriting with a different embedding
+    let embedding_v2: Vec<f32> = (0..384).map(|i| (384 - i) as f32 * 0.001).collect();
+    storage.store_embedding("obs-emb-1", &embedding_v2).unwrap();
+
+    // then: exactly one embedding exists (atomic replace, no duplicate)
+    let without = storage.get_observations_without_embeddings(100).unwrap();
+    assert!(without.iter().all(|o| o.id != "obs-emb-1"));
+
+    // then: the new embedding is queryable via semantic search
+    let results = storage.semantic_search(&embedding_v2, 10).unwrap();
+    assert!(!results.is_empty());
+    assert_eq!(results[0].id, "obs-emb-1");
+}
+
+#[test]
 fn test_get_observations_paginated_with_project_filter() {
     let (storage, _temp_dir) = create_test_storage();
 

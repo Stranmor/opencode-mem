@@ -1,7 +1,6 @@
 //! Storage types shared across modules
 
 use serde::{Deserialize, Serialize};
-use std::env;
 use std::str::FromStr;
 
 /// Statistics about storage contents
@@ -107,13 +106,13 @@ pub struct PendingMessage {
 /// Returns the maximum retry count from environment or default (3).
 #[must_use]
 pub fn max_retry_count() -> i32 {
-    env::var("OPENCODE_MEM_MAX_RETRY").ok().and_then(|v| v.parse().ok()).unwrap_or(3i32)
+    opencode_mem_core::env_parse_with_default("OPENCODE_MEM_MAX_RETRY", 3i32)
 }
 
 /// Returns the default visibility timeout in seconds from environment or default (300).
 #[must_use]
 pub fn default_visibility_timeout_secs() -> i64 {
-    env::var("OPENCODE_MEM_VISIBILITY_TIMEOUT").ok().and_then(|v| v.parse().ok()).unwrap_or(300i64)
+    opencode_mem_core::env_parse_with_default("OPENCODE_MEM_VISIBILITY_TIMEOUT", 300i64)
 }
 
 /// Statistics about the pending message queue.

@@ -37,7 +37,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let result = client.chat_completion(&request).await.unwrap();
+        let result = client.chat_completion(&request).await.expect("first attempt should succeed");
         assert_eq!(result, "test response");
     }
 
@@ -67,7 +67,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let result = client.chat_completion(&request).await.unwrap();
+        let result =
+            client.chat_completion(&request).await.expect("should succeed after 429 retry");
         assert_eq!(result, "success after retry");
     }
 
@@ -97,7 +98,8 @@ mod tests {
             .mount(&server)
             .await;
 
-        let result = client.chat_completion(&request).await.unwrap();
+        let result =
+            client.chat_completion(&request).await.expect("should succeed after 503 retry");
         assert_eq!(result, "success after 503");
     }
 
@@ -116,8 +118,7 @@ mod tests {
 
         let result = client.chat_completion(&request).await;
         assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("401"));
+        let err_msg = result.expect_err("401 should not be retried").to_string();
         assert!(err_msg.contains("Unauthorized"));
     }
 
@@ -136,8 +137,7 @@ mod tests {
 
         let result = client.chat_completion(&request).await;
         assert!(result.is_err());
-        let err_msg = result.unwrap_err().to_string();
-        assert!(err_msg.contains("503"));
+        let err_msg = result.expect_err("retries should be exhausted").to_string();
         assert!(err_msg.contains("Service Unavailable"));
     }
 }

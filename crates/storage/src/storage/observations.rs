@@ -77,8 +77,13 @@ impl Storage {
         let results = stmt
             .query_map(params![limit], |row| {
                 let noise_str: Option<String> = row.get(4)?;
-                let noise_level =
-                    noise_str.and_then(|s| NoiseLevel::from_str(&s).ok()).unwrap_or_default();
+                let noise_level = match noise_str {
+                    Some(s) => NoiseLevel::from_str(&s).unwrap_or_else(|_| {
+                        tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
+                        NoiseLevel::default()
+                    }),
+                    None => NoiseLevel::default(),
+                };
                 Ok(SearchResult::new(
                     row.get(0)?,
                     row.get(1)?,
@@ -186,8 +191,13 @@ impl Storage {
         let results = stmt
             .query_map(params![pattern, limit], |row| {
                 let noise_str: Option<String> = row.get(4)?;
-                let noise_level =
-                    noise_str.and_then(|s| NoiseLevel::from_str(&s).ok()).unwrap_or_default();
+                let noise_level = match noise_str {
+                    Some(s) => NoiseLevel::from_str(&s).unwrap_or_else(|_| {
+                        tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
+                        NoiseLevel::default()
+                    }),
+                    None => NoiseLevel::default(),
+                };
                 Ok(SearchResult::new(
                     row.get(0)?,
                     row.get(1)?,
@@ -208,7 +218,13 @@ impl Storage {
         let obs_type: ObservationType = parse_observation_type(&obs_type_str)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?;
         let noise_str: Option<String> = row.get(14)?;
-        let noise_level = noise_str.and_then(|s| NoiseLevel::from_str(&s).ok()).unwrap_or_default();
+        let noise_level = match noise_str {
+            Some(s) => NoiseLevel::from_str(&s).unwrap_or_else(|_| {
+                tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
+                NoiseLevel::default()
+            }),
+            None => NoiseLevel::default(),
+        };
         let noise_reason: Option<String> = row.get(15)?;
         let created_at_str: String = row.get(16)?;
         let created_at = chrono::DateTime::parse_from_rfc3339(&created_at_str)

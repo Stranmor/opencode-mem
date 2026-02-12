@@ -95,7 +95,7 @@ impl ObservationService {
             },
             Ok(None) => {},
             Err(e) => {
-                tracing::debug!("Knowledge extraction skipped: {}", e);
+                tracing::warn!(error = %e, observation_id = %observation.id, "Knowledge extraction failed — knowledge will be missing for this observation");
             },
         }
     }
@@ -111,7 +111,7 @@ impl ObservationService {
                 observation.files_modified.clone(),
             );
             if let Err(e) = infinite_mem.store_event(event).await {
-                tracing::warn!("Failed to store in infinite memory: {}", e);
+                tracing::warn!(error = %e, observation_id = %observation.id, "Failed to store in infinite memory — event will be missing from long-term history");
             }
         }
     }

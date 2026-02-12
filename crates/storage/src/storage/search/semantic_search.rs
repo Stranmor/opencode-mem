@@ -209,8 +209,13 @@ impl Storage {
                 let id: String = row.get(0)?;
                 let score = score_lookup.get(&id).copied().unwrap_or(0.0f64);
                 let noise_str: Option<String> = row.get(4)?;
-                let noise_level =
-                    noise_str.and_then(|s| NoiseLevel::from_str(&s).ok()).unwrap_or_default();
+                let noise_level = match noise_str {
+                    Some(s) => NoiseLevel::from_str(&s).unwrap_or_else(|_| {
+                        tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
+                        NoiseLevel::default()
+                    }),
+                    None => NoiseLevel::default(),
+                };
                 Ok(SearchResult::new(
                     id,
                     row.get(1)?,

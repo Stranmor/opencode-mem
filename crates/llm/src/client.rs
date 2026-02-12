@@ -78,12 +78,14 @@ impl LlmClient {
     /// non-success status, the response body cannot be parsed, or the choices
     /// array is empty.
     pub async fn chat_completion(&self, request: &ChatRequest) -> Result<String> {
-        const MAX_RETRIES: u32 = 3;
+        const MAX_RETRIES: usize = 3;
+        const RETRY_DELAYS: [u64; 4] = [0, 1, 2, 4];
         let mut last_error = None;
 
         for attempt in 0..=MAX_RETRIES {
             if attempt > 0 {
-                let delay = std::time::Duration::from_secs(1 << (attempt - 1));
+                let delay_secs = RETRY_DELAYS.get(attempt).copied().unwrap_or(4);
+                let delay = std::time::Duration::from_secs(delay_secs);
                 tokio::time::sleep(delay).await;
                 tracing::warn!("LLM retry attempt {attempt}/{MAX_RETRIES} after {delay:?}");
             }

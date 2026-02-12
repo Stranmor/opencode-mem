@@ -51,9 +51,18 @@ fn parse_json_value<T: serde::de::DeserializeOwned>(val: &serde_json::Value) -> 
 fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observation> {
     let obs_type_str: String = row.try_get("observation_type")?;
     let obs_type: ObservationType = serde_json::from_str(&obs_type_str)
-        .unwrap_or_else(|_| obs_type_str.parse().unwrap_or(ObservationType::Change));
+        .unwrap_or_else(|_| obs_type_str.parse().unwrap_or_else(|_| {
+            tracing::warn!(invalid_type = %obs_type_str, "corrupt observation_type in DB, defaulting to Change");
+            ObservationType::Change
+        }));
     let noise_str: Option<String> = row.try_get("noise_level")?;
-    let noise_level = noise_str.and_then(|s| s.parse::<NoiseLevel>().ok()).unwrap_or_default();
+    let noise_level = match noise_str {
+        Some(s) => s.parse::<NoiseLevel>().unwrap_or_else(|_| {
+            tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
+            NoiseLevel::default()
+        }),
+        None => NoiseLevel::default(),
+    };
     let noise_reason: Option<String> = row.try_get("noise_reason")?;
     let created_at: DateTime<Utc> = row.try_get("created_at")?;
     let facts: serde_json::Value = row.try_get("facts")?;
@@ -91,9 +100,18 @@ fn escape_like(s: &str) -> String {
 fn row_to_search_result(row: &sqlx::postgres::PgRow) -> Result<SearchResult> {
     let obs_type_str: String = row.try_get("observation_type")?;
     let obs_type: ObservationType = serde_json::from_str(&obs_type_str)
-        .unwrap_or_else(|_| obs_type_str.parse().unwrap_or(ObservationType::Change));
+        .unwrap_or_else(|_| obs_type_str.parse().unwrap_or_else(|_| {
+            tracing::warn!(invalid_type = %obs_type_str, "corrupt observation_type in DB, defaulting to Change");
+            ObservationType::Change
+        }));
     let noise_str: Option<String> = row.try_get("noise_level")?;
-    let noise_level = noise_str.and_then(|s| s.parse::<NoiseLevel>().ok()).unwrap_or_default();
+    let noise_level = match noise_str {
+        Some(s) => s.parse::<NoiseLevel>().unwrap_or_else(|_| {
+            tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
+            NoiseLevel::default()
+        }),
+        None => NoiseLevel::default(),
+    };
     let score: f64 = row.try_get("score").unwrap_or(1.0);
     Ok(SearchResult::new(
         row.try_get("id")?,
@@ -108,9 +126,18 @@ fn row_to_search_result(row: &sqlx::postgres::PgRow) -> Result<SearchResult> {
 fn row_to_search_result_default(row: &sqlx::postgres::PgRow) -> Result<SearchResult> {
     let obs_type_str: String = row.try_get("observation_type")?;
     let obs_type: ObservationType = serde_json::from_str(&obs_type_str)
-        .unwrap_or_else(|_| obs_type_str.parse().unwrap_or(ObservationType::Change));
+        .unwrap_or_else(|_| obs_type_str.parse().unwrap_or_else(|_| {
+            tracing::warn!(invalid_type = %obs_type_str, "corrupt observation_type in DB, defaulting to Change");
+            ObservationType::Change
+        }));
     let noise_str: Option<String> = row.try_get("noise_level")?;
-    let noise_level = noise_str.and_then(|s| s.parse::<NoiseLevel>().ok()).unwrap_or_default();
+    let noise_level = match noise_str {
+        Some(s) => s.parse::<NoiseLevel>().unwrap_or_else(|_| {
+            tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
+            NoiseLevel::default()
+        }),
+        None => NoiseLevel::default(),
+    };
     Ok(SearchResult::new(
         row.try_get("id")?,
         row.try_get("title")?,
@@ -128,7 +155,10 @@ fn row_to_session(row: &sqlx::postgres::PgRow) -> Result<Session> {
     let status: SessionStatus = status_str
         .parse()
         .or_else(|_| serde_json::from_str::<SessionStatus>(&status_str))
-        .unwrap_or(SessionStatus::Active);
+        .unwrap_or_else(|_| {
+            tracing::warn!(invalid_status = %status_str, "corrupt session status in DB, defaulting to Active");
+            SessionStatus::Active
+        });
     Ok(Session::new(
         row.try_get("id")?,
         row.try_get("content_session_id")?,
@@ -165,7 +195,10 @@ fn row_to_summary(row: &sqlx::postgres::PgRow) -> Result<SessionSummary> {
 
 fn row_to_knowledge(row: &sqlx::postgres::PgRow) -> Result<GlobalKnowledge> {
     let kt_str: String = row.try_get("knowledge_type")?;
-    let knowledge_type: KnowledgeType = kt_str.parse().unwrap_or(KnowledgeType::Pattern);
+    let knowledge_type: KnowledgeType = kt_str.parse().unwrap_or_else(|_| {
+        tracing::warn!(invalid_type = %kt_str, "corrupt knowledge_type in DB, defaulting to Pattern");
+        KnowledgeType::Pattern
+    });
     let triggers: serde_json::Value = row.try_get("triggers")?;
     let source_projects: serde_json::Value = row.try_get("source_projects")?;
     let source_observations: serde_json::Value = row.try_get("source_observations")?;
@@ -204,7 +237,10 @@ fn row_to_prompt(row: &sqlx::postgres::PgRow) -> Result<UserPrompt> {
 fn row_to_pending_message(row: &sqlx::postgres::PgRow) -> Result<PendingMessage> {
     let status_str: String = row.try_get("status")?;
     let status =
-        status_str.parse::<PendingMessageStatus>().unwrap_or(PendingMessageStatus::Pending);
+        status_str.parse::<PendingMessageStatus>().unwrap_or_else(|_| {
+            tracing::warn!(invalid_status = %status_str, "corrupt pending message status in DB, defaulting to Pending");
+            PendingMessageStatus::Pending
+        });
     Ok(PendingMessage {
         id: row.try_get("id")?,
         session_id: row.try_get("session_id")?,
@@ -244,7 +280,7 @@ const SUMMARY_COLUMNS: &str =
 #[async_trait]
 impl ObservationStore for PgStorage {
     async fn save_observation(&self, obs: &Observation) -> Result<bool> {
-        let result = sqlx::query(
+        let result = match sqlx::query(
             r#"INSERT INTO observations
                (id, session_id, project, observation_type, title, subtitle, narrative,
                 facts, concepts, files_read, files_modified, keywords,
@@ -270,7 +306,14 @@ impl ObservationStore for PgStorage {
         .bind(&obs.noise_reason)
         .bind(obs.created_at)
         .execute(&self.pool)
-        .await?;
+        .await
+        {
+            Ok(r) => r,
+            Err(sqlx::Error::Database(ref db_err)) if db_err.code().as_deref() == Some("23505") => {
+                return Ok(false);
+            },
+            Err(e) => return Err(e.into()),
+        };
         Ok(result.rows_affected() > 0)
     }
 
@@ -1275,10 +1318,18 @@ impl SearchStore for PgStorage {
             .map(|row| {
                 let obs_type_str: String = row.try_get("observation_type")?;
                 let obs_type: ObservationType = serde_json::from_str(&obs_type_str)
-                    .unwrap_or_else(|_| obs_type_str.parse().unwrap_or(ObservationType::Change));
+                    .unwrap_or_else(|_| obs_type_str.parse().unwrap_or_else(|_| {
+                        tracing::warn!(invalid_type = %obs_type_str, "corrupt observation_type in DB, defaulting to Change");
+                        ObservationType::Change
+                    }));
                 let noise_str: Option<String> = row.try_get("noise_level")?;
-                let noise_level =
-                    noise_str.and_then(|s| s.parse::<NoiseLevel>().ok()).unwrap_or_default();
+                let noise_level = match noise_str {
+                    Some(s) => s.parse::<NoiseLevel>().unwrap_or_else(|_| {
+                        tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
+                        NoiseLevel::default()
+                    }),
+                    None => NoiseLevel::default(),
+                };
                 let fts_score: f64 = row.try_get("fts_score")?;
                 let kw_json: serde_json::Value = row.try_get("keywords")?;
                 let obs_kw: HashSet<String> = serde_json::from_value::<Vec<String>>(kw_json)
@@ -1607,10 +1658,18 @@ impl SearchStore for PgStorage {
             .map(|row| {
                 let obs_type_str: String = row.try_get("observation_type")?;
                 let obs_type: ObservationType = serde_json::from_str(&obs_type_str)
-                    .unwrap_or_else(|_| obs_type_str.parse().unwrap_or(ObservationType::Change));
+                    .unwrap_or_else(|_| obs_type_str.parse().unwrap_or_else(|_| {
+                        tracing::warn!(invalid_type = %obs_type_str, "corrupt observation_type in DB, defaulting to Change");
+                        ObservationType::Change
+                    }));
                 let noise_str: Option<String> = row.try_get("noise_level")?;
-                let noise_level =
-                    noise_str.and_then(|s| s.parse::<NoiseLevel>().ok()).unwrap_or_default();
+                let noise_level = match noise_str {
+                    Some(s) => s.parse::<NoiseLevel>().unwrap_or_else(|_| {
+                        tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
+                        NoiseLevel::default()
+                    }),
+                    None => NoiseLevel::default(),
+                };
                 let id: String = row.try_get("id")?;
                 let score = score_lookup.get(&id).copied().unwrap_or(0.0_f64);
                 Ok(SearchResult::new(

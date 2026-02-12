@@ -177,7 +177,7 @@ pub async fn get_recent(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    state.storage.get_recent(query.limit).await.map(Json).map_err(|e| {
+    state.storage.get_recent(query.capped_limit()).await.map(Json).map_err(|e| {
         tracing::error!("Get recent error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })
@@ -189,7 +189,7 @@ pub async fn get_timeline(
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
     state
         .storage
-        .get_timeline(query.from.as_deref(), query.to.as_deref(), query.limit)
+        .get_timeline(query.from.as_deref(), query.to.as_deref(), query.capped_limit())
         .await
         .map(Json)
         .map_err(|e| {
@@ -202,6 +202,10 @@ pub async fn get_observations_batch(
     State(state): State<Arc<AppState>>,
     Json(req): Json<BatchRequest>,
 ) -> Result<Json<Vec<Observation>>, StatusCode> {
+    if let Err(msg) = req.validate() {
+        tracing::warn!("Batch request validation failed: {}", msg);
+        return Err(StatusCode::BAD_REQUEST);
+    }
     state.storage.get_observations_by_ids(&req.ids).await.map(Json).map_err(|e| {
         tracing::error!("Get observations batch error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR

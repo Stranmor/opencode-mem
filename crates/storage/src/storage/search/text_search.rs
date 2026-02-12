@@ -66,8 +66,13 @@ impl Storage {
         let raw_results: Vec<(SearchResult, f64, HashSet<String>)> = stmt
             .query_map(params![fts_query, limit * 2], |row| {
                 let noise_str: Option<String> = row.get(4)?;
-                let noise_level =
-                    noise_str.and_then(|s| NoiseLevel::from_str(&s).ok()).unwrap_or_default();
+                let noise_level = match noise_str {
+                    Some(s) => NoiseLevel::from_str(&s).unwrap_or_else(|_| {
+                        tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
+                        NoiseLevel::default()
+                    }),
+                    None => NoiseLevel::default(),
+                };
                 let obs_keywords: Option<String> = row.get(5)?;
                 let fts_score: f64 = row.get(6)?;
                 Ok((

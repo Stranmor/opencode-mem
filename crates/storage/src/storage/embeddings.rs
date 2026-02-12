@@ -17,11 +17,13 @@ impl Storage {
             params![observation_id],
             |row| row.get(0),
         )?;
-        drop(conn.execute("DELETE FROM observations_vec WHERE rowid = ?1", params![rowid]));
-        conn.execute(
+        let tx = conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM observations_vec WHERE rowid = ?1", params![rowid])?;
+        tx.execute(
             "INSERT INTO observations_vec(rowid, embedding) VALUES (?1, ?2)",
             params![rowid, embedding.as_bytes()],
         )?;
+        tx.commit()?;
         Ok(())
     }
 

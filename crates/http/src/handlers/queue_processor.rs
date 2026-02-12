@@ -1,4 +1,3 @@
-use std::env;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
@@ -14,7 +13,7 @@ use opencode_mem_storage::{
 use crate::AppState;
 
 pub(crate) fn max_queue_workers() -> usize {
-    env::var("OPENCODE_MEM_QUEUE_WORKERS").ok().and_then(|v| v.parse().ok()).unwrap_or(10)
+    opencode_mem_core::env_parse_with_default("OPENCODE_MEM_QUEUE_WORKERS", 10)
 }
 
 pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> anyhow::Result<()> {

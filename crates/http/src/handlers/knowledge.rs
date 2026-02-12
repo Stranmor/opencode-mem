@@ -20,10 +20,12 @@ pub async fn list_knowledge(
         Some(s) => Some(s.parse::<KnowledgeType>().map_err(|_| StatusCode::BAD_REQUEST)?),
         None => None,
     };
-    state.storage.list_knowledge(knowledge_type, query.limit).await.map(Json).map_err(|e| {
-        tracing::error!("List knowledge error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    state.storage.list_knowledge(knowledge_type, query.limit.min(1000)).await.map(Json).map_err(
+        |e| {
+            tracing::error!("List knowledge error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+    )
 }
 
 pub async fn search_knowledge(
@@ -33,7 +35,7 @@ pub async fn search_knowledge(
     if query.q.trim().is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
-    state.storage.search_knowledge(&query.q, query.limit).await.map(Json).map_err(|e| {
+    state.storage.search_knowledge(&query.q, query.limit.min(1000)).await.map(Json).map_err(|e| {
         tracing::error!("Search knowledge error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })

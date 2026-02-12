@@ -21,10 +21,11 @@ pub async fn get_pending_queue(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<PendingQueueResponse>, StatusCode> {
-    let messages = state.storage.get_all_pending_messages(query.limit).await.map_err(|e| {
-        tracing::error!("Get pending messages error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let messages =
+        state.storage.get_all_pending_messages(query.capped_limit()).await.map_err(|e| {
+            tracing::error!("Get pending messages error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     let queue_stats = state.storage.get_queue_stats().await.map_err(|e| {
         tracing::error!("Get queue stats error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR

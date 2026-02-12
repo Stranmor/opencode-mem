@@ -6,15 +6,15 @@ use opencode_mem_core::strip_markdown_json;
 use opencode_mem_llm::LlmClient;
 
 fn max_content_chars() -> usize {
-    std::env::var("OPENCODE_MEM_MAX_CONTENT_CHARS").ok().and_then(|v| v.parse().ok()).unwrap_or(500)
+    opencode_mem_core::env_parse_with_default("OPENCODE_MEM_MAX_CONTENT_CHARS", 500)
 }
 
 fn max_total_chars() -> usize {
-    std::env::var("OPENCODE_MEM_MAX_TOTAL_CHARS").ok().and_then(|v| v.parse().ok()).unwrap_or(8000)
+    opencode_mem_core::env_parse_with_default("OPENCODE_MEM_MAX_TOTAL_CHARS", 8000)
 }
 
 fn max_events() -> usize {
-    std::env::var("OPENCODE_MEM_MAX_EVENTS").ok().and_then(|v| v.parse().ok()).unwrap_or(200)
+    opencode_mem_core::env_parse_with_default("OPENCODE_MEM_MAX_EVENTS", 200)
 }
 
 pub async fn compress_events(
@@ -117,7 +117,11 @@ pub async fn compress_events(
         anyhow::anyhow!("Failed to parse AI JSON response: {}. Content: {}", e, content)
     })?;
 
-    let summary = parsed["summary"].as_str().unwrap_or("").to_string();
+    let summary = parsed["summary"]
+        .as_str()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("LLM returned response without summary field"))?
+        .to_string();
     let entities: Option<SummaryEntities> =
         parsed.get("entities").and_then(|e| serde_json::from_value(e.clone()).ok());
 

@@ -36,12 +36,27 @@ pub struct SearchQuery {
     pub to: Option<String>,
 }
 
+const MAX_QUERY_LIMIT: usize = 1000;
+
+impl SearchQuery {
+    /// Cap limit to prevent DoS via unbounded queries.
+    pub fn capped_limit(&self) -> usize {
+        self.limit.min(MAX_QUERY_LIMIT)
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct TimelineQuery {
     pub from: Option<String>,
     pub to: Option<String>,
     #[serde(default = "default_limit")]
     pub limit: usize,
+}
+
+impl TimelineQuery {
+    pub fn capped_limit(&self) -> usize {
+        self.limit.min(MAX_QUERY_LIMIT)
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -54,6 +69,20 @@ pub struct ContextQuery {
 #[derive(Debug, Deserialize)]
 pub struct BatchRequest {
     pub ids: Vec<String>,
+}
+
+const MAX_BATCH_IDS: usize = 500;
+
+impl BatchRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.ids.is_empty() {
+            return Err("ids array must not be empty".to_owned());
+        }
+        if self.ids.len() > MAX_BATCH_IDS {
+            return Err(format!("ids array exceeds maximum of {MAX_BATCH_IDS} items"));
+        }
+        Ok(())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,6 +121,12 @@ pub struct PaginationQuery {
     pub project: Option<String>,
 }
 
+impl PaginationQuery {
+    pub fn capped_limit(&self) -> usize {
+        self.limit.min(MAX_QUERY_LIMIT)
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct FileSearchQuery {
     #[serde(rename = "filePath")]
@@ -113,12 +148,66 @@ pub struct UnifiedTimelineQuery {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ContextPreviewQuery {
-    pub project: String,
-    #[serde(default = "default_context_limit")]
-    pub limit: usize,
-    #[serde(default = "default_preview_format")]
-    pub format: String,
+pub struct SaveMemoryRequest {
+    pub text: String,
+    pub title: Option<String>,
+    pub project: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn test_search_query_capped_limit() {
+        let q: SearchQuery =
+            serde_json::from_value(json!({"q": "x", "limit": 5000})).expect("valid SearchQuery");
+        assert_eq!(q.capped_limit(), 1000);
+    }
+
+    #[test]
+    fn test_search_query_normal_limit() {
+        let q: SearchQuery =
+            serde_json::from_value(json!({"q": "x", "limit": 50})).expect("valid SearchQuery");
+        assert_eq!(q.capped_limit(), 50);
+    }
+
+    #[test]
+    fn test_timeline_query_capped_limit() {
+        let q: TimelineQuery =
+            serde_json::from_value(json!({"limit": 5000})).expect("valid TimelineQuery");
+        assert_eq!(q.capped_limit(), 1000);
+    }
+
+    #[test]
+    fn test_pagination_query_capped_limit() {
+        let q: PaginationQuery =
+            serde_json::from_value(json!({"limit": 5000})).expect("valid PaginationQuery");
+        assert_eq!(q.capped_limit(), 1000);
+    }
+
+    #[test]
+    fn test_batch_request_validate_empty() {
+        let req = BatchRequest { ids: vec![] };
+        let err = req.validate().unwrap_err();
+        assert!(err.contains("empty"), "Expected 'empty' in error: {err}");
+    }
+
+    #[test]
+    fn test_batch_request_validate_too_many() {
+        let ids: Vec<String> = (0..501).map(|i| format!("id-{i}")).collect();
+        let req = BatchRequest { ids };
+        let err = req.validate().unwrap_err();
+        assert!(err.contains("500"), "Expected '500' in error: {err}");
+    }
+
+    #[test]
+    fn test_batch_request_validate_ok() {
+        let ids: Vec<String> = (0..10).map(|i| format!("id-{i}")).collect();
+        let req = BatchRequest { ids };
+        assert!(req.validate().is_ok());
+    }
 }
 
 #[derive(Debug, Deserialize)]

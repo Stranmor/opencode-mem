@@ -8,7 +8,10 @@ use crate::pending_queue::{max_retry_count, PendingMessage, PendingMessageStatus
 fn row_to_pending_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<PendingMessage> {
     let status_str: String = row.get(2)?;
     let status =
-        status_str.parse::<PendingMessageStatus>().unwrap_or(PendingMessageStatus::Pending);
+        status_str.parse::<PendingMessageStatus>().unwrap_or_else(|_| {
+            tracing::warn!(invalid_status = %status_str, "corrupt pending message status in DB, defaulting to Pending");
+            PendingMessageStatus::Pending
+        });
     Ok(PendingMessage {
         id: row.get(0)?,
         session_id: row.get(1)?,

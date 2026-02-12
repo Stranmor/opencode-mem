@@ -14,7 +14,8 @@ pub(super) async fn handle_search(
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let query = args.get("query").and_then(|q| q.as_str());
-    let limit = args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(50) as usize;
+    let limit =
+        (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(50) as usize).min(1000);
     let project = args.get("project").and_then(|p| p.as_str());
     let obs_type = args.get("type").and_then(|t| t.as_str());
     let from = args.get("from").and_then(|f| f.as_str());
@@ -46,7 +47,8 @@ pub(super) async fn handle_timeline(
 ) -> serde_json::Value {
     let from = args.get("from").and_then(|f| f.as_str());
     let to = args.get("to").and_then(|t| t.as_str());
-    let limit = args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(50) as usize;
+    let limit =
+        (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(50) as usize).min(1000);
     match storage.get_timeline(from, to, limit).await {
         Ok(results) => mcp_ok(&results),
         Err(e) => mcp_err(e),
@@ -64,6 +66,8 @@ pub(super) async fn handle_get_observations(
         .unwrap_or_default();
     if ids.is_empty() {
         mcp_err("ids array is required and must not be empty")
+    } else if ids.len() > 500 {
+        mcp_err("ids array exceeds maximum of 500 items")
     } else {
         match storage.get_observations_by_ids(&ids).await {
             Ok(results) => mcp_ok(&results),
@@ -76,7 +80,9 @@ pub(super) async fn handle_memory_get(
     storage: &StorageBackend,
     args: &serde_json::Value,
 ) -> serde_json::Value {
-    let id_str = args.get("id").and_then(|i| i.as_str()).unwrap_or("");
+    let Some(id_str) = args.get("id").and_then(|i| i.as_str()).filter(|s| !s.is_empty()) else {
+        return mcp_err("'id' parameter is required and must not be empty");
+    };
     match storage.get_by_id(id_str).await {
         Ok(Some(obs)) => mcp_ok(&obs),
         Ok(None) => mcp_text(&format!("Observation not found: {id_str}")),
@@ -88,7 +94,8 @@ pub(super) async fn handle_memory_recent(
     storage: &StorageBackend,
     args: &serde_json::Value,
 ) -> serde_json::Value {
-    let limit = args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(10) as usize;
+    let limit =
+        (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(10) as usize).min(1000);
     match storage.get_recent(limit).await {
         Ok(results) => mcp_ok(&results),
         Err(e) => mcp_err(e),
@@ -99,8 +106,11 @@ pub(super) async fn handle_hybrid_search(
     storage: &StorageBackend,
     args: &serde_json::Value,
 ) -> serde_json::Value {
-    let query = args.get("query").and_then(|q| q.as_str()).unwrap_or("");
-    let limit = args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(20) as usize;
+    let Some(query) = args.get("query").and_then(|q| q.as_str()).filter(|s| !s.is_empty()) else {
+        return mcp_err("'query' parameter is required and must not be empty");
+    };
+    let limit =
+        (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(20) as usize).min(1000);
     match storage.hybrid_search(query, limit).await {
         Ok(results) => mcp_ok(&results),
         Err(e) => mcp_err(e),
@@ -112,8 +122,11 @@ pub(super) async fn handle_semantic_search(
     embeddings: Option<&EmbeddingService>,
     args: &serde_json::Value,
 ) -> serde_json::Value {
-    let query = args.get("query").and_then(|q| q.as_str()).unwrap_or("");
-    let limit = args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(20) as usize;
+    let Some(query) = args.get("query").and_then(|q| q.as_str()).filter(|s| !s.is_empty()) else {
+        return mcp_err("'query' parameter is required and must not be empty");
+    };
+    let limit =
+        (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(20) as usize).min(1000);
 
     match opencode_mem_search::run_semantic_search_with_fallback(storage, embeddings, query, limit)
         .await
@@ -313,6 +326,69 @@ mod tests {
         let obs_json = content["text"].as_str().unwrap();
         let _: Observation =
             serde_json::from_str(obs_json).expect("Should return valid Observation JSON");
+    }
+
+    #[tokio::test]
+    async fn test_memory_get_empty_id() {
+        let (_storage, backend, _dir) = setup_storage();
+        let args = json!({"id": ""});
+        let result = handle_memory_get(&backend, &args).await;
+        assert_eq!(result["isError"].as_bool(), Some(true));
+        assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
+    }
+
+    #[tokio::test]
+    async fn test_memory_get_missing_id() {
+        let (_storage, backend, _dir) = setup_storage();
+        let args = json!({});
+        let result = handle_memory_get(&backend, &args).await;
+        assert_eq!(result["isError"].as_bool(), Some(true));
+        assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
+    }
+
+    #[tokio::test]
+    async fn test_hybrid_search_empty_query() {
+        let (_storage, backend, _dir) = setup_storage();
+        let args = json!({"query": ""});
+        let result = handle_hybrid_search(&backend, &args).await;
+        assert_eq!(result["isError"].as_bool(), Some(true));
+        assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
+    }
+
+    #[tokio::test]
+    async fn test_hybrid_search_missing_query() {
+        let (_storage, backend, _dir) = setup_storage();
+        let args = json!({});
+        let result = handle_hybrid_search(&backend, &args).await;
+        assert_eq!(result["isError"].as_bool(), Some(true));
+        assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
+    }
+
+    #[tokio::test]
+    async fn test_semantic_search_empty_query() {
+        let (_storage, backend, _dir) = setup_storage();
+        let args = json!({"query": ""});
+        let result = handle_semantic_search(&backend, None, &args).await;
+        assert_eq!(result["isError"].as_bool(), Some(true));
+        assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
+    }
+
+    #[tokio::test]
+    async fn test_get_observations_too_many_ids() {
+        let (_storage, backend, _dir) = setup_storage();
+        let ids: Vec<String> = (0..501).map(|i| format!("id-{i}")).collect();
+        let args = json!({"ids": ids});
+        let result = handle_get_observations(&backend, &args).await;
+        assert_eq!(result["isError"].as_bool(), Some(true));
+        assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("500"));
+    }
+
+    #[tokio::test]
+    async fn test_search_limit_capped() {
+        let (_storage, backend, _dir) = setup_storage();
+        let args = json!({"query": "test", "limit": 5000});
+        let result = handle_search(&backend, None, &args).await;
+        assert!(result.get("isError").is_none());
     }
 
     #[tokio::test]

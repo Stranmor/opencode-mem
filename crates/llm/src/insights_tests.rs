@@ -15,7 +15,7 @@ fn missing_noise_level_defaults_to_medium() {
 
     let parsed: InsightsResponse = serde_json::from_str(json).expect("valid insights JSON");
     assert_eq!(parsed.insights.len(), 1);
-    assert_eq!(parsed.insights[0].noise_level, "medium");
+    assert_eq!(parsed.insights.first().expect("should have one insight").noise_level, "medium");
 
     let observations = insights_to_observations(parsed.insights, "s", "p");
     assert_eq!(observations.len(), 1);

@@ -107,7 +107,13 @@ Return JSON:
             ))
         })?;
 
-        let noise_level = NoiseLevel::from_str(&obs_json.noise_level).unwrap_or_default();
+        let noise_level = NoiseLevel::from_str(&obs_json.noise_level).unwrap_or_else(|_| {
+            tracing::warn!(
+                invalid_level = %obs_json.noise_level,
+                "LLM returned unknown noise level, defaulting to Normal"
+            );
+            NoiseLevel::default()
+        });
         if noise_level == NoiseLevel::Negligible {
             tracing::debug!(title = %obs_json.title, "Skipping negligible observation");
             return Ok(None);

@@ -100,8 +100,14 @@ pub async fn run_mcp_server(
                     error: Some(McpError { code: -32700, message: format!("Parse error: {e}") }),
                 };
                 if let Ok(json) = serde_json::to_string(&error_response) {
-                    let _ = stdout.write_all(format!("{json}\n").as_bytes()).await;
-                    let _ = stdout.flush().await;
+                    if let Err(e) = stdout.write_all(format!("{json}\n").as_bytes()).await {
+                        tracing::error!("MCP stdout write error on parse error response: {}", e);
+                        break;
+                    }
+                    if let Err(e) = stdout.flush().await {
+                        tracing::error!("MCP stdout flush error on parse error response: {}", e);
+                        break;
+                    }
                 }
                 continue;
             },
@@ -120,8 +126,20 @@ pub async fn run_mcp_server(
                     }),
                 };
                 if let Ok(json) = serde_json::to_string(&error_response) {
-                    let _ = stdout.write_all(format!("{json}\n").as_bytes()).await;
-                    let _ = stdout.flush().await;
+                    if let Err(e) = stdout.write_all(format!("{json}\n").as_bytes()).await {
+                        tracing::error!(
+                            "MCP stdout write error on invalid request response: {}",
+                            e
+                        );
+                        break;
+                    }
+                    if let Err(e) = stdout.flush().await {
+                        tracing::error!(
+                            "MCP stdout flush error on invalid request response: {}",
+                            e
+                        );
+                        break;
+                    }
                 }
                 continue;
             },

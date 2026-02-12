@@ -92,7 +92,13 @@ pub(crate) fn map_search_result(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<opencode_mem_core::SearchResult> {
     let noise_str: Option<String> = row.get(4)?;
-    let noise_level = noise_str.and_then(|s| s.parse::<NoiseLevel>().ok()).unwrap_or_default();
+    let noise_level = match noise_str {
+        Some(s) => s.parse::<NoiseLevel>().unwrap_or_else(|_| {
+            tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
+            NoiseLevel::default()
+        }),
+        None => NoiseLevel::default(),
+    };
     Ok(opencode_mem_core::SearchResult::new(
         row.get(0)?,
         row.get(1)?,
@@ -109,7 +115,13 @@ pub(crate) fn map_search_result_default_score(
     row: &rusqlite::Row<'_>,
 ) -> rusqlite::Result<opencode_mem_core::SearchResult> {
     let noise_str: Option<String> = row.get(4)?;
-    let noise_level = noise_str.and_then(|s| s.parse::<NoiseLevel>().ok()).unwrap_or_default();
+    let noise_level = match noise_str {
+        Some(s) => s.parse::<NoiseLevel>().unwrap_or_else(|_| {
+            tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
+            NoiseLevel::default()
+        }),
+        None => NoiseLevel::default(),
+    };
     Ok(opencode_mem_core::SearchResult::new(
         row.get(0)?,
         row.get(1)?,
@@ -146,13 +158,13 @@ fn init_connection(conn: &mut Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
         "PRAGMA busy_timeout = 30000;
          PRAGMA journal_mode = WAL;
-         PRAGMA synchronous = NORMAL;",
+         PRAGMA synchronous = FULL;",
     )?;
     Ok(())
 }
 
 fn db_pool_size() -> u32 {
-    std::env::var("OPENCODE_MEM_DB_POOL_SIZE").ok().and_then(|v| v.parse().ok()).unwrap_or(8)
+    opencode_mem_core::env_parse_with_default("OPENCODE_MEM_DB_POOL_SIZE", 8)
 }
 
 impl Storage {

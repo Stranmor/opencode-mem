@@ -2,6 +2,8 @@
 //!
 //! This crate contains domain types shared across all other crates.
 
+/// Environment variable parsing with warn-level logging.
+mod env_config;
 /// Error types for opencode-mem operations.
 mod error;
 /// Hook event types for IDE integration.
@@ -17,7 +19,7 @@ mod project_filter;
 /// Session types for memory sessions.
 mod session;
 
-/// Alias for backward compatibility
+pub use env_config::*;
 pub use error::MemoryError as Error;
 pub use error::*;
 pub use hook::*;
@@ -25,5 +27,4 @@ pub use json_utils::*;
 pub use knowledge::*;
 pub use observation::*;
 pub use project_filter::*;
-
 pub use session::*;

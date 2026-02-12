@@ -76,7 +76,14 @@ pub async fn get_decisions(
     let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
     state
         .storage
-        .search_with_filters(q, query.project.as_deref(), Some("decision"), None, None, query.limit)
+        .search_with_filters(
+            q,
+            query.project.as_deref(),
+            Some("decision"),
+            None,
+            None,
+            query.capped_limit(),
+        )
         .await
         .map(Json)
         .map_err(|e| {
@@ -92,7 +99,14 @@ pub async fn get_changes(
     let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
     state
         .storage
-        .search_with_filters(q, query.project.as_deref(), Some("change"), None, None, query.limit)
+        .search_with_filters(
+            q,
+            query.project.as_deref(),
+            Some("change"),
+            None,
+            None,
+            query.capped_limit(),
+        )
         .await
         .map(Json)
         .map_err(|e| {
@@ -110,7 +124,7 @@ pub async fn get_how_it_works(
     } else {
         format!("{} how-it-works", query.q)
     };
-    state.storage.hybrid_search(&search_query, query.limit).await.map(Json).map_err(|e| {
+    state.storage.hybrid_search(&search_query, query.capped_limit()).await.map(Json).map_err(|e| {
         tracing::error!("How it works search error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })
