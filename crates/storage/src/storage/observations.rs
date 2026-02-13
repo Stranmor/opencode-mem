@@ -6,7 +6,7 @@ use std::str::FromStr as _;
 
 use super::{
     coerce_to_sql, escape_like_pattern, get_conn, log_row_error, parse_json,
-    parse_observation_type, Storage,
+    parse_observation_type, union_dedup, Storage,
 };
 
 impl Storage {
@@ -245,5 +245,52 @@ impl Storage {
             .maybe_noise_reason(noise_reason)
             .created_at(created_at)
             .build())
+    }
+
+    pub fn merge_into_existing(&self, existing_id: &str, newer: &Observation) -> Result<()> {
+        let conn = get_conn(&self.pool)?;
+        let existing = {
+            let mut stmt = conn.prepare(
+                "SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts,
+                        files_read, files_modified, keywords, prompt_number, discovery_tokens, noise_level, noise_reason, created_at
+                   FROM observations WHERE id = ?1",
+            )?;
+            let mut rows = stmt.query(params![existing_id])?;
+            match rows.next()? {
+                Some(row) => Self::row_to_observation(row)?,
+                None => return Err(anyhow::anyhow!("observation not found: {existing_id}")),
+            }
+        };
+
+        let facts = union_dedup(&existing.facts, &newer.facts);
+        let keywords = union_dedup(&existing.keywords, &newer.keywords);
+        let files_read = union_dedup(&existing.files_read, &newer.files_read);
+        let files_modified = union_dedup(&existing.files_modified, &newer.files_modified);
+
+        let narrative = match (&existing.narrative, &newer.narrative) {
+            (Some(e), Some(n)) if n.len() > e.len() => Some(n.as_str()),
+            (None, Some(n)) => Some(n.as_str()),
+            (Some(e), _) => Some(e.as_str()),
+            (None, None) => None,
+        };
+
+        let created_at = existing.created_at.max(newer.created_at);
+
+        conn.execute(
+            "UPDATE observations SET facts = ?1, keywords = ?2, files_read = ?3,
+                    files_modified = ?4, narrative = ?5, created_at = ?6
+               WHERE id = ?7",
+            params![
+                serde_json::to_string(&facts)?,
+                serde_json::to_string(&keywords)?,
+                serde_json::to_string(&files_read)?,
+                serde_json::to_string(&files_modified)?,
+                narrative,
+                created_at.with_timezone(&Utc).to_rfc3339(),
+                existing_id,
+            ],
+        )?;
+
+        Ok(())
     }
 }

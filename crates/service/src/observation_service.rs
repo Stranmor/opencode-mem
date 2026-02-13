@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    is_low_value_observation, Observation, ObservationInput, ToolCall, ToolOutput,
+    env_parse_with_default, is_low_value_observation, observation_embedding_text, Observation,
+    ObservationInput, ToolCall, ToolOutput,
 };
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
 use opencode_mem_infinite::{tool_event, InfiniteMemory};
@@ -126,6 +127,51 @@ impl ObservationService {
             return Ok(());
         }
 
+        let embedding_vec = self.generate_embedding(observation).await;
+
+        if let Some(ref vec) = embedding_vec {
+            let threshold: f32 = env_parse_with_default("OPENCODE_MEM_DEDUP_THRESHOLD", 0.92_f32);
+            if threshold > 0.0 {
+                match self.storage.find_similar(vec, threshold).await {
+                    Ok(Some(existing)) => {
+                        tracing::info!(
+                            existing_id = %existing.observation_id,
+                            existing_title = %existing.title,
+                            new_title = %observation.title,
+                            similarity = %existing.similarity,
+                            "Semantic dedup: merging into existing observation"
+                        );
+                        match self
+                            .storage
+                            .merge_into_existing(&existing.observation_id, observation)
+                            .await
+                        {
+                            Ok(()) => {
+                                if let Err(e) = self
+                                    .storage
+                                    .store_embedding(&existing.observation_id, vec)
+                                    .await
+                                {
+                                    tracing::warn!("Failed to update embedding after merge: {}", e);
+                                }
+                                return Ok(());
+                            },
+                            Err(e) => {
+                                tracing::warn!(
+                                    "Merge failed (target may have been deleted), saving as new: {}",
+                                    e
+                                );
+                            },
+                        }
+                    },
+                    Ok(None) => {},
+                    Err(e) => {
+                        tracing::warn!("Semantic dedup search failed, proceeding without: {}", e);
+                    },
+                }
+            }
+        }
+
         let inserted = self.storage.save_observation(observation).await?;
         if !inserted {
             tracing::debug!("Skipping duplicate observation: {}", observation.title);
@@ -137,32 +183,35 @@ impl ObservationService {
             tracing::debug!("No SSE subscribers for observation event (this is normal at startup)");
         }
 
-        if let Some(ref emb) = self.embeddings {
-            let text = format!(
-                "{} {} {}",
-                observation.title,
-                observation.narrative.as_deref().unwrap_or(""),
-                observation.facts.join(" ")
-            );
-
-            let emb = Arc::clone(emb);
-            let embedding = tokio::task::spawn_blocking(move || emb.embed(&text)).await?;
-
-            match embedding {
-                Ok(vec) => match self.storage.store_embedding(&observation.id, &vec).await {
-                    Ok(()) => {
-                        tracing::info!("Stored embedding for {}", observation.id);
-                    },
-                    Err(e) => {
-                        tracing::warn!("Failed to store embedding for {}: {}", observation.id, e);
-                    },
+        if let Some(vec) = embedding_vec {
+            match self.storage.store_embedding(&observation.id, &vec).await {
+                Ok(()) => {
+                    tracing::info!("Stored embedding for {}", observation.id);
                 },
                 Err(e) => {
-                    tracing::warn!("Failed to generate embedding for {}: {}", observation.id, e);
+                    tracing::warn!("Failed to store embedding for {}: {}", observation.id, e);
                 },
             }
         }
 
         Ok(())
+    }
+
+    async fn generate_embedding(&self, observation: &Observation) -> Option<Vec<f32>> {
+        let emb = self.embeddings.as_ref()?;
+        let text = observation_embedding_text(observation);
+        let emb = Arc::clone(emb);
+        let result = tokio::task::spawn_blocking(move || emb.embed(&text)).await;
+        match result {
+            Ok(Ok(vec)) => Some(vec),
+            Ok(Err(e)) => {
+                tracing::warn!("Failed to generate embedding for {}: {}", observation.id, e);
+                None
+            },
+            Err(e) => {
+                tracing::warn!("Embedding task panicked for {}: {}", observation.id, e);
+                None
+            },
+        }
     }
 }

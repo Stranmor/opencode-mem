@@ -8,7 +8,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use opencode_mem_core::{
     GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType, NoiseLevel, Observation,
-    ObservationType, SearchResult, Session, SessionStatus, SessionSummary, UserPrompt,
+    ObservationType, SearchResult, Session, SessionStatus, SessionSummary, SimilarMatch,
+    UserPrompt,
 };
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
@@ -46,6 +47,17 @@ impl PgStorage {
 
 fn parse_json_value<T: serde::de::DeserializeOwned>(val: &serde_json::Value) -> Vec<T> {
     serde_json::from_value(val.clone()).unwrap_or_default()
+}
+
+fn pg_union_dedup(existing: &[String], newer: &[String]) -> Vec<String> {
+    let mut seen: HashSet<&str> = HashSet::new();
+    let mut result = Vec::with_capacity(existing.len().saturating_add(newer.len()));
+    for item in existing.iter().chain(newer.iter()) {
+        if seen.insert(item.as_str()) {
+            result.push(item.clone());
+        }
+    }
+    result
 }
 
 fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observation> {
@@ -410,6 +422,44 @@ impl ObservationStore for PgStorage {
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_search_result).collect()
+    }
+
+    async fn merge_into_existing(&self, existing_id: &str, newer: &Observation) -> Result<()> {
+        let existing = self
+            .get_by_id(existing_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("observation not found: {existing_id}"))?;
+
+        let facts = pg_union_dedup(&existing.facts, &newer.facts);
+        let keywords = pg_union_dedup(&existing.keywords, &newer.keywords);
+        let files_read = pg_union_dedup(&existing.files_read, &newer.files_read);
+        let files_modified = pg_union_dedup(&existing.files_modified, &newer.files_modified);
+
+        let narrative: Option<&str> = match (&existing.narrative, &newer.narrative) {
+            (Some(e), Some(n)) if n.len() > e.len() => Some(n.as_str()),
+            (None, Some(n)) => Some(n.as_str()),
+            (Some(e), _) => Some(e.as_str()),
+            (None, None) => None,
+        };
+
+        let created_at = existing.created_at.max(newer.created_at);
+
+        sqlx::query(
+            "UPDATE observations SET facts = $1, keywords = $2, files_read = $3,
+                    files_modified = $4, narrative = $5, created_at = $6
+               WHERE id = $7",
+        )
+        .bind(serde_json::to_value(&facts)?)
+        .bind(serde_json::to_value(&keywords)?)
+        .bind(serde_json::to_value(&files_read)?)
+        .bind(serde_json::to_value(&files_modified)?)
+        .bind(narrative)
+        .bind(created_at)
+        .bind(existing_id)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
     }
 }
 
@@ -1723,5 +1773,54 @@ impl EmbeddingStore for PgStorage {
     async fn clear_embeddings(&self) -> Result<()> {
         sqlx::query("UPDATE observations SET embedding = NULL").execute(&self.pool).await?;
         Ok(())
+    }
+
+    async fn find_similar(
+        &self,
+        embedding: &[f32],
+        threshold: f32,
+    ) -> Result<Option<SimilarMatch>> {
+        if embedding.is_empty() {
+            return Ok(None);
+        }
+
+        let has_embeddings: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM observations WHERE embedding IS NOT NULL")
+                .fetch_one(&self.pool)
+                .await?;
+        if has_embeddings == 0 {
+            return Ok(None);
+        }
+
+        let vec_str =
+            format!("[{}]", embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+
+        let row = sqlx::query(
+            "SELECT id, title, 1.0 - (embedding <=> $1::vector) AS similarity
+               FROM observations
+              WHERE embedding IS NOT NULL
+              ORDER BY embedding <=> $1::vector
+              LIMIT 1",
+        )
+        .bind(&vec_str)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        match row {
+            Some(r) => {
+                let similarity: f64 = r.try_get("similarity")?;
+                let sim_f32 = similarity as f32;
+                if sim_f32 >= threshold {
+                    Ok(Some(SimilarMatch {
+                        observation_id: r.try_get("id")?,
+                        similarity: sim_f32,
+                        title: r.try_get("title")?,
+                    }))
+                } else {
+                    Ok(None)
+                }
+            },
+            None => Ok(None),
+        }
     }
 }

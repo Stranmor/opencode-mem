@@ -42,6 +42,7 @@ use opencode_mem_core::ObservationType;
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::Connection;
+use std::collections::HashSet;
 use std::path::Path;
 use std::str::FromStr as _;
 
@@ -151,6 +152,17 @@ pub(crate) fn build_fts_query(query: &str) -> String {
         .map(|word| format!("\"{}\"*", word.replace('"', "")))
         .collect::<Vec<_>>()
         .join(" AND ")
+}
+
+pub(crate) fn union_dedup(existing: &[String], newer: &[String]) -> Vec<String> {
+    let mut seen: HashSet<&str> = HashSet::new();
+    let mut result = Vec::with_capacity(existing.len().saturating_add(newer.len()));
+    for item in existing.iter().chain(newer.iter()) {
+        if seen.insert(item.as_str()) {
+            result.push(item.clone());
+        }
+    }
+    result
 }
 
 /// Custom connection initializer for sqlite-vec and concurrency settings

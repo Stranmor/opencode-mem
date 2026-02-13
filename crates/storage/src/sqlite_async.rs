@@ -4,7 +4,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use opencode_mem_core::{
     GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType, Observation,
-    SearchResult, Session, SessionStatus, SessionSummary, UserPrompt,
+    SearchResult, Session, SessionStatus, SessionSummary, SimilarMatch, UserPrompt,
 };
 
 use crate::pending_queue::{PaginatedResult, PendingMessage, QueueStats, StorageStats};
@@ -78,6 +78,13 @@ impl ObservationStore for Storage {
         let s = self.clone();
         let file_path = file_path.to_owned();
         blocking(move || s.search_by_file(&file_path, limit)).await
+    }
+
+    async fn merge_into_existing(&self, existing_id: &str, newer: &Observation) -> Result<()> {
+        let s = self.clone();
+        let existing_id = existing_id.to_owned();
+        let newer = newer.clone();
+        blocking(move || s.merge_into_existing(&existing_id, &newer)).await
     }
 }
 
@@ -461,5 +468,15 @@ impl EmbeddingStore for Storage {
     async fn clear_embeddings(&self) -> Result<()> {
         let s = self.clone();
         blocking(move || s.clear_embeddings()).await
+    }
+
+    async fn find_similar(
+        &self,
+        embedding: &[f32],
+        threshold: f32,
+    ) -> Result<Option<SimilarMatch>> {
+        let s = self.clone();
+        let embedding = embedding.to_vec();
+        blocking(move || s.find_similar(&embedding, threshold)).await
     }
 }

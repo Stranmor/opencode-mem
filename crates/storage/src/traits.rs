@@ -7,7 +7,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use opencode_mem_core::{
     GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType, Observation,
-    SearchResult, Session, SessionStatus, SessionSummary, UserPrompt,
+    SearchResult, Session, SessionStatus, SessionSummary, SimilarMatch, UserPrompt,
 };
 
 use crate::pending_queue::{PaginatedResult, PendingMessage, QueueStats, StorageStats};
@@ -42,6 +42,9 @@ pub trait ObservationStore: Send + Sync {
 
     /// Search observations by file path.
     async fn search_by_file(&self, file_path: &str, limit: usize) -> Result<Vec<SearchResult>>;
+
+    /// Merge a newer observation into an existing one (semantic dedup).
+    async fn merge_into_existing(&self, existing_id: &str, newer: &Observation) -> Result<()>;
 }
 
 /// Session lifecycle operations.
@@ -266,4 +269,8 @@ pub trait EmbeddingStore: Send + Sync {
 
     /// Drop and recreate the embedding index, forcing re-embedding of all observations.
     async fn clear_embeddings(&self) -> Result<()>;
+
+    /// Find the most similar existing observation by cosine similarity.
+    async fn find_similar(&self, embedding: &[f32], threshold: f32)
+        -> Result<Option<SimilarMatch>>;
 }

@@ -9,6 +9,7 @@ mod v10;
 mod v11;
 mod v12;
 mod v13;
+mod v14;
 mod v2;
 mod v3;
 mod v4;
@@ -21,7 +22,7 @@ mod v9;
 use column_helpers::add_column_if_not_exists;
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: i32 = 13;
+pub const SCHEMA_VERSION: i32 = 14;
 
 #[expect(clippy::cognitive_complexity, reason = "Sequential migrations are inherently linear")]
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -118,6 +119,11 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             "Running migration v13: title_normalized column + UNIQUE index for atomic dedup"
         );
         conn.execute_batch(v13::SQL)?;
+    }
+
+    if current_version < 14i32 {
+        tracing::info!("Running migration v14: FTS5 AFTER UPDATE/DELETE triggers for observations");
+        conn.execute_batch(v14::SQL)?;
     }
 
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
