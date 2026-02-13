@@ -9,7 +9,9 @@
 //! - Multiple embeddings: best-match selection, not just single-embedding scenarios
 
 use super::{create_test_observation, create_test_storage};
-use opencode_mem_core::{observation_embedding_text, union_dedup, ObservationType, SimilarMatch};
+use opencode_mem_core::{
+    observation_embedding_text, union_dedup, Concept, ObservationType, SimilarMatch,
+};
 
 // ===========================================================================
 // union_dedup — pure function tests
@@ -909,6 +911,79 @@ fn test_observation_embedding_text_facts_only_no_narrative() {
     let text = observation_embedding_text(&obs);
     // narrative is None → unwrap_or("") → empty string, then space, then facts.
     assert_eq!(text, "Title  fact1");
+}
+
+#[test]
+#[expect(clippy::unwrap_used, reason = "test code")]
+fn test_merge_into_existing_includes_concepts() {
+    let (storage, _dir) = create_test_storage();
+
+    let obs1 = opencode_mem_core::Observation::builder(
+        "obs-concept-1".to_owned(),
+        "session-1".to_owned(),
+        ObservationType::Discovery,
+        "Concepts merge test".to_owned(),
+    )
+    .concepts(vec![Concept::HowItWorks, Concept::Gotcha])
+    .build();
+
+    assert!(storage.save_observation(&obs1).unwrap());
+
+    let obs2 = opencode_mem_core::Observation::builder(
+        "obs-concept-2".to_owned(),
+        "session-1".to_owned(),
+        ObservationType::Discovery,
+        "Other".to_owned(),
+    )
+    .concepts(vec![Concept::Gotcha, Concept::Pattern, Concept::TradeOff])
+    .build();
+
+    storage.merge_into_existing("obs-concept-1", &obs2).unwrap();
+
+    let merged = storage.get_by_id("obs-concept-1").unwrap().unwrap();
+    assert_eq!(
+        merged.concepts,
+        vec![Concept::HowItWorks, Concept::Gotcha, Concept::Pattern, Concept::TradeOff],
+        "concepts must be unioned with existing-first order, duplicates removed"
+    );
+}
+
+#[test]
+#[expect(clippy::unwrap_used, reason = "test code")]
+fn test_store_embedding_rejects_zero_vector() {
+    let (storage, _dir) = create_test_storage();
+
+    let obs = create_test_observation("obs-zero-vec", "proj");
+    assert!(storage.save_observation(&obs).unwrap());
+
+    let zero_vec = vec![0.0_f32; 384];
+    storage.store_embedding("obs-zero-vec", &zero_vec).unwrap();
+
+    // Zero vector was rejected silently (Ok(())), so observation should have no embedding.
+    // Verify by checking it appears in "without embeddings" list.
+    let without = storage.get_observations_without_embeddings(100).unwrap();
+    assert!(
+        without.iter().any(|o| o.id == "obs-zero-vec"),
+        "zero vector must be rejected — observation should still lack embedding"
+    );
+}
+
+#[test]
+#[expect(clippy::unwrap_used, reason = "test code")]
+fn test_find_similar_rejects_zero_vector() {
+    let (storage, _dir) = create_test_storage();
+
+    let obs = create_test_observation("obs-zero-query", "proj");
+    assert!(storage.save_observation(&obs).unwrap());
+
+    let norm: f32 = (384.0_f32).sqrt();
+    let unit_vec: Vec<f32> = vec![1.0 / norm; 384];
+    storage.store_embedding("obs-zero-query", &unit_vec).unwrap();
+
+    // Query with zero vector → should return None (guard).
+    let zero_query = vec![0.0_f32; 384];
+    let result = storage.find_similar(&zero_query, 0.0).unwrap();
+    assert!(result.is_none(), "zero vector query must return None");
 }
 
 #[test]

@@ -147,12 +147,40 @@ impl ObservationService {
                             .await
                         {
                             Ok(()) => {
-                                if let Err(e) = self
-                                    .storage
-                                    .store_embedding(&existing.observation_id, vec)
-                                    .await
-                                {
-                                    tracing::warn!("Failed to update embedding after merge: {}", e);
+                                // Re-read the merged observation and generate embedding
+                                // from the merged content, not the new observation's content.
+                                let merged_embedding =
+                                    match self.storage.get_by_id(&existing.observation_id).await {
+                                        Ok(Some(merged_obs)) => {
+                                            self.generate_embedding(&merged_obs).await
+                                        },
+                                        Ok(None) => {
+                                            tracing::warn!(
+                                                "Merged observation {} not found after merge",
+                                                existing.observation_id
+                                            );
+                                            None
+                                        },
+                                        Err(e) => {
+                                            tracing::warn!(
+                                                "Failed to re-read merged observation {}: {}",
+                                                existing.observation_id,
+                                                e
+                                            );
+                                            None
+                                        },
+                                    };
+                                if let Some(emb) = merged_embedding {
+                                    if let Err(e) = self
+                                        .storage
+                                        .store_embedding(&existing.observation_id, &emb)
+                                        .await
+                                    {
+                                        tracing::warn!(
+                                            "Failed to update embedding after merge: {}",
+                                            e
+                                        );
+                                    }
                                 }
                                 return Ok(());
                             },
