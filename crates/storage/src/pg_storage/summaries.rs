@@ -71,13 +71,17 @@ impl SummaryStore for PgStorage {
         }
 
         if let Some(s) = summary {
-            let project: Option<String> =
+            let project: Option<Option<String>> =
                 sqlx::query_scalar("SELECT project FROM sessions WHERE id = $1")
                     .bind(session_id)
                     .fetch_optional(&mut *tx)
                     .await?;
 
-            if let Some(proj) = project {
+            // project is Some(Some(proj)) if row found with non-null project,
+            // Some(None) if row found with null project, None if no row.
+            // Flatten: use empty string for null project since session_summaries.project is nullable.
+            if let Some(maybe_proj) = project {
+                let proj = maybe_proj.unwrap_or_default();
                 let now = Utc::now();
                 let empty_json = serde_json::json!([]);
                 sqlx::query(&format!(
