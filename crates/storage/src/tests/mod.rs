@@ -47,6 +47,7 @@ pub fn create_test_session(id: &str) -> Session {
     )
 }
 
+mod dedup_tests;
 mod observation_tests;
 mod search_tests;
 
