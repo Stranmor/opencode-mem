@@ -2315,6 +2315,7 @@ dependencies = [
  "opencode-mem-core",
  "opencode-mem-embeddings",
  "opencode-mem-infinite",
+ "opencode-mem-llm",
  "opencode-mem-search",
  "opencode-mem-service",
  "opencode-mem-storage",

@@ -48,14 +48,6 @@ impl EmbeddingStore for PgStorage {
             return Ok(None);
         }
 
-        let has_embeddings: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM observations WHERE embedding IS NOT NULL")
-                .fetch_one(&self.pool)
-                .await?;
-        if has_embeddings == 0 {
-            return Ok(None);
-        }
-
         let vec_str =
             format!("[{}]", embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
 

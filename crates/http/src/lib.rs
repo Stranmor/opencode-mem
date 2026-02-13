@@ -24,6 +24,7 @@
 #![allow(clippy::exhaustive_structs, reason = "HTTP types are stable")]
 #![allow(clippy::single_call_fn, reason = "Helper functions improve readability")]
 
+pub mod api_error;
 mod api_types;
 mod blocking;
 mod handlers;

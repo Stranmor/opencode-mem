@@ -3,17 +3,15 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use opencode_mem_embeddings::EmbeddingProvider;
 use std::sync::Arc;
-use tokio::task::spawn_blocking;
 
 use opencode_mem_core::{
     is_low_value_observation, Observation, ObservationType, ProjectFilter, SearchResult,
     SessionSummary, ToolCall, UserPrompt,
 };
 use opencode_mem_storage::{
-    EmbeddingStore, ObservationStore, PaginatedResult, PendingQueueStore, PromptStore, SearchStore,
-    StatsStore, SummaryStore,
+    ObservationStore, PaginatedResult, PendingQueueStore, PromptStore, SearchStore, StatsStore,
+    SummaryStore,
 };
 
 use crate::api_types::{
@@ -124,41 +122,10 @@ pub async fn save_memory(
         return Ok((StatusCode::UNPROCESSABLE_ENTITY, Json(observation)));
     }
 
-    let obs_for_save = observation.clone();
-    let inserted = state.storage.save_observation(&obs_for_save).await.map_err(|e| {
+    state.observation_service.save_observation(&observation).await.map_err(|e| {
         tracing::error!("Save observation error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
-    if !inserted {
-        tracing::debug!("Skipping duplicate save_memory: {}", observation.title);
-        return Ok((StatusCode::CONFLICT, Json(observation)));
-    }
-
-    if let Some(emb) = state.embeddings.clone() {
-        let embedding_text = format!(
-            "{} {} {}",
-            observation.title,
-            observation.narrative.as_deref().unwrap_or(""),
-            observation.facts.join(" ")
-        );
-        match spawn_blocking(move || emb.embed(&embedding_text)).await {
-            Ok(Ok(vec)) => {
-                let obs_id = observation.id.clone();
-                match state.storage.store_embedding(&obs_id, &vec).await {
-                    Ok(()) => {},
-                    Err(e) => {
-                        tracing::warn!("Failed to store embedding for {}: {}", observation.id, e);
-                    },
-                }
-            },
-            Ok(Err(e)) => {
-                tracing::warn!("Failed to generate embedding for {}: {}", observation.id, e);
-            },
-            Err(e) => {
-                tracing::warn!("Embedding generation join error for {}: {}", observation.id, e);
-            },
-        }
-    }
 
     Ok((StatusCode::CREATED, Json(observation)))
 }

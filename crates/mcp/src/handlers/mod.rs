@@ -37,7 +37,7 @@ pub async fn handle_tool_call(
     storage: &StorageBackend,
     embeddings: Option<Arc<EmbeddingService>>,
     infinite_mem: Option<&InfiniteMemory>,
-    _observation_service: &ObservationService,
+    observation_service: &ObservationService,
     _session_service: &SessionService,
     handle: &Handle,
     params: &serde_json::Value,
@@ -74,7 +74,7 @@ pub async fn handle_tool_call(
         McpTool::MemorySemanticSearch => {
             memory::handle_semantic_search(storage, embeddings.as_deref(), &args).await
         },
-        McpTool::SaveMemory => memory::handle_save_memory(storage, embeddings, handle, &args).await,
+        McpTool::SaveMemory => memory::handle_save_memory(observation_service, &args).await,
         McpTool::KnowledgeSearch => knowledge::handle_knowledge_search(storage, &args).await,
         McpTool::KnowledgeSave => knowledge::handle_knowledge_save(storage, &args).await,
         McpTool::KnowledgeGet => knowledge::handle_knowledge_get(storage, &args).await,

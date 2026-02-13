@@ -1,10 +1,7 @@
 use opencode_mem_core::{is_low_value_observation, Observation, ObservationType};
-use opencode_mem_embeddings::EmbeddingProvider;
 use opencode_mem_embeddings::EmbeddingService;
-use opencode_mem_storage::traits::{EmbeddingStore, ObservationStore, SearchStore};
+use opencode_mem_storage::traits::{ObservationStore, SearchStore};
 use opencode_mem_storage::StorageBackend;
-use std::sync::Arc;
-use tokio::runtime::Handle;
 
 use super::{mcp_err, mcp_ok, mcp_text};
 
@@ -137,9 +134,7 @@ pub(super) async fn handle_semantic_search(
 }
 
 pub(super) async fn handle_save_memory(
-    storage: &StorageBackend,
-    embeddings: Option<Arc<EmbeddingService>>,
-    _handle: &Handle,
+    observation_service: &opencode_mem_service::ObservationService,
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let raw_text = match args.get("text").and_then(|t| t.as_str()) {
@@ -179,43 +174,8 @@ pub(super) async fn handle_save_memory(
         return mcp_text("Observation filtered as low-value");
     }
 
-    match storage.save_observation(&observation).await {
-        Ok(true) => {},
-        Ok(false) => {
-            tracing::debug!("Duplicate MCP save_memory: {}", observation.title);
-            return mcp_text("Duplicate observation (same title already exists)");
-        },
-        Err(e) => return mcp_err(e),
-    }
-
-    if let Some(emb) = embeddings {
-        let storage = storage.clone();
-        let obs_id = observation.id.clone();
-        let embedding_text = format!(
-            "{} {} {}",
-            observation.title,
-            observation.narrative.as_deref().unwrap_or(""),
-            observation.facts.join(" ")
-        );
-
-        tokio::spawn(async move {
-            let embedding_result =
-                tokio::task::spawn_blocking(move || emb.embed(&embedding_text)).await;
-
-            match embedding_result {
-                Ok(Ok(vec)) => {
-                    if let Err(e) = storage.store_embedding(&obs_id, &vec).await {
-                        tracing::warn!("Failed to store embedding for {}: {}", obs_id, e);
-                    }
-                },
-                Ok(Err(e)) => {
-                    tracing::warn!("Failed to generate embedding for {}: {}", obs_id, e);
-                },
-                Err(e) => {
-                    tracing::warn!("Embedding task join error for {}: {}", obs_id, e);
-                },
-            }
-        });
+    if let Err(e) = observation_service.save_observation(&observation).await {
+        return mcp_err(e);
     }
 
     mcp_ok(&observation)
@@ -226,6 +186,7 @@ mod tests {
     use super::*;
     use opencode_mem_storage::Storage;
     use serde_json::json;
+    use std::sync::Arc;
     use tempfile::tempdir;
 
     fn setup_storage() -> (Storage, StorageBackend, tempfile::TempDir) {
@@ -236,12 +197,25 @@ mod tests {
         (storage, backend, dir)
     }
 
+    fn setup_observation_service(
+        backend: StorageBackend,
+    ) -> opencode_mem_service::ObservationService {
+        let (event_tx, _rx) = tokio::sync::broadcast::channel(16);
+        opencode_mem_service::ObservationService::new(
+            Arc::new(backend),
+            Arc::new(opencode_mem_llm::LlmClient::new(String::new(), String::new())),
+            None,
+            event_tx,
+            None,
+        )
+    }
+
     #[tokio::test]
     async fn test_save_memory_missing_text() {
         let (_storage, backend, _dir) = setup_storage();
-        let handle = tokio::runtime::Handle::current();
+        let obs_service = setup_observation_service(backend);
         let args = json!({});
-        let result = handle_save_memory(&backend, None, &handle, &args).await;
+        let result = handle_save_memory(&obs_service, &args).await;
 
         assert_eq!(result["isError"].as_bool(), Some(true));
         assert!(result["content"][0]["text"].as_str().unwrap().contains("text is required"));
@@ -250,9 +224,9 @@ mod tests {
     #[tokio::test]
     async fn test_save_memory_empty_text() {
         let (_storage, backend, _dir) = setup_storage();
-        let handle = tokio::runtime::Handle::current();
+        let obs_service = setup_observation_service(backend);
         let args = json!({ "text": "  " });
-        let result = handle_save_memory(&backend, None, &handle, &args).await;
+        let result = handle_save_memory(&obs_service, &args).await;
 
         assert_eq!(result["isError"].as_bool(), Some(true));
         assert!(result["content"][0]["text"].as_str().unwrap().contains("must not be empty"));
@@ -261,12 +235,12 @@ mod tests {
     #[tokio::test]
     async fn test_save_memory_with_title() {
         let (storage, backend, _dir) = setup_storage();
-        let handle = tokio::runtime::Handle::current();
+        let obs_service = setup_observation_service(backend);
         let args = json!({
             "text": "some narrative",
             "title": "custom title"
         });
-        let result = handle_save_memory(&backend, None, &handle, &args).await;
+        let result = handle_save_memory(&obs_service, &args).await;
 
         assert!(result.get("isError").is_none());
         let obs_json = result["content"][0]["text"].as_str().unwrap();
@@ -281,12 +255,12 @@ mod tests {
     #[tokio::test]
     async fn test_save_memory_without_title() {
         let (_storage, backend, _dir) = setup_storage();
-        let handle = tokio::runtime::Handle::current();
+        let obs_service = setup_observation_service(backend);
         let long_text = "A very long text that should be truncated for the title because it is more than fifty characters long.";
         let args = json!({
             "text": long_text
         });
-        let result = handle_save_memory(&backend, None, &handle, &args).await;
+        let result = handle_save_memory(&obs_service, &args).await;
 
         assert!(result.get("isError").is_none());
         let obs_json = result["content"][0]["text"].as_str().unwrap();
@@ -298,12 +272,12 @@ mod tests {
     #[tokio::test]
     async fn test_save_memory_with_project() {
         let (_storage, backend, _dir) = setup_storage();
-        let handle = tokio::runtime::Handle::current();
+        let obs_service = setup_observation_service(backend);
         let args = json!({
             "text": "narrative",
             "project": "test-project"
         });
-        let result = handle_save_memory(&backend, None, &handle, &args).await;
+        let result = handle_save_memory(&obs_service, &args).await;
 
         assert!(result.get("isError").is_none());
         let obs_json = result["content"][0]["text"].as_str().unwrap();
@@ -314,11 +288,11 @@ mod tests {
     #[tokio::test]
     async fn test_save_memory_success_returns_observation() {
         let (_storage, backend, _dir) = setup_storage();
-        let handle = tokio::runtime::Handle::current();
+        let obs_service = setup_observation_service(backend);
         let args = json!({
             "text": "success test"
         });
-        let result = handle_save_memory(&backend, None, &handle, &args).await;
+        let result = handle_save_memory(&obs_service, &args).await;
 
         assert!(result.get("isError").is_none());
         let content = &result["content"][0];
