@@ -162,6 +162,7 @@ impl ObservationStore for PgStorage {
         let keywords = union_dedup(&existing.keywords, &newer.keywords);
         let files_read = union_dedup(&existing.files_read, &newer.files_read);
         let files_modified = union_dedup(&existing.files_modified, &newer.files_modified);
+        let concepts = union_dedup_concepts(&existing.concepts, &newer.concepts);
 
         let narrative: Option<&str> = match (&existing.narrative, &newer.narrative) {
             (Some(e), Some(n)) if n.len() > e.len() => Some(n.as_str()),
@@ -174,8 +175,8 @@ impl ObservationStore for PgStorage {
 
         sqlx::query(
             "UPDATE observations SET facts = $1, keywords = $2, files_read = $3,
-                    files_modified = $4, narrative = $5, created_at = $6
-               WHERE id = $7",
+                    files_modified = $4, narrative = $5, created_at = $6, concepts = $7
+               WHERE id = $8",
         )
         .bind(serde_json::to_value(&facts)?)
         .bind(serde_json::to_value(&keywords)?)
@@ -183,6 +184,7 @@ impl ObservationStore for PgStorage {
         .bind(serde_json::to_value(&files_modified)?)
         .bind(narrative)
         .bind(created_at)
+        .bind(serde_json::to_value(&concepts)?)
         .bind(existing_id)
         .execute(&mut *tx)
         .await?;

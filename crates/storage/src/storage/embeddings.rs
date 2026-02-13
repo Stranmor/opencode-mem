@@ -1,5 +1,5 @@
 use anyhow::Result;
-use opencode_mem_core::{Observation, SimilarMatch};
+use opencode_mem_core::{is_zero_vector, Observation, SimilarMatch};
 use rusqlite::params;
 use zerocopy::IntoBytes;
 
@@ -11,6 +11,13 @@ impl Storage {
     /// # Errors
     /// Returns error if database operation fails.
     pub fn store_embedding(&self, observation_id: &str, embedding: &[f32]) -> Result<()> {
+        if is_zero_vector(embedding) {
+            tracing::warn!(
+                observation_id,
+                "Rejecting zero vector embedding (would produce NaN in cosine distance)"
+            );
+            return Ok(());
+        }
         let conn = get_conn(&self.pool)?;
         let rowid: i64 = conn.query_row(
             "SELECT rowid FROM observations WHERE id = ?1",
@@ -68,7 +75,7 @@ impl Storage {
     }
 
     pub fn find_similar(&self, embedding: &[f32], threshold: f32) -> Result<Option<SimilarMatch>> {
-        if embedding.is_empty() {
+        if embedding.is_empty() || is_zero_vector(embedding) {
             return Ok(None);
         }
 

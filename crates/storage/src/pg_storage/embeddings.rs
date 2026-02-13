@@ -4,11 +4,18 @@ use super::*;
 
 use crate::traits::EmbeddingStore;
 use async_trait::async_trait;
-use opencode_mem_core::SimilarMatch;
+use opencode_mem_core::{is_zero_vector, SimilarMatch};
 
 #[async_trait]
 impl EmbeddingStore for PgStorage {
     async fn store_embedding(&self, observation_id: &str, embedding: &[f32]) -> Result<()> {
+        if is_zero_vector(embedding) {
+            tracing::warn!(
+                observation_id,
+                "Rejecting zero vector embedding (would produce NaN in cosine distance)"
+            );
+            return Ok(());
+        }
         let vec_str =
             format!("[{}]", embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
         sqlx::query("UPDATE observations SET embedding = $1::vector WHERE id = $2")
@@ -44,7 +51,7 @@ impl EmbeddingStore for PgStorage {
         embedding: &[f32],
         threshold: f32,
     ) -> Result<Option<SimilarMatch>> {
-        if embedding.is_empty() {
+        if embedding.is_empty() || is_zero_vector(embedding) {
             return Ok(None);
         }
 

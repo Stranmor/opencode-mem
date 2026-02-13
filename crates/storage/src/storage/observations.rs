@@ -249,8 +249,9 @@ impl Storage {
 
     pub fn merge_into_existing(&self, existing_id: &str, newer: &Observation) -> Result<()> {
         let conn = get_conn(&self.pool)?;
+        let tx = conn.unchecked_transaction()?;
         let existing = {
-            let mut stmt = conn.prepare(
+            let mut stmt = tx.prepare(
                 "SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts,
                         files_read, files_modified, keywords, prompt_number, discovery_tokens, noise_level, noise_reason, created_at
                    FROM observations WHERE id = ?1",
@@ -277,7 +278,7 @@ impl Storage {
 
         let created_at = existing.created_at.max(newer.created_at);
 
-        conn.execute(
+        tx.execute(
             "UPDATE observations SET facts = ?1, keywords = ?2, files_read = ?3,
                     files_modified = ?4, narrative = ?5, created_at = ?6, concepts = ?7
                WHERE id = ?8",
@@ -293,6 +294,7 @@ impl Storage {
             ],
         )?;
 
+        tx.commit()?;
         Ok(())
     }
 }
