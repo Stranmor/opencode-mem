@@ -106,6 +106,21 @@ pub enum Concept {
     TradeOff,
 }
 
+impl Concept {
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match *self {
+            Self::HowItWorks => "how-it-works",
+            Self::WhyItExists => "why-it-exists",
+            Self::WhatChanged => "what-changed",
+            Self::ProblemSolution => "problem-solution",
+            Self::Gotcha => "gotcha",
+            Self::Pattern => "pattern",
+            Self::TradeOff => "trade-off",
+        }
+    }
+}
+
 /// Signal vs noise classification for observations.
 /// Critical = must always show, Negligible = hide by default.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord, Default)]

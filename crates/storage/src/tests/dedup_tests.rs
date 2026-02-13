@@ -9,9 +9,7 @@
 //! - Multiple embeddings: best-match selection, not just single-embedding scenarios
 
 use super::{create_test_observation, create_test_storage};
-use opencode_mem_core::{observation_embedding_text, ObservationType, SimilarMatch};
-
-use crate::storage::union_dedup;
+use opencode_mem_core::{observation_embedding_text, union_dedup, ObservationType, SimilarMatch};
 
 // ===========================================================================
 // union_dedup — pure function tests
@@ -89,10 +87,7 @@ fn test_union_dedup_unicode_and_special_chars() {
     let newer = vec!["émoji: 🦀".to_owned(), "中文".to_owned(), "path/with spaces".to_owned()];
 
     let result = union_dedup(&existing, &newer);
-    assert_eq!(
-        result,
-        vec!["日本語", "émoji: 🦀", "中文", "path/with spaces"]
-    );
+    assert_eq!(result, vec!["日本語", "émoji: 🦀", "中文", "path/with spaces"]);
 }
 
 #[test]
@@ -189,10 +184,7 @@ fn test_merge_into_existing_unions_facts_and_keywords() {
     assert_eq!(merged.facts, vec!["A", "B", "C"]);
     assert_eq!(merged.keywords, vec!["x", "y"]);
     assert_eq!(merged.files_read, vec!["f1.rs", "f2.rs"]);
-    assert_eq!(
-        merged.narrative.as_deref(),
-        Some("much longer narrative that should win")
-    );
+    assert_eq!(merged.narrative.as_deref(), Some("much longer narrative that should win"));
 }
 
 #[test]
@@ -230,9 +222,7 @@ fn test_merge_narrative_existing_longer_wins() {
     .narrative("short")
     .build();
 
-    storage
-        .merge_into_existing("obs-narr-long", &obs2)
-        .unwrap();
+    storage.merge_into_existing("obs-narr-long", &obs2).unwrap();
 
     let merged = storage.get_by_id("obs-narr-long").unwrap().unwrap();
     assert_eq!(
@@ -302,15 +292,10 @@ fn test_merge_narrative_both_none() {
     .facts(vec!["B".to_owned()])
     .build();
 
-    storage
-        .merge_into_existing("obs-no-narr", &obs2)
-        .unwrap();
+    storage.merge_into_existing("obs-no-narr", &obs2).unwrap();
 
     let merged = storage.get_by_id("obs-no-narr").unwrap().unwrap();
-    assert!(
-        merged.narrative.is_none(),
-        "both narratives None → result must be None"
-    );
+    assert!(merged.narrative.is_none(), "both narratives None → result must be None");
     assert_eq!(merged.facts, vec!["A", "B"]);
 }
 
@@ -338,9 +323,7 @@ fn test_merge_narrative_existing_none_newer_some() {
     .narrative("newer provides narrative")
     .build();
 
-    storage
-        .merge_into_existing("obs-none-some", &obs2)
-        .unwrap();
+    storage.merge_into_existing("obs-none-some", &obs2).unwrap();
 
     let merged = storage.get_by_id("obs-none-some").unwrap().unwrap();
     assert_eq!(
@@ -374,9 +357,7 @@ fn test_merge_narrative_existing_some_newer_none() {
     )
     .build(); // no narrative
 
-    storage
-        .merge_into_existing("obs-some-none", &obs2)
-        .unwrap();
+    storage.merge_into_existing("obs-some-none", &obs2).unwrap();
 
     let merged = storage.get_by_id("obs-some-none").unwrap().unwrap();
     assert_eq!(
@@ -415,10 +396,7 @@ fn test_merge_files_modified_union() {
     storage.merge_into_existing("obs-fmod-1", &obs2).unwrap();
 
     let merged = storage.get_by_id("obs-fmod-1").unwrap().unwrap();
-    assert_eq!(
-        merged.files_modified,
-        vec!["src/main.rs", "Cargo.toml", "src/lib.rs"]
-    );
+    assert_eq!(merged.files_modified, vec!["src/main.rs", "Cargo.toml", "src/lib.rs"]);
 }
 
 #[test]
@@ -470,10 +448,7 @@ fn test_merge_special_chars_in_facts() {
         ObservationType::Discovery,
         "Special chars merge".to_owned(),
     )
-    .facts(vec![
-        r#"contains "quotes""#.to_owned(),
-        "has\nnewline".to_owned(),
-    ])
+    .facts(vec![r#"contains "quotes""#.to_owned(), "has\nnewline".to_owned()])
     .build();
 
     assert!(storage.save_observation(&obs1).unwrap());
@@ -490,9 +465,7 @@ fn test_merge_special_chars_in_facts() {
     ])
     .build();
 
-    storage
-        .merge_into_existing("obs-special-1", &obs2)
-        .unwrap();
+    storage.merge_into_existing("obs-special-1", &obs2).unwrap();
 
     let merged = storage.get_by_id("obs-special-1").unwrap().unwrap();
     assert_eq!(merged.facts.len(), 3);
@@ -542,7 +515,6 @@ fn test_merge_idempotent_second_merge_no_change() {
     assert_eq!(after_first.keywords, after_second.keywords);
     assert_eq!(after_first.narrative, after_second.narrative);
 }
-
 
 #[test]
 #[expect(clippy::unwrap_used, reason = "test code")]
@@ -625,9 +597,7 @@ fn test_merge_narrative_unicode_byte_vs_char_length() {
     .narrative("日本語") // 9 bytes, 3 chars
     .build();
 
-    storage
-        .merge_into_existing("obs-unicode-narr", &obs2)
-        .unwrap();
+    storage.merge_into_existing("obs-unicode-narr", &obs2).unwrap();
 
     let merged = storage.get_by_id("obs-unicode-narr").unwrap().unwrap();
     // Byte-length comparison: 9 > 5, so Japanese wins.
@@ -698,10 +668,7 @@ fn test_find_similar_returns_none_below_threshold() {
 
     // Cosine similarity of orthogonal vectors = 0.0, well below 0.9.
     let result = storage.find_similar(&vec_b, 0.9).unwrap();
-    assert!(
-        result.is_none(),
-        "orthogonal vectors should not match at threshold 0.9"
-    );
+    assert!(result.is_none(), "orthogonal vectors should not match at threshold 0.9");
 }
 
 #[test]
@@ -714,9 +681,7 @@ fn test_find_similar_empty_embedding_returns_none() {
 
     let norm: f32 = (384.0_f32).sqrt();
     let unit_vec: Vec<f32> = vec![1.0 / norm; 384];
-    storage
-        .store_embedding("obs-empty-emb", &unit_vec)
-        .unwrap();
+    storage.store_embedding("obs-empty-emb", &unit_vec).unwrap();
 
     // Empty query embedding → early return None (implementation guard).
     let empty: Vec<f32> = vec![];
@@ -745,10 +710,7 @@ fn test_find_similar_threshold_zero_matches_anything() {
     }
 
     let result = storage.find_similar(&query, 0.0).unwrap();
-    assert!(
-        result.is_some(),
-        "threshold 0.0 should match any non-orthogonal vector"
-    );
+    assert!(result.is_some(), "threshold 0.0 should match any non-orthogonal vector");
 }
 
 #[test]
@@ -765,10 +727,7 @@ fn test_find_similar_threshold_one_requires_exact_match() {
 
     // Identical vector with threshold=1.0 should match (similarity=1.0, >= 1.0).
     let result_exact = storage.find_similar(&unit_vec, 1.0).unwrap();
-    assert!(
-        result_exact.is_some(),
-        "identical vector at threshold=1.0 must match"
-    );
+    assert!(result_exact.is_some(), "identical vector at threshold=1.0 must match");
 
     // Slightly different vector with threshold=1.0 should NOT match.
     let mut slightly_off = unit_vec.clone();
@@ -776,18 +735,12 @@ fn test_find_similar_threshold_one_requires_exact_match() {
         *first += 0.01; // perturb slightly
     }
     let result_off = storage.find_similar(&slightly_off, 1.0).unwrap();
-    assert!(
-        result_off.is_none(),
-        "perturbed vector at threshold=1.0 must NOT match"
-    );
+    assert!(result_off.is_none(), "perturbed vector at threshold=1.0 must NOT match");
 }
 
 #[test]
 #[expect(clippy::unwrap_used, reason = "test code")]
-#[expect(
-    clippy::indexing_slicing,
-    reason = "test code — vec length is 384, indices 0..3 are safe"
-)]
+#[expect(clippy::indexing_slicing, reason = "test code — vec length is 384, indices 0..3 are safe")]
 fn test_find_similar_multiple_embeddings_returns_best_match() {
     let (storage, _dir) = create_test_storage();
 
@@ -811,10 +764,7 @@ fn test_find_similar_multiple_embeddings_returns_best_match() {
     assert!(result.is_some(), "must find best match among 3 embeddings");
 
     let m = result.unwrap();
-    assert_eq!(
-        m.observation_id, "obs-multi-0",
-        "must return the closest match, not arbitrary"
-    );
+    assert_eq!(m.observation_id, "obs-multi-0", "must return the closest match, not arbitrary");
     assert!(
         m.similarity > 0.99,
         "identical direction should have similarity ~1.0, got {}",
@@ -849,17 +799,11 @@ fn test_find_similar_exact_threshold_boundary() {
 
     // Threshold exactly at similarity → should match (>= comparison).
     let result_at = storage.find_similar(&query, 0.8).unwrap();
-    assert!(
-        result_at.is_some(),
-        "similarity == threshold (0.8) → must match (>= comparison)"
-    );
+    assert!(result_at.is_some(), "similarity == threshold (0.8) → must match (>= comparison)");
 
     // Threshold just above → should NOT match.
     let result_above = storage.find_similar(&query, 0.81).unwrap();
-    assert!(
-        result_above.is_none(),
-        "similarity 0.8 < threshold 0.81 → must not match"
-    );
+    assert!(result_above.is_none(), "similarity 0.8 < threshold 0.81 → must not match");
 }
 
 #[test]
@@ -887,17 +831,11 @@ fn test_find_similar_overwritten_embedding() {
 
     // Query for e_1 → should match (new embedding)
     let result_b = storage.find_similar(&vec_b, 0.9).unwrap();
-    assert!(
-        result_b.is_some(),
-        "overwritten embedding must be searchable"
-    );
+    assert!(result_b.is_some(), "overwritten embedding must be searchable");
 
     // Query for e_0 → should NOT match (old embedding replaced)
     let result_a = storage.find_similar(&vec_a, 0.9).unwrap();
-    assert!(
-        result_a.is_none(),
-        "old embedding must be replaced, not found"
-    );
+    assert!(result_a.is_none(), "old embedding must be replaced, not found");
 }
 
 // ===========================================================================
@@ -1007,10 +945,7 @@ fn test_observation_embedding_text_many_facts() {
     assert!(text.ends_with("fact-99"));
     // Verify all 100 facts are present
     for i in 0..100 {
-        assert!(
-            text.contains(&format!("fact-{i}")),
-            "missing fact-{i} in embedding text"
-        );
+        assert!(text.contains(&format!("fact-{i}")), "missing fact-{i} in embedding text");
     }
 }
 

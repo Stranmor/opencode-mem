@@ -30,8 +30,8 @@ impl SummaryStore for PgStorage {
         .bind(&summary.notes)
         .bind(serde_json::to_value(&summary.files_read)?)
         .bind(serde_json::to_value(&summary.files_edited)?)
-        .bind(summary.prompt_number.map(|v| v as i32))
-        .bind(summary.discovery_tokens.map(|v| v as i32))
+        .bind(summary.prompt_number.map(|v| i32::try_from(v).unwrap_or(i32::MAX)))
+        .bind(summary.discovery_tokens.map(|v| i32::try_from(v).unwrap_or(i32::MAX)))
         .bind(summary.created_at)
         .execute(&self.pool)
         .await?;
@@ -54,19 +54,27 @@ impl SummaryStore for PgStorage {
         status: SessionStatus,
         summary: Option<&str>,
     ) -> Result<()> {
+        let mut tx = self.pool.begin().await?;
         let ended_at: Option<DateTime<Utc>> = (status != SessionStatus::Active).then(Utc::now);
-        sqlx::query("UPDATE sessions SET status = $1, ended_at = $2 WHERE id = $3")
-            .bind(status.as_str())
-            .bind(ended_at)
-            .bind(session_id)
-            .execute(&self.pool)
-            .await?;
+
+        let rows_affected =
+            sqlx::query("UPDATE sessions SET status = $1, ended_at = $2 WHERE id = $3")
+                .bind(status.as_str())
+                .bind(ended_at)
+                .bind(session_id)
+                .execute(&mut *tx)
+                .await?
+                .rows_affected();
+
+        if rows_affected == 0 {
+            tracing::warn!(session_id, "update_session_status_with_summary: session not found");
+        }
 
         if let Some(s) = summary {
             let project: Option<String> =
                 sqlx::query_scalar("SELECT project FROM sessions WHERE id = $1")
                     .bind(session_id)
-                    .fetch_optional(&self.pool)
+                    .fetch_optional(&mut *tx)
                     .await?;
 
             if let Some(proj) = project {
@@ -91,10 +99,12 @@ impl SummaryStore for PgStorage {
                 .bind(Option::<i32>::None)
                 .bind(Option::<i32>::None)
                 .bind(now)
-                .execute(&self.pool)
+                .execute(&mut *tx)
                 .await?;
             }
         }
+
+        tx.commit().await?;
         Ok(())
     }
 
@@ -118,7 +128,7 @@ impl SummaryStore for PgStorage {
         let rows = if let Some(p) = project {
             sqlx::query(&format!(
                 "SELECT {SUMMARY_COLUMNS} FROM session_summaries
-                 WHERE project = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3"
+                 WHERE project = $1 ORDER BY created_at DESC, session_id ASC LIMIT $2 OFFSET $3"
             ))
             .bind(p)
             .bind(limit as i64)
@@ -128,7 +138,7 @@ impl SummaryStore for PgStorage {
         } else {
             sqlx::query(&format!(
                 "SELECT {SUMMARY_COLUMNS} FROM session_summaries
-                 ORDER BY created_at DESC LIMIT $1 OFFSET $2"
+                 ORDER BY created_at DESC, session_id ASC LIMIT $1 OFFSET $2"
             ))
             .bind(limit as i64)
             .bind(offset as i64)

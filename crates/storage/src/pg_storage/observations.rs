@@ -141,15 +141,27 @@ impl ObservationStore for PgStorage {
     }
 
     async fn merge_into_existing(&self, existing_id: &str, newer: &Observation) -> Result<()> {
-        let existing = self
-            .get_by_id(existing_id)
-            .await?
+        let mut tx = self.pool.begin().await?;
+
+        let row = sqlx::query(
+            "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
+                    facts, concepts, files_read, files_modified, keywords,
+                    prompt_number, discovery_tokens, noise_level, noise_reason, created_at
+             FROM observations WHERE id = $1 FOR UPDATE",
+        )
+        .bind(existing_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let existing = row
+            .map(|r| row_to_observation(&r))
+            .transpose()?
             .ok_or_else(|| anyhow::anyhow!("observation not found: {existing_id}"))?;
 
-        let facts = pg_union_dedup(&existing.facts, &newer.facts);
-        let keywords = pg_union_dedup(&existing.keywords, &newer.keywords);
-        let files_read = pg_union_dedup(&existing.files_read, &newer.files_read);
-        let files_modified = pg_union_dedup(&existing.files_modified, &newer.files_modified);
+        let facts = union_dedup(&existing.facts, &newer.facts);
+        let keywords = union_dedup(&existing.keywords, &newer.keywords);
+        let files_read = union_dedup(&existing.files_read, &newer.files_read);
+        let files_modified = union_dedup(&existing.files_modified, &newer.files_modified);
 
         let narrative: Option<&str> = match (&existing.narrative, &newer.narrative) {
             (Some(e), Some(n)) if n.len() > e.len() => Some(n.as_str()),
@@ -172,9 +184,10 @@ impl ObservationStore for PgStorage {
         .bind(narrative)
         .bind(created_at)
         .bind(existing_id)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
 
+        tx.commit().await?;
         Ok(())
     }
 }

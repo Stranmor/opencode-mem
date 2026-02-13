@@ -6,7 +6,7 @@ use std::str::FromStr as _;
 
 use super::{
     coerce_to_sql, escape_like_pattern, get_conn, log_row_error, parse_json,
-    parse_observation_type, union_dedup, Storage,
+    parse_observation_type, union_dedup, union_dedup_concepts, Storage,
 };
 
 impl Storage {
@@ -266,6 +266,7 @@ impl Storage {
         let keywords = union_dedup(&existing.keywords, &newer.keywords);
         let files_read = union_dedup(&existing.files_read, &newer.files_read);
         let files_modified = union_dedup(&existing.files_modified, &newer.files_modified);
+        let concepts = union_dedup_concepts(&existing.concepts, &newer.concepts);
 
         let narrative = match (&existing.narrative, &newer.narrative) {
             (Some(e), Some(n)) if n.len() > e.len() => Some(n.as_str()),
@@ -278,8 +279,8 @@ impl Storage {
 
         conn.execute(
             "UPDATE observations SET facts = ?1, keywords = ?2, files_read = ?3,
-                    files_modified = ?4, narrative = ?5, created_at = ?6
-               WHERE id = ?7",
+                    files_modified = ?4, narrative = ?5, created_at = ?6, concepts = ?7
+               WHERE id = ?8",
             params![
                 serde_json::to_string(&facts)?,
                 serde_json::to_string(&keywords)?,
@@ -287,6 +288,7 @@ impl Storage {
                 serde_json::to_string(&files_modified)?,
                 narrative,
                 created_at.with_timezone(&Utc).to_rfc3339(),
+                serde_json::to_string(&concepts)?,
                 existing_id,
             ],
         )?;

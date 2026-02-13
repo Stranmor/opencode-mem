@@ -34,8 +34,8 @@ use std::collections::HashSet;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use opencode_mem_core::{
-    GlobalKnowledge, KnowledgeType, NoiseLevel, Observation, ObservationType, SearchResult, Session,
-    SessionStatus, SessionSummary, UserPrompt,
+    GlobalKnowledge, KnowledgeType, NoiseLevel, Observation, ObservationType, SearchResult,
+    Session, SessionStatus, SessionSummary, UserPrompt,
 };
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
@@ -68,16 +68,7 @@ pub(crate) fn parse_json_value<T: serde::de::DeserializeOwned>(val: &serde_json:
     serde_json::from_value(val.clone()).unwrap_or_default()
 }
 
-pub(crate) fn pg_union_dedup(existing: &[String], newer: &[String]) -> Vec<String> {
-    let mut seen: HashSet<&str> = HashSet::new();
-    let mut result = Vec::with_capacity(existing.len().saturating_add(newer.len()));
-    for item in existing.iter().chain(newer.iter()) {
-        if seen.insert(item.as_str()) {
-            result.push(item.clone());
-        }
-    }
-    result
-}
+pub(crate) use opencode_mem_core::union_dedup;
 
 pub(crate) fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observation> {
     let obs_type_str: String = row.try_get("observation_type")?;
@@ -154,31 +145,6 @@ pub(crate) fn row_to_search_result(row: &sqlx::postgres::PgRow) -> Result<Search
     ))
 }
 
-pub(crate) fn row_to_search_result_default(row: &sqlx::postgres::PgRow) -> Result<SearchResult> {
-    let obs_type_str: String = row.try_get("observation_type")?;
-    let obs_type: ObservationType = serde_json::from_str(&obs_type_str)
-        .unwrap_or_else(|_| obs_type_str.parse().unwrap_or_else(|_| {
-            tracing::warn!(invalid_type = %obs_type_str, "corrupt observation_type in DB, defaulting to Change");
-            ObservationType::Change
-        }));
-    let noise_str: Option<String> = row.try_get("noise_level")?;
-    let noise_level = match noise_str {
-        Some(s) => s.parse::<NoiseLevel>().unwrap_or_else(|_| {
-            tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
-            NoiseLevel::default()
-        }),
-        None => NoiseLevel::default(),
-    };
-    Ok(SearchResult::new(
-        row.try_get("id")?,
-        row.try_get("title")?,
-        row.try_get("subtitle")?,
-        obs_type,
-        noise_level,
-        1.0,
-    ))
-}
-
 pub(crate) fn row_to_session(row: &sqlx::postgres::PgRow) -> Result<Session> {
     let started_at: DateTime<Utc> = row.try_get("started_at")?;
     let ended_at: Option<DateTime<Utc>> = row.try_get("ended_at")?;
@@ -246,7 +212,7 @@ pub(crate) fn row_to_knowledge(row: &sqlx::postgres::PgRow) -> Result<GlobalKnow
         parse_json_value(&source_projects),
         parse_json_value(&source_observations),
         row.try_get("confidence")?,
-        i64::from(row.try_get::<i32, _>("usage_count")?),
+        row.try_get::<i64, _>("usage_count")?,
         last_used_at.map(|d| d.to_rfc3339()),
         created_at.to_rfc3339(),
         updated_at.to_rfc3339(),
@@ -290,15 +256,26 @@ pub(crate) fn row_to_pending_message(row: &sqlx::postgres::PgRow) -> Result<Pend
 pub(crate) fn build_tsquery(query: &str) -> String {
     query
         .split_whitespace()
-        .map(|w| format!("{}:*", w.replace('\'', "")))
+        .filter_map(|w| {
+            // Strip tsquery operators and special characters, keep only alphanumeric
+            let sanitized: String =
+                w.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect();
+            if sanitized.is_empty() {
+                None
+            } else {
+                Some(format!("{}:*", sanitized))
+            }
+        })
         .collect::<Vec<_>>()
         .join(" & ")
 }
 
-pub(crate) const SESSION_COLUMNS: &str = "id, content_session_id, memory_session_id, project, user_prompt,
+pub(crate) const SESSION_COLUMNS: &str =
+    "id, content_session_id, memory_session_id, project, user_prompt,
      started_at, ended_at, status, prompt_counter";
 
-pub(crate) const KNOWLEDGE_COLUMNS: &str = "id, knowledge_type, title, description, instructions, triggers,
+pub(crate) const KNOWLEDGE_COLUMNS: &str =
+    "id, knowledge_type, title, description, instructions, triggers,
      source_projects, source_observations, confidence, usage_count,
      last_used_at, created_at, updated_at";
 

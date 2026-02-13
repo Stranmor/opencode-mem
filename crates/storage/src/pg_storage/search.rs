@@ -131,7 +131,7 @@ impl SearchStore for PgStorage {
         if let Some(t) = obs_type {
             conditions.push(format!("observation_type = ${param_idx}"));
             param_idx += 1;
-            bind_strings.push(serde_json::to_string(t).unwrap_or_else(|_| format!("\"{t}\"")));
+            bind_strings.push(t.to_owned());
         }
         if let Some(f) = from {
             conditions.push(format!("created_at >= ${param_idx}::timestamptz"));
@@ -195,7 +195,7 @@ impl SearchStore for PgStorage {
         }
         q = q.bind(limit as i64);
         let rows = q.fetch_all(&self.pool).await?;
-        rows.iter().map(row_to_search_result_default).collect()
+        rows.iter().map(row_to_search_result).collect()
     }
 
     async fn get_timeline(
@@ -237,19 +237,11 @@ impl SearchStore for PgStorage {
         }
         q = q.bind(limit as i64);
         let rows = q.fetch_all(&self.pool).await?;
-        rows.iter().map(row_to_search_result_default).collect()
+        rows.iter().map(row_to_search_result).collect()
     }
 
     async fn semantic_search(&self, query_vec: &[f32], limit: usize) -> Result<Vec<SearchResult>> {
         if query_vec.is_empty() {
-            return Ok(Vec::new());
-        }
-
-        let has_embeddings: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM observations WHERE embedding IS NOT NULL")
-                .fetch_one(&self.pool)
-                .await?;
-        if has_embeddings == 0 {
             return Ok(Vec::new());
         }
 
@@ -281,14 +273,6 @@ impl SearchStore for PgStorage {
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
         if query_vec.is_empty() {
-            return self.hybrid_search(query, limit).await;
-        }
-
-        let has_embeddings: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM observations WHERE embedding IS NOT NULL")
-                .fetch_one(&self.pool)
-                .await?;
-        if has_embeddings == 0 {
             return self.hybrid_search(query, limit).await;
         }
 
@@ -358,24 +342,14 @@ impl SearchStore for PgStorage {
 
         combined.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
-        let top_ids: Vec<String> = combined.into_iter().take(limit).map(|(id, _)| id).collect();
-        if top_ids.is_empty() {
+        let top: Vec<(String, f64)> = combined.into_iter().take(limit).collect();
+        if top.is_empty() {
             return Ok(Vec::new());
         }
 
-        let score_lookup: HashMap<String, f64> = fts_scores
-            .keys()
-            .chain(vec_scores.keys())
-            .map(|id| {
-                let fts_normalized = if max_fts_score > 0.0_f64 {
-                    fts_scores.get(id).copied().unwrap_or(0.0_f64) / max_fts_score
-                } else {
-                    0.0_f64
-                };
-                let vec_sim = vec_scores.get(id).copied().unwrap_or(0.0_f64);
-                (id.clone(), fts_normalized.mul_add(0.5_f64, vec_sim * 0.5_f64))
-            })
-            .collect();
+        let top_ids: Vec<&str> = top.iter().map(|(id, _)| id.as_str()).collect();
+        let score_lookup: HashMap<&str, f64> =
+            top.iter().map(|(id, score)| (id.as_str(), *score)).collect();
 
         let placeholders: String =
             (1..=top_ids.len()).map(|i| format!("${i}")).collect::<Vec<_>>().join(",");
@@ -408,7 +382,7 @@ impl SearchStore for PgStorage {
                     None => NoiseLevel::default(),
                 };
                 let id: String = row.try_get("id")?;
-                let score = score_lookup.get(&id).copied().unwrap_or(0.0_f64);
+                let score = score_lookup.get(id.as_str()).copied().unwrap_or(0.0_f64);
                 Ok(SearchResult::new(
                     id,
                     row.try_get("title")?,

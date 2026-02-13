@@ -19,13 +19,14 @@ impl KnowledgeStore for PgStorage {
             serde_json::Value,
             serde_json::Value,
             f64,
-            i32,
+            i64,
             Option<DateTime<Utc>>,
         )> = sqlx::query_as(
             "SELECT id, created_at, triggers, source_projects, source_observations,
                         confidence, usage_count, last_used_at
                  FROM global_knowledge
-                 WHERE LOWER(TRIM(title)) = LOWER(TRIM($1))",
+                 WHERE LOWER(TRIM(title)) = LOWER(TRIM($1))
+                 FOR UPDATE",
         )
         .bind(&input.title)
         .fetch_optional(&mut *tx)
@@ -92,7 +93,7 @@ impl KnowledgeStore for PgStorage {
                 source_projects,
                 source_observations,
                 confidence,
-                i64::from(usage_count),
+                usage_count,
                 last_used_at.map(|d| d.to_rfc3339()),
                 created_at.to_rfc3339(),
                 now.to_rfc3339(),

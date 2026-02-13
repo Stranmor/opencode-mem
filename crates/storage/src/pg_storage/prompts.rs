@@ -44,7 +44,7 @@ impl PromptStore for PgStorage {
         let rows = if let Some(p) = project {
             sqlx::query(
                 "SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
-                   FROM user_prompts WHERE project = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+                   FROM user_prompts WHERE project = $1 ORDER BY created_at DESC, id ASC LIMIT $2 OFFSET $3",
             )
             .bind(p)
             .bind(limit as i64)
@@ -54,7 +54,7 @@ impl PromptStore for PgStorage {
         } else {
             sqlx::query(
                 "SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
-                   FROM user_prompts ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+                   FROM user_prompts ORDER BY created_at DESC, id ASC LIMIT $1 OFFSET $2",
             )
             .bind(limit as i64)
             .bind(offset as i64)
