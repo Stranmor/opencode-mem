@@ -43,7 +43,7 @@ pub fn union_dedup(existing: &[String], newer: &[String]) -> Vec<String> {
 /// does not implement `Hash`.
 #[must_use]
 pub fn union_dedup_concepts(existing: &[Concept], newer: &[Concept]) -> Vec<Concept> {
-    let mut seen: HashSet<&'static str> = HashSet::new();
+    let mut seen: HashSet<&str> = HashSet::new();
     let mut result = Vec::with_capacity(existing.len().saturating_add(newer.len()));
     for item in existing.iter().chain(newer.iter()) {
         if seen.insert(item.as_str()) {
