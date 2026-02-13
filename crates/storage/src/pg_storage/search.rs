@@ -1,0 +1,426 @@
+//! SearchStore implementation for PgStorage.
+
+use super::*;
+
+use std::cmp::Ordering;
+use std::collections::HashMap;
+
+use crate::traits::{ObservationStore, SearchStore};
+use async_trait::async_trait;
+
+#[async_trait]
+impl SearchStore for PgStorage {
+    async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        let tsquery = build_tsquery(query);
+        if tsquery.is_empty() {
+            return self.get_recent(limit).await;
+        }
+        let rows = sqlx::query(
+            "SELECT id, title, subtitle, observation_type, noise_level,
+                    ts_rank_cd(search_vec, to_tsquery('english', $1))::float8 as score
+               FROM observations
+               WHERE search_vec @@ to_tsquery('english', $1)
+               ORDER BY score DESC
+               LIMIT $2",
+        )
+        .bind(&tsquery)
+        .bind(limit as i64)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_search_result).collect()
+    }
+
+    async fn hybrid_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        let keywords: HashSet<String> = query.split_whitespace().map(str::to_lowercase).collect();
+        let tsquery = build_tsquery(query);
+        if tsquery.is_empty() {
+            return self.get_recent(limit).await;
+        }
+
+        let rows = sqlx::query(
+            "SELECT id, title, subtitle, observation_type, noise_level, keywords,
+                    ts_rank_cd(search_vec, to_tsquery('english', $1))::float8 as fts_score
+               FROM observations
+               WHERE search_vec @@ to_tsquery('english', $1)
+               ORDER BY fts_score DESC
+               LIMIT $2",
+        )
+        .bind(&tsquery)
+        .bind((limit * 2) as i64)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let raw_results: Vec<(SearchResult, f64, HashSet<String>)> = rows
+            .iter()
+            .map(|row| {
+                let obs_type_str: String = row.try_get("observation_type")?;
+                let obs_type: ObservationType = serde_json::from_str(&obs_type_str)
+                    .unwrap_or_else(|_| obs_type_str.parse().unwrap_or_else(|_| {
+                        tracing::warn!(invalid_type = %obs_type_str, "corrupt observation_type in DB, defaulting to Change");
+                        ObservationType::Change
+                    }));
+                let noise_str: Option<String> = row.try_get("noise_level")?;
+                let noise_level = match noise_str {
+                    Some(s) => s.parse::<NoiseLevel>().unwrap_or_else(|_| {
+                        tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
+                        NoiseLevel::default()
+                    }),
+                    None => NoiseLevel::default(),
+                };
+                let fts_score: f64 = row.try_get("fts_score")?;
+                let kw_json: serde_json::Value = row.try_get("keywords")?;
+                let obs_kw: HashSet<String> = serde_json::from_value::<Vec<String>>(kw_json)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|s| s.to_lowercase())
+                    .collect();
+                let sr = SearchResult::new(
+                    row.try_get("id")?,
+                    row.try_get("title")?,
+                    row.try_get("subtitle")?,
+                    obs_type,
+                    noise_level,
+                    0.0,
+                );
+                Ok((sr, fts_score, obs_kw))
+            })
+            .collect::<Result<_>>()?;
+
+        let (min_fts, max_fts) =
+            raw_results.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(mn, mx), (_, fts, _)| {
+                (mn.min(*fts), mx.max(*fts))
+            });
+        let fts_range = max_fts - min_fts;
+
+        let mut results: Vec<(SearchResult, f64)> = raw_results
+            .into_iter()
+            .map(|(mut result, fts_score, obs_kw)| {
+                let fts_normalized =
+                    if fts_range > 0.0 { (fts_score - min_fts) / fts_range } else { 1.0 };
+                let keyword_overlap = keywords.intersection(&obs_kw).count() as f64;
+                let keyword_score =
+                    if keywords.is_empty() { 0.0 } else { keyword_overlap / keywords.len() as f64 };
+                result.score = fts_normalized.mul_add(0.7, keyword_score * 0.3);
+                let score = result.score;
+                (result, score)
+            })
+            .collect();
+
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
+        Ok(results.into_iter().take(limit).map(|(r, _)| r).collect())
+    }
+
+    async fn search_with_filters(
+        &self,
+        query: Option<&str>,
+        project: Option<&str>,
+        obs_type: Option<&str>,
+        from: Option<&str>,
+        to: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<SearchResult>> {
+        let mut conditions = Vec::new();
+        let mut param_idx: usize = 1;
+        let mut bind_strings: Vec<String> = Vec::new();
+
+        if let Some(p) = project {
+            conditions.push(format!("project = ${param_idx}"));
+            param_idx += 1;
+            bind_strings.push(p.to_owned());
+        }
+        if let Some(t) = obs_type {
+            conditions.push(format!("observation_type = ${param_idx}"));
+            param_idx += 1;
+            bind_strings.push(serde_json::to_string(t).unwrap_or_else(|_| format!("\"{t}\"")));
+        }
+        if let Some(f) = from {
+            conditions.push(format!("created_at >= ${param_idx}::timestamptz"));
+            param_idx += 1;
+            bind_strings.push(f.to_owned());
+        }
+        if let Some(t) = to {
+            conditions.push(format!("created_at <= ${param_idx}::timestamptz"));
+            param_idx += 1;
+            bind_strings.push(t.to_owned());
+        }
+
+        if let Some(q) = query {
+            let tsquery = build_tsquery(q);
+            if !tsquery.is_empty() {
+                let fts_cond = format!("search_vec @@ to_tsquery('english', ${param_idx})");
+                param_idx += 1;
+                let score_expr = format!(
+                    "ts_rank_cd(search_vec, to_tsquery('english', ${}))::float8 as score",
+                    param_idx - 1
+                );
+                let extra_where = if conditions.is_empty() {
+                    String::new()
+                } else {
+                    format!("AND {}", conditions.join(" AND "))
+                };
+                let sql = format!(
+                    "SELECT id, title, subtitle, observation_type, noise_level, {score_expr}
+                       FROM observations
+                       WHERE {fts_cond} {extra_where}
+                       ORDER BY score DESC
+                       LIMIT ${param_idx}"
+                );
+
+                let mut q = sqlx::query(&sql);
+                for val in &bind_strings {
+                    q = q.bind(val);
+                }
+                q = q.bind(&tsquery);
+                q = q.bind(limit as i64);
+                let rows = q.fetch_all(&self.pool).await?;
+                return rows.iter().map(row_to_search_result).collect();
+            }
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+        let sql = format!(
+            "SELECT id, title, subtitle, observation_type, noise_level
+               FROM observations {where_clause}
+               ORDER BY created_at DESC
+               LIMIT ${param_idx}"
+        );
+
+        let mut q = sqlx::query(&sql);
+        for val in &bind_strings {
+            q = q.bind(val);
+        }
+        q = q.bind(limit as i64);
+        let rows = q.fetch_all(&self.pool).await?;
+        rows.iter().map(row_to_search_result_default).collect()
+    }
+
+    async fn get_timeline(
+        &self,
+        from: Option<&str>,
+        to: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<SearchResult>> {
+        let mut conditions = Vec::new();
+        let mut param_idx: usize = 1;
+        let mut bind_strings: Vec<String> = Vec::new();
+
+        if let Some(f) = from {
+            conditions.push(format!("created_at >= ${param_idx}::timestamptz"));
+            param_idx += 1;
+            bind_strings.push(f.to_owned());
+        }
+        if let Some(t) = to {
+            conditions.push(format!("created_at <= ${param_idx}::timestamptz"));
+            param_idx += 1;
+            bind_strings.push(t.to_owned());
+        }
+
+        let where_clause = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", conditions.join(" AND "))
+        };
+        let sql = format!(
+            "SELECT id, title, subtitle, observation_type, noise_level
+               FROM observations {where_clause}
+               ORDER BY created_at DESC
+               LIMIT ${param_idx}"
+        );
+
+        let mut q = sqlx::query(&sql);
+        for val in &bind_strings {
+            q = q.bind(val);
+        }
+        q = q.bind(limit as i64);
+        let rows = q.fetch_all(&self.pool).await?;
+        rows.iter().map(row_to_search_result_default).collect()
+    }
+
+    async fn semantic_search(&self, query_vec: &[f32], limit: usize) -> Result<Vec<SearchResult>> {
+        if query_vec.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let has_embeddings: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM observations WHERE embedding IS NOT NULL")
+                .fetch_one(&self.pool)
+                .await?;
+        if has_embeddings == 0 {
+            return Ok(Vec::new());
+        }
+
+        let vec_str =
+            format!("[{}]", query_vec.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+        let rows = sqlx::query(
+            "SELECT id, title, subtitle, observation_type, noise_level,
+                    1.0 - (embedding <=> $1::vector) as score
+               FROM observations
+               WHERE embedding IS NOT NULL
+               ORDER BY embedding <=> $1::vector
+               LIMIT $2",
+        )
+        .bind(&vec_str)
+        .bind(limit as i64)
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_search_result).collect()
+    }
+
+    #[expect(
+        clippy::too_many_lines,
+        reason = "hybrid v2 combines FTS + vector scoring in two passes"
+    )]
+    async fn hybrid_search_v2(
+        &self,
+        query: &str,
+        query_vec: &[f32],
+        limit: usize,
+    ) -> Result<Vec<SearchResult>> {
+        if query_vec.is_empty() {
+            return self.hybrid_search(query, limit).await;
+        }
+
+        let has_embeddings: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM observations WHERE embedding IS NOT NULL")
+                .fetch_one(&self.pool)
+                .await?;
+        if has_embeddings == 0 {
+            return self.hybrid_search(query, limit).await;
+        }
+
+        let tsquery = build_tsquery(query);
+        let mut fts_scores: HashMap<String, f64> = HashMap::new();
+        let mut max_fts_score: f64 = 0.0;
+
+        if !tsquery.is_empty() {
+            let fts_rows = sqlx::query(
+                "SELECT id, ts_rank_cd(search_vec, to_tsquery('english', $1))::float8 as fts_score
+                   FROM observations
+                   WHERE search_vec @@ to_tsquery('english', $1)
+                   LIMIT $2",
+            )
+            .bind(&tsquery)
+            .bind((limit * 3) as i64)
+            .fetch_all(&self.pool)
+            .await?;
+
+            for row in &fts_rows {
+                let id: String = row.try_get("id")?;
+                let score: f64 = row.try_get("fts_score")?;
+                if score > max_fts_score {
+                    max_fts_score = score;
+                }
+                fts_scores.insert(id, score);
+            }
+        }
+
+        let vec_str =
+            format!("[{}]", query_vec.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+        let vec_rows = sqlx::query(
+            "SELECT id, 1.0 - (embedding <=> $1::vector) as similarity
+               FROM observations
+               WHERE embedding IS NOT NULL
+               ORDER BY embedding <=> $1::vector
+               LIMIT $2",
+        )
+        .bind(&vec_str)
+        .bind((limit * 3) as i64)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut vec_scores: HashMap<String, f64> = HashMap::new();
+        for row in &vec_rows {
+            let id: String = row.try_get("id")?;
+            let sim: f64 = row.try_get("similarity")?;
+            vec_scores.insert(id, sim);
+        }
+
+        let all_ids: HashSet<String> =
+            fts_scores.keys().chain(vec_scores.keys()).cloned().collect();
+
+        let mut combined: Vec<(String, f64)> = all_ids
+            .into_iter()
+            .map(|id| {
+                let fts_normalized = if max_fts_score > 0.0_f64 {
+                    fts_scores.get(&id).copied().unwrap_or(0.0_f64) / max_fts_score
+                } else {
+                    0.0_f64
+                };
+                let vec_sim = vec_scores.get(&id).copied().unwrap_or(0.0_f64);
+                let final_score = fts_normalized.mul_add(0.5_f64, vec_sim * 0.5_f64);
+                (id, final_score)
+            })
+            .collect();
+
+        combined.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
+
+        let top_ids: Vec<String> = combined.into_iter().take(limit).map(|(id, _)| id).collect();
+        if top_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let score_lookup: HashMap<String, f64> = fts_scores
+            .keys()
+            .chain(vec_scores.keys())
+            .map(|id| {
+                let fts_normalized = if max_fts_score > 0.0_f64 {
+                    fts_scores.get(id).copied().unwrap_or(0.0_f64) / max_fts_score
+                } else {
+                    0.0_f64
+                };
+                let vec_sim = vec_scores.get(id).copied().unwrap_or(0.0_f64);
+                (id.clone(), fts_normalized.mul_add(0.5_f64, vec_sim * 0.5_f64))
+            })
+            .collect();
+
+        let placeholders: String =
+            (1..=top_ids.len()).map(|i| format!("${i}")).collect::<Vec<_>>().join(",");
+        let sql = format!(
+            "SELECT id, title, subtitle, observation_type, noise_level
+               FROM observations WHERE id IN ({placeholders})"
+        );
+
+        let mut q = sqlx::query(&sql);
+        for id in &top_ids {
+            q = q.bind(id);
+        }
+        let rows = q.fetch_all(&self.pool).await?;
+
+        let mut results: Vec<SearchResult> = rows
+            .iter()
+            .map(|row| {
+                let obs_type_str: String = row.try_get("observation_type")?;
+                let obs_type: ObservationType = serde_json::from_str(&obs_type_str)
+                    .unwrap_or_else(|_| obs_type_str.parse().unwrap_or_else(|_| {
+                        tracing::warn!(invalid_type = %obs_type_str, "corrupt observation_type in DB, defaulting to Change");
+                        ObservationType::Change
+                    }));
+                let noise_str: Option<String> = row.try_get("noise_level")?;
+                let noise_level = match noise_str {
+                    Some(s) => s.parse::<NoiseLevel>().unwrap_or_else(|_| {
+                        tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
+                        NoiseLevel::default()
+                    }),
+                    None => NoiseLevel::default(),
+                };
+                let id: String = row.try_get("id")?;
+                let score = score_lookup.get(&id).copied().unwrap_or(0.0_f64);
+                Ok(SearchResult::new(
+                    id,
+                    row.try_get("title")?,
+                    row.try_get("subtitle")?,
+                    obs_type,
+                    noise_level,
+                    score,
+                ))
+            })
+            .collect::<Result<_>>()?;
+
+        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
+        Ok(results)
+    }
+}
