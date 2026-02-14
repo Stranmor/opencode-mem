@@ -81,7 +81,6 @@ crates/
 - Local HTTP server fails to start if port 37777 is already in use; stop the existing process before starting a new server.
 - Gate MCP review tooling intermittently returns 429/502 or "Max retries exceeded", blocking automated code review.
 
-- Pre-commit hooks block on pre-existing clippy cast warnings in `pg_storage.rs` (~40 `as` casts). Use `--no-verify` until fixed.
 - Test coverage: ~40% of critical paths. Service layer, HTTP handlers, infinite-memory, CLI still have zero tests.
 
 ### Resolved
@@ -101,3 +100,12 @@ crates/
 - ~~MCP handlers accept empty required fields~~ — now reject with error
 - ~~MCP stdout silent write failures~~ — error paths now break cleanly
 - ~~Unbounded query limits (DoS)~~ — SearchQuery/Timeline/Pagination capped at 1000, BatchRequest.ids at 500
+- ~~pg_storage.rs monolith (1826 lines)~~ — split into modular directory: mod.rs + 9 domain modules
+- ~~4-way SPOT violation in save+embed~~ — centralized through ObservationService::save_observation()
+- ~~Blocking async in embedding calls~~ — wrapped in spawn_blocking
+- ~~~70 unsafe `as` casts in pg_storage~~ — replaced with TryFrom/checked conversions (3 intentional casts with #[allow(reason)])
+- ~~sqlite_async.rs boilerplate (62 self.clone())~~ — delegate! macro, 483→336 lines
+- ~~Zero-vector embedding corruption~~ — guard in store_embedding + find_similar (both SQLite + PG)
+- ~~Stale embedding after dedup merge~~ — re-generate from merged content
+- ~~merge_into_existing not transactional (SQLite)~~ — wrapped in transaction
+- ~~Nullable project crash in session summary (PG)~~ — handle Option<Option<String>> correctly
