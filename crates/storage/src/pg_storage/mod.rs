@@ -2,15 +2,6 @@
 //!
 //! Split into modular files matching the SQLite storage pattern.
 
-// PostgreSQL uses i64 for counts/limits, Rust uses usize - safe conversions within DB context
-#![allow(
-    clippy::as_conversions,
-    clippy::cast_possible_wrap,
-    clippy::cast_possible_truncation,
-    clippy::cast_sign_loss,
-    clippy::cast_precision_loss,
-    reason = "PostgreSQL i64 <-> Rust usize conversions are safe within DB row counts"
-)]
 // Arithmetic in DB operations (pagination, counting) is bounded by DB limits
 #![allow(
     clippy::arithmetic_side_effects,
@@ -107,8 +98,12 @@ pub(crate) fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observat
     .files_read(parse_json_value(&files_read))
     .files_modified(parse_json_value(&files_modified))
     .keywords(parse_json_value(&keywords))
-    .maybe_prompt_number(row.try_get::<Option<i32>, _>("prompt_number")?.map(|v| v as u32))
-    .maybe_discovery_tokens(row.try_get::<Option<i32>, _>("discovery_tokens")?.map(|v| v as u32))
+    .maybe_prompt_number(
+        row.try_get::<Option<i32>, _>("prompt_number")?.map(|v| u32::try_from(v).unwrap_or(0)),
+    )
+    .maybe_discovery_tokens(
+        row.try_get::<Option<i32>, _>("discovery_tokens")?.map(|v| u32::try_from(v).unwrap_or(0)),
+    )
     .noise_level(noise_level)
     .maybe_noise_reason(noise_reason)
     .created_at(created_at)
@@ -117,6 +112,12 @@ pub(crate) fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observat
 
 pub(crate) fn escape_like(s: &str) -> String {
     s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+}
+
+/// Convert `usize` to `i64` for SQL LIMIT/OFFSET binds.
+/// Saturates to `i64::MAX` on overflow (only possible on 128-bit targets).
+pub(crate) fn usize_to_i64(val: usize) -> i64 {
+    i64::try_from(val).unwrap_or(i64::MAX)
 }
 
 pub(crate) fn row_to_search_result(row: &sqlx::postgres::PgRow) -> Result<SearchResult> {
@@ -165,7 +166,7 @@ pub(crate) fn row_to_session(row: &sqlx::postgres::PgRow) -> Result<Session> {
         started_at,
         ended_at,
         status,
-        row.try_get::<i32, _>("prompt_counter")? as u32,
+        u32::try_from(row.try_get::<i32, _>("prompt_counter")?).unwrap_or(0),
     ))
 }
 
@@ -184,8 +185,8 @@ pub(crate) fn row_to_summary(row: &sqlx::postgres::PgRow) -> Result<SessionSumma
         row.try_get("notes")?,
         parse_json_value(&files_read),
         parse_json_value(&files_edited),
-        row.try_get::<Option<i32>, _>("prompt_number")?.map(|v| v as u32),
-        row.try_get::<Option<i32>, _>("discovery_tokens")?.map(|v| v as u32),
+        row.try_get::<Option<i32>, _>("prompt_number")?.map(|v| u32::try_from(v).unwrap_or(0)),
+        row.try_get::<Option<i32>, _>("discovery_tokens")?.map(|v| u32::try_from(v).unwrap_or(0)),
         created_at,
     ))
 }
@@ -224,7 +225,7 @@ pub(crate) fn row_to_prompt(row: &sqlx::postgres::PgRow) -> Result<UserPrompt> {
     Ok(UserPrompt::new(
         row.try_get("id")?,
         row.try_get("content_session_id")?,
-        row.try_get::<i32, _>("prompt_number")? as u32,
+        u32::try_from(row.try_get::<i32, _>("prompt_number")?).unwrap_or(0),
         row.try_get("prompt_text")?,
         row.try_get("project")?,
         created_at,

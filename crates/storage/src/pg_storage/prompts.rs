@@ -4,6 +4,7 @@ use super::*;
 
 use crate::pending_queue::PaginatedResult;
 use crate::traits::PromptStore;
+use anyhow::Context;
 use async_trait::async_trait;
 
 #[async_trait]
@@ -17,7 +18,7 @@ impl PromptStore for PgStorage {
         )
         .bind(&prompt.id)
         .bind(&prompt.content_session_id)
-        .bind(prompt.prompt_number as i32)
+        .bind(i32::try_from(prompt.prompt_number).context("prompt_number exceeds i32::MAX")?)
         .bind(&prompt.prompt_text)
         .bind(&prompt.project)
         .bind(prompt.created_at)
@@ -47,8 +48,8 @@ impl PromptStore for PgStorage {
                    FROM user_prompts WHERE project = $1 ORDER BY created_at DESC, id ASC LIMIT $2 OFFSET $3",
             )
             .bind(p)
-            .bind(limit as i64)
-            .bind(offset as i64)
+            .bind(usize_to_i64(limit))
+            .bind(usize_to_i64(offset))
             .fetch_all(&self.pool)
             .await?
         } else {
@@ -56,8 +57,8 @@ impl PromptStore for PgStorage {
                 "SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
                    FROM user_prompts ORDER BY created_at DESC, id ASC LIMIT $1 OFFSET $2",
             )
-            .bind(limit as i64)
-            .bind(offset as i64)
+            .bind(usize_to_i64(limit))
+            .bind(usize_to_i64(offset))
             .fetch_all(&self.pool)
             .await?
         };
@@ -65,9 +66,9 @@ impl PromptStore for PgStorage {
         let items: Vec<UserPrompt> = rows.iter().map(row_to_prompt).collect::<Result<_>>()?;
         Ok(PaginatedResult {
             items,
-            total: total as u64,
-            offset: offset as u64,
-            limit: limit as u64,
+            total: u64::try_from(total).unwrap_or(0),
+            offset: u64::try_from(offset).unwrap_or(0),
+            limit: u64::try_from(limit).unwrap_or(0),
         })
     }
 
@@ -95,7 +96,7 @@ impl PromptStore for PgStorage {
                LIMIT $2",
         )
         .bind(&pattern)
-        .bind(limit as i64)
+        .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_prompt).collect()

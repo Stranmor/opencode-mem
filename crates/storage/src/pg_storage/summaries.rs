@@ -135,8 +135,8 @@ impl SummaryStore for PgStorage {
                  WHERE project = $1 ORDER BY created_at DESC, session_id ASC LIMIT $2 OFFSET $3"
             ))
             .bind(p)
-            .bind(limit as i64)
-            .bind(offset as i64)
+            .bind(usize_to_i64(limit))
+            .bind(usize_to_i64(offset))
             .fetch_all(&self.pool)
             .await?
         } else {
@@ -144,8 +144,8 @@ impl SummaryStore for PgStorage {
                 "SELECT {SUMMARY_COLUMNS} FROM session_summaries
                  ORDER BY created_at DESC, session_id ASC LIMIT $1 OFFSET $2"
             ))
-            .bind(limit as i64)
-            .bind(offset as i64)
+            .bind(usize_to_i64(limit))
+            .bind(usize_to_i64(offset))
             .fetch_all(&self.pool)
             .await?
         };
@@ -153,9 +153,9 @@ impl SummaryStore for PgStorage {
         let items: Vec<SessionSummary> = rows.iter().map(row_to_summary).collect::<Result<_>>()?;
         Ok(PaginatedResult {
             items,
-            total: total as u64,
-            offset: offset as u64,
-            limit: limit as u64,
+            total: u64::try_from(total).unwrap_or(0),
+            offset: u64::try_from(offset).unwrap_or(0),
+            limit: u64::try_from(limit).unwrap_or(0),
         })
     }
 
@@ -171,7 +171,7 @@ impl SummaryStore for PgStorage {
              LIMIT $2"
         ))
         .bind(&tsquery)
-        .bind(limit as i64)
+        .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_summary).collect()

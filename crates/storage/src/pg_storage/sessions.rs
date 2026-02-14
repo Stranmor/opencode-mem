@@ -3,6 +3,7 @@
 use super::*;
 
 use crate::traits::SessionStore;
+use anyhow::Context;
 use async_trait::async_trait;
 
 #[async_trait]
@@ -29,7 +30,7 @@ impl SessionStore for PgStorage {
         .bind(session.started_at)
         .bind(session.ended_at)
         .bind(session.status.as_str())
-        .bind(session.prompt_counter as i32)
+        .bind(i32::try_from(session.prompt_counter).context("prompt_counter exceeds i32::MAX")?)
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -85,6 +86,6 @@ impl SessionStore for PgStorage {
         .bind(threshold)
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() as usize)
+        Ok(usize::try_from(result.rows_affected()).unwrap_or(usize::MAX))
     }
 }

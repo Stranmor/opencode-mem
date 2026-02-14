@@ -24,11 +24,11 @@ impl StatsStore for PgStorage {
         .fetch_one(&self.pool)
         .await?;
         Ok(StorageStats {
-            observation_count: observation_count as u64,
-            session_count: session_count as u64,
-            summary_count: summary_count as u64,
-            prompt_count: prompt_count as u64,
-            project_count: project_count as u64,
+            observation_count: u64::try_from(observation_count).unwrap_or(0),
+            session_count: u64::try_from(session_count).unwrap_or(0),
+            summary_count: u64::try_from(summary_count).unwrap_or(0),
+            prompt_count: u64::try_from(prompt_count).unwrap_or(0),
+            project_count: u64::try_from(project_count).unwrap_or(0),
         })
     }
 
@@ -64,8 +64,8 @@ impl StatsStore for PgStorage {
                    FROM observations WHERE project = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3",
             )
             .bind(p)
-            .bind(limit as i64)
-            .bind(offset as i64)
+            .bind(usize_to_i64(limit))
+            .bind(usize_to_i64(offset))
             .fetch_all(&self.pool)
             .await?
         } else {
@@ -75,17 +75,17 @@ impl StatsStore for PgStorage {
                         discovery_tokens, noise_level, noise_reason, created_at
                    FROM observations ORDER BY created_at DESC LIMIT $1 OFFSET $2",
             )
-            .bind(limit as i64)
-            .bind(offset as i64)
+            .bind(usize_to_i64(limit))
+            .bind(usize_to_i64(offset))
             .fetch_all(&self.pool)
             .await?
         };
         let items: Vec<Observation> = rows.iter().map(row_to_observation).collect::<Result<_>>()?;
         Ok(PaginatedResult {
             items,
-            total: total as u64,
-            offset: offset as u64,
-            limit: limit as u64,
+            total: u64::try_from(total).unwrap_or(0),
+            offset: u64::try_from(offset).unwrap_or(0),
+            limit: u64::try_from(limit).unwrap_or(0),
         })
     }
 }

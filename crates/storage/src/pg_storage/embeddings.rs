@@ -35,7 +35,7 @@ impl EmbeddingStore for PgStorage {
                WHERE embedding IS NULL
                LIMIT $1",
         )
-        .bind(limit as i64)
+        .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_observation).collect()
@@ -72,6 +72,10 @@ impl EmbeddingStore for PgStorage {
         match row {
             Some(r) => {
                 let similarity: f64 = r.try_get("similarity")?;
+                #[allow(
+                    clippy::cast_possible_truncation,
+                    reason = "similarity score f64→f32 is acceptable lossy narrowing"
+                )]
                 let sim_f32 = similarity as f32;
                 if sim_f32 >= threshold {
                     Ok(Some(SimilarMatch {

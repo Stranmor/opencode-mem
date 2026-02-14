@@ -57,7 +57,7 @@ impl PendingQueueStore for PgStorage {
         )
         .bind(now)
         .bind(stale_threshold)
-        .bind(limit as i64)
+        .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_pending_message).collect()
@@ -101,7 +101,7 @@ impl PendingQueueStore for PgStorage {
             sqlx::query_scalar("SELECT COUNT(*) FROM pending_messages WHERE status = 'pending'")
                 .fetch_one(&self.pool)
                 .await?;
-        Ok(count as usize)
+        Ok(usize::try_from(count).unwrap_or(0))
     }
 
     async fn release_stale_messages(&self, visibility_timeout_secs: i64) -> Result<usize> {
@@ -115,7 +115,7 @@ impl PendingQueueStore for PgStorage {
         .bind(stale_threshold)
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() as usize)
+        Ok(usize::try_from(result.rows_affected()).unwrap_or(usize::MAX))
     }
 
     async fn get_failed_messages(&self, limit: usize) -> Result<Vec<PendingMessage>> {
@@ -127,7 +127,7 @@ impl PendingQueueStore for PgStorage {
                ORDER BY created_at_epoch DESC
                LIMIT $1",
         )
-        .bind(limit as i64)
+        .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_pending_message).collect()
@@ -141,7 +141,7 @@ impl PendingQueueStore for PgStorage {
                ORDER BY created_at_epoch DESC
                LIMIT $1",
         )
-        .bind(limit as i64)
+        .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_pending_message).collect()
@@ -159,10 +159,10 @@ impl PendingQueueStore for PgStorage {
         .fetch_one(&self.pool)
         .await?;
         Ok(QueueStats {
-            pending: row.try_get::<i64, _>("pending")? as u64,
-            processing: row.try_get::<i64, _>("processing")? as u64,
-            failed: row.try_get::<i64, _>("failed")? as u64,
-            processed: row.try_get::<i64, _>("processed")? as u64,
+            pending: u64::try_from(row.try_get::<i64, _>("pending")?).unwrap_or(0),
+            processing: u64::try_from(row.try_get::<i64, _>("processing")?).unwrap_or(0),
+            failed: u64::try_from(row.try_get::<i64, _>("failed")?).unwrap_or(0),
+            processed: u64::try_from(row.try_get::<i64, _>("processed")?).unwrap_or(0),
         })
     }
 
@@ -170,7 +170,7 @@ impl PendingQueueStore for PgStorage {
         let result = sqlx::query("DELETE FROM pending_messages WHERE status = 'failed'")
             .execute(&self.pool)
             .await?;
-        Ok(result.rows_affected() as usize)
+        Ok(usize::try_from(result.rows_affected()).unwrap_or(usize::MAX))
     }
 
     async fn retry_failed_messages(&self) -> Result<usize> {
@@ -181,11 +181,11 @@ impl PendingQueueStore for PgStorage {
         )
         .execute(&self.pool)
         .await?;
-        Ok(result.rows_affected() as usize)
+        Ok(usize::try_from(result.rows_affected()).unwrap_or(usize::MAX))
     }
 
     async fn clear_all_pending_messages(&self) -> Result<usize> {
         let result = sqlx::query("DELETE FROM pending_messages").execute(&self.pool).await?;
-        Ok(result.rows_affected() as usize)
+        Ok(usize::try_from(result.rows_affected()).unwrap_or(usize::MAX))
     }
 }

@@ -3,6 +3,7 @@
 use super::*;
 
 use crate::traits::ObservationStore;
+use anyhow::Context;
 use async_trait::async_trait;
 
 #[async_trait]
@@ -28,8 +29,18 @@ impl ObservationStore for PgStorage {
         .bind(serde_json::to_value(&obs.files_read)?)
         .bind(serde_json::to_value(&obs.files_modified)?)
         .bind(serde_json::to_value(&obs.keywords)?)
-        .bind(obs.prompt_number.map(|v| v as i32))
-        .bind(obs.discovery_tokens.map(|v| v as i32))
+        .bind(
+            obs.prompt_number
+                .map(i32::try_from)
+                .transpose()
+                .context("prompt_number exceeds i32::MAX")?,
+        )
+        .bind(
+            obs.discovery_tokens
+                .map(i32::try_from)
+                .transpose()
+                .context("discovery_tokens exceeds i32::MAX")?,
+        )
         .bind(obs.noise_level.as_str())
         .bind(&obs.noise_reason)
         .bind(obs.created_at)
@@ -63,7 +74,7 @@ impl ObservationStore for PgStorage {
             "SELECT id, title, subtitle, observation_type, noise_level, 1.0::float8 as score
              FROM observations ORDER BY created_at DESC LIMIT $1",
         )
-        .bind(limit as i64)
+        .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_search_result).collect()
@@ -110,7 +121,7 @@ impl ObservationStore for PgStorage {
              FROM observations WHERE project = $1 ORDER BY created_at DESC LIMIT $2",
         )
         .bind(project)
-        .bind(limit as i64)
+        .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_observation).collect()
@@ -122,7 +133,7 @@ impl ObservationStore for PgStorage {
                 .bind(session_id)
                 .fetch_one(&self.pool)
                 .await?;
-        Ok(count as usize)
+        Ok(usize::try_from(count).unwrap_or(0))
     }
 
     async fn search_by_file(&self, file_path: &str, limit: usize) -> Result<Vec<SearchResult>> {
@@ -134,7 +145,7 @@ impl ObservationStore for PgStorage {
                ORDER BY created_at DESC LIMIT $2"#,
         )
         .bind(&pattern)
-        .bind(limit as i64)
+        .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_search_result).collect()

@@ -24,7 +24,7 @@ impl SearchStore for PgStorage {
                LIMIT $2",
         )
         .bind(&tsquery)
-        .bind(limit as i64)
+        .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_search_result).collect()
@@ -46,7 +46,7 @@ impl SearchStore for PgStorage {
                LIMIT $2",
         )
         .bind(&tsquery)
-        .bind((limit * 2) as i64)
+        .bind(usize_to_i64(limit.saturating_mul(2)))
         .fetch_all(&self.pool)
         .await?;
 
@@ -97,7 +97,15 @@ impl SearchStore for PgStorage {
             .map(|(mut result, fts_score, obs_kw)| {
                 let fts_normalized =
                     if fts_range > 0.0 { (fts_score - min_fts) / fts_range } else { 1.0 };
+                #[allow(
+                    clippy::cast_precision_loss,
+                    reason = "keyword count will never exceed f64 precision"
+                )]
                 let keyword_overlap = keywords.intersection(&obs_kw).count() as f64;
+                #[allow(
+                    clippy::cast_precision_loss,
+                    reason = "keyword count will never exceed f64 precision"
+                )]
                 let keyword_score =
                     if keywords.is_empty() { 0.0 } else { keyword_overlap / keywords.len() as f64 };
                 result.score = fts_normalized.mul_add(0.7, keyword_score * 0.3);
@@ -171,7 +179,7 @@ impl SearchStore for PgStorage {
                     q = q.bind(val);
                 }
                 q = q.bind(&tsquery);
-                q = q.bind(limit as i64);
+                q = q.bind(usize_to_i64(limit));
                 let rows = q.fetch_all(&self.pool).await?;
                 return rows.iter().map(row_to_search_result).collect();
             }
@@ -193,7 +201,7 @@ impl SearchStore for PgStorage {
         for val in &bind_strings {
             q = q.bind(val);
         }
-        q = q.bind(limit as i64);
+        q = q.bind(usize_to_i64(limit));
         let rows = q.fetch_all(&self.pool).await?;
         rows.iter().map(row_to_search_result).collect()
     }
@@ -235,7 +243,7 @@ impl SearchStore for PgStorage {
         for val in &bind_strings {
             q = q.bind(val);
         }
-        q = q.bind(limit as i64);
+        q = q.bind(usize_to_i64(limit));
         let rows = q.fetch_all(&self.pool).await?;
         rows.iter().map(row_to_search_result).collect()
     }
@@ -256,7 +264,7 @@ impl SearchStore for PgStorage {
                LIMIT $2",
         )
         .bind(&vec_str)
-        .bind(limit as i64)
+        .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
         rows.iter().map(row_to_search_result).collect()
@@ -288,7 +296,7 @@ impl SearchStore for PgStorage {
                    LIMIT $2",
             )
             .bind(&tsquery)
-            .bind((limit * 3) as i64)
+            .bind(usize_to_i64(limit.saturating_mul(3)))
             .fetch_all(&self.pool)
             .await?;
 
@@ -312,7 +320,7 @@ impl SearchStore for PgStorage {
                LIMIT $2",
         )
         .bind(&vec_str)
-        .bind((limit * 3) as i64)
+        .bind(usize_to_i64(limit.saturating_mul(3)))
         .fetch_all(&self.pool)
         .await?;
 

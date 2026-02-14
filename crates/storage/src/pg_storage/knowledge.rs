@@ -182,7 +182,7 @@ impl KnowledgeStore for PgStorage {
              LIMIT $2"
         ))
         .bind(&tsquery)
-        .bind(limit as i64)
+        .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
         rows.iter()
@@ -205,7 +205,7 @@ impl KnowledgeStore for PgStorage {
                  ORDER BY confidence DESC, usage_count DESC LIMIT $2"
             ))
             .bind(kt.as_str())
-            .bind(limit as i64)
+            .bind(usize_to_i64(limit))
             .fetch_all(&self.pool)
             .await?
         } else {
@@ -213,7 +213,7 @@ impl KnowledgeStore for PgStorage {
                 "SELECT {KNOWLEDGE_COLUMNS} FROM global_knowledge
                  ORDER BY confidence DESC, usage_count DESC LIMIT $1"
             ))
-            .bind(limit as i64)
+            .bind(usize_to_i64(limit))
             .fetch_all(&self.pool)
             .await?
         };
