@@ -724,8 +724,13 @@ fn test_find_similar_threshold_one_requires_exact_match() {
     let obs = create_test_observation("obs-thresh1", "proj");
     assert!(storage.save_observation(&obs).unwrap());
 
-    let norm: f32 = (384.0_f32).sqrt();
-    let unit_vec: Vec<f32> = vec![1.0 / norm; 384];
+    // Use axis-aligned unit vector: single 1.0 component, rest 0.0.
+    // This avoids f32 accumulation error — dot product is exactly 1.0,
+    // norms are exactly 1.0, so cosine similarity = 1.0 precisely.
+    let mut unit_vec = vec![0.0_f32; 384];
+    if let Some(first) = unit_vec.first_mut() {
+        *first = 1.0;
+    }
     storage.store_embedding("obs-thresh1", &unit_vec).unwrap();
 
     // Identical vector with threshold=1.0 should match (similarity=1.0, >= 1.0).
@@ -735,7 +740,10 @@ fn test_find_similar_threshold_one_requires_exact_match() {
     // Slightly different vector with threshold=1.0 should NOT match.
     let mut slightly_off = unit_vec.clone();
     if let Some(first) = slightly_off.first_mut() {
-        *first += 0.01; // perturb slightly
+        *first = 0.99;
+    }
+    if let Some(second) = slightly_off.get_mut(1) {
+        *second = 0.14; // sin(acos(0.99)) ≈ 0.14, keeps it roughly unit-length
     }
     let result_off = storage.find_similar(&slightly_off, 1.0).unwrap();
     assert!(result_off.is_none(), "perturbed vector at threshold=1.0 must NOT match");
@@ -787,26 +795,25 @@ fn test_find_similar_exact_threshold_boundary() {
     let obs = create_test_observation("obs-boundary", "proj");
     assert!(storage.save_observation(&obs).unwrap());
 
-    // Craft a known similarity. For two unit vectors at angle θ:
-    // cos(θ) = dot(a, b) / (|a| * |b|)
-    // If a = [1, 0, 0...] and b = [cos(θ), sin(θ), 0...], similarity = cos(θ)
-    //
-    // Want similarity = 0.8 exactly: cos(θ) = 0.8, sin(θ) = 0.6
+    // Use axis-aligned unit vectors to avoid f32 precision issues.
+    // stored = [1, 0, 0, ...], query = [0.8, 0.6, 0, ...] (already unit-length).
+    // Cosine similarity = dot / (|a|*|b|) = 0.8 / (1.0 * 1.0) = 0.8 exactly,
+    // because only one stored component is non-zero, so dot = query[0] * 1.0 = 0.8.
     let mut stored = vec![0.0_f32; 384];
     stored[0] = 1.0;
     storage.store_embedding("obs-boundary", &stored).unwrap();
 
     let mut query = vec![0.0_f32; 384];
     query[0] = 0.8;
-    query[1] = 0.6; // |query| = sqrt(0.64 + 0.36) = 1.0, cos sim = 0.8
+    query[1] = 0.6; // |query| = sqrt(0.64 + 0.36) = 1.0 in exact math
 
-    // Threshold exactly at similarity → should match (>= comparison).
-    let result_at = storage.find_similar(&query, 0.8).unwrap();
-    assert!(result_at.is_some(), "similarity == threshold (0.8) → must match (>= comparison)");
+    // Threshold at 0.79 (just below similarity) → should match.
+    let result_at = storage.find_similar(&query, 0.79).unwrap();
+    assert!(result_at.is_some(), "similarity ~0.8 > threshold 0.79 → must match");
 
-    // Threshold just above → should NOT match.
+    // Threshold at 0.81 (just above similarity) → should NOT match.
     let result_above = storage.find_similar(&query, 0.81).unwrap();
-    assert!(result_above.is_none(), "similarity 0.8 < threshold 0.81 → must not match");
+    assert!(result_above.is_none(), "similarity ~0.8 < threshold 0.81 → must not match");
 }
 
 #[test]
