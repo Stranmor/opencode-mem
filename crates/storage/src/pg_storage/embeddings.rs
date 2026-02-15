@@ -90,4 +90,49 @@ impl EmbeddingStore for PgStorage {
             None => Ok(None),
         }
     }
+
+    async fn find_similar_many(
+        &self,
+        embedding: &[f32],
+        threshold: f32,
+        limit: usize,
+    ) -> Result<Vec<SimilarMatch>> {
+        if embedding.is_empty() || is_zero_vector(embedding) {
+            return Ok(Vec::new());
+        }
+
+        let vec_str =
+            format!("[{}]", embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+
+        let rows = sqlx::query(
+            "SELECT id, title, 1.0 - (embedding <=> $1::vector) AS similarity
+               FROM observations
+              WHERE embedding IS NOT NULL
+              ORDER BY embedding <=> $1::vector
+              LIMIT $2",
+        )
+        .bind(&vec_str)
+        .bind(usize_to_i64(limit))
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut matches = Vec::new();
+        for r in &rows {
+            let similarity: f64 = r.try_get("similarity")?;
+            #[allow(
+                clippy::cast_possible_truncation,
+                reason = "similarity score f64→f32 is acceptable lossy narrowing"
+            )]
+            let sim_f32 = similarity as f32;
+            if sim_f32 >= threshold {
+                matches.push(SimilarMatch {
+                    observation_id: r.try_get("id")?,
+                    similarity: sim_f32,
+                    title: r.try_get("title")?,
+                });
+            }
+        }
+
+        Ok(matches)
+    }
 }

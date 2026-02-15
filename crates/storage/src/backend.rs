@@ -383,4 +383,13 @@ impl EmbeddingStore for StorageBackend {
     ) -> Result<Option<SimilarMatch>> {
         dispatch!(self, EmbeddingStore, find_similar(embedding, threshold))
     }
+
+    async fn find_similar_many(
+        &self,
+        embedding: &[f32],
+        threshold: f32,
+        limit: usize,
+    ) -> Result<Vec<SimilarMatch>> {
+        dispatch!(self, EmbeddingStore, find_similar_many(embedding, threshold, limit))
+    }
 }

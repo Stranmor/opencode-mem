@@ -133,4 +133,83 @@ impl Storage {
             },
         }
     }
+
+    pub fn find_similar_many(
+        &self,
+        embedding: &[f32],
+        threshold: f32,
+        limit: usize,
+    ) -> Result<Vec<SimilarMatch>> {
+        if embedding.is_empty() || is_zero_vector(embedding) {
+            return Ok(Vec::new());
+        }
+
+        let conn = get_conn(&self.pool)?;
+
+        let vec_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM observations_vec", [], |row| row.get(0))
+            .unwrap_or(0);
+        if vec_count == 0 {
+            return Ok(Vec::new());
+        }
+
+        let query_bytes = embedding.as_bytes();
+        #[allow(
+            clippy::cast_possible_wrap,
+            reason = "limit is always small (≤100), safe usize→i64"
+        )]
+        let limit_i64 = limit as i64;
+
+        let stmt_result = conn.prepare(
+            "SELECT o.id, o.title,
+                    (1.0 - vec_distance_cosine(v.embedding, ?1)) as similarity
+               FROM observations_vec v
+               JOIN observations o ON o.rowid = v.rowid
+               ORDER BY vec_distance_cosine(v.embedding, ?1)
+               LIMIT ?2",
+        );
+
+        let mut stmt = match stmt_result {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(
+                    "Vector search unavailable for find_similar_many (sqlite-vec not loaded?): {}",
+                    e
+                );
+                return Ok(Vec::new());
+            },
+        };
+
+        let rows = stmt.query_map(params![query_bytes, limit_i64], |row| {
+            let id: String = row.get(0)?;
+            let title: String = row.get(1)?;
+            let similarity: f64 = row.get(2)?;
+            Ok((id, title, similarity))
+        })?;
+
+        let mut matches = Vec::new();
+        for row in rows {
+            match row {
+                Ok((id, title, similarity)) => {
+                    #[allow(
+                        clippy::cast_possible_truncation,
+                        reason = "similarity score f64→f32 is acceptable lossy narrowing"
+                    )]
+                    let sim_f32 = similarity as f32;
+                    if sim_f32 >= threshold {
+                        matches.push(SimilarMatch {
+                            observation_id: id,
+                            similarity: sim_f32,
+                            title,
+                        });
+                    }
+                },
+                Err(e) => {
+                    tracing::warn!("find_similar_many row error: {}", e);
+                },
+            }
+        }
+
+        Ok(matches)
+    }
 }

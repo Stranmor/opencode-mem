@@ -273,4 +273,15 @@ pub trait EmbeddingStore: Send + Sync {
     /// Find the most similar existing observation by cosine similarity.
     async fn find_similar(&self, embedding: &[f32], threshold: f32)
         -> Result<Option<SimilarMatch>>;
+
+    /// Find top-N similar observations above a similarity threshold.
+    ///
+    /// Returns matches ordered by similarity descending, up to `limit` results.
+    /// Used for providing context to the LLM (lower threshold than dedup).
+    async fn find_similar_many(
+        &self,
+        embedding: &[f32],
+        threshold: f32,
+        limit: usize,
+    ) -> Result<Vec<SimilarMatch>>;
 }

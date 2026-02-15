@@ -333,4 +333,12 @@ impl EmbeddingStore for Storage {
     ) -> Result<Option<SimilarMatch>> {
         delegate!(self, find_similar, @slice embedding, @val threshold)
     }
+    async fn find_similar_many(
+        &self,
+        embedding: &[f32],
+        threshold: f32,
+        limit: usize,
+    ) -> Result<Vec<SimilarMatch>> {
+        delegate!(self, find_similar_many, @slice embedding, @val threshold, @val limit)
+    }
 }
