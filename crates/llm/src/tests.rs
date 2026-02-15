@@ -52,7 +52,7 @@ Standard fix for race condition - use RwLock instead of direct access.",
         );
 
         let result =
-            client.compress_to_observation("test-generic", &input, Some("test-project")).await;
+            client.compress_to_observation("test-generic", &input, Some("test-project"), &[]).await;
 
         match result {
             Ok(Some(obs)) => {
@@ -98,8 +98,9 @@ We chose sqlite-vec instead of pgvector because:
 Trade-off: pgvector has better performance at scale, but we prioritize simplicity.",
         );
 
-        let result =
-            client.compress_to_observation("test-decision", &input, Some("opencode-mem")).await;
+        let result = client
+            .compress_to_observation("test-decision", &input, Some("opencode-mem"), &[])
+            .await;
 
         match result {
             Ok(Some(obs)) => {
@@ -142,7 +143,7 @@ Anyone new to this project would expect opencode-mem-cli based on crate name."#,
         );
 
         let result =
-            client.compress_to_observation("test-gotcha", &input, Some("opencode-mem")).await;
+            client.compress_to_observation("test-gotcha", &input, Some("opencode-mem"), &[]).await;
 
         match result {
             Ok(Some(obs)) => {
@@ -152,6 +153,103 @@ Anyone new to this project would expect opencode-mem-cli based on crate name."#,
                 );
             },
             Ok(None) => panic!("[FAIL] Project-specific gotcha was incorrectly filtered"),
+            Err(e) => panic!("[ERROR] {e}"),
+        }
+    }
+
+    /// Test: Duplicate observation should be marked negligible when existing titles provided
+    #[tokio::test]
+    #[ignore]
+    #[expect(clippy::panic, reason = "test assertions")]
+    #[expect(clippy::print_stdout, reason = "test output")]
+    #[expect(clippy::print_stderr, reason = "test output")]
+    #[expect(clippy::use_debug, reason = "test output")]
+    async fn test_duplicate_marked_negligible_with_context() {
+        let Some(client) = create_client() else {
+            eprintln!("Skipping test: ANTIGRAVITY_API_KEY not set");
+            return;
+        };
+
+        // Simulate an observation about a proxy IP leak — same topic as existing
+        let input = make_input(
+            "bash",
+            "Fixed proxy client to return Result instead of fallback",
+            "The proxy client was silently falling back to a direct connection \
+             when the proxy URL was invalid. This caused IP leaks. \
+             Fixed by returning Result from create_client_with_proxy.",
+        );
+
+        let existing_titles = vec![
+            "Invalid proxy configurations caused silent IP leaks".to_owned(),
+            "Proxy client creation must return Result to prevent silent IP leaks".to_owned(),
+        ];
+
+        let result = client
+            .compress_to_observation("test-dedup", &input, Some("test-project"), &existing_titles)
+            .await;
+
+        match result {
+            Ok(Some(obs)) => {
+                let is_negligible = matches!(obs.noise_level, NoiseLevel::Negligible);
+                if is_negligible {
+                    println!("[PASS] Duplicate correctly marked negligible: {:?}", obs.noise_level);
+                } else {
+                    println!(
+                        "[WARN] Duplicate was NOT marked negligible: {:?} (expected Negligible)",
+                        obs.noise_level
+                    );
+                }
+            },
+            Ok(None) => println!("[PASS] Duplicate correctly filtered out"),
+            Err(e) => panic!("[ERROR] {e}"),
+        }
+    }
+
+    /// Test: Genuinely new insight should still be saved even with existing titles
+    #[tokio::test]
+    #[ignore]
+    #[expect(clippy::panic, reason = "test assertions")]
+    #[expect(clippy::print_stdout, reason = "test output")]
+    #[expect(clippy::print_stderr, reason = "test output")]
+    #[expect(clippy::use_debug, reason = "test output")]
+    async fn test_new_insight_saved_despite_existing_titles() {
+        let Some(client) = create_client() else {
+            eprintln!("Skipping test: ANTIGRAVITY_API_KEY not set");
+            return;
+        };
+
+        // New insight about a completely different topic
+        let input = make_input(
+            "bash",
+            "Discovered SQLite WAL mode requires shared-memory for concurrent readers",
+            "After switching to WAL mode, concurrent readers from different \
+             processes failed with SQLITE_BUSY. Root cause: WAL requires \
+             shared memory (-shm file) which doesn't work on network filesystems. \
+             Fix: use journal_mode=DELETE for network mounts.",
+        );
+
+        let existing_titles = vec![
+            "Invalid proxy configurations caused silent IP leaks".to_owned(),
+            "Gemini API effort settings must be in thinkingConfig".to_owned(),
+        ];
+
+        let result = client
+            .compress_to_observation("test-new", &input, Some("test-project"), &existing_titles)
+            .await;
+
+        match result {
+            Ok(Some(obs)) => {
+                let is_saved = !matches!(obs.noise_level, NoiseLevel::Negligible);
+                if is_saved {
+                    println!(
+                        "[PASS] New insight saved despite existing titles: {} ({:?})",
+                        obs.title, obs.noise_level
+                    );
+                } else {
+                    panic!("[FAIL] New insight was incorrectly marked negligible: {}", obs.title);
+                }
+            },
+            Ok(None) => panic!("[FAIL] New insight was incorrectly filtered out"),
             Err(e) => panic!("[ERROR] {e}"),
         }
     }
@@ -181,7 +279,8 @@ edition = "2021"
 tokio = "1.0""#,
         );
 
-        let result = client.compress_to_observation("test-4", &input, Some("test-project")).await;
+        let result =
+            client.compress_to_observation("test-4", &input, Some("test-project"), &[]).await;
 
         match result {
             Ok(Some(obs)) => {

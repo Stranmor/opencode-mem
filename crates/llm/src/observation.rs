@@ -33,9 +33,29 @@ impl LlmClient {
         id: &str,
         input: &ObservationInput,
         project: Option<&str>,
+        existing_titles: &[String],
     ) -> Result<Option<Observation>> {
         let filtered_output = filter_private_content(&input.output.output);
         let filtered_title = filter_private_content(&input.output.title);
+
+        let existing_context = if existing_titles.is_empty() {
+            String::new()
+        } else {
+            let titles_list: String = existing_titles
+                .iter()
+                .enumerate()
+                .map(|(i, t)| format!("{}. {}", i.saturating_add(1), t))
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!(
+                r#"
+
+ALREADY SAVED OBSERVATIONS (similar to this input):
+{titles_list}
+
+If this tool output teaches essentially the SAME lesson as any observation above, mark noise_level as "negligible" with noise_reason "duplicate of existing observation". Only save if this adds a genuinely NEW insight not covered above."#
+            )
+        };
 
         let prompt = format!(
             r#"You are a STRICT memory filter. Your job is to decide if this tool output contains a LESSON WORTH REMEMBERING across sessions.
@@ -74,9 +94,16 @@ EVERYTHING ELSE IS NEGLIGIBLE. Specifically, ALWAYS mark as negligible:
 - Metadata about the system itself ("database has N records")
 
 THE DEFAULT IS NEGLIGIBLE. When in doubt, discard. Only save what would genuinely help a future agent avoid a mistake or understand a non-obvious decision.
+{}
+NOISE LEVEL GUIDE (5 levels):
+- "critical": Project-breaking gotcha, data loss bug, security fix. Must ALWAYS be remembered.
+- "high": Important bugfix, architectural decision, significant gotcha. Should be remembered.
+- "medium": Useful but not critical. Minor gotcha, routine feature completion.
+- "low": Marginally useful. Could be helpful but not essential.
+- "negligible": Routine work, generic knowledge, duplicates. DISCARD.
 
 Return JSON:
-- noise_level: "critical", "high", or "negligible" (NO medium/low — binary choice: worth saving or not)
+- noise_level: one of "critical", "high", "medium", "low", "negligible"
 - noise_reason: why this is/isn't worth remembering (max 100 chars)
 - type: "gotcha", "bugfix", "decision", or "feature"
 - title: the lesson learned (max 80 chars, must be a complete statement of fact)
@@ -90,6 +117,7 @@ Return JSON:
             input.tool,
             filtered_title,
             truncate(&filtered_output, MAX_OUTPUT_LEN),
+            existing_context,
         );
 
         let request = ChatRequest {

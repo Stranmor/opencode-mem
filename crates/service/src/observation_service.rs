@@ -60,12 +60,16 @@ impl ObservationService {
                 tool_call.input.clone(),
             ),
         );
+
+        let existing_titles = self.find_existing_similar_titles(&tool_call.output).await;
+
         let observation = if let Some(obs) = self
             .llm
             .compress_to_observation(
                 id,
                 &input,
                 tool_call.project.as_deref().filter(|p| !p.is_empty() && *p != "unknown"),
+                &existing_titles,
             )
             .await?
         {
@@ -78,6 +82,56 @@ impl ObservationService {
         self.persist_and_notify(&observation).await?;
 
         Ok(Some(observation))
+    }
+
+    async fn find_existing_similar_titles(&self, raw_text: &str) -> Vec<String> {
+        let Some(emb_service) = self.embeddings.as_ref() else {
+            return Vec::new();
+        };
+
+        let max_len = 2000;
+        let end = if raw_text.len() <= max_len {
+            raw_text.len()
+        } else {
+            let mut boundary = max_len;
+            while boundary > 0 && !raw_text.is_char_boundary(boundary) {
+                boundary = boundary.saturating_sub(1);
+            }
+            boundary
+        };
+        let truncated = raw_text.get(..end).unwrap_or("");
+        let emb = Arc::clone(emb_service);
+        let text = truncated.to_owned();
+        let embed_result = tokio::task::spawn_blocking(move || emb.embed(&text)).await;
+
+        let embedding = match embed_result {
+            Ok(Ok(vec)) => vec,
+            Ok(Err(e)) => {
+                tracing::warn!("Failed to generate embedding for context search: {}", e);
+                return Vec::new();
+            },
+            Err(e) => {
+                tracing::warn!("Embedding task panicked for context search: {}", e);
+                return Vec::new();
+            },
+        };
+
+        match self.storage.find_similar_many(&embedding, 0.5, 10).await {
+            Ok(matches) => {
+                let titles: Vec<String> = matches.into_iter().map(|m| m.title).collect();
+                if !titles.is_empty() {
+                    tracing::debug!(
+                        count = titles.len(),
+                        "Found existing similar observations for dedup context"
+                    );
+                }
+                titles
+            },
+            Err(e) => {
+                tracing::warn!("find_similar_many failed for context: {}", e);
+                Vec::new()
+            },
+        }
     }
 
     pub async fn extract_knowledge(&self, observation: &Observation) {
@@ -130,7 +184,7 @@ impl ObservationService {
         let embedding_vec = self.generate_embedding(observation).await;
 
         if let Some(ref vec) = embedding_vec {
-            let threshold: f32 = env_parse_with_default("OPENCODE_MEM_DEDUP_THRESHOLD", 0.92_f32);
+            let threshold: f32 = env_parse_with_default("OPENCODE_MEM_DEDUP_THRESHOLD", 0.82_f32);
             if threshold > 0.0 {
                 match self.storage.find_similar(vec, threshold).await {
                     Ok(Some(existing)) => {

@@ -563,7 +563,7 @@ fn test_merge_preserves_non_merged_fields() {
     assert_eq!(merged.title, "Original Title Untouched", "title must be preserved");
     assert_eq!(merged.observation_type, ObservationType::Discovery, "type must be preserved");
     assert_eq!(merged.project.as_deref(), Some("original-project"), "project must be preserved");
-    assert_eq!(merged.subtitle.as_deref(), Some("original subtitle"), "subtitle must be preserved");
+    assert_eq!(merged.subtitle.as_deref(), Some("different subtitle"), "subtitle picks longer");
     assert_eq!(merged.prompt_number, Some(42), "prompt_number must be preserved");
     assert_eq!(merged.discovery_tokens, Some(999), "discovery_tokens must be preserved");
 

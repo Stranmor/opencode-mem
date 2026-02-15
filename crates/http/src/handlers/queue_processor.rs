@@ -51,6 +51,7 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
             &id,
             &input,
             msg.project.as_deref().filter(|p| !p.is_empty() && *p != "unknown"),
+            &[],
         )
         .await?;
 
