@@ -17,18 +17,20 @@ pub struct ObservationService {
     infinite_mem: Option<Arc<InfiniteMemory>>,
     event_tx: broadcast::Sender<String>,
     embeddings: Option<Arc<EmbeddingService>>,
+    dedup_threshold: f32,
 }
 
 impl ObservationService {
     #[must_use]
-    pub const fn new(
+    pub fn new(
         storage: Arc<StorageBackend>,
         llm: Arc<LlmClient>,
         infinite_mem: Option<Arc<InfiniteMemory>>,
         event_tx: broadcast::Sender<String>,
         embeddings: Option<Arc<EmbeddingService>>,
     ) -> Self {
-        Self { storage, llm, infinite_mem, event_tx, embeddings }
+        let dedup_threshold = env_parse_with_default("OPENCODE_MEM_DEDUP_THRESHOLD", 0.82_f32);
+        Self { storage, llm, infinite_mem, event_tx, embeddings, dedup_threshold }
     }
 
     pub async fn process(
@@ -36,8 +38,12 @@ impl ObservationService {
         id: &str,
         tool_call: ToolCall,
     ) -> anyhow::Result<Option<Observation>> {
-        if let Some(observation) = self.compress_and_save(id, &tool_call).await? {
-            self.extract_knowledge(&observation).await;
+        if let Some((observation, was_new)) = self.compress_and_save(id, &tool_call).await? {
+            // Only extract knowledge for genuinely new observations.
+            // Merged observations already had knowledge extracted on first save.
+            if was_new {
+                self.extract_knowledge(&observation).await;
+            }
             self.store_infinite_memory(&tool_call, &observation).await;
             Ok(Some(observation))
         } else {
@@ -49,7 +55,7 @@ impl ObservationService {
         &self,
         id: &str,
         tool_call: &ToolCall,
-    ) -> anyhow::Result<Option<Observation>> {
+    ) -> anyhow::Result<Option<(Observation, bool)>> {
         let input = ObservationInput::new(
             tool_call.tool.clone(),
             tool_call.session_id.clone(),
@@ -79,9 +85,9 @@ impl ObservationService {
             return Ok(None);
         };
 
-        self.persist_and_notify(&observation).await?;
+        let was_new = self.persist_and_notify(&observation).await?;
 
-        Ok(Some(observation))
+        Ok(Some((observation, was_new)))
     }
 
     async fn find_existing_similar_titles(&self, raw_text: &str) -> Vec<String> {
@@ -172,21 +178,22 @@ impl ObservationService {
     }
 
     pub async fn save_observation(&self, observation: &Observation) -> anyhow::Result<()> {
-        self.persist_and_notify(observation).await
+        let _was_new = self.persist_and_notify(observation).await?;
+        Ok(())
     }
 
-    async fn persist_and_notify(&self, observation: &Observation) -> anyhow::Result<()> {
+    /// Returns `true` if a new observation was persisted, `false` if merged into existing or filtered.
+    async fn persist_and_notify(&self, observation: &Observation) -> anyhow::Result<bool> {
         if is_low_value_observation(&observation.title) {
             tracing::debug!("Filtered low-value observation: {}", observation.title);
-            return Ok(());
+            return Ok(false);
         }
 
         let embedding_vec = self.generate_embedding(observation).await;
 
         if let Some(ref vec) = embedding_vec {
-            let threshold: f32 = env_parse_with_default("OPENCODE_MEM_DEDUP_THRESHOLD", 0.82_f32);
-            if threshold > 0.0 {
-                match self.storage.find_similar(vec, threshold).await {
+            if self.dedup_threshold > 0.0 {
+                match self.storage.find_similar(vec, self.dedup_threshold).await {
                     Ok(Some(existing)) => {
                         tracing::info!(
                             existing_id = %existing.observation_id,
@@ -201,8 +208,6 @@ impl ObservationService {
                             .await
                         {
                             Ok(()) => {
-                                // Re-read the merged observation and generate embedding
-                                // from the merged content, not the new observation's content.
                                 let merged_embedding =
                                     match self.storage.get_by_id(&existing.observation_id).await {
                                         Ok(Some(merged_obs)) => {
@@ -236,7 +241,7 @@ impl ObservationService {
                                         );
                                     }
                                 }
-                                return Ok(());
+                                return Ok(false);
                             },
                             Err(e) => {
                                 tracing::warn!(
@@ -257,7 +262,7 @@ impl ObservationService {
         let inserted = self.storage.save_observation(observation).await?;
         if !inserted {
             tracing::debug!("Skipping duplicate observation: {}", observation.title);
-            return Ok(());
+            return Ok(false);
         }
 
         tracing::info!("Saved observation: {} - {}", observation.id, observation.title);
@@ -276,7 +281,7 @@ impl ObservationService {
             }
         }
 
-        Ok(())
+        Ok(true)
     }
 
     async fn generate_embedding(&self, observation: &Observation) -> Option<Vec<f32>> {

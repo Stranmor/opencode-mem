@@ -521,8 +521,9 @@ fn test_merge_idempotent_second_merge_no_change() {
 #[test]
 #[expect(clippy::unwrap_used, reason = "test code")]
 fn test_merge_preserves_non_merged_fields() {
-    // Regression guard: merge only touches facts, keywords, files_read,
-    // files_modified, narrative, created_at. All other fields must be preserved.
+    // Regression guard: merge touches facts, keywords, files_read,
+    // files_modified, narrative, created_at, noise_level, and subtitle.
+    // All other fields must be preserved.
     let (storage, _dir) = create_test_storage();
 
     let obs1 = opencode_mem_core::Observation::builder(
