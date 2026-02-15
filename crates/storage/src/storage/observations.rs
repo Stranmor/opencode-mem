@@ -276,12 +276,24 @@ impl Storage {
             (None, None) => None,
         };
 
+        let subtitle: Option<&str> = match (&existing.subtitle, &newer.subtitle) {
+            (Some(e), Some(n)) if n.len() > e.len() => Some(n.as_str()),
+            (None, Some(n)) => Some(n.as_str()),
+            (Some(e), _) => Some(e.as_str()),
+            (None, None) => None,
+        };
+
+        // NoiseLevel Ord: Critical(0) < High(1) < ... < Negligible(4)
+        // min picks the most important (lowest discriminant = highest importance)
+        let noise_level = std::cmp::min(existing.noise_level, newer.noise_level);
+
         let created_at = existing.created_at.max(newer.created_at);
 
         tx.execute(
             "UPDATE observations SET facts = ?1, keywords = ?2, files_read = ?3,
-                    files_modified = ?4, narrative = ?5, created_at = ?6, concepts = ?7
-               WHERE id = ?8",
+                    files_modified = ?4, narrative = ?5, created_at = ?6, concepts = ?7,
+                    noise_level = ?8, subtitle = ?9
+               WHERE id = ?10",
             params![
                 serde_json::to_string(&facts)?,
                 serde_json::to_string(&keywords)?,
@@ -290,6 +302,8 @@ impl Storage {
                 narrative,
                 created_at.with_timezone(&Utc).to_rfc3339(),
                 serde_json::to_string(&concepts)?,
+                noise_level.as_str(),
+                subtitle,
                 existing_id,
             ],
         )?;
