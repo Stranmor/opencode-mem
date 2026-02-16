@@ -6,7 +6,7 @@ use opencode_mem_http::{
 };
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
-use opencode_mem_service::{ObservationService, SessionService};
+use opencode_mem_service::{KnowledgeService, ObservationService, SearchService, SessionService};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock, Semaphore};
@@ -57,6 +57,8 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     ));
     let session_service =
         Arc::new(SessionService::new(storage.clone(), llm.clone(), observation_service.clone()));
+    let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));
+    let search_service = Arc::new(SearchService::new(storage.clone(), embeddings.clone()));
 
     let state = Arc::new(AppState {
         storage,
@@ -68,6 +70,8 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         infinite_mem,
         observation_service,
         session_service,
+        knowledge_service,
+        search_service,
         embeddings,
     });
 

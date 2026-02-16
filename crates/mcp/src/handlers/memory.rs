@@ -1,13 +1,10 @@
 use opencode_mem_core::MAX_QUERY_LIMIT;
-use opencode_mem_embeddings::EmbeddingService;
-use opencode_mem_storage::traits::{ObservationStore, SearchStore};
-use opencode_mem_storage::StorageBackend;
+use opencode_mem_service::SearchService;
 
 use super::{mcp_err, mcp_ok, mcp_text};
 
 pub(super) async fn handle_search(
-    storage: &StorageBackend,
-    embeddings: Option<&EmbeddingService>,
+    search_service: &SearchService,
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let query = args.get("query").and_then(|q| q.as_str());
@@ -21,39 +18,35 @@ pub(super) async fn handle_search(
     // Use semantic search when no filters are active and query is present
     if project.is_none() && obs_type.is_none() && from.is_none() && to.is_none() {
         if let Some(q) = query {
-            return match opencode_mem_search::run_semantic_search_with_fallback(
-                storage, embeddings, q, limit,
-            )
-            .await
-            {
+            return match search_service.semantic_search_with_fallback(q, limit).await {
                 Ok(results) => mcp_ok(&results),
                 Err(e) => mcp_err(e),
             };
         }
     }
 
-    match storage.search_with_filters(query, project, obs_type, from, to, limit).await {
+    match search_service.search_with_filters(query, project, obs_type, from, to, limit).await {
         Ok(results) => mcp_ok(&results),
         Err(e) => mcp_err(e),
     }
 }
 
 pub(super) async fn handle_timeline(
-    storage: &StorageBackend,
+    search_service: &SearchService,
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let from = args.get("from").and_then(|f| f.as_str());
     let to = args.get("to").and_then(|t| t.as_str());
     let limit = (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(50) as usize)
         .min(MAX_QUERY_LIMIT);
-    match storage.get_timeline(from, to, limit).await {
+    match search_service.get_timeline(from, to, limit).await {
         Ok(results) => mcp_ok(&results),
         Err(e) => mcp_err(e),
     }
 }
 
 pub(super) async fn handle_get_observations(
-    storage: &StorageBackend,
+    search_service: &SearchService,
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let ids: Vec<String> = args
@@ -66,7 +59,7 @@ pub(super) async fn handle_get_observations(
     } else if ids.len() > 500 {
         mcp_err("ids array exceeds maximum of 500 items")
     } else {
-        match storage.get_observations_by_ids(&ids).await {
+        match search_service.get_observations_by_ids(&ids).await {
             Ok(results) => mcp_ok(&results),
             Err(e) => mcp_err(e),
         }
@@ -74,13 +67,13 @@ pub(super) async fn handle_get_observations(
 }
 
 pub(super) async fn handle_memory_get(
-    storage: &StorageBackend,
+    search_service: &SearchService,
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let Some(id_str) = args.get("id").and_then(|i| i.as_str()).filter(|s| !s.is_empty()) else {
         return mcp_err("'id' parameter is required and must not be empty");
     };
-    match storage.get_by_id(id_str).await {
+    match search_service.get_observation_by_id(id_str).await {
         Ok(Some(obs)) => mcp_ok(&obs),
         Ok(None) => mcp_text(&format!("Observation not found: {id_str}")),
         Err(e) => mcp_err(e),
@@ -88,19 +81,19 @@ pub(super) async fn handle_memory_get(
 }
 
 pub(super) async fn handle_memory_recent(
-    storage: &StorageBackend,
+    search_service: &SearchService,
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let limit = (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(10) as usize)
         .min(MAX_QUERY_LIMIT);
-    match storage.get_recent(limit).await {
+    match search_service.get_recent_observations(limit).await {
         Ok(results) => mcp_ok(&results),
         Err(e) => mcp_err(e),
     }
 }
 
 pub(super) async fn handle_hybrid_search(
-    storage: &StorageBackend,
+    search_service: &SearchService,
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let Some(query) = args.get("query").and_then(|q| q.as_str()).filter(|s| !s.is_empty()) else {
@@ -108,15 +101,14 @@ pub(super) async fn handle_hybrid_search(
     };
     let limit = (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(20) as usize)
         .min(MAX_QUERY_LIMIT);
-    match storage.hybrid_search(query, limit).await {
+    match search_service.hybrid_search(query, limit).await {
         Ok(results) => mcp_ok(&results),
         Err(e) => mcp_err(e),
     }
 }
 
 pub(super) async fn handle_semantic_search(
-    storage: &StorageBackend,
-    embeddings: Option<&EmbeddingService>,
+    search_service: &SearchService,
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let Some(query) = args.get("query").and_then(|q| q.as_str()).filter(|s| !s.is_empty()) else {
@@ -125,9 +117,7 @@ pub(super) async fn handle_semantic_search(
     let limit = (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(20) as usize)
         .min(MAX_QUERY_LIMIT);
 
-    match opencode_mem_search::run_semantic_search_with_fallback(storage, embeddings, query, limit)
-        .await
-    {
+    match search_service.semantic_search_with_fallback(query, limit).await {
         Ok(results) => mcp_ok(&results),
         Err(e) => mcp_err(e),
     }

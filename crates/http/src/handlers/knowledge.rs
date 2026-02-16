@@ -9,7 +9,6 @@ use std::sync::Arc;
 use opencode_mem_core::{
     GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType, MAX_QUERY_LIMIT,
 };
-use opencode_mem_storage::KnowledgeStore;
 
 use crate::api_types::{KnowledgeQuery, KnowledgeUsageResponse, SaveKnowledgeRequest};
 use crate::AppState;
@@ -23,7 +22,7 @@ pub async fn list_knowledge(
         None => None,
     };
     state
-        .storage
+        .knowledge_service
         .list_knowledge(knowledge_type, query.limit.min(MAX_QUERY_LIMIT))
         .await
         .map(Json)
@@ -41,7 +40,7 @@ pub async fn search_knowledge(
         return Err(StatusCode::BAD_REQUEST);
     }
     state
-        .storage
+        .knowledge_service
         .search_knowledge(&query.q, query.limit.min(MAX_QUERY_LIMIT))
         .await
         .map(Json)
@@ -55,7 +54,7 @@ pub async fn get_knowledge_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Option<GlobalKnowledge>>, StatusCode> {
-    state.storage.get_knowledge(&id).await.map(Json).map_err(|e| {
+    state.knowledge_service.get_knowledge(&id).await.map(Json).map_err(|e| {
         tracing::error!("Get knowledge error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })
@@ -65,7 +64,7 @@ pub async fn delete_knowledge(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let deleted = state.storage.delete_knowledge(&id).await.map_err(|e| {
+    let deleted = state.knowledge_service.delete_knowledge(&id).await.map_err(|e| {
         tracing::error!("Delete knowledge error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -91,7 +90,7 @@ pub async fn save_knowledge(
         req.source_observation,
     );
 
-    state.storage.save_knowledge(input).await.map(Json).map_err(|e| {
+    state.knowledge_service.save_knowledge(input).await.map(Json).map_err(|e| {
         tracing::error!("Save knowledge error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })
@@ -101,7 +100,7 @@ pub async fn record_knowledge_usage(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<KnowledgeUsageResponse>, StatusCode> {
-    state.storage.update_knowledge_usage(&id).await.map_err(|e| {
+    state.knowledge_service.update_knowledge_usage(&id).await.map_err(|e| {
         tracing::error!("Update knowledge usage error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;

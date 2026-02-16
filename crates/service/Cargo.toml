@@ -12,6 +12,7 @@ opencode-mem-storage = { workspace = true }
 opencode-mem-llm = { workspace = true }
 opencode-mem-infinite = { workspace = true }
 opencode-mem-embeddings = { workspace = true }
+opencode-mem-search = { workspace = true }
 tokio = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }

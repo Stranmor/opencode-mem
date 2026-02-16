@@ -4,7 +4,7 @@ mod memory;
 
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
-use opencode_mem_service::{ObservationService, SessionService};
+use opencode_mem_service::{KnowledgeService, ObservationService, SessionService};
 use opencode_mem_storage::StorageBackend;
 use serde::Serialize;
 use serde_json::json;
@@ -39,6 +39,7 @@ pub async fn handle_tool_call(
     infinite_mem: Option<&InfiniteMemory>,
     observation_service: &ObservationService,
     _session_service: &SessionService,
+    knowledge_service: &KnowledgeService,
     handle: &Handle,
     params: &serde_json::Value,
     id: serde_json::Value,
@@ -75,11 +76,15 @@ pub async fn handle_tool_call(
             memory::handle_semantic_search(storage, embeddings.as_deref(), &args).await
         },
         McpTool::SaveMemory => memory::handle_save_memory(observation_service, &args).await,
-        McpTool::KnowledgeSearch => knowledge::handle_knowledge_search(storage, &args).await,
-        McpTool::KnowledgeSave => knowledge::handle_knowledge_save(storage, &args).await,
-        McpTool::KnowledgeGet => knowledge::handle_knowledge_get(storage, &args).await,
-        McpTool::KnowledgeList => knowledge::handle_knowledge_list(storage, &args).await,
-        McpTool::KnowledgeDelete => knowledge::handle_knowledge_delete(storage, &args).await,
+        McpTool::KnowledgeSearch => {
+            knowledge::handle_knowledge_search(knowledge_service, &args).await
+        },
+        McpTool::KnowledgeSave => knowledge::handle_knowledge_save(knowledge_service, &args).await,
+        McpTool::KnowledgeGet => knowledge::handle_knowledge_get(knowledge_service, &args).await,
+        McpTool::KnowledgeList => knowledge::handle_knowledge_list(knowledge_service, &args).await,
+        McpTool::KnowledgeDelete => {
+            knowledge::handle_knowledge_delete(knowledge_service, &args).await
+        },
         McpTool::InfiniteExpand => {
             return infinite::handle_infinite_expand(infinite_mem, handle, &args, id).await;
         },

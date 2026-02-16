@@ -10,7 +10,7 @@ use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
 
 use opencode_mem_core::{Observation, SearchResult};
-use opencode_mem_storage::{ObservationStore, SearchStore, StatsStore, StorageStats};
+use opencode_mem_storage::StorageStats;
 
 use crate::api_types::{
     ContextPreview, ContextPreviewQuery, ContextQuery, SearchHelpResponse, SearchQuery,
@@ -25,18 +25,21 @@ pub async fn get_context_recent(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextQuery>,
 ) -> Result<Json<Vec<Observation>>, StatusCode> {
-    state.storage.get_context_for_project(&query.project, query.limit).await.map(Json).map_err(
-        |e| {
+    state
+        .search_service
+        .get_context_for_project(&query.project, query.limit)
+        .await
+        .map(Json)
+        .map_err(|e| {
             tracing::error!("Get context error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
-        },
-    )
+        })
 }
 
 pub async fn get_projects(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<String>>, StatusCode> {
-    state.storage.get_all_projects().await.map(Json).map_err(|e| {
+    state.search_service.get_all_projects().await.map(Json).map_err(|e| {
         tracing::error!("Get projects error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })
@@ -45,7 +48,7 @@ pub async fn get_projects(
 pub async fn get_stats(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<StorageStats>, StatusCode> {
-    state.storage.get_stats().await.map(Json).map_err(|e| {
+    state.search_service.get_stats().await.map(Json).map_err(|e| {
         tracing::error!("Get stats error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })
@@ -75,7 +78,7 @@ pub async fn get_decisions(
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
     let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
     state
-        .storage
+        .search_service
         .search_with_filters(
             q,
             query.project.as_deref(),
@@ -98,7 +101,7 @@ pub async fn get_changes(
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
     let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
     state
-        .storage
+        .search_service
         .search_with_filters(
             q,
             query.project.as_deref(),
@@ -124,10 +127,12 @@ pub async fn get_how_it_works(
     } else {
         format!("{} how-it-works", query.q)
     };
-    state.storage.hybrid_search(&search_query, query.capped_limit()).await.map(Json).map_err(|e| {
-        tracing::error!("How it works search error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    state.search_service.hybrid_search(&search_query, query.capped_limit()).await.map(Json).map_err(
+        |e| {
+            tracing::error!("How it works search error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+    )
 }
 
 pub async fn context_timeline(
@@ -142,10 +147,12 @@ pub async fn context_preview(
     Query(query): Query<ContextPreviewQuery>,
 ) -> Result<Json<ContextPreview>, StatusCode> {
     let observations =
-        state.storage.get_context_for_project(&query.project, query.limit).await.map_err(|e| {
-            tracing::error!("Context preview error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        state.search_service.get_context_for_project(&query.project, query.limit).await.map_err(
+            |e| {
+                tracing::error!("Context preview error: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            },
+        )?;
     let preview = if query.format == "full" {
         observations
             .iter()

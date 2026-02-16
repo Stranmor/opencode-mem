@@ -8,10 +8,7 @@ use std::sync::Arc;
 use opencode_mem_core::{
     Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall, UserPrompt,
 };
-use opencode_mem_storage::{
-    ObservationStore, PaginatedResult, PendingQueueStore, PromptStore, SearchStore, StatsStore,
-    SummaryStore,
-};
+use opencode_mem_storage::{PaginatedResult, PendingQueueStore};
 
 use crate::api_types::{
     BatchRequest, ObserveBatchResponse, ObserveResponse, PaginationQuery, SaveMemoryRequest,
@@ -114,7 +111,7 @@ pub async fn get_observation(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Option<Observation>>, StatusCode> {
-    state.storage.get_by_id(&id).await.map(Json).map_err(|e| {
+    state.search_service.get_observation_by_id(&id).await.map(Json).map_err(|e| {
         tracing::error!("Get observation error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })
@@ -124,10 +121,12 @@ pub async fn get_recent(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<Observation>>, StatusCode> {
-    state.storage.get_recent(query.capped_limit()).await.map(Json).map_err(|e| {
-        tracing::error!("Get recent error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    state.search_service.get_recent_observations(query.capped_limit()).await.map(Json).map_err(
+        |e| {
+            tracing::error!("Get recent error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+    )
 }
 
 pub async fn get_timeline(
@@ -135,7 +134,7 @@ pub async fn get_timeline(
     Query(query): Query<TimelineQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
     state
-        .storage
+        .search_service
         .get_timeline(query.from.as_deref(), query.to.as_deref(), query.capped_limit())
         .await
         .map(Json)
@@ -153,7 +152,7 @@ pub async fn get_observations_batch(
         tracing::warn!("Batch request validation failed: {}", msg);
         return Err(StatusCode::BAD_REQUEST);
     }
-    state.storage.get_observations_by_ids(&req.ids).await.map(Json).map_err(|e| {
+    state.search_service.get_observations_by_ids(&req.ids).await.map(Json).map_err(|e| {
         tracing::error!("Get observations batch error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })
@@ -165,7 +164,7 @@ pub async fn get_observations_paginated(
 ) -> Result<Json<PaginatedResult<Observation>>, StatusCode> {
     let limit = query.limit.min(100);
     state
-        .storage
+        .search_service
         .get_observations_paginated(query.offset, limit, query.project.as_deref())
         .await
         .map(Json)
@@ -181,7 +180,7 @@ pub async fn get_summaries_paginated(
 ) -> Result<Json<PaginatedResult<SessionSummary>>, StatusCode> {
     let limit = query.limit.min(100);
     state
-        .storage
+        .search_service
         .get_summaries_paginated(query.offset, limit, query.project.as_deref())
         .await
         .map(Json)
@@ -197,7 +196,7 @@ pub async fn get_prompts_paginated(
 ) -> Result<Json<PaginatedResult<UserPrompt>>, StatusCode> {
     let limit = query.limit.min(100);
     state
-        .storage
+        .search_service
         .get_prompts_paginated(query.offset, limit, query.project.as_deref())
         .await
         .map(Json)
@@ -211,7 +210,7 @@ pub async fn get_session_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Option<SessionSummary>>, StatusCode> {
-    state.storage.get_session_summary(&id).await.map(Json).map_err(|e| {
+    state.search_service.get_session_summary(&id).await.map(Json).map_err(|e| {
         tracing::error!("Get session summary error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })
@@ -221,7 +220,7 @@ pub async fn get_prompt_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Option<UserPrompt>>, StatusCode> {
-    state.storage.get_prompt_by_id(&id).await.map(Json).map_err(|e| {
+    state.search_service.get_prompt_by_id(&id).await.map(Json).map_err(|e| {
         tracing::error!("Get prompt error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })

@@ -6,7 +6,6 @@ use axum::{
 use std::sync::Arc;
 
 use opencode_mem_core::{SearchResult, SessionSummary, UserPrompt, MAX_QUERY_LIMIT};
-use opencode_mem_storage::{ObservationStore, PromptStore, SearchStore, SummaryStore};
 
 use crate::api_types::{
     FileSearchQuery, RankedItem, SearchQuery, TimelineResult, UnifiedSearchResult,
@@ -20,7 +19,7 @@ pub async fn search(
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
     let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
     state
-        .storage
+        .search_service
         .search_with_filters(
             q,
             query.project.as_deref(),
@@ -41,10 +40,12 @@ pub async fn hybrid_search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    state.storage.hybrid_search(&query.q, query.capped_limit()).await.map(Json).map_err(|e| {
-        tracing::error!("Hybrid search error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    state.search_service.hybrid_search(&query.q, query.capped_limit()).await.map(Json).map_err(
+        |e| {
+            tracing::error!("Hybrid search error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+    )
 }
 
 pub async fn semantic_search(
@@ -55,18 +56,15 @@ pub async fn semantic_search(
         return Ok(Json(Vec::new()));
     }
 
-    opencode_mem_search::run_semantic_search_with_fallback(
-        &state.storage,
-        state.embeddings.as_deref(),
-        &query.q,
-        query.capped_limit(),
-    )
-    .await
-    .map(Json)
-    .map_err(|e| {
-        tracing::error!("Semantic search error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    state
+        .search_service
+        .semantic_search_with_fallback(&query.q, query.capped_limit())
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Semantic search error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
 }
 
 pub async fn search_sessions(
@@ -76,10 +74,12 @@ pub async fn search_sessions(
     if query.q.is_empty() {
         return Ok(Json(Vec::new()));
     }
-    state.storage.search_sessions(&query.q, query.capped_limit()).await.map(Json).map_err(|e| {
-        tracing::error!("Search sessions error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    state.search_service.search_sessions(&query.q, query.capped_limit()).await.map(Json).map_err(
+        |e| {
+            tracing::error!("Search sessions error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+    )
 }
 
 pub async fn search_prompts(
@@ -89,10 +89,12 @@ pub async fn search_prompts(
     if query.q.is_empty() {
         return Ok(Json(Vec::new()));
     }
-    state.storage.search_prompts(&query.q, query.capped_limit()).await.map(Json).map_err(|e| {
-        tracing::error!("Search prompts error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    state.search_service.search_prompts(&query.q, query.capped_limit()).await.map(Json).map_err(
+        |e| {
+            tracing::error!("Search prompts error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        },
+    )
 }
 
 pub async fn search_by_file(
@@ -100,7 +102,7 @@ pub async fn search_by_file(
     Query(query): Query<FileSearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
     state
-        .storage
+        .search_service
         .search_by_file(&query.file_path, query.limit.min(MAX_QUERY_LIMIT))
         .await
         .map(Json)
@@ -126,7 +128,7 @@ pub async fn unified_search(
     let limit = query.capped_limit();
 
     let (obs_result, sess_result, prompt_result) = tokio::join!(
-        state.storage.search_with_filters(
+        state.search_service.search_with_filters(
             Some(q.as_str()),
             query.project.as_deref(),
             query.obs_type.as_deref(),
@@ -134,8 +136,8 @@ pub async fn unified_search(
             query.to.as_deref(),
             limit,
         ),
-        state.storage.search_sessions(q, limit),
-        state.storage.search_prompts(q, limit),
+        state.search_service.search_sessions(q, limit),
+        state.search_service.search_prompts(q, limit),
     );
 
     let observations = obs_result.unwrap_or_else(|e| {
@@ -207,12 +209,12 @@ pub async fn unified_timeline(
     Query(query): Query<UnifiedTimelineQuery>,
 ) -> Result<Json<TimelineResult>, StatusCode> {
     let anchor_obs = if let Some(ref id) = query.anchor {
-        state.storage.get_by_id(id).await.ok().flatten()
+        state.search_service.get_observation_by_id(id).await.ok().flatten()
     } else if let Some(ref q) = query.q {
         let search_result =
-            state.storage.hybrid_search(q, 1).await.ok().and_then(|r| r.into_iter().next());
+            state.search_service.hybrid_search(q, 1).await.ok().and_then(|r| r.into_iter().next());
         if let Some(sr) = search_result {
-            state.storage.get_by_id(&sr.id).await.ok().flatten()
+            state.search_service.get_observation_by_id(&sr.id).await.ok().flatten()
         } else {
             None
         }
@@ -235,8 +237,8 @@ pub async fn unified_timeline(
         let after_limit = query.after.saturating_add(1);
 
         let (before_result, after_result) = tokio::join!(
-            state.storage.get_timeline(None, Some(&anchor_time), before_limit),
-            state.storage.get_timeline(Some(&anchor_time), None, after_limit),
+            state.search_service.get_timeline(None, Some(&anchor_time), before_limit),
+            state.search_service.get_timeline(Some(&anchor_time), None, after_limit),
         );
 
         let anchor_id = anchor_sr.id.clone();
