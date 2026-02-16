@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    env_parse_with_default, is_low_value_observation, observation_embedding_text, Observation,
-    ObservationInput, ToolCall, ToolOutput,
+    env_parse_with_default, filter_private_content, is_low_value_observation,
+    observation_embedding_text, Observation, ObservationInput, ObservationType, ToolCall,
+    ToolOutput,
 };
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
 use opencode_mem_infinite::{tool_event, InfiniteMemory};
@@ -163,18 +164,62 @@ impl ObservationService {
 
     async fn store_infinite_memory(&self, tool_call: &ToolCall, observation: &Observation) {
         if let Some(ref infinite_mem) = self.infinite_mem {
+            let filtered_output = filter_private_content(&tool_call.output);
             let event = tool_event(
                 &tool_call.session_id,
                 tool_call.project.as_deref(),
                 &tool_call.tool,
                 tool_call.input.clone(),
-                serde_json::json!({"output": tool_call.output}),
+                serde_json::json!({"output": filtered_output}),
                 observation.files_modified.clone(),
             );
             if let Err(e) = infinite_mem.store_event(event).await {
                 tracing::warn!(error = %e, observation_id = %observation.id, "Failed to store in infinite memory — event will be missing from long-term history");
             }
         }
+    }
+
+    /// Save a user-provided memory directly as an observation, without LLM compression.
+    ///
+    /// Returns `None` if the observation is filtered as low-value.
+    ///
+    /// # Errors
+    /// Returns error if text is empty or persistence fails.
+    pub async fn save_memory(
+        &self,
+        text: &str,
+        title: Option<&str>,
+        project: Option<&str>,
+    ) -> anyhow::Result<Option<Observation>> {
+        let text = text.trim();
+        if text.is_empty() {
+            anyhow::bail!("Text is required for save_memory");
+        }
+
+        let title = match title {
+            Some(t) if !t.trim().is_empty() => t.trim().to_string(),
+            _ => text.chars().take(50).collect(),
+        };
+
+        if is_low_value_observation(&title) {
+            tracing::debug!("Filtered low-value save_memory: {}", title);
+            return Ok(None);
+        }
+
+        let project = project.map(str::trim).filter(|p| !p.is_empty()).map(ToOwned::to_owned);
+
+        let obs = Observation::builder(
+            uuid::Uuid::new_v4().to_string(),
+            "manual".to_owned(),
+            ObservationType::Discovery,
+            title,
+        )
+        .maybe_project(project)
+        .narrative(text.to_owned())
+        .build();
+
+        self.save_observation(&obs).await?;
+        Ok(Some(obs))
     }
 
     pub async fn save_observation(&self, observation: &Observation) -> anyhow::Result<()> {

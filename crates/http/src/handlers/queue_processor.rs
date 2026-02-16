@@ -2,7 +2,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
-use opencode_mem_core::{ObservationInput, ProjectFilter, ToolOutput};
+use opencode_mem_core::{filter_private_content, ObservationInput, ProjectFilter, ToolOutput};
 use opencode_mem_infinite::tool_event;
 use opencode_mem_storage::{
     default_visibility_timeout_secs, ObservationStore, PendingMessage, PendingQueueStore,
@@ -57,8 +57,10 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
 
     // Store raw event in Infinite Memory REGARDLESS of whether observation is trivial.
     // Architecture invariant: raw events are NEVER lost — drill-down must always work.
+    // Privacy invariant: <private> content is filtered BEFORE storage.
     if let Some(infinite_mem) = state.infinite_mem.as_ref() {
         let files = observation.as_ref().map(|obs| obs.files_modified.clone()).unwrap_or_default();
+        let filtered_response = filter_private_content(tool_response);
         let event = tool_event(
             &msg.session_id,
             None,
@@ -66,7 +68,7 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
             tool_input
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or(serde_json::Value::Null),
-            serde_json::json!({"output": tool_response}),
+            serde_json::json!({"output": filtered_response}),
             files,
         );
         infinite_mem.store_event(event).await?;
