@@ -90,6 +90,9 @@ crates/
 - **SQLite merge_into_existing deadlock risk** — `merge_into_existing` uses deferred transaction (SELECT then UPDATE), susceptible to SQLITE_BUSY in WAL mode. Should use `TransactionBehavior::Immediate`.
 - **Queue processor UUID collision** — UUID v5 based on `pending_messages.id` (DB row ID). If queue table is truncated while observations persist, new messages reuse old IDs → colliding UUIDs → silent data loss.
 - **Privacy filter bypass in save_memory** — `save_memory` endpoint (HTTP + MCP) constructs Observation from user input without calling `filter_private_content`. `<private>` tagged data stored in plain text.
+- **Blocking I/O in session_service** — `summarize_session_from_export` uses `std::process::Command::output()` synchronously in async context. Should use `tokio::process::Command` or `spawn_blocking`.
+- **Phantom observation return after dedup merge** — `process` and `save_memory` return the local Observation even when merged into existing via dedup. Caller gets temporary ID that doesn't exist in DB.
+- **Infinite memory compression pipeline starvation** — `run_full_compression` fetches fixed batch (100) of unaggregated summaries across sessions. If distributed across many sessions, no single session meets threshold → pipeline stalls.
 
 ### Resolved
 - ~~Code Duplication in observation_service.rs~~ — extracted shared `persist_and_notify` method
