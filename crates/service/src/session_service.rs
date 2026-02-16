@@ -47,7 +47,7 @@ impl SessionService {
     }
 
     pub async fn generate_summary(&self, observations: &[Observation]) -> anyhow::Result<String> {
-        Ok(self.llm.generate_session_summary(observations).await?)
+        self.llm.generate_session_summary(observations).await
     }
 
     pub async fn summarize_session(

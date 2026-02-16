@@ -1,3 +1,5 @@
+#![expect(clippy::unwrap_used, reason = "test code")]
+
 use opencode_mem_core::{KnowledgeInput, KnowledgeType};
 use opencode_mem_storage::Storage;
 use std::sync::Arc;

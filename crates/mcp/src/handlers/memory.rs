@@ -182,6 +182,8 @@ pub(super) async fn handle_save_memory(
 }
 
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test code")]
+#[expect(clippy::indexing_slicing, reason = "test code — asserts guard length")]
 mod tests {
     use super::*;
     use opencode_mem_storage::Storage;

@@ -1,3 +1,5 @@
+#![expect(clippy::unwrap_used, reason = "test code")]
+
 use super::{create_test_observation, create_test_storage};
 
 #[test]

@@ -1,4 +1,4 @@
-use opencode_mem_core::{Error, Result};
+use anyhow::{anyhow, bail, Result};
 
 use crate::ai_types::{ChatRequest, ChatResponse};
 
@@ -74,7 +74,7 @@ impl LlmClient {
     /// Send a chat completion request and return the extracted content string.
     ///
     /// # Errors
-    /// Returns `Error::LlmApi` if the HTTP request fails, the API returns a
+    /// Returns an error if the HTTP request fails, the API returns a
     /// non-success status, the response body cannot be parsed, or the choices
     /// array is empty.
     pub async fn chat_completion(&self, request: &ChatRequest) -> Result<String> {
@@ -101,7 +101,7 @@ impl LlmClient {
             let response = match response_result {
                 Ok(r) => r,
                 Err(e) => {
-                    last_error = Some(Error::LlmApi(e.to_string()));
+                    last_error = Some(anyhow!("LLM API error: {e}"));
                     continue;
                 },
             };
@@ -112,22 +112,19 @@ impl LlmClient {
                 let body = match body_result {
                     Ok(b) => b,
                     Err(e) => {
-                        last_error = Some(Error::LlmApi(e.to_string()));
+                        last_error = Some(anyhow!("LLM API error: {e}"));
                         continue;
                     },
                 };
 
                 let chat_response: ChatResponse = serde_json::from_str(&body).map_err(|e| {
-                    Error::LlmApi(format!(
-                        "Failed to parse response: {e} - body: {}",
-                        truncate(&body, 500)
-                    ))
+                    anyhow!("Failed to parse response: {e} - body: {}", truncate(&body, 500))
                 })?;
 
                 let first_choice = chat_response
                     .choices
                     .first()
-                    .ok_or_else(|| Error::LlmApi("API returned empty choices array".to_owned()))?;
+                    .ok_or_else(|| anyhow!("LLM API: empty choices array"))?;
 
                 return Ok(first_choice.message.content.clone());
             }
@@ -139,14 +136,14 @@ impl LlmClient {
 
             match status_code {
                 429 | 500 | 502 | 503 | 529 => {
-                    last_error = Some(Error::LlmApi(err_msg));
+                    last_error = Some(anyhow!("{err_msg}"));
                     continue;
                 },
-                _ => return Err(Error::LlmApi(err_msg)),
+                _ => bail!("{err_msg}"),
             }
         }
 
-        Err(last_error.unwrap_or_else(|| Error::LlmApi("All retries exhausted".to_owned())))
+        Err(last_error.unwrap_or_else(|| anyhow!("LLM API: all retries exhausted")))
     }
 }
 

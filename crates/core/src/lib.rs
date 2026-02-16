@@ -6,8 +6,6 @@
 mod constants;
 /// Environment variable parsing with warn-level logging.
 mod env_config;
-/// Error types for opencode-mem operations.
-mod error;
 /// Hook event types for IDE integration.
 mod hook;
 /// JSON utility functions shared across crates.
@@ -23,8 +21,6 @@ mod session;
 
 pub use constants::*;
 pub use env_config::*;
-pub use error::MemoryError as Error;
-pub use error::*;
 pub use hook::*;
 pub use json_utils::*;
 pub use knowledge::*;

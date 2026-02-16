@@ -1,6 +1,7 @@
 use std::fmt::Write as _;
 
-use opencode_mem_core::{Concept, Error, Observation, ObservationType, Result};
+use anyhow::{anyhow, Result};
+use opencode_mem_core::{Concept, Observation, ObservationType};
 use serde::Deserialize;
 
 use crate::ai_types::{ChatRequest, Message, ResponseFormat};
@@ -150,15 +151,15 @@ impl LlmClient {
     /// Extract project-specific insights from a full session JSON export.
     ///
     /// # Errors
-    /// Returns `Error::LlmApi` if the API call fails or response parsing fails.
+    /// Returns an error if the API call fails or response parsing fails.
     pub async fn extract_insights_from_session(
         &self,
         session_json: &str,
         project_path: &str,
         session_id: &str,
     ) -> Result<Vec<Observation>> {
-        let parsed: serde_json::Value = serde_json::from_str(session_json)
-            .map_err(|e| Error::InvalidInput(format!("Invalid session JSON: {e}")))?;
+        let parsed: serde_json::Value =
+            serde_json::from_str(session_json).map_err(|e| anyhow!("Invalid session JSON: {e}"))?;
 
         let formatted = format_session_for_llm(&parsed);
 
@@ -187,10 +188,7 @@ impl LlmClient {
         let content = self.chat_completion(&request).await?;
         let clean_json = strip_markdown_json(&content);
         serde_json::from_str(&clean_json).map_err(|e| {
-            Error::LlmApi(format!(
-                "Failed to parse insights JSON: {e} - content: {}",
-                truncate(&clean_json, 300)
-            ))
+            anyhow!("Failed to parse insights JSON: {e} - content: {}", truncate(&clean_json, 300))
         })
     }
 }

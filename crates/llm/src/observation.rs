@@ -1,7 +1,7 @@
+use anyhow::{anyhow, Result};
 use chrono::Utc;
 use opencode_mem_core::{
-    filter_private_content, Concept, Error, NoiseLevel, Observation, ObservationInput,
-    ObservationType, Result,
+    filter_private_content, Concept, NoiseLevel, Observation, ObservationInput, ObservationType,
 };
 use std::str::FromStr as _;
 
@@ -26,8 +26,7 @@ impl LlmClient {
     /// Compress tool output into an observation using LLM.
     ///
     /// # Errors
-    /// Returns `Error::LlmApi` if the API call fails or response parsing fails.
-    /// Returns `Error::InvalidInput` if the observation type is invalid.
+    /// Returns an error if the API call fails or response parsing fails.
     pub async fn compress_to_observation(
         &self,
         id: &str,
@@ -129,10 +128,10 @@ Return JSON:
         let content = self.chat_completion(&request).await?;
         let stripped = opencode_mem_core::strip_markdown_json(&content);
         let obs_json: ObservationJson = serde_json::from_str(stripped).map_err(|e| {
-            Error::LlmApi(format!(
+            anyhow!(
                 "Failed to parse observation JSON: {e} - content: {}",
                 content.get(..300).unwrap_or(&content)
-            ))
+            )
         })?;
 
         let noise_level = NoiseLevel::from_str(&obs_json.noise_level).unwrap_or_else(|_| {
@@ -162,10 +161,7 @@ Return JSON:
 
         let observation_type =
             ObservationType::from_str(&obs_json.observation_type).map_err(|_ignored| {
-                Error::InvalidInput(format!(
-                    "Invalid observation type: {}",
-                    obs_json.observation_type
-                ))
+                anyhow!("Invalid observation type: {}", obs_json.observation_type)
             })?;
 
         Ok(Some(

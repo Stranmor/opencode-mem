@@ -1,3 +1,6 @@
+#![expect(clippy::unwrap_used, reason = "test code")]
+#![expect(clippy::indexing_slicing, reason = "test code — asserts guard length")]
+
 use super::{create_test_observation, create_test_storage};
 use chrono::{TimeZone, Utc};
 use opencode_mem_core::{NoiseLevel, ObservationType};
