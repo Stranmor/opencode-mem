@@ -1,4 +1,4 @@
-use opencode_mem_core::MAX_QUERY_LIMIT;
+use opencode_mem_core::{DEFAULT_QUERY_LIMIT, MAX_QUERY_LIMIT};
 use opencode_mem_service::KnowledgeService;
 use serde_json::json;
 
@@ -9,7 +9,10 @@ pub(super) async fn handle_knowledge_search(
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let query = args.get("query").and_then(|q| q.as_str()).unwrap_or("");
-    let limit = (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(10) as usize)
+    let limit = (args
+        .get("limit")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(DEFAULT_QUERY_LIMIT as u64) as usize)
         .min(MAX_QUERY_LIMIT);
     match knowledge_service.search_knowledge(query, limit).await {
         Ok(results) => mcp_ok(&results),
@@ -46,7 +49,10 @@ pub(super) async fn handle_knowledge_list(
         },
         None => None,
     };
-    let limit = (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(20) as usize)
+    let limit = (args
+        .get("limit")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(DEFAULT_QUERY_LIMIT as u64) as usize)
         .min(MAX_QUERY_LIMIT);
     match knowledge_service.list_knowledge(knowledge_type, limit).await {
         Ok(results) => mcp_ok(&results),

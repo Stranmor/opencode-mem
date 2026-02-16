@@ -2268,13 +2268,13 @@ dependencies = [
 name = "opencode-mem-core"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "chrono",
  "dirs 5.0.1",
  "globset",
  "regex",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "tracing",
  "unicode-normalization",
 ]
@@ -2283,8 +2283,8 @@ dependencies = [
 name = "opencode-mem-embeddings"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "fastembed",
+ "thiserror 2.0.18",
  "tracing",
 ]
 
@@ -2331,12 +2331,12 @@ dependencies = [
 name = "opencode-mem-llm"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "chrono",
  "opencode-mem-core",
  "reqwest",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
  "uuid",

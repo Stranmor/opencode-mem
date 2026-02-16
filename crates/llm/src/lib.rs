@@ -13,12 +13,14 @@
 
 mod ai_types;
 mod client;
+pub mod error;
 mod insights;
 mod knowledge;
 mod observation;
 mod summary;
 
 pub use client::LlmClient;
+pub use error::LlmError;
 
 #[cfg(test)]
 mod tests;

@@ -215,10 +215,10 @@ impl Storage {
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )?;
         Ok(QueueStats {
-            pending: pending.unwrap_or(0) as u64,
-            processing: processing.unwrap_or(0) as u64,
-            failed: failed.unwrap_or(0) as u64,
-            processed: processed.unwrap_or(0) as u64,
+            pending: u64::try_from(pending.unwrap_or(0)).unwrap_or(0),
+            processing: u64::try_from(processing.unwrap_or(0)).unwrap_or(0),
+            failed: u64::try_from(failed.unwrap_or(0)).unwrap_or(0),
+            processed: u64::try_from(processed.unwrap_or(0)).unwrap_or(0),
         })
     }
 

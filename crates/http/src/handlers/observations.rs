@@ -8,7 +8,7 @@ use std::sync::Arc;
 use opencode_mem_core::{
     Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall, UserPrompt,
 };
-use opencode_mem_storage::{PaginatedResult, PendingQueueStore};
+use opencode_mem_storage::PaginatedResult;
 
 use crate::api_types::{
     BatchRequest, ObserveBatchResponse, ObserveResponse, PaginationQuery, SaveMemoryRequest,
@@ -34,7 +34,7 @@ pub async fn observe(
     let project = tool_call.project.clone();
 
     let message_id = state
-        .storage
+        .queue_service
         .queue_message(
             &session_id,
             Some(&tool_name),
@@ -65,7 +65,7 @@ pub async fn observe_batch(
         }
         let tool_input = serde_json::to_string(&tool_call.input).ok();
         match state
-            .storage
+            .queue_service
             .queue_message(
                 &tool_call.session_id,
                 Some(&tool_call.tool),

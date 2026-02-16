@@ -14,7 +14,8 @@ use opencode_mem_core::{
 };
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_storage::traits::{
-    KnowledgeStore, ObservationStore, PromptStore, SearchStore, StatsStore, SummaryStore,
+    EmbeddingStore, KnowledgeStore, ObservationStore, PromptStore, SearchStore, StatsStore,
+    SummaryStore,
 };
 use opencode_mem_storage::{PaginatedResult, StorageBackend, StorageStats};
 
@@ -181,5 +182,11 @@ impl SearchService {
 
     pub async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>> {
         self.storage.get_knowledge(id).await
+    }
+
+    // ── EmbeddingStore delegates ────────────────────────────────────────
+
+    pub async fn clear_embeddings(&self) -> Result<()> {
+        self.storage.clear_embeddings().await
     }
 }

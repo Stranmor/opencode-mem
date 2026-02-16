@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
-use opencode_mem_storage::{default_visibility_timeout_secs, PendingQueueStore};
+use opencode_mem_storage::default_visibility_timeout_secs;
 
 use crate::api_types::{
     ClearQueueResponse, PendingQueueResponse, ProcessQueueResponse, ProcessingStatusResponse,
@@ -22,11 +22,11 @@ pub async fn get_pending_queue(
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<PendingQueueResponse>, StatusCode> {
     let messages =
-        state.storage.get_all_pending_messages(query.capped_limit()).await.map_err(|e| {
+        state.queue_service.get_all_pending_messages(query.capped_limit()).await.map_err(|e| {
             tracing::error!("Get pending messages error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
-    let queue_stats = state.storage.get_queue_stats().await.map_err(|e| {
+    let queue_stats = state.queue_service.get_queue_stats().await.map_err(|e| {
         tracing::error!("Get queue stats error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -38,7 +38,7 @@ pub async fn process_pending_queue(
 ) -> Result<Json<ProcessQueueResponse>, StatusCode> {
     let max_workers = max_queue_workers();
     let messages = state
-        .storage
+        .queue_service
         .claim_pending_messages(max_workers, default_visibility_timeout_secs())
         .await
         .map_err(|e| {
@@ -65,7 +65,7 @@ pub async fn process_pending_queue(
             let result = process_pending_message(&state_clone, &msg).await;
             match result {
                 Ok(()) => {
-                    if let Err(e) = state_clone.storage.complete_message(msg.id).await {
+                    if let Err(e) = state_clone.queue_service.complete_message(msg.id).await {
                         tracing::error!("Complete message {} failed: {}", msg.id, e);
                         return false;
                     }
@@ -73,7 +73,7 @@ pub async fn process_pending_queue(
                 },
                 Err(e) => {
                     tracing::error!("Process message {} failed: {}", msg.id, e);
-                    if let Err(e) = state_clone.storage.fail_message(msg.id, true).await {
+                    if let Err(e) = state_clone.queue_service.fail_message(msg.id, true).await {
                         tracing::error!("Fail message {} error: {}", msg.id, e);
                     }
                     false
@@ -98,7 +98,7 @@ pub async fn process_pending_queue(
 pub async fn clear_failed_queue(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ClearQueueResponse>, StatusCode> {
-    let cleared = state.storage.clear_failed_messages().await.map_err(|e| {
+    let cleared = state.queue_service.clear_failed_messages().await.map_err(|e| {
         tracing::error!("Clear failed messages error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -108,7 +108,7 @@ pub async fn clear_failed_queue(
 pub async fn retry_failed_queue(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<RetryQueueResponse>, StatusCode> {
-    let retried = state.storage.retry_failed_messages().await.map_err(|e| {
+    let retried = state.queue_service.retry_failed_messages().await.map_err(|e| {
         tracing::error!("Retry failed messages error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -118,7 +118,7 @@ pub async fn retry_failed_queue(
 pub async fn clear_all_queue(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ClearQueueResponse>, StatusCode> {
-    let cleared = state.storage.clear_all_pending_messages().await.map_err(|e| {
+    let cleared = state.queue_service.clear_all_pending_messages().await.map_err(|e| {
         tracing::error!("Clear all pending messages error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
@@ -129,7 +129,7 @@ pub async fn get_processing_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ProcessingStatusResponse>, StatusCode> {
     let active = state.processing_active.load(Ordering::SeqCst);
-    let pending_count = state.storage.get_pending_count().await.map_err(|e| {
+    let pending_count = state.queue_service.get_pending_count().await.map_err(|e| {
         tracing::error!("Get pending count error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;

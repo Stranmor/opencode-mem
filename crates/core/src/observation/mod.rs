@@ -13,11 +13,66 @@ pub use input::*;
 pub use low_value_filter::is_low_value_observation;
 pub use merge::*;
 
+use std::fmt;
 use std::str::FromStr;
 use std::sync::LazyLock;
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+
+use crate::error::CoreError;
+
+/// Ordinal position of a prompt within a session.
+///
+/// Semantically distinct from token counts or other numeric identifiers —
+/// wrapping in a newtype prevents accidental swaps at construction sites.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct PromptNumber(pub u32);
+
+/// Token count for ROI (return on investment) tracking.
+///
+/// Semantically distinct from prompt ordinals or other numeric fields —
+/// wrapping in a newtype prevents accidental swaps at construction sites.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct DiscoveryTokens(pub u32);
+
+impl From<u32> for PromptNumber {
+    fn from(v: u32) -> Self {
+        Self(v)
+    }
+}
+
+impl From<PromptNumber> for u32 {
+    fn from(v: PromptNumber) -> Self {
+        v.0
+    }
+}
+
+impl fmt::Display for PromptNumber {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<u32> for DiscoveryTokens {
+    fn from(v: u32) -> Self {
+        Self(v)
+    }
+}
+
+impl From<DiscoveryTokens> for u32 {
+    fn from(v: DiscoveryTokens) -> Self {
+        v.0
+    }
+}
+
+impl fmt::Display for DiscoveryTokens {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 /// Regex pattern for matching private content tags.
 #[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
@@ -70,7 +125,7 @@ impl ObservationType {
 }
 
 impl FromStr for ObservationType {
-    type Err = String;
+    type Err = CoreError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
@@ -82,7 +137,7 @@ impl FromStr for ObservationType {
             "decision" => Ok(Self::Decision),
             "gotcha" => Ok(Self::Gotcha),
             "preference" => Ok(Self::Preference),
-            other => Err(format!("unknown observation type: {other}")),
+            other => Err(CoreError::InvalidObservationType(other.to_owned())),
         }
     }
 }
@@ -157,7 +212,7 @@ impl NoiseLevel {
 }
 
 impl FromStr for NoiseLevel {
-    type Err = String;
+    type Err = CoreError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
@@ -166,7 +221,7 @@ impl FromStr for NoiseLevel {
             "medium" => Ok(Self::Medium),
             "low" => Ok(Self::Low),
             "negligible" => Ok(Self::Negligible),
-            other => Err(format!("unknown noise level: {other}")),
+            other => Err(CoreError::InvalidNoiseLevel(other.to_owned())),
         }
     }
 }

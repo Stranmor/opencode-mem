@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::Utc;
-use opencode_mem_core::UserPrompt;
+use opencode_mem_core::{PromptNumber, UserPrompt};
 use rusqlite::params;
 
 use super::{escape_like_pattern, get_conn, log_row_error, Storage};
@@ -20,7 +20,7 @@ impl Storage {
             params![
                 prompt.id,
                 prompt.content_session_id,
-                prompt.prompt_number,
+                prompt.prompt_number.0,
                 prompt.prompt_text,
                 prompt.project,
                 prompt.created_at.to_rfc3339(),
@@ -129,7 +129,7 @@ impl Storage {
         Ok(UserPrompt::new(
             row.get(0)?,
             row.get(1)?,
-            row.get(2)?,
+            PromptNumber(row.get(2)?),
             row.get(3)?,
             row.get(4)?,
             created_at,

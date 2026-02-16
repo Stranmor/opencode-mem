@@ -59,7 +59,7 @@ crates/
 ├── embeddings/  # Vector embeddings (fastembed AllMiniLML6V2)
 ├── search/      # Hybrid search (FTS + keyword + semantic)
 ├── llm/         # LLM compression (Antigravity API)
-├── service/     # Business logic layer (ObservationService, SessionService)
+├── service/     # Business logic layer (ObservationService, SessionService, QueueService)
 ├── http/        # HTTP API (Axum)
 ├── mcp/         # MCP server (stdio)
 ├── infinite-memory/ # PostgreSQL + pgvector backend
@@ -80,8 +80,16 @@ crates/
 
 - Local HTTP server fails to start if port 37777 is already in use; stop the existing process before starting a new server.
 - Gate MCP review tooling intermittently returns 429/502 or "Max retries exceeded", blocking automated code review.
-
 - Test coverage: ~40% of critical paths. Service layer, HTTP handlers, infinite-memory, CLI still have zero tests.
+- **Typed error enums partial** — Leaf crates have typed errors (`CoreError`, `EmbeddingError`, `LlmError`), but storage/service/http still use `anyhow::Result`. HTTP layer converts everything to 500 via blanket `From<anyhow::Error>`. Next step: `StorageError` in storage trait → `ServiceError` → `ApiError` `From` impls.
+- **PG search_vec missing columns** — PostgreSQL `search_vec` tsvector omits `facts` and `keywords` columns (SQLite FTS5 includes them). Search degrades on PG when terms appear only in facts/keywords.
+- **Session observations not durable** — `POST /api/sessions/observations` uses `tokio::spawn` (ephemeral), while `/observe` uses persistent DB queue. Server crash loses session observations.
+- **Knowledge save race condition** — No unique constraint on `global_knowledge.title`. Concurrent saves with same title create duplicates.
+- **PG noise_level default mismatch** — PG migration defaults to `'normal'` but `NoiseLevel` enum has no `Normal` variant (should be `'medium'`).
+- **Migration skips embeddings** — `migrate` command (SQLite→PG) doesn't transfer vector embeddings. Semantic search breaks until manual backfill.
+- **SQLite merge_into_existing deadlock risk** — `merge_into_existing` uses deferred transaction (SELECT then UPDATE), susceptible to SQLITE_BUSY in WAL mode. Should use `TransactionBehavior::Immediate`.
+- **Queue processor UUID collision** — UUID v5 based on `pending_messages.id` (DB row ID). If queue table is truncated while observations persist, new messages reuse old IDs → colliding UUIDs → silent data loss.
+- **Privacy filter bypass in save_memory** — `save_memory` endpoint (HTTP + MCP) constructs Observation from user input without calling `filter_private_content`. `<private>` tagged data stored in plain text.
 
 ### Resolved
 - ~~Code Duplication in observation_service.rs~~ — extracted shared `persist_and_notify` method
@@ -109,3 +117,21 @@ crates/
 - ~~Stale embedding after dedup merge~~ — re-generate from merged content
 - ~~merge_into_existing not transactional (SQLite)~~ — wrapped in transaction
 - ~~Nullable project crash in session summary (PG)~~ — handle Option<Option<String>> correctly
+- ~~Infinite Memory missing schema initialization~~ — added `migrations.rs` with auto-run in `InfiniteMemory::new()`
+- ~~Privacy leak: tool inputs stored unfiltered in infinite memory~~ — `filter_private_content` applied to inputs before storage
+- ~~SPOT: ObservationType/NoiseLevel parsing duplicated 10+ times~~ — extracted `parse_pg_observation_type()` and `parse_pg_noise_level()` helpers
+- ~~SPOT: hybrid_search_v2 inline row parsing copy-pasted from row_to_search_result~~ — uses `row_to_search_result_with_score` now
+- ~~SPOT: map_search_result + map_search_result_default_score duplicate~~ — merged into single function with `score_col: Option<usize>`
+- ~~rebuild_embeddings false claim about automatic re-embedding~~ — now states to run backfill CLI command
+- ~~Inconsistent default query limits (20/50/10) across HTTP/MCP~~ — unified via `DEFAULT_QUERY_LIMIT` in core/constants.rs
+- ~~MCP tool name unwrap_or("") silently accepts empty~~ — explicit rejection with error message
+- ~~Score fabrication: missing score defaulted to 1.0 (perfect)~~ — changed to 0.0 (no match)
+- ~~MAX_BATCH_IDS duplicated between http and mcp~~ — unified in core/constants.rs
+- ~~5x Regex::new().unwrap() in import_insights.rs~~ — wrapped in LazyLock statics
+- ~~LlmClient::new() panics on TLS init failure~~ — returns Result, callers handle with ?
+- ~~Unsafe `as` casts in pipeline.rs, pending.rs~~ — replaced with TryFrom/checked conversions
+- ~~HTTP→Service layer violation~~ — all 9 handlers migrated to use `QueueService`, `SessionService`, `SearchService`. Zero direct `state.storage.*` calls in handlers.
+- ~~dedup_tests.rs monolith (1050 lines)~~ — split into 4 modules: union_dedup_tests, merge_tests, find_similar_tests, embedding_text_tests. 3 misplaced tests relocated.
+- ~~StoredEvent.event_type String~~ — changed to `EventType` enum with `FromStr` parser. Unknown types logged as warning and skipped (Zero Fallback).
+- ~~No newtypes for prompt_number/discovery_tokens~~ — `PromptNumber(u32)` and `DiscoveryTokens(u32)` newtypes in core, used in Observation, SessionSummary, UserPrompt.
+- ~~No typed error enums in leaf crates~~ — `CoreError` (4 variants), `EmbeddingError` (4 variants), `LlmError` (7 variants with `is_transient()`) defined and used in public APIs.

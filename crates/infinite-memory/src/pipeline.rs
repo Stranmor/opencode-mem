@@ -48,7 +48,7 @@ pub async fn create_5min_summary(
     .bind(&session_id)
     .bind(&project)
     .bind(summary)
-    .bind(events.len() as i32)
+    .bind(i32::try_from(events.len()).unwrap_or(i32::MAX))
     .bind(&entities_json)
     .fetch_one(&mut *tx)
     .await?;
@@ -211,7 +211,7 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
             continue;
         }
 
-        total_processed += session_events.len() as u32;
+        total_processed += u32::try_from(session_events.len()).unwrap_or(u32::MAX);
     }
 
     Ok(total_processed)

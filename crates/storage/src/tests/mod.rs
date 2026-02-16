@@ -47,9 +47,12 @@ pub fn create_test_session(id: &str) -> Session {
     )
 }
 
-mod dedup_tests;
+mod embedding_text_tests;
+mod find_similar_tests;
+mod merge_tests;
 mod observation_tests;
 mod search_tests;
+mod union_dedup_tests;
 
 #[test]
 #[expect(clippy::unwrap_used, reason = "test code")]

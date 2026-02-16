@@ -14,6 +14,7 @@ mod filtering_tests {
         let api_key = env::var("ANTIGRAVITY_API_KEY").ok()?;
         Some(
             LlmClient::new(api_key, "https://antigravity.quantumind.ru".to_owned())
+                .ok()?
                 .with_model("gemini-3-flash".to_owned()),
         )
     }

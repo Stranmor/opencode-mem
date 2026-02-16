@@ -6,7 +6,9 @@ use opencode_mem_http::{
 };
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
-use opencode_mem_service::{KnowledgeService, ObservationService, SearchService, SessionService};
+use opencode_mem_service::{
+    KnowledgeService, ObservationService, QueueService, SearchService, SessionService,
+};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock, Semaphore};
@@ -17,7 +19,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     let storage = Arc::new(crate::create_storage().await?);
 
     let api_key = get_api_key()?;
-    let llm = Arc::new(LlmClient::new(api_key.clone(), get_base_url()));
+    let llm = Arc::new(LlmClient::new(api_key.clone(), get_base_url())?);
     // Initial receiver dropped - subscribers use event_tx.subscribe()
     let (event_tx, _initial_rx) = broadcast::channel(100);
 
@@ -59,6 +61,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         Arc::new(SessionService::new(storage.clone(), llm.clone(), observation_service.clone()));
     let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));
     let search_service = Arc::new(SearchService::new(storage.clone(), embeddings.clone()));
+    let queue_service = Arc::new(QueueService::new(storage.clone()));
 
     let state = Arc::new(AppState {
         storage,
@@ -72,6 +75,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         session_service,
         knowledge_service,
         search_service,
+        queue_service,
         embeddings,
     });
 

@@ -165,11 +165,16 @@ impl ObservationService {
     async fn store_infinite_memory(&self, tool_call: &ToolCall, observation: &Observation) {
         if let Some(ref infinite_mem) = self.infinite_mem {
             let filtered_output = filter_private_content(&tool_call.output);
+            let filtered_input = {
+                let input_str = serde_json::to_string(&tool_call.input).unwrap_or_default();
+                let filtered = filter_private_content(&input_str);
+                serde_json::from_str(&filtered).unwrap_or(tool_call.input.clone())
+            };
             let event = tool_event(
                 &tool_call.session_id,
                 tool_call.project.as_deref(),
                 &tool_call.tool,
-                tool_call.input.clone(),
+                filtered_input,
                 serde_json::json!({"output": filtered_output}),
                 observation.files_modified.clone(),
             );

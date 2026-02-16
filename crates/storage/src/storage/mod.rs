@@ -73,7 +73,7 @@ pub(crate) fn parse_json<T: serde::de::DeserializeOwned>(s: &str) -> rusqlite::R
 /// current format (plain string `discovery`).
 pub(crate) fn parse_observation_type(s: &str) -> std::result::Result<ObservationType, String> {
     let stripped = s.trim_matches('"');
-    ObservationType::from_str(stripped)
+    ObservationType::from_str(stripped).map_err(|e| e.to_string())
 }
 
 /// Log row read errors and filter them out
@@ -87,9 +87,11 @@ pub(crate) fn log_row_error<T>(result: rusqlite::Result<T>) -> Option<T> {
     }
 }
 
-/// Map database row to `SearchResult` (6-column format: id, title, subtitle, `observation_type`, `noise_level`, score)
+/// Map database row to `SearchResult`.
+/// If `score_col` is Some, reads score from that column index; otherwise uses 1.0.
 pub(crate) fn map_search_result(
     row: &rusqlite::Row<'_>,
+    score_col: Option<usize>,
 ) -> rusqlite::Result<opencode_mem_core::SearchResult> {
     let noise_str: Option<String> = row.get(4)?;
     let noise_level = match noise_str {
@@ -99,28 +101,9 @@ pub(crate) fn map_search_result(
         }),
         None => NoiseLevel::default(),
     };
-    Ok(opencode_mem_core::SearchResult::new(
-        row.get(0)?,
-        row.get(1)?,
-        row.get(2)?,
-        parse_observation_type(&row.get::<_, String>(3)?)
-            .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?,
-        noise_level,
-        row.get(5)?,
-    ))
-}
-
-/// Map database row to `SearchResult` (5-column format with default score=1.0)
-pub(crate) fn map_search_result_default_score(
-    row: &rusqlite::Row<'_>,
-) -> rusqlite::Result<opencode_mem_core::SearchResult> {
-    let noise_str: Option<String> = row.get(4)?;
-    let noise_level = match noise_str {
-        Some(s) => s.parse::<NoiseLevel>().unwrap_or_else(|_| {
-            tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
-            NoiseLevel::default()
-        }),
-        None => NoiseLevel::default(),
+    let score: f64 = match score_col {
+        Some(idx) => row.get(idx)?,
+        None => 1.0,
     };
     Ok(opencode_mem_core::SearchResult::new(
         row.get(0)?,
@@ -129,7 +112,7 @@ pub(crate) fn map_search_result_default_score(
         parse_observation_type(&row.get::<_, String>(3)?)
             .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?,
         noise_level,
-        1.0,
+        score,
     ))
 }
 

@@ -40,7 +40,21 @@ pub async fn handle_tool_call(
     params: &serde_json::Value,
     id: serde_json::Value,
 ) -> McpResponse {
-    let tool_name_str = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
+    let tool_name_str = match params.get("name").and_then(|n| n.as_str()).filter(|s| !s.is_empty())
+    {
+        Some(name) => name,
+        None => {
+            return McpResponse {
+                jsonrpc: "2.0".to_owned(),
+                id,
+                result: None,
+                error: Some(McpError {
+                    code: -32602,
+                    message: "Tool name is required and must not be empty".to_owned(),
+                }),
+            };
+        },
+    };
     let args = params.get("arguments").cloned().unwrap_or(json!({}));
 
     let tool = match McpTool::parse(tool_name_str) {

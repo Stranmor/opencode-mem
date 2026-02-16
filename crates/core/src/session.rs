@@ -5,6 +5,9 @@ use std::str::FromStr;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::error::CoreError;
+use crate::{DiscoveryTokens, PromptNumber};
+
 /// A memory session tracking a coding activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
@@ -84,14 +87,14 @@ impl SessionStatus {
 }
 
 impl FromStr for SessionStatus {
-    type Err = anyhow::Error;
+    type Err = CoreError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "active" => Ok(Self::Active),
             "completed" => Ok(Self::Completed),
             "failed" => Ok(Self::Failed),
-            _ => Err(anyhow::anyhow!("Invalid session status: {s}")),
+            _ => Err(CoreError::InvalidSessionStatus(s.to_owned())),
         }
     }
 }
@@ -121,9 +124,9 @@ pub struct SessionSummary {
     /// Files that were edited
     pub files_edited: Vec<String>,
     /// Prompt number
-    pub prompt_number: Option<u32>,
+    pub prompt_number: Option<PromptNumber>,
     /// Discovery tokens used
-    pub discovery_tokens: Option<u32>,
+    pub discovery_tokens: Option<DiscoveryTokens>,
     /// When summary was created
     pub created_at: DateTime<Utc>,
 }
@@ -143,8 +146,8 @@ impl SessionSummary {
         notes: Option<String>,
         files_read: Vec<String>,
         files_edited: Vec<String>,
-        prompt_number: Option<u32>,
-        discovery_tokens: Option<u32>,
+        prompt_number: Option<PromptNumber>,
+        discovery_tokens: Option<DiscoveryTokens>,
         created_at: DateTime<Utc>,
     ) -> Self {
         Self {
@@ -174,7 +177,7 @@ pub struct UserPrompt {
     /// Content session ID
     pub content_session_id: String,
     /// Prompt number in session
-    pub prompt_number: u32,
+    pub prompt_number: PromptNumber,
     /// Prompt text content
     pub prompt_text: String,
     /// Project context
@@ -189,7 +192,7 @@ impl UserPrompt {
     pub fn new(
         id: String,
         content_session_id: String,
-        prompt_number: u32,
+        prompt_number: PromptNumber,
         prompt_text: String,
         project: Option<String>,
         created_at: DateTime<Utc>,

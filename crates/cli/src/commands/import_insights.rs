@@ -6,6 +6,36 @@ use opencode_mem_storage::traits::KnowledgeStore;
 use opencode_mem_storage::StorageBackend;
 use regex::Regex;
 use std::path::Path;
+use std::sync::LazyLock;
+
+#[expect(clippy::unwrap_used, reason = "static regex patterns are compile-time validated")]
+static INSIGHT_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"###\s*\u{418}\u{43d}\u{441}\u{430}\u{439}\u{442}\s*\d+:\s*\[([^\]]+)\]").unwrap()
+});
+
+#[expect(clippy::unwrap_used, reason = "static regex patterns are compile-time validated")]
+static CATEGORY_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\*\*\u{41a}\u{430}\u{442}\u{435}\u{433}\u{43e}\u{440}\u{438}\u{44f}:\*\*\s*(.+)")
+        .unwrap()
+});
+
+#[expect(clippy::unwrap_used, reason = "static regex patterns are compile-time validated")]
+static OBSERVATION_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"\*\*\u{41d}\u{430}\u{431}\u{43b}\u{44e}\u{434}\u{435}\u{43d}\u{438}\u{435}:\*\*\s*(.+)",
+    )
+    .unwrap()
+});
+
+#[expect(clippy::unwrap_used, reason = "static regex patterns are compile-time validated")]
+static IMPLICATION_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\*\*\u{418}\u{43c}\u{43f}\u{43b}\u{438}\u{43a}\u{430}\u{446}\u{438}\u{44f} \u{434}\u{43b}\u{44f} AGI:\*\*\s*(.+)").unwrap()
+});
+
+#[expect(clippy::unwrap_used, reason = "static regex patterns are compile-time validated")]
+static RECOMMENDATION_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\*\*\u{420}\u{435}\u{43a}\u{43e}\u{43c}\u{435}\u{43d}\u{434}\u{430}\u{446}\u{438}\u{44f}:\*\*\s*(.+)").unwrap()
+});
 
 /// Parsed insight from markdown
 struct ParsedInsight {
@@ -43,20 +73,6 @@ fn extract_triggers(title: &str) -> Vec<String> {
 
 /// Parse markdown content and extract insights
 fn parse_insights(content: &str) -> Vec<ParsedInsight> {
-    let insight_re =
-        Regex::new(r"###\s*\u{418}\u{43d}\u{441}\u{430}\u{439}\u{442}\s*\d+:\s*\[([^\]]+)\]")
-            .unwrap();
-    let category_re = Regex::new(
-        r"\*\*\u{41a}\u{430}\u{442}\u{435}\u{433}\u{43e}\u{440}\u{438}\u{44f}:\*\*\s*(.+)",
-    )
-    .unwrap();
-    let observation_re = Regex::new(
-        r"\*\*\u{41d}\u{430}\u{431}\u{43b}\u{44e}\u{434}\u{435}\u{43d}\u{438}\u{435}:\*\*\s*(.+)",
-    )
-    .unwrap();
-    let implication_re = Regex::new(r"\*\*\u{418}\u{43c}\u{43f}\u{43b}\u{438}\u{43a}\u{430}\u{446}\u{438}\u{44f} \u{434}\u{43b}\u{44f} AGI:\*\*\s*(.+)").unwrap();
-    let recommendation_re = Regex::new(r"\*\*\u{420}\u{435}\u{43a}\u{43e}\u{43c}\u{435}\u{43d}\u{434}\u{430}\u{446}\u{438}\u{44f}:\*\*\s*(.+)").unwrap();
-
     let mut insights = Vec::new();
     let sections: Vec<&str> =
         content.split("### \u{418}\u{43d}\u{441}\u{430}\u{439}\u{442}").collect();
@@ -64,27 +80,27 @@ fn parse_insights(content: &str) -> Vec<ParsedInsight> {
     for section in sections.iter().skip(1) {
         let full_section = format!("### \u{418}\u{43d}\u{441}\u{430}\u{439}\u{442}{section}");
 
-        let title = insight_re
+        let title = INSIGHT_RE
             .captures(&full_section)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().to_owned());
 
-        let category = category_re
+        let category = CATEGORY_RE
             .captures(&full_section)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().trim().to_owned());
 
-        let observation = observation_re
+        let observation = OBSERVATION_RE
             .captures(&full_section)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().trim().to_owned());
 
-        let implication = implication_re
+        let implication = IMPLICATION_RE
             .captures(&full_section)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().trim().to_owned());
 
-        let recommendation = recommendation_re
+        let recommendation = RECOMMENDATION_RE
             .captures(&full_section)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().trim().to_owned());

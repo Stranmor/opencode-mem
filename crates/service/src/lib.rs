@@ -18,10 +18,12 @@
 
 mod knowledge_service;
 mod observation_service;
+mod queue_service;
 mod search_service;
 mod session_service;
 
 pub use knowledge_service::KnowledgeService;
 pub use observation_service::ObservationService;
+pub use queue_service::QueueService;
 pub use search_service::SearchService;
 pub use session_service::SessionService;

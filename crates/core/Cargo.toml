@@ -12,8 +12,8 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
 regex = { workspace = true }
-anyhow = { workspace = true }
 tracing = { workspace = true }
+thiserror = { workspace = true }
 dirs = { workspace = true }
 globset = { workspace = true }
 unicode-normalization = "0.1"

@@ -3,7 +3,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use super::{Concept, NoiseLevel, ObservationType};
+use super::{Concept, DiscoveryTokens, NoiseLevel, ObservationType, PromptNumber};
 
 /// Structured observation of a coding activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,9 +34,9 @@ pub struct Observation {
     /// Semantic keywords for search
     pub keywords: Vec<String>,
     /// Prompt number within session
-    pub prompt_number: Option<u32>,
+    pub prompt_number: Option<PromptNumber>,
     /// Token count for ROI tracking
-    pub discovery_tokens: Option<u32>,
+    pub discovery_tokens: Option<DiscoveryTokens>,
     /// Signal vs noise classification (Critical = must show, Negligible = hide by default)
     #[serde(default)]
     pub noise_level: NoiseLevel,
@@ -74,8 +74,8 @@ pub struct ObservationBuilder {
     files_read: Vec<String>,
     files_modified: Vec<String>,
     keywords: Vec<String>,
-    prompt_number: Option<u32>,
-    discovery_tokens: Option<u32>,
+    prompt_number: Option<PromptNumber>,
+    discovery_tokens: Option<DiscoveryTokens>,
     noise_level: NoiseLevel,
     noise_reason: Option<String>,
     created_at: DateTime<Utc>,
@@ -178,24 +178,24 @@ impl ObservationBuilder {
 
     #[must_use]
     pub fn prompt_number(mut self, prompt_number: u32) -> Self {
-        self.prompt_number = Some(prompt_number);
+        self.prompt_number = Some(PromptNumber(prompt_number));
         self
     }
 
     #[must_use]
-    pub fn maybe_prompt_number(mut self, prompt_number: Option<u32>) -> Self {
+    pub fn maybe_prompt_number(mut self, prompt_number: Option<PromptNumber>) -> Self {
         self.prompt_number = prompt_number;
         self
     }
 
     #[must_use]
     pub fn discovery_tokens(mut self, discovery_tokens: u32) -> Self {
-        self.discovery_tokens = Some(discovery_tokens);
+        self.discovery_tokens = Some(DiscoveryTokens(discovery_tokens));
         self
     }
 
     #[must_use]
-    pub fn maybe_discovery_tokens(mut self, discovery_tokens: Option<u32>) -> Self {
+    pub fn maybe_discovery_tokens(mut self, discovery_tokens: Option<DiscoveryTokens>) -> Self {
         self.discovery_tokens = discovery_tokens;
         self
     }

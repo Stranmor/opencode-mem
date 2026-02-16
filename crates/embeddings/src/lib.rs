@@ -6,7 +6,9 @@
 #![allow(clippy::implicit_return, reason = "Implicit return is idiomatic Rust")]
 #![allow(clippy::question_mark_used, reason = "? operator is idiomatic Rust")]
 
-use anyhow::Result;
+pub mod error;
+
+use error::EmbeddingError;
 use fastembed::{InitOptions, TextEmbedding};
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::sync::Mutex;
@@ -20,13 +22,13 @@ pub trait EmbeddingProvider: Send + Sync {
     ///
     /// # Errors
     /// Returns error if embedding generation fails
-    fn embed(&self, text: &str) -> Result<Vec<f32>>;
+    fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError>;
 
     /// Generate embeddings for multiple texts
     ///
     /// # Errors
     /// Returns error if embedding generation fails
-    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>>;
+    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbeddingError>;
 
     /// Get the embedding dimension
     fn dimension(&self) -> usize;
@@ -50,11 +52,12 @@ impl EmbeddingService {
     ///
     /// # Errors
     /// Returns error if model initialization fails
-    pub fn new() -> Result<Self> {
+    pub fn new() -> Result<Self, EmbeddingError> {
         let options = InitOptions::new(fastembed::EmbeddingModel::AllMiniLML6V2)
             .with_show_download_progress(true);
 
-        let model = TextEmbedding::try_new(options)?;
+        let model = TextEmbedding::try_new(options)
+            .map_err(|e| EmbeddingError::ModelInit(e.to_string()))?;
 
         tracing::info!(
             model = "AllMiniLML6V2",
@@ -67,21 +70,23 @@ impl EmbeddingService {
 }
 
 impl EmbeddingProvider for EmbeddingService {
-    fn embed(&self, text: &str) -> Result<Vec<f32>> {
+    fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
         let embeddings = self
             .model
             .lock()
-            .map_err(|err| anyhow::anyhow!("Lock poisoned: {err}"))?
-            .embed(vec![text], None)?;
-        embeddings.into_iter().next().ok_or_else(|| anyhow::anyhow!("No embedding returned"))
+            .map_err(|_| EmbeddingError::LockPoisoned)?
+            .embed(vec![text], None)
+            .map_err(|e| EmbeddingError::Generation(e.to_string()))?;
+        embeddings.into_iter().next().ok_or(EmbeddingError::EmptyResult)
     }
 
-    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
+    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
         let embeddings = self
             .model
             .lock()
-            .map_err(|err| anyhow::anyhow!("Lock poisoned: {err}"))?
-            .embed(texts, None)?;
+            .map_err(|_| EmbeddingError::LockPoisoned)?
+            .embed(texts, None)
+            .map_err(|e| EmbeddingError::Generation(e.to_string()))?;
         Ok(embeddings)
     }
 

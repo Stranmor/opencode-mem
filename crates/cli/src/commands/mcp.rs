@@ -16,7 +16,7 @@ pub(crate) async fn run() -> Result<()> {
     let storage = Arc::new(crate::create_storage().await?);
 
     let api_key = get_api_key()?;
-    let llm = Arc::new(LlmClient::new(api_key, get_base_url()));
+    let llm = Arc::new(LlmClient::new(api_key, get_base_url())?);
 
     let embeddings = match EmbeddingService::new() {
         Ok(emb) => Some(Arc::new(emb)),

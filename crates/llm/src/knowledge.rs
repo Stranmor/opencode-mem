@@ -1,10 +1,10 @@
-use anyhow::{anyhow, Result};
 use opencode_mem_core::{
     Concept, KnowledgeExtractionResult, KnowledgeInput, KnowledgeType, Observation,
 };
 
 use crate::ai_types::{ChatRequest, Message, ResponseFormat};
 use crate::client::LlmClient;
+use crate::error::LlmError;
 
 impl LlmClient {
     /// Extract generalizable knowledge from an observation.
@@ -14,7 +14,7 @@ impl LlmClient {
     pub async fn maybe_extract_knowledge(
         &self,
         observation: &Observation,
-    ) -> Result<Option<KnowledgeInput>> {
+    ) -> Result<Option<KnowledgeInput>, LlmError> {
         let dominated_by_generalizable = observation
             .concepts
             .iter()
@@ -60,11 +60,12 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
         let content = self.chat_completion(&request).await?;
         let stripped = opencode_mem_core::strip_markdown_json(&content);
         let extraction: KnowledgeExtractionResult =
-            serde_json::from_str(stripped).map_err(|e| {
-                anyhow!(
-                    "Failed to parse extraction JSON: {e} - content: {}",
+            serde_json::from_str(stripped).map_err(|e| LlmError::JsonParse {
+                context: format!(
+                    "knowledge extraction (content: {})",
                     content.get(..300).unwrap_or(&content)
-                )
+                ),
+                source: e,
             })?;
 
         if !extraction.extract {

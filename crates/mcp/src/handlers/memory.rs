@@ -1,4 +1,4 @@
-use opencode_mem_core::MAX_QUERY_LIMIT;
+use opencode_mem_core::{DEFAULT_QUERY_LIMIT, MAX_BATCH_IDS, MAX_QUERY_LIMIT};
 use opencode_mem_service::SearchService;
 
 use super::{mcp_err, mcp_ok, mcp_text};
@@ -8,7 +8,10 @@ pub(super) async fn handle_search(
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let query = args.get("query").and_then(|q| q.as_str()).filter(|s| !s.is_empty());
-    let limit = (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(50) as usize)
+    let limit = (args
+        .get("limit")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(DEFAULT_QUERY_LIMIT as u64) as usize)
         .min(MAX_QUERY_LIMIT);
     let project = args.get("project").and_then(|p| p.as_str());
     let obs_type = args.get("type").and_then(|t| t.as_str());
@@ -37,7 +40,10 @@ pub(super) async fn handle_timeline(
 ) -> serde_json::Value {
     let from = args.get("from").and_then(|f| f.as_str());
     let to = args.get("to").and_then(|t| t.as_str());
-    let limit = (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(50) as usize)
+    let limit = (args
+        .get("limit")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(DEFAULT_QUERY_LIMIT as u64) as usize)
         .min(MAX_QUERY_LIMIT);
     match search_service.get_timeline(from, to, limit).await {
         Ok(results) => mcp_ok(&results),
@@ -56,8 +62,8 @@ pub(super) async fn handle_get_observations(
         .unwrap_or_default();
     if ids.is_empty() {
         mcp_err("ids array is required and must not be empty")
-    } else if ids.len() > 500 {
-        mcp_err("ids array exceeds maximum of 500 items")
+    } else if ids.len() > MAX_BATCH_IDS {
+        mcp_err(format!("ids array exceeds maximum of {MAX_BATCH_IDS} items"))
     } else {
         match search_service.get_observations_by_ids(&ids).await {
             Ok(results) => mcp_ok(&results),
@@ -84,7 +90,10 @@ pub(super) async fn handle_memory_recent(
     search_service: &SearchService,
     args: &serde_json::Value,
 ) -> serde_json::Value {
-    let limit = (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(10) as usize)
+    let limit = (args
+        .get("limit")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(DEFAULT_QUERY_LIMIT as u64) as usize)
         .min(MAX_QUERY_LIMIT);
     match search_service.get_recent_observations(limit).await {
         Ok(results) => mcp_ok(&results),
@@ -99,7 +108,10 @@ pub(super) async fn handle_hybrid_search(
     let Some(query) = args.get("query").and_then(|q| q.as_str()).filter(|s| !s.is_empty()) else {
         return mcp_err("'query' parameter is required and must not be empty");
     };
-    let limit = (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(20) as usize)
+    let limit = (args
+        .get("limit")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(DEFAULT_QUERY_LIMIT as u64) as usize)
         .min(MAX_QUERY_LIMIT);
     match search_service.hybrid_search(query, limit).await {
         Ok(results) => mcp_ok(&results),
@@ -114,7 +126,10 @@ pub(super) async fn handle_semantic_search(
     let Some(query) = args.get("query").and_then(|q| q.as_str()).filter(|s| !s.is_empty()) else {
         return mcp_err("'query' parameter is required and must not be empty");
     };
-    let limit = (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(20) as usize)
+    let limit = (args
+        .get("limit")
+        .and_then(serde_json::Value::as_u64)
+        .unwrap_or(DEFAULT_QUERY_LIMIT as u64) as usize)
         .min(MAX_QUERY_LIMIT);
 
     match search_service.semantic_search_with_fallback(query, limit).await {
@@ -174,7 +189,7 @@ mod tests {
         let (event_tx, _rx) = tokio::sync::broadcast::channel(16);
         opencode_mem_service::ObservationService::new(
             Arc::new(backend),
-            Arc::new(opencode_mem_llm::LlmClient::new(String::new(), String::new())),
+            Arc::new(opencode_mem_llm::LlmClient::new(String::new(), String::new()).unwrap()),
             None,
             event_tx,
             None,

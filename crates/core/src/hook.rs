@@ -7,6 +7,8 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
+use crate::error::CoreError;
+
 /// Hook event types triggered by IDE/CLI
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -34,7 +36,7 @@ impl Display for HookEvent {
 }
 
 impl FromStr for HookEvent {
-    type Err = anyhow::Error;
+    type Err = CoreError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -42,7 +44,7 @@ impl FromStr for HookEvent {
             "session-init" | "session_init" => Ok(Self::SessionInit),
             "observation" | "observe" => Ok(Self::Observation),
             "summarize" => Ok(Self::Summarize),
-            _ => Err(anyhow::anyhow!("Invalid hook event: {s}")),
+            _ => Err(CoreError::InvalidHookEvent(s.to_owned())),
         }
     }
 }

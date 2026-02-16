@@ -112,6 +112,10 @@ pub async fn search_by_file(
         })
 }
 
+#[allow(
+    clippy::cast_precision_loss,
+    reason = "session/prompt counts never exceed f64 mantissa precision (2^53)"
+)]
 pub async fn unified_search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,

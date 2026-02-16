@@ -45,7 +45,9 @@ use tower_http::cors::CorsLayer;
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
-use opencode_mem_service::{KnowledgeService, ObservationService, SearchService, SessionService};
+use opencode_mem_service::{
+    KnowledgeService, ObservationService, QueueService, SearchService, SessionService,
+};
 use opencode_mem_storage::StorageBackend;
 
 pub use api_types::{ReadinessResponse, Settings, VersionResponse};
@@ -113,6 +115,8 @@ pub struct AppState {
     pub knowledge_service: Arc<KnowledgeService>,
     /// Service for search and read-only query operations
     pub search_service: Arc<SearchService>,
+    /// Service for pending message queue operations
+    pub queue_service: Arc<QueueService>,
     /// Optional embedding service for semantic search
     pub embeddings: Option<Arc<EmbeddingService>>,
 }

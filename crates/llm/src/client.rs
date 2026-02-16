@@ -1,6 +1,5 @@
-use anyhow::{anyhow, bail, Result};
-
 use crate::ai_types::{ChatRequest, ChatResponse};
+use crate::error::LlmError;
 
 /// Maximum output length for truncation.
 pub const MAX_OUTPUT_LEN: usize = 2000;
@@ -28,16 +27,18 @@ impl std::fmt::Debug for LlmClient {
 
 impl LlmClient {
     /// Creates a new LLM client with the given API key and base URL.
-    #[must_use]
-    pub fn new(api_key: String, base_url: String) -> Self {
+    ///
+    /// # Errors
+    /// Returns an error if the HTTP client cannot be built (TLS backend failure).
+    pub fn new(api_key: String, base_url: String) -> Result<Self, LlmError> {
         let model =
             std::env::var("OPENCODE_MEM_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
         let base_url = base_url.trim_end_matches('/').to_owned();
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(60))
             .build()
-            .expect("failed to build HTTP client");
-        Self { client, api_key, base_url, model }
+            .map_err(|e| LlmError::ClientInit(e.to_string()))?;
+        Ok(Self { client, api_key, base_url, model })
     }
 
     /// Sets a custom model for this client.
@@ -77,10 +78,10 @@ impl LlmClient {
     /// Returns an error if the HTTP request fails, the API returns a
     /// non-success status, the response body cannot be parsed, or the choices
     /// array is empty.
-    pub async fn chat_completion(&self, request: &ChatRequest) -> Result<String> {
+    pub async fn chat_completion(&self, request: &ChatRequest) -> Result<String, LlmError> {
         const MAX_RETRIES: usize = 3;
         const RETRY_DELAYS: [u64; 4] = [0, 1, 2, 4];
-        let mut last_error = None;
+        let mut last_error: Option<LlmError> = None;
 
         for attempt in 0..=MAX_RETRIES {
             if attempt > 0 {
@@ -101,30 +102,31 @@ impl LlmClient {
             let response = match response_result {
                 Ok(r) => r,
                 Err(e) => {
-                    last_error = Some(anyhow!("LLM API error: {e}"));
+                    last_error = Some(LlmError::HttpRequest(e));
                     continue;
                 },
             };
 
             let status = response.status();
             if status.is_success() {
-                let body_result = response.text().await;
-                let body = match body_result {
+                let body = match response.text().await {
                     Ok(b) => b,
                     Err(e) => {
-                        last_error = Some(anyhow!("LLM API error: {e}"));
+                        last_error = Some(LlmError::HttpRequest(e));
                         continue;
                     },
                 };
 
-                let chat_response: ChatResponse = serde_json::from_str(&body).map_err(|e| {
-                    anyhow!("Failed to parse response: {e} - body: {}", truncate(&body, 500))
-                })?;
+                let chat_response: ChatResponse =
+                    serde_json::from_str(&body).map_err(|e| LlmError::JsonParse {
+                        context: format!(
+                            "chat completion response (body: {})",
+                            truncate(&body, 200)
+                        ),
+                        source: e,
+                    })?;
 
-                let first_choice = chat_response
-                    .choices
-                    .first()
-                    .ok_or_else(|| anyhow!("LLM API: empty choices array"))?;
+                let first_choice = chat_response.choices.first().ok_or(LlmError::EmptyResponse)?;
 
                 return Ok(first_choice.message.content.clone());
             }
@@ -132,18 +134,16 @@ impl LlmClient {
             let status_code = status.as_u16();
             let body =
                 response.text().await.unwrap_or_else(|_| "Could not read error body".to_string());
-            let err_msg = format!("API error {status}: {body}");
 
-            match status_code {
-                429 | 500 | 502 | 503 | 529 => {
-                    last_error = Some(anyhow!("{err_msg}"));
-                    continue;
-                },
-                _ => bail!("{err_msg}"),
+            let err = LlmError::HttpStatus { code: status_code, body };
+            if err.is_transient() {
+                last_error = Some(err);
+                continue;
             }
+            return Err(err);
         }
 
-        Err(last_error.unwrap_or_else(|| anyhow!("LLM API: all retries exhausted")))
+        Err(LlmError::RetriesExhausted(Box::new(last_error.unwrap_or(LlmError::EmptyResponse))))
     }
 }
 

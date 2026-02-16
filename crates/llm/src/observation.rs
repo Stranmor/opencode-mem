@@ -1,4 +1,3 @@
-use anyhow::{anyhow, Result};
 use chrono::Utc;
 use opencode_mem_core::{
     filter_private_content, Concept, NoiseLevel, Observation, ObservationInput, ObservationType,
@@ -7,6 +6,7 @@ use std::str::FromStr as _;
 
 use crate::ai_types::{ChatRequest, Message, ObservationJson, ResponseFormat};
 use crate::client::{truncate, LlmClient, MAX_OUTPUT_LEN};
+use crate::error::LlmError;
 
 #[must_use]
 pub fn parse_concept(s: &str) -> Option<Concept> {
@@ -127,14 +127,16 @@ fn parse_observation_response(
     id: &str,
     session_id: &str,
     project: Option<&str>,
-) -> Result<Option<Observation>> {
+) -> Result<Option<Observation>, LlmError> {
     let stripped = opencode_mem_core::strip_markdown_json(response);
-    let obs_json: ObservationJson = serde_json::from_str(stripped).map_err(|e| {
-        anyhow!(
-            "Failed to parse observation JSON: {e} - content: {}",
-            response.get(..300).unwrap_or(response)
-        )
-    })?;
+    let obs_json: ObservationJson =
+        serde_json::from_str(stripped).map_err(|e| LlmError::JsonParse {
+            context: format!(
+                "observation response (content: {})",
+                response.get(..300).unwrap_or(response)
+            ),
+            source: e,
+        })?;
 
     let noise_level = NoiseLevel::from_str(&obs_json.noise_level).unwrap_or_else(|_| {
         tracing::warn!(
@@ -157,8 +159,12 @@ fn parse_observation_response(
     let concepts: Vec<Concept> =
         obs_json.concepts.iter().filter_map(|s| parse_concept(s)).collect();
 
-    let observation_type = ObservationType::from_str(&obs_json.observation_type)
-        .map_err(|_ignored| anyhow!("Invalid observation type: {}", obs_json.observation_type))?;
+    let observation_type = ObservationType::from_str(&obs_json.observation_type).map_err(|e| {
+        LlmError::MissingField(format!(
+            "invalid observation type '{}': {e}",
+            obs_json.observation_type
+        ))
+    })?;
 
     Ok(Some(
         Observation::builder(
@@ -196,7 +202,7 @@ impl LlmClient {
         input: &ObservationInput,
         project: Option<&str>,
         existing_titles: &[String],
-    ) -> Result<Option<Observation>> {
+    ) -> Result<Option<Observation>, LlmError> {
         let filtered_output = filter_private_content(&input.output.output);
         let filtered_title = filter_private_content(&input.output.title);
 

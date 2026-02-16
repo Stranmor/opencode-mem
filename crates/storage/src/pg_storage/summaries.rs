@@ -30,8 +30,8 @@ impl SummaryStore for PgStorage {
         .bind(&summary.notes)
         .bind(serde_json::to_value(&summary.files_read)?)
         .bind(serde_json::to_value(&summary.files_edited)?)
-        .bind(summary.prompt_number.map(|v| i32::try_from(v).unwrap_or(i32::MAX)))
-        .bind(summary.discovery_tokens.map(|v| i32::try_from(v).unwrap_or(i32::MAX)))
+        .bind(summary.prompt_number.map(|v| i32::try_from(v.0).unwrap_or(i32::MAX)))
+        .bind(summary.discovery_tokens.map(|v| i32::try_from(v.0).unwrap_or(i32::MAX)))
         .bind(summary.created_at)
         .execute(&self.pool)
         .await?;

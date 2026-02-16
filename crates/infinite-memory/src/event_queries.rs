@@ -1,9 +1,10 @@
 //! Event-related PostgreSQL queries.
 
-use crate::event_types::{RawEvent, StoredEvent};
+use crate::event_types::{EventType, RawEvent, StoredEvent};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
+use std::str::FromStr;
 
 type StoredEventRow = (
     i64,
@@ -49,7 +50,7 @@ pub async fn get_recent(pool: &PgPool, limit: i64) -> Result<Vec<StoredEvent>> {
     .fetch_all(pool)
     .await?;
 
-    Ok(rows.into_iter().map(row_to_stored_event).collect())
+    Ok(rows.into_iter().filter_map(row_to_stored_event).collect())
 }
 
 pub async fn get_unsummarized_events(pool: &PgPool, limit: i64) -> Result<Vec<StoredEvent>> {
@@ -78,7 +79,7 @@ pub async fn get_unsummarized_events(pool: &PgPool, limit: i64) -> Result<Vec<St
     .fetch_all(pool)
     .await?;
 
-    Ok(rows.into_iter().map(row_to_stored_event).collect())
+    Ok(rows.into_iter().filter_map(row_to_stored_event).collect())
 }
 
 pub async fn get_events_by_summary_id(
@@ -100,7 +101,7 @@ pub async fn get_events_by_summary_id(
     .fetch_all(pool)
     .await?;
 
-    Ok(rows.into_iter().map(row_to_stored_event).collect())
+    Ok(rows.into_iter().filter_map(row_to_stored_event).collect())
 }
 
 pub async fn get_events_by_time_range(
@@ -143,7 +144,7 @@ pub async fn get_events_by_time_range(
         .await?
     };
 
-    Ok(rows.into_iter().map(row_to_stored_event).collect())
+    Ok(rows.into_iter().filter_map(row_to_stored_event).collect())
 }
 
 pub async fn search(pool: &PgPool, query: &str, limit: i64) -> Result<Vec<StoredEvent>> {
@@ -161,7 +162,7 @@ pub async fn search(pool: &PgPool, query: &str, limit: i64) -> Result<Vec<Stored
     .fetch_all(pool)
     .await?;
 
-    Ok(rows.into_iter().map(row_to_stored_event).collect())
+    Ok(rows.into_iter().filter_map(row_to_stored_event).collect())
 }
 
 pub async fn stats(pool: &PgPool) -> Result<serde_json::Value> {
@@ -185,7 +186,15 @@ pub async fn stats(pool: &PgPool) -> Result<serde_json::Value> {
     }))
 }
 
-fn row_to_stored_event(row: StoredEventRow) -> StoredEvent {
-    let (id, ts, session_id, project, event_type, content, files, tools) = row;
-    StoredEvent { id, ts, session_id, project, event_type, content, files, tools }
+fn row_to_stored_event(row: StoredEventRow) -> Option<StoredEvent> {
+    let (id, ts, session_id, project, event_type_str, content, files, tools) = row;
+    match EventType::from_str(&event_type_str) {
+        Ok(event_type) => {
+            Some(StoredEvent { id, ts, session_id, project, event_type, content, files, tools })
+        },
+        Err(_) => {
+            tracing::warn!("Unknown event type in DB row {}: '{}'", id, event_type_str);
+            None
+        },
+    }
 }

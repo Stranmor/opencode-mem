@@ -7,8 +7,8 @@ use std::collections::HashSet;
 use std::str::FromStr as _;
 
 use crate::storage::{
-    build_fts_query, coerce_to_sql, get_conn, log_row_error, map_search_result,
-    map_search_result_default_score, parse_json, parse_observation_type, Storage,
+    build_fts_query, coerce_to_sql, get_conn, log_row_error, map_search_result, parse_json,
+    parse_observation_type, Storage,
 };
 
 impl Storage {
@@ -37,7 +37,7 @@ impl Storage {
                LIMIT ?2",
         )?;
         let results = stmt
-            .query_map(params![fts_query, limit], map_search_result)?
+            .query_map(params![fts_query, limit], |row| map_search_result(row, Some(5)))?
             .filter_map(log_row_error)
             .collect();
         Ok(results)
@@ -203,7 +203,7 @@ impl Storage {
                 all_params.push(&limit);
 
                 let results = stmt
-                    .query_map(all_params.as_slice(), map_search_result)?
+                    .query_map(all_params.as_slice(), |row| map_search_result(row, Some(5)))?
                     .filter_map(log_row_error)
                     .collect();
                 return Ok(results);
@@ -229,7 +229,7 @@ impl Storage {
         all_params.push(&limit);
 
         let results = stmt
-            .query_map(all_params.as_slice(), map_search_result_default_score)?
+            .query_map(all_params.as_slice(), |row| map_search_result(row, None))?
             .filter_map(log_row_error)
             .collect();
         Ok(results)

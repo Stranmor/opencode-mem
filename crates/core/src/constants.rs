@@ -17,6 +17,12 @@ pub const PG_POOL_ACQUIRE_TIMEOUT_SECS: u64 = 10;
 /// PostgreSQL connection pool: idle timeout in seconds.
 pub const PG_POOL_IDLE_TIMEOUT_SECS: u64 = 300;
 
+/// Maximum number of IDs in a batch request (DoS protection).
+pub const MAX_BATCH_IDS: usize = 500;
+
+/// Default number of results when limit is not specified by the caller.
+pub const DEFAULT_QUERY_LIMIT: usize = 20;
+
 /// Error message when Infinite Memory is not configured.
 pub const INFINITE_MEMORY_NOT_CONFIGURED: &str =
     "Infinite Memory not configured (INFINITE_MEMORY_URL not set)";

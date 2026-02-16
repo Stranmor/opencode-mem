@@ -25,9 +25,9 @@ use std::collections::HashSet;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use opencode_mem_core::{
-    GlobalKnowledge, KnowledgeType, NoiseLevel, Observation, ObservationType, SearchResult,
-    Session, SessionStatus, SessionSummary, UserPrompt, PG_POOL_ACQUIRE_TIMEOUT_SECS,
-    PG_POOL_IDLE_TIMEOUT_SECS, PG_POOL_MAX_CONNECTIONS,
+    DiscoveryTokens, GlobalKnowledge, KnowledgeType, NoiseLevel, Observation, ObservationType,
+    PromptNumber, SearchResult, Session, SessionStatus, SessionSummary, UserPrompt,
+    PG_POOL_ACQUIRE_TIMEOUT_SECS, PG_POOL_IDLE_TIMEOUT_SECS, PG_POOL_MAX_CONNECTIONS,
 };
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
@@ -60,21 +60,31 @@ pub(crate) fn parse_json_value<T: serde::de::DeserializeOwned>(val: &serde_json:
     serde_json::from_value(val.clone()).unwrap_or_default()
 }
 
-pub(crate) fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observation> {
-    let obs_type_str: String = row.try_get("observation_type")?;
-    let obs_type: ObservationType = serde_json::from_str(&obs_type_str)
-        .unwrap_or_else(|_| obs_type_str.parse().unwrap_or_else(|_| {
-            tracing::warn!(invalid_type = %obs_type_str, "corrupt observation_type in DB, defaulting to Change");
+/// Parse `ObservationType` from a PostgreSQL text column.
+/// Tries JSON deserialization first (handles quoted values), then `FromStr`.
+pub(crate) fn parse_pg_observation_type(s: &str) -> ObservationType {
+    serde_json::from_str(s)
+        .unwrap_or_else(|_| s.parse().unwrap_or_else(|_| {
+            tracing::warn!(invalid_type = %s, "corrupt observation_type in DB, defaulting to Change");
             ObservationType::Change
-        }));
-    let noise_str: Option<String> = row.try_get("noise_level")?;
-    let noise_level = match noise_str {
+        }))
+}
+
+/// Parse `NoiseLevel` from an optional PostgreSQL text column.
+pub(crate) fn parse_pg_noise_level(s: Option<&str>) -> NoiseLevel {
+    match s {
         Some(s) => s.parse::<NoiseLevel>().unwrap_or_else(|_| {
             tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
             NoiseLevel::default()
         }),
         None => NoiseLevel::default(),
-    };
+    }
+}
+
+pub(crate) fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observation> {
+    let obs_type = parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?);
+    let noise_level =
+        parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref());
     let noise_reason: Option<String> = row.try_get("noise_reason")?;
     let created_at: DateTime<Utc> = row.try_get("created_at")?;
     let facts: serde_json::Value = row.try_get("facts")?;
@@ -98,10 +108,12 @@ pub(crate) fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observat
     .files_modified(parse_json_value(&files_modified))
     .keywords(parse_json_value(&keywords))
     .maybe_prompt_number(
-        row.try_get::<Option<i32>, _>("prompt_number")?.map(|v| u32::try_from(v).unwrap_or(0)),
+        row.try_get::<Option<i32>, _>("prompt_number")?
+            .map(|v| PromptNumber(u32::try_from(v).unwrap_or(0))),
     )
     .maybe_discovery_tokens(
-        row.try_get::<Option<i32>, _>("discovery_tokens")?.map(|v| u32::try_from(v).unwrap_or(0)),
+        row.try_get::<Option<i32>, _>("discovery_tokens")?
+            .map(|v| DiscoveryTokens(u32::try_from(v).unwrap_or(0))),
     )
     .noise_level(noise_level)
     .maybe_noise_reason(noise_reason)
@@ -120,21 +132,27 @@ pub(crate) fn usize_to_i64(val: usize) -> i64 {
 }
 
 pub(crate) fn row_to_search_result(row: &sqlx::postgres::PgRow) -> Result<SearchResult> {
-    let obs_type_str: String = row.try_get("observation_type")?;
-    let obs_type: ObservationType = serde_json::from_str(&obs_type_str)
-        .unwrap_or_else(|_| obs_type_str.parse().unwrap_or_else(|_| {
-            tracing::warn!(invalid_type = %obs_type_str, "corrupt observation_type in DB, defaulting to Change");
-            ObservationType::Change
-        }));
-    let noise_str: Option<String> = row.try_get("noise_level")?;
-    let noise_level = match noise_str {
-        Some(s) => s.parse::<NoiseLevel>().unwrap_or_else(|_| {
-            tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
-            NoiseLevel::default()
-        }),
-        None => NoiseLevel::default(),
-    };
-    let score: f64 = row.try_get("score").unwrap_or(1.0);
+    let obs_type = parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?);
+    let noise_level =
+        parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref());
+    let score: f64 = row.try_get("score").unwrap_or(0.0);
+    Ok(SearchResult::new(
+        row.try_get("id")?,
+        row.try_get("title")?,
+        row.try_get("subtitle")?,
+        obs_type,
+        noise_level,
+        score,
+    ))
+}
+
+pub(crate) fn row_to_search_result_with_score(
+    row: &sqlx::postgres::PgRow,
+    score: f64,
+) -> Result<SearchResult> {
+    let obs_type = parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?);
+    let noise_level =
+        parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref());
     Ok(SearchResult::new(
         row.try_get("id")?,
         row.try_get("title")?,
@@ -184,8 +202,10 @@ pub(crate) fn row_to_summary(row: &sqlx::postgres::PgRow) -> Result<SessionSumma
         row.try_get("notes")?,
         parse_json_value(&files_read),
         parse_json_value(&files_edited),
-        row.try_get::<Option<i32>, _>("prompt_number")?.map(|v| u32::try_from(v).unwrap_or(0)),
-        row.try_get::<Option<i32>, _>("discovery_tokens")?.map(|v| u32::try_from(v).unwrap_or(0)),
+        row.try_get::<Option<i32>, _>("prompt_number")?
+            .map(|v| PromptNumber(u32::try_from(v).unwrap_or(0))),
+        row.try_get::<Option<i32>, _>("discovery_tokens")?
+            .map(|v| DiscoveryTokens(u32::try_from(v).unwrap_or(0))),
         created_at,
     ))
 }
@@ -224,7 +244,7 @@ pub(crate) fn row_to_prompt(row: &sqlx::postgres::PgRow) -> Result<UserPrompt> {
     Ok(UserPrompt::new(
         row.try_get("id")?,
         row.try_get("content_session_id")?,
-        u32::try_from(row.try_get::<i32, _>("prompt_number")?).unwrap_or(0),
+        PromptNumber(u32::try_from(row.try_get::<i32, _>("prompt_number")?).unwrap_or(0)),
         row.try_get("prompt_text")?,
         row.try_get("project")?,
         created_at,

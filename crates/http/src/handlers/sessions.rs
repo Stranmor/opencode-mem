@@ -12,7 +12,6 @@ use crate::api_types::{
 };
 use crate::AppState;
 use opencode_mem_core::SessionStatus;
-use opencode_mem_storage::{ObservationStore, SessionStore};
 
 use super::session_ops::{create_session, spawn_observation_processing};
 
@@ -71,14 +70,17 @@ pub async fn session_status(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
 ) -> Result<Json<SessionStatusResponse>, StatusCode> {
-    let session = state.storage.get_session(&session_db_id).await.map_err(|e| {
+    let session = state.session_service.get_session(&session_db_id).await.map_err(|e| {
         tracing::error!("Get session error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
     match session {
         Some(s) => {
-            let obs_count =
-                state.storage.get_session_observation_count(&session_db_id).await.unwrap_or(0);
+            let obs_count = state
+                .session_service
+                .get_session_observation_count(&session_db_id)
+                .await
+                .unwrap_or(0);
             Ok(Json(SessionStatusResponse {
                 session_id: s.id,
                 status: s.status,
@@ -95,7 +97,7 @@ pub async fn session_delete(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
 ) -> Result<Json<SessionDeleteResponse>, StatusCode> {
-    let deleted = state.storage.delete_session(&session_db_id).await.map_err(|e| {
+    let deleted = state.session_service.delete_session(&session_db_id).await.map_err(|e| {
         tracing::error!("Delete session error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
     })?;

@@ -3,9 +3,7 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 use opencode_mem_core::{ProjectFilter, ToolCall};
-use opencode_mem_storage::{
-    default_visibility_timeout_secs, PendingMessage, PendingQueueStore, SessionStore,
-};
+use opencode_mem_storage::{default_visibility_timeout_secs, PendingMessage};
 
 use crate::AppState;
 
@@ -67,7 +65,7 @@ pub fn start_background_processor(state: Arc<AppState>) {
 
             let max_workers = max_queue_workers();
             let messages = match state
-                .storage
+                .queue_service
                 .claim_pending_messages(max_workers, default_visibility_timeout_secs())
                 .await
             {
@@ -97,7 +95,8 @@ pub fn start_background_processor(state: Arc<AppState>) {
                     let result = process_pending_message(&state_clone, &msg).await;
                     match result {
                         Ok(()) => {
-                            if let Err(e) = state_clone.storage.complete_message(msg.id).await {
+                            if let Err(e) = state_clone.queue_service.complete_message(msg.id).await
+                            {
                                 tracing::error!(
                                     "Background: complete message {} error: {}",
                                     msg.id,
@@ -107,7 +106,9 @@ pub fn start_background_processor(state: Arc<AppState>) {
                         },
                         Err(e) => {
                             tracing::error!("Background: process message {} failed: {}", msg.id, e);
-                            if let Err(e) = state_clone.storage.fail_message(msg.id, true).await {
+                            if let Err(e) =
+                                state_clone.queue_service.fail_message(msg.id, true).await
+                            {
                                 tracing::error!("Background: fail message {} error: {}", msg.id, e);
                             }
                         },
@@ -132,12 +133,13 @@ pub fn start_background_processor(state: Arc<AppState>) {
 /// # Errors
 /// Returns error if database operation fails.
 pub async fn run_startup_recovery(state: &AppState) -> anyhow::Result<usize> {
-    let released = state.storage.release_stale_messages(default_visibility_timeout_secs()).await?;
+    let released =
+        state.queue_service.release_stale_messages(default_visibility_timeout_secs()).await?;
     if released > 0 {
         tracing::info!("Startup recovery: released {} stale messages back to pending", released);
     }
 
-    let closed = state.storage.close_stale_sessions(24).await?;
+    let closed = state.session_service.close_stale_sessions(24).await?;
     if closed > 0 {
         tracing::info!("Startup recovery: closed {} stale sessions (>24h active)", closed);
     }

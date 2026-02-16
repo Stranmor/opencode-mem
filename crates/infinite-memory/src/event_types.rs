@@ -3,6 +3,8 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::fmt;
+use std::str::FromStr;
 
 /// Event types that can be stored
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -31,6 +33,31 @@ impl EventType {
     }
 }
 
+impl fmt::Display for EventType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for EventType {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "user" => Ok(Self::User),
+            "assistant" => Ok(Self::Assistant),
+            "tool" => Ok(Self::Tool),
+            "decision" => Ok(Self::Decision),
+            "error" => Ok(Self::Error),
+            "commit" => Ok(Self::Commit),
+            "delegation" => Ok(Self::Delegation),
+            unknown => {
+                anyhow::bail!("Unknown event type: '{}'", unknown)
+            },
+        }
+    }
+}
+
 /// Raw event to be stored
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RawEvent {
@@ -49,7 +76,7 @@ pub struct StoredEvent {
     pub ts: DateTime<Utc>,
     pub session_id: String,
     pub project: Option<String>,
-    pub event_type: String,
+    pub event_type: EventType,
     pub content: serde_json::Value,
     pub files: Vec<String>,
     pub tools: Vec<String>,

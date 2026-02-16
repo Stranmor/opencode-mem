@@ -29,6 +29,29 @@ impl SessionService {
         Ok(session)
     }
 
+    pub async fn get_session(&self, id: &str) -> anyhow::Result<Option<Session>> {
+        self.storage.get_session(id).await
+    }
+
+    pub async fn get_session_observation_count(&self, session_id: &str) -> anyhow::Result<usize> {
+        self.storage.get_session_observation_count(session_id).await
+    }
+
+    pub async fn delete_session(&self, session_id: &str) -> anyhow::Result<bool> {
+        self.storage.delete_session(session_id).await
+    }
+
+    pub async fn get_session_by_content_id(
+        &self,
+        content_session_id: &str,
+    ) -> anyhow::Result<Option<Session>> {
+        self.storage.get_session_by_content_id(content_session_id).await
+    }
+
+    pub async fn close_stale_sessions(&self, max_age_hours: i64) -> anyhow::Result<usize> {
+        self.storage.close_stale_sessions(max_age_hours).await
+    }
+
     pub async fn complete_session(&self, session_id: &str) -> anyhow::Result<Option<String>> {
         let observations = self.storage.get_session_observations(session_id).await?;
         let summary = if observations.is_empty() {
@@ -47,7 +70,7 @@ impl SessionService {
     }
 
     pub async fn generate_summary(&self, observations: &[Observation]) -> anyhow::Result<String> {
-        self.llm.generate_session_summary(observations).await
+        Ok(self.llm.generate_session_summary(observations).await?)
     }
 
     pub async fn summarize_session(

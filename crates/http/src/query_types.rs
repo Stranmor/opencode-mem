@@ -1,11 +1,11 @@
 //! Request/query types (Deserialize)
 
-use opencode_mem_core::MAX_QUERY_LIMIT;
+use opencode_mem_core::{DEFAULT_QUERY_LIMIT, MAX_BATCH_IDS, MAX_QUERY_LIMIT};
 use serde::Deserialize;
 use std::collections::HashMap;
 
 const fn default_limit() -> usize {
-    20
+    DEFAULT_QUERY_LIMIT
 }
 
 const fn default_context_limit() -> usize {
@@ -69,8 +69,6 @@ pub struct ContextQuery {
 pub struct BatchRequest {
     pub ids: Vec<String>,
 }
-
-const MAX_BATCH_IDS: usize = 500;
 
 impl BatchRequest {
     pub fn validate(&self) -> Result<(), String> {

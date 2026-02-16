@@ -1,4 +1,6 @@
 #[cfg(test)]
+#[expect(clippy::unwrap_used, reason = "test code")]
+#[expect(clippy::expect_used, reason = "test code")]
 mod tests {
     use crate::ai_types::{ChatRequest, Message, ResponseFormat};
     use crate::client::LlmClient;
@@ -20,7 +22,7 @@ mod tests {
     #[tokio::test]
     async fn test_success_on_first_attempt() {
         let server = setup_mock_server().await;
-        let client = LlmClient::new("test-key".to_owned(), server.uri());
+        let client = LlmClient::new("test-key".to_owned(), server.uri()).unwrap();
         let request = create_test_request();
 
         Mock::given(method("POST"))
@@ -44,7 +46,7 @@ mod tests {
     #[tokio::test]
     async fn test_retry_on_429_then_success() {
         let server = setup_mock_server().await;
-        let client = LlmClient::new("test-key".to_owned(), server.uri());
+        let client = LlmClient::new("test-key".to_owned(), server.uri()).unwrap();
         let request = create_test_request();
 
         Mock::given(method("POST"))
@@ -75,7 +77,7 @@ mod tests {
     #[tokio::test]
     async fn test_retry_on_503_then_success() {
         let server = setup_mock_server().await;
-        let client = LlmClient::new("test-key".to_owned(), server.uri());
+        let client = LlmClient::new("test-key".to_owned(), server.uri()).unwrap();
         let request = create_test_request();
 
         Mock::given(method("POST"))
@@ -106,7 +108,7 @@ mod tests {
     #[tokio::test]
     async fn test_no_retry_on_401() {
         let server = setup_mock_server().await;
-        let client = LlmClient::new("test-key".to_owned(), server.uri());
+        let client = LlmClient::new("test-key".to_owned(), server.uri()).unwrap();
         let request = create_test_request();
 
         Mock::given(method("POST"))
@@ -125,7 +127,7 @@ mod tests {
     #[tokio::test]
     async fn test_all_retries_exhausted() {
         let server = setup_mock_server().await;
-        let client = LlmClient::new("test-key".to_owned(), server.uri());
+        let client = LlmClient::new("test-key".to_owned(), server.uri()).unwrap();
         let request = create_test_request();
 
         Mock::given(method("POST"))

@@ -53,20 +53,11 @@ impl SearchStore for PgStorage {
         let raw_results: Vec<(SearchResult, f64, HashSet<String>)> = rows
             .iter()
             .map(|row| {
-                let obs_type_str: String = row.try_get("observation_type")?;
-                let obs_type: ObservationType = serde_json::from_str(&obs_type_str)
-                    .unwrap_or_else(|_| obs_type_str.parse().unwrap_or_else(|_| {
-                        tracing::warn!(invalid_type = %obs_type_str, "corrupt observation_type in DB, defaulting to Change");
-                        ObservationType::Change
-                    }));
-                let noise_str: Option<String> = row.try_get("noise_level")?;
-                let noise_level = match noise_str {
-                    Some(s) => s.parse::<NoiseLevel>().unwrap_or_else(|_| {
-                        tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
-                        NoiseLevel::default()
-                    }),
-                    None => NoiseLevel::default(),
-                };
+                let obs_type =
+                    parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?);
+                let noise_level = parse_pg_noise_level(
+                    row.try_get::<Option<String>, _>("noise_level")?.as_deref(),
+                );
                 let fts_score: f64 = row.try_get("fts_score")?;
                 let kw_json: serde_json::Value = row.try_get("keywords")?;
                 let obs_kw: HashSet<String> = serde_json::from_value::<Vec<String>>(kw_json)
@@ -375,30 +366,9 @@ impl SearchStore for PgStorage {
         let mut results: Vec<SearchResult> = rows
             .iter()
             .map(|row| {
-                let obs_type_str: String = row.try_get("observation_type")?;
-                let obs_type: ObservationType = serde_json::from_str(&obs_type_str)
-                    .unwrap_or_else(|_| obs_type_str.parse().unwrap_or_else(|_| {
-                        tracing::warn!(invalid_type = %obs_type_str, "corrupt observation_type in DB, defaulting to Change");
-                        ObservationType::Change
-                    }));
-                let noise_str: Option<String> = row.try_get("noise_level")?;
-                let noise_level = match noise_str {
-                    Some(s) => s.parse::<NoiseLevel>().unwrap_or_else(|_| {
-                        tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
-                        NoiseLevel::default()
-                    }),
-                    None => NoiseLevel::default(),
-                };
                 let id: String = row.try_get("id")?;
                 let score = score_lookup.get(id.as_str()).copied().unwrap_or(0.0_f64);
-                Ok(SearchResult::new(
-                    id,
-                    row.try_get("title")?,
-                    row.try_get("subtitle")?,
-                    obs_type,
-                    noise_level,
-                    score,
-                ))
+                row_to_search_result_with_score(row, score)
             })
             .collect::<Result<_>>()?;
 

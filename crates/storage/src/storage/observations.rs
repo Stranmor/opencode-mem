@@ -1,6 +1,9 @@
 use anyhow::Result;
 use chrono::Utc;
-use opencode_mem_core::{compute_merge, NoiseLevel, Observation, ObservationType, SearchResult};
+use opencode_mem_core::{
+    compute_merge, DiscoveryTokens, NoiseLevel, Observation, ObservationType, PromptNumber,
+    SearchResult,
+};
 use rusqlite::params;
 use std::str::FromStr as _;
 
@@ -35,8 +38,8 @@ impl Storage {
                 serde_json::to_string(&obs.files_read)?,
                 serde_json::to_string(&obs.files_modified)?,
                 serde_json::to_string(&obs.keywords)?,
-                obs.prompt_number,
-                obs.discovery_tokens,
+                obs.prompt_number.map(|v| v.0),
+                obs.discovery_tokens.map(|v| v.0),
                 obs.noise_level.as_str(),
                 obs.noise_reason,
                 obs.created_at.with_timezone(&Utc).to_rfc3339(),
@@ -222,8 +225,8 @@ impl Storage {
             .files_read(parse_json(&row.get::<_, String>(9)?)?)
             .files_modified(parse_json(&row.get::<_, String>(10)?)?)
             .keywords(parse_json(&row.get::<_, String>(11)?)?)
-            .maybe_prompt_number(row.get(12)?)
-            .maybe_discovery_tokens(row.get(13)?)
+            .maybe_prompt_number(row.get::<_, Option<u32>>(12)?.map(PromptNumber))
+            .maybe_discovery_tokens(row.get::<_, Option<u32>>(13)?.map(DiscoveryTokens))
             .noise_level(noise_level)
             .maybe_noise_reason(noise_reason)
             .created_at(created_at)

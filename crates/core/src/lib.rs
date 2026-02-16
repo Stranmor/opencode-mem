@@ -6,6 +6,8 @@
 mod constants;
 /// Environment variable parsing with warn-level logging.
 mod env_config;
+/// Typed error enum for core domain type parsing.
+pub mod error;
 /// Hook event types for IDE integration.
 mod hook;
 /// JSON utility functions shared across crates.
@@ -21,6 +23,7 @@ mod session;
 
 pub use constants::*;
 pub use env_config::*;
+pub use error::CoreError;
 pub use hook::*;
 pub use json_utils::*;
 pub use knowledge::*;

@@ -31,13 +31,13 @@ impl ObservationStore for PgStorage {
         .bind(serde_json::to_value(&obs.keywords)?)
         .bind(
             obs.prompt_number
-                .map(i32::try_from)
+                .map(|v| i32::try_from(v.0))
                 .transpose()
                 .context("prompt_number exceeds i32::MAX")?,
         )
         .bind(
             obs.discovery_tokens
-                .map(i32::try_from)
+                .map(|v| i32::try_from(v.0))
                 .transpose()
                 .context("discovery_tokens exceeds i32::MAX")?,
         )

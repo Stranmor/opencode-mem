@@ -1,6 +1,6 @@
 use anyhow::Result;
 use chrono::Utc;
-use opencode_mem_core::{SessionStatus, SessionSummary};
+use opencode_mem_core::{DiscoveryTokens, PromptNumber, SessionStatus, SessionSummary};
 use rusqlite::params;
 
 use super::{build_fts_query, get_conn, log_row_error, parse_json, Storage};
@@ -29,8 +29,8 @@ impl Storage {
                 summary.notes,
                 serde_json::to_string(&summary.files_read)?,
                 serde_json::to_string(&summary.files_edited)?,
-                summary.prompt_number,
-                summary.discovery_tokens,
+                summary.prompt_number.map(|v| v.0),
+                summary.discovery_tokens.map(|v| v.0),
                 summary.created_at.to_rfc3339(),
             ],
         )?;
@@ -206,8 +206,8 @@ impl Storage {
             row.get(7)?,
             parse_json(&row.get::<_, String>(8)?)?,
             parse_json(&row.get::<_, String>(9)?)?,
-            row.get(10)?,
-            row.get(11)?,
+            row.get::<_, Option<u32>>(10)?.map(PromptNumber),
+            row.get::<_, Option<u32>>(11)?.map(DiscoveryTokens),
             created_at,
         ))
     }

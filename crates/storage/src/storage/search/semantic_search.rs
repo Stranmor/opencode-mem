@@ -55,7 +55,8 @@ impl Storage {
             },
         };
 
-        let query_result = stmt.query_map(params![query_bytes, limit], map_search_result);
+        let query_result =
+            stmt.query_map(params![query_bytes, limit], |row| map_search_result(row, Some(5)));
         let results = match query_result {
             Ok(rows) => rows.filter_map(log_row_error).collect(),
             Err(e) => {

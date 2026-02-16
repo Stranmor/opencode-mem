@@ -36,6 +36,7 @@
 mod compression;
 mod event_queries;
 mod event_types;
+mod migrations;
 mod pipeline;
 mod summary_queries;
 
@@ -66,6 +67,8 @@ impl InfiniteMemory {
             .test_before_acquire(true)
             .connect(database_url)
             .await?;
+
+        migrations::run_migrations(&pool).await?;
 
         Ok(Self { pool, llm })
     }

@@ -18,7 +18,7 @@ impl PromptStore for PgStorage {
         )
         .bind(&prompt.id)
         .bind(&prompt.content_session_id)
-        .bind(i32::try_from(prompt.prompt_number).context("prompt_number exceeds i32::MAX")?)
+        .bind(i32::try_from(prompt.prompt_number.0).context("prompt_number exceeds i32::MAX")?)
         .bind(&prompt.prompt_text)
         .bind(&prompt.project)
         .bind(prompt.created_at)
