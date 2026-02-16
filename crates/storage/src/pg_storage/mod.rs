@@ -60,8 +60,6 @@ pub(crate) fn parse_json_value<T: serde::de::DeserializeOwned>(val: &serde_json:
     serde_json::from_value(val.clone()).unwrap_or_default()
 }
 
-pub(crate) use opencode_mem_core::{union_dedup, union_dedup_concepts};
-
 pub(crate) fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observation> {
     let obs_type_str: String = row.try_get("observation_type")?;
     let obs_type: ObservationType = serde_json::from_str(&obs_type_str)

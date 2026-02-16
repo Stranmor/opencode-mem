@@ -171,31 +171,7 @@ impl ObservationStore for PgStorage {
             .transpose()?
             .ok_or_else(|| anyhow::anyhow!("observation not found: {existing_id}"))?;
 
-        let facts = union_dedup(&existing.facts, &newer.facts);
-        let keywords = union_dedup(&existing.keywords, &newer.keywords);
-        let files_read = union_dedup(&existing.files_read, &newer.files_read);
-        let files_modified = union_dedup(&existing.files_modified, &newer.files_modified);
-        let concepts = union_dedup_concepts(&existing.concepts, &newer.concepts);
-
-        let narrative: Option<&str> = match (&existing.narrative, &newer.narrative) {
-            (Some(e), Some(n)) if n.len() > e.len() => Some(n.as_str()),
-            (None, Some(n)) => Some(n.as_str()),
-            (Some(e), _) => Some(e.as_str()),
-            (None, None) => None,
-        };
-
-        let subtitle: Option<&str> = match (&existing.subtitle, &newer.subtitle) {
-            (Some(e), Some(n)) if n.len() > e.len() => Some(n.as_str()),
-            (None, Some(n)) => Some(n.as_str()),
-            (Some(e), _) => Some(e.as_str()),
-            (None, None) => None,
-        };
-
-        // NoiseLevel Ord: Critical(0) < High(1) < ... < Negligible(4)
-        // min picks the most important (lowest discriminant = highest importance)
-        let noise_level = std::cmp::min(existing.noise_level, newer.noise_level);
-
-        let created_at = existing.created_at.max(newer.created_at);
+        let merged = opencode_mem_core::compute_merge(&existing, newer);
 
         sqlx::query(
             "UPDATE observations SET facts = $1, keywords = $2, files_read = $3,
@@ -203,15 +179,15 @@ impl ObservationStore for PgStorage {
                     noise_level = $8, subtitle = $9
                WHERE id = $10",
         )
-        .bind(serde_json::to_value(&facts)?)
-        .bind(serde_json::to_value(&keywords)?)
-        .bind(serde_json::to_value(&files_read)?)
-        .bind(serde_json::to_value(&files_modified)?)
-        .bind(narrative)
-        .bind(created_at)
-        .bind(serde_json::to_value(&concepts)?)
-        .bind(noise_level.as_str())
-        .bind(subtitle)
+        .bind(serde_json::to_value(&merged.facts)?)
+        .bind(serde_json::to_value(&merged.keywords)?)
+        .bind(serde_json::to_value(&merged.files_read)?)
+        .bind(serde_json::to_value(&merged.files_modified)?)
+        .bind(&merged.narrative)
+        .bind(merged.created_at)
+        .bind(serde_json::to_value(&merged.concepts)?)
+        .bind(merged.noise_level.as_str())
+        .bind(&merged.subtitle)
         .bind(existing_id)
         .execute(&mut *tx)
         .await?;

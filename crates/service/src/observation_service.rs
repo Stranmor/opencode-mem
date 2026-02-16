@@ -237,73 +237,79 @@ impl ObservationService {
         let embedding_vec = self.generate_embedding(observation).await;
 
         if let Some(ref vec) = embedding_vec {
-            if self.dedup_threshold > 0.0 {
-                match self.storage.find_similar(vec, self.dedup_threshold).await {
-                    Ok(Some(existing)) => {
-                        tracing::info!(
-                            existing_id = %existing.observation_id,
-                            existing_title = %existing.title,
-                            new_title = %observation.title,
-                            similarity = %existing.similarity,
-                            "Semantic dedup: merging into existing observation"
-                        );
-                        match self
-                            .storage
-                            .merge_into_existing(&existing.observation_id, observation)
-                            .await
-                        {
-                            Ok(()) => {
-                                let merged_embedding =
-                                    match self.storage.get_by_id(&existing.observation_id).await {
-                                        Ok(Some(merged_obs)) => {
-                                            self.generate_embedding(&merged_obs).await
-                                        },
-                                        Ok(None) => {
-                                            tracing::warn!(
-                                                "Merged observation {} not found after merge",
-                                                existing.observation_id
-                                            );
-                                            None
-                                        },
-                                        Err(e) => {
-                                            tracing::warn!(
-                                                "Failed to re-read merged observation {}: {}",
-                                                existing.observation_id,
-                                                e
-                                            );
-                                            None
-                                        },
-                                    };
-                                if let Some(emb) = merged_embedding {
-                                    if let Err(e) = self
-                                        .storage
-                                        .store_embedding(&existing.observation_id, &emb)
-                                        .await
-                                    {
-                                        tracing::warn!(
-                                            "Failed to update embedding after merge: {}",
-                                            e
-                                        );
-                                    }
-                                }
-                                return Ok(false);
-                            },
-                            Err(e) => {
-                                tracing::warn!(
-                                    "Merge failed (target may have been deleted), saving as new: {}",
-                                    e
-                                );
-                            },
-                        }
-                    },
-                    Ok(None) => {},
-                    Err(e) => {
-                        tracing::warn!("Semantic dedup search failed, proceeding without: {}", e);
-                    },
-                }
+            if let Some(merged) = self.try_dedup_merge(observation, vec).await? {
+                self.regenerate_embedding(&merged).await;
+                return Ok(false);
             }
         }
 
+        self.save_and_notify(observation, embedding_vec).await
+    }
+
+    /// Check for semantic duplicates and merge if found.
+    /// Returns `Some(existing_id)` if merged, `None` if no match or merge failed.
+    async fn try_dedup_merge(
+        &self,
+        observation: &Observation,
+        embedding: &[f32],
+    ) -> anyhow::Result<Option<String>> {
+        if self.dedup_threshold <= 0.0 {
+            return Ok(None);
+        }
+
+        let existing = match self.storage.find_similar(embedding, self.dedup_threshold).await {
+            Ok(Some(m)) => m,
+            Ok(None) => return Ok(None),
+            Err(e) => {
+                tracing::warn!("Semantic dedup search failed, proceeding without: {}", e);
+                return Ok(None);
+            },
+        };
+
+        tracing::info!(
+            existing_id = %existing.observation_id,
+            existing_title = %existing.title,
+            new_title = %observation.title,
+            similarity = %existing.similarity,
+            "Semantic dedup: merging into existing observation"
+        );
+
+        match self.storage.merge_into_existing(&existing.observation_id, observation).await {
+            Ok(()) => Ok(Some(existing.observation_id)),
+            Err(e) => {
+                tracing::warn!("Merge failed (target may have been deleted), saving as new: {}", e);
+                Ok(None)
+            },
+        }
+    }
+
+    /// Re-generate and store the embedding for a merged observation.
+    async fn regenerate_embedding(&self, observation_id: &str) {
+        let merged_obs = match self.storage.get_by_id(observation_id).await {
+            Ok(Some(obs)) => obs,
+            Ok(None) => {
+                tracing::warn!("Merged observation {} not found after merge", observation_id);
+                return;
+            },
+            Err(e) => {
+                tracing::warn!("Failed to re-read merged observation {}: {}", observation_id, e);
+                return;
+            },
+        };
+
+        if let Some(emb) = self.generate_embedding(&merged_obs).await {
+            if let Err(e) = self.storage.store_embedding(observation_id, &emb).await {
+                tracing::warn!("Failed to update embedding after merge: {}", e);
+            }
+        }
+    }
+
+    /// Insert a new observation into storage, send SSE notification, and store embedding.
+    async fn save_and_notify(
+        &self,
+        observation: &Observation,
+        embedding_vec: Option<Vec<f32>>,
+    ) -> anyhow::Result<bool> {
         let inserted = self.storage.save_observation(observation).await?;
         if !inserted {
             tracing::debug!("Skipping duplicate observation: {}", observation.title);

@@ -5,11 +5,13 @@ mod input;
 mod low_value_filter;
 
 mod dedup;
+mod merge;
 
 pub use builder::*;
 pub use dedup::*;
 pub use input::*;
 pub use low_value_filter::is_low_value_observation;
+pub use merge::*;
 
 use std::str::FromStr;
 use std::sync::LazyLock;

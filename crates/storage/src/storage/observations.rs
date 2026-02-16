@@ -1,12 +1,12 @@
 use anyhow::Result;
 use chrono::Utc;
-use opencode_mem_core::{NoiseLevel, Observation, ObservationType, SearchResult};
+use opencode_mem_core::{compute_merge, NoiseLevel, Observation, ObservationType, SearchResult};
 use rusqlite::params;
 use std::str::FromStr as _;
 
 use super::{
     coerce_to_sql, escape_like_pattern, get_conn, log_row_error, parse_json,
-    parse_observation_type, union_dedup, union_dedup_concepts, Storage,
+    parse_observation_type, Storage,
 };
 
 impl Storage {
@@ -246,31 +246,7 @@ impl Storage {
             }
         };
 
-        let facts = union_dedup(&existing.facts, &newer.facts);
-        let keywords = union_dedup(&existing.keywords, &newer.keywords);
-        let files_read = union_dedup(&existing.files_read, &newer.files_read);
-        let files_modified = union_dedup(&existing.files_modified, &newer.files_modified);
-        let concepts = union_dedup_concepts(&existing.concepts, &newer.concepts);
-
-        let narrative = match (&existing.narrative, &newer.narrative) {
-            (Some(e), Some(n)) if n.len() > e.len() => Some(n.as_str()),
-            (None, Some(n)) => Some(n.as_str()),
-            (Some(e), _) => Some(e.as_str()),
-            (None, None) => None,
-        };
-
-        let subtitle: Option<&str> = match (&existing.subtitle, &newer.subtitle) {
-            (Some(e), Some(n)) if n.len() > e.len() => Some(n.as_str()),
-            (None, Some(n)) => Some(n.as_str()),
-            (Some(e), _) => Some(e.as_str()),
-            (None, None) => None,
-        };
-
-        // NoiseLevel Ord: Critical(0) < High(1) < ... < Negligible(4)
-        // min picks the most important (lowest discriminant = highest importance)
-        let noise_level = std::cmp::min(existing.noise_level, newer.noise_level);
-
-        let created_at = existing.created_at.max(newer.created_at);
+        let merged = compute_merge(&existing, newer);
 
         tx.execute(
             "UPDATE observations SET facts = ?1, keywords = ?2, files_read = ?3,
@@ -278,15 +254,15 @@ impl Storage {
                     noise_level = ?8, subtitle = ?9
                WHERE id = ?10",
             params![
-                serde_json::to_string(&facts)?,
-                serde_json::to_string(&keywords)?,
-                serde_json::to_string(&files_read)?,
-                serde_json::to_string(&files_modified)?,
-                narrative,
-                created_at.with_timezone(&Utc).to_rfc3339(),
-                serde_json::to_string(&concepts)?,
-                noise_level.as_str(),
-                subtitle,
+                serde_json::to_string(&merged.facts)?,
+                serde_json::to_string(&merged.keywords)?,
+                serde_json::to_string(&merged.files_read)?,
+                serde_json::to_string(&merged.files_modified)?,
+                merged.narrative,
+                merged.created_at.with_timezone(&Utc).to_rfc3339(),
+                serde_json::to_string(&merged.concepts)?,
+                merged.noise_level.as_str(),
+                merged.subtitle,
                 existing_id,
             ],
         )?;

@@ -153,8 +153,6 @@ pub(crate) fn build_fts_query(query: &str) -> String {
         .join(" AND ")
 }
 
-pub(crate) use opencode_mem_core::{union_dedup, union_dedup_concepts};
-
 /// Custom connection initializer for sqlite-vec and concurrency settings
 fn init_connection(conn: &mut Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
