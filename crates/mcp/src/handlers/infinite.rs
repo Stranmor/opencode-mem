@@ -1,3 +1,4 @@
+use opencode_mem_core::{INFINITE_MEMORY_NOT_CONFIGURED, MAX_QUERY_LIMIT_I64};
 use opencode_mem_infinite::InfiniteMemory;
 use tokio::runtime::Handle;
 
@@ -20,8 +21,11 @@ pub(super) async fn handle_infinite_expand(
                     error: None,
                 };
             };
-            let limit =
-                args.get("limit").and_then(serde_json::Value::as_i64).unwrap_or(1000).min(1000);
+            let limit = args
+                .get("limit")
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(1000)
+                .min(MAX_QUERY_LIMIT_I64);
             match mem.get_events_by_summary_id(summary_id, limit).await {
                 Ok(events) => McpResponse {
                     jsonrpc: "2.0".to_owned(),
@@ -40,7 +44,7 @@ pub(super) async fn handle_infinite_expand(
         None => McpResponse {
             jsonrpc: "2.0".to_owned(),
             id,
-            result: Some(mcp_err("Infinite Memory not configured (INFINITE_MEMORY_URL not set)")),
+            result: Some(mcp_err(INFINITE_MEMORY_NOT_CONFIGURED)),
             error: None,
         },
     }
@@ -57,8 +61,11 @@ pub(super) async fn handle_infinite_time_range(
             let from = args.get("from").and_then(|f| f.as_str()).unwrap_or("");
             let to = args.get("to").and_then(|t| t.as_str()).unwrap_or("");
             let session_id = args.get("session_id").and_then(|s| s.as_str());
-            let limit =
-                args.get("limit").and_then(serde_json::Value::as_i64).unwrap_or(1000).min(1000);
+            let limit = args
+                .get("limit")
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(1000)
+                .min(MAX_QUERY_LIMIT_I64);
             let start = match chrono::DateTime::parse_from_rfc3339(from) {
                 Ok(dt) => dt.with_timezone(&chrono::Utc),
                 Err(_) => {
@@ -99,7 +106,7 @@ pub(super) async fn handle_infinite_time_range(
         None => McpResponse {
             jsonrpc: "2.0".to_owned(),
             id,
-            result: Some(mcp_err("Infinite Memory not configured (INFINITE_MEMORY_URL not set)")),
+            result: Some(mcp_err(INFINITE_MEMORY_NOT_CONFIGURED)),
             error: None,
         },
     }
@@ -121,8 +128,11 @@ pub(super) async fn handle_infinite_drill_hour(
                     error: None,
                 };
             };
-            let limit =
-                args.get("limit").and_then(serde_json::Value::as_i64).unwrap_or(100).min(1000);
+            let limit = args
+                .get("limit")
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(100)
+                .min(MAX_QUERY_LIMIT_I64);
             match mem.get_hour_summaries_by_day_id(day_id, limit).await {
                 Ok(summaries) => McpResponse {
                     jsonrpc: "2.0".to_owned(),
@@ -141,7 +151,7 @@ pub(super) async fn handle_infinite_drill_hour(
         None => McpResponse {
             jsonrpc: "2.0".to_owned(),
             id,
-            result: Some(mcp_err("Infinite Memory not configured (INFINITE_MEMORY_URL not set)")),
+            result: Some(mcp_err(INFINITE_MEMORY_NOT_CONFIGURED)),
             error: None,
         },
     }
@@ -163,8 +173,11 @@ pub(super) async fn handle_infinite_drill_minute(
                     error: None,
                 };
             };
-            let limit =
-                args.get("limit").and_then(serde_json::Value::as_i64).unwrap_or(100).min(1000);
+            let limit = args
+                .get("limit")
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(100)
+                .min(MAX_QUERY_LIMIT_I64);
             match mem.get_5min_summaries_by_hour_id(hour_id, limit).await {
                 Ok(summaries) => McpResponse {
                     jsonrpc: "2.0".to_owned(),
@@ -183,7 +196,7 @@ pub(super) async fn handle_infinite_drill_minute(
         None => McpResponse {
             jsonrpc: "2.0".to_owned(),
             id,
-            result: Some(mcp_err("Infinite Memory not configured (INFINITE_MEMORY_URL not set)")),
+            result: Some(mcp_err(INFINITE_MEMORY_NOT_CONFIGURED)),
             error: None,
         },
     }

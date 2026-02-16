@@ -5,6 +5,8 @@ use axum::{
 };
 use std::sync::Arc;
 
+use opencode_mem_core::INFINITE_MEMORY_NOT_CONFIGURED;
+
 use opencode_mem_infinite::{InfiniteMemory, StoredEvent, Summary};
 
 use crate::api_types::{InfiniteTimeRangeQuery, SearchEntitiesQuery};
@@ -18,7 +20,7 @@ fn require_infinite_mem(
             StatusCode::SERVICE_UNAVAILABLE,
             Json(serde_json::json!({
                 "error": "service_unavailable",
-                "message": "Infinite Memory not configured (INFINITE_MEMORY_URL not set)"
+                "message": INFINITE_MEMORY_NOT_CONFIGURED
             })),
         )
     })

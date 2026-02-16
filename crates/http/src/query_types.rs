@@ -1,5 +1,6 @@
 //! Request/query types (Deserialize)
 
+use opencode_mem_core::MAX_QUERY_LIMIT;
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -35,8 +36,6 @@ pub struct SearchQuery {
     pub from: Option<String>,
     pub to: Option<String>,
 }
-
-const MAX_QUERY_LIMIT: usize = 1000;
 
 impl SearchQuery {
     /// Cap limit to prevent DoS via unbounded queries.
@@ -230,6 +229,7 @@ pub struct SaveMemoryRequest {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use serde_json::json;

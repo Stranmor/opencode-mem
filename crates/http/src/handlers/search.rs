@@ -5,7 +5,7 @@ use axum::{
 };
 use std::sync::Arc;
 
-use opencode_mem_core::{SearchResult, SessionSummary, UserPrompt};
+use opencode_mem_core::{SearchResult, SessionSummary, UserPrompt, MAX_QUERY_LIMIT};
 use opencode_mem_storage::{ObservationStore, PromptStore, SearchStore, SummaryStore};
 
 use crate::api_types::{
@@ -99,12 +99,15 @@ pub async fn search_by_file(
     State(state): State<Arc<AppState>>,
     Query(query): Query<FileSearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, StatusCode> {
-    state.storage.search_by_file(&query.file_path, query.limit.min(1000)).await.map(Json).map_err(
-        |e| {
+    state
+        .storage
+        .search_by_file(&query.file_path, query.limit.min(MAX_QUERY_LIMIT))
+        .await
+        .map(Json)
+        .map_err(|e| {
             tracing::error!("Search by file error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
-        },
-    )
+        })
 }
 
 pub async fn unified_search(

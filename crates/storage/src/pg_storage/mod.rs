@@ -26,7 +26,8 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use opencode_mem_core::{
     GlobalKnowledge, KnowledgeType, NoiseLevel, Observation, ObservationType, SearchResult,
-    Session, SessionStatus, SessionSummary, UserPrompt,
+    Session, SessionStatus, SessionSummary, UserPrompt, PG_POOL_ACQUIRE_TIMEOUT_SECS,
+    PG_POOL_IDLE_TIMEOUT_SECS, PG_POOL_MAX_CONNECTIONS,
 };
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
@@ -43,9 +44,9 @@ pub struct PgStorage {
 impl PgStorage {
     pub async fn new(database_url: &str) -> Result<Self> {
         let pool = PgPoolOptions::new()
-            .max_connections(8)
-            .acquire_timeout(std::time::Duration::from_secs(10))
-            .idle_timeout(std::time::Duration::from_secs(300))
+            .max_connections(PG_POOL_MAX_CONNECTIONS)
+            .acquire_timeout(std::time::Duration::from_secs(PG_POOL_ACQUIRE_TIMEOUT_SECS))
+            .idle_timeout(std::time::Duration::from_secs(PG_POOL_IDLE_TIMEOUT_SECS))
             .test_before_acquire(true)
             .connect(database_url)
             .await?;

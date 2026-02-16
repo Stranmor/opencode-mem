@@ -2,6 +2,8 @@
 //!
 //! This crate contains domain types shared across all other crates.
 
+/// Shared constants (pool sizes, query limits, etc.).
+mod constants;
 /// Environment variable parsing with warn-level logging.
 mod env_config;
 /// Error types for opencode-mem operations.
@@ -19,6 +21,7 @@ mod project_filter;
 /// Session types for memory sessions.
 mod session;
 
+pub use constants::*;
 pub use env_config::*;
 pub use error::MemoryError as Error;
 pub use error::*;

@@ -6,7 +6,9 @@ use axum::{
 use serde_json::json;
 use std::sync::Arc;
 
-use opencode_mem_core::{GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType};
+use opencode_mem_core::{
+    GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType, MAX_QUERY_LIMIT,
+};
 use opencode_mem_storage::KnowledgeStore;
 
 use crate::api_types::{KnowledgeQuery, KnowledgeUsageResponse, SaveKnowledgeRequest};
@@ -20,12 +22,15 @@ pub async fn list_knowledge(
         Some(s) => Some(s.parse::<KnowledgeType>().map_err(|_| StatusCode::BAD_REQUEST)?),
         None => None,
     };
-    state.storage.list_knowledge(knowledge_type, query.limit.min(1000)).await.map(Json).map_err(
-        |e| {
+    state
+        .storage
+        .list_knowledge(knowledge_type, query.limit.min(MAX_QUERY_LIMIT))
+        .await
+        .map(Json)
+        .map_err(|e| {
             tracing::error!("List knowledge error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
-        },
-    )
+        })
 }
 
 pub async fn search_knowledge(
@@ -35,10 +40,15 @@ pub async fn search_knowledge(
     if query.q.trim().is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
-    state.storage.search_knowledge(&query.q, query.limit.min(1000)).await.map(Json).map_err(|e| {
-        tracing::error!("Search knowledge error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })
+    state
+        .storage
+        .search_knowledge(&query.q, query.limit.min(MAX_QUERY_LIMIT))
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Search knowledge error: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
 }
 
 pub async fn get_knowledge_by_id(
