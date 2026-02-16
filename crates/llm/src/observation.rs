@@ -22,42 +22,37 @@ pub fn parse_concept(s: &str) -> Option<Concept> {
     }
 }
 
-impl LlmClient {
-    /// Compress tool output into an observation using LLM.
-    ///
-    /// # Errors
-    /// Returns an error if the API call fails or response parsing fails.
-    pub async fn compress_to_observation(
-        &self,
-        id: &str,
-        input: &ObservationInput,
-        project: Option<&str>,
-        existing_titles: &[String],
-    ) -> Result<Option<Observation>> {
-        let filtered_output = filter_private_content(&input.output.output);
-        let filtered_title = filter_private_content(&input.output.title);
-
-        let existing_context = if existing_titles.is_empty() {
-            String::new()
-        } else {
-            let titles_list: String = existing_titles
-                .iter()
-                .enumerate()
-                .map(|(i, t)| format!("{}. {}", i.saturating_add(1), t))
-                .collect::<Vec<_>>()
-                .join("\n");
-            format!(
-                r#"
+/// Build the LLM prompt for compressing tool output into an observation.
+///
+/// Returns the complete user-message prompt string including tool context,
+/// dedup context from existing titles, noise level guide, and JSON schema.
+fn build_compression_prompt(
+    tool: &str,
+    title: &str,
+    output: &str,
+    existing_titles: &[String],
+) -> String {
+    let existing_context = if existing_titles.is_empty() {
+        String::new()
+    } else {
+        let titles_list: String = existing_titles
+            .iter()
+            .enumerate()
+            .map(|(i, t)| format!("{}. {}", i.saturating_add(1), t))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!(
+            r#"
 
 ALREADY SAVED OBSERVATIONS (similar to this input):
 {titles_list}
 
 If this tool output teaches essentially the SAME lesson as any observation above, mark noise_level as "negligible" with noise_reason "duplicate of existing observation". Only save if this adds a genuinely NEW insight not covered above."#
-            )
-        };
+        )
+    };
 
-        let prompt = format!(
-            r#"You are a STRICT memory filter. Your job is to decide if this tool output contains a LESSON WORTH REMEMBERING across sessions.
+    format!(
+        r#"You are a STRICT memory filter. Your job is to decide if this tool output contains a LESSON WORTH REMEMBERING across sessions.
 
 Tool: {}
 Output Title: {}
@@ -113,10 +108,103 @@ Return JSON:
 - files_read: file paths involved
 - files_modified: file paths changed
 - keywords: search terms"#,
-            input.tool,
-            filtered_title,
-            truncate(&filtered_output, MAX_OUTPUT_LEN),
-            existing_context,
+        tool,
+        title,
+        truncate(output, MAX_OUTPUT_LEN),
+        existing_context,
+    )
+}
+
+/// Parse LLM JSON response into an `Observation`, or `None` if negligible.
+///
+/// Deserializes the raw LLM response, checks noise level, and builds a typed
+/// `Observation` from the parsed fields.
+///
+/// # Errors
+/// Returns an error if JSON deserialization fails or the observation type is invalid.
+fn parse_observation_response(
+    response: &str,
+    id: &str,
+    session_id: &str,
+    project: Option<&str>,
+) -> Result<Option<Observation>> {
+    let stripped = opencode_mem_core::strip_markdown_json(response);
+    let obs_json: ObservationJson = serde_json::from_str(stripped).map_err(|e| {
+        anyhow!(
+            "Failed to parse observation JSON: {e} - content: {}",
+            response.get(..300).unwrap_or(response)
+        )
+    })?;
+
+    let noise_level = NoiseLevel::from_str(&obs_json.noise_level).unwrap_or_else(|_| {
+        tracing::warn!(
+            invalid_level = %obs_json.noise_level,
+            "LLM returned unknown noise level, defaulting to Normal"
+        );
+        NoiseLevel::default()
+    });
+    if noise_level == NoiseLevel::Negligible {
+        tracing::debug!(title = %obs_json.title, "Skipping negligible observation");
+        return Ok(None);
+    }
+    tracing::debug!(
+        "Observation noise_level={:?}, reason={:?}, title={}",
+        noise_level,
+        obs_json.noise_reason,
+        obs_json.title
+    );
+
+    let concepts: Vec<Concept> =
+        obs_json.concepts.iter().filter_map(|s| parse_concept(s)).collect();
+
+    let observation_type = ObservationType::from_str(&obs_json.observation_type)
+        .map_err(|_ignored| anyhow!("Invalid observation type: {}", obs_json.observation_type))?;
+
+    Ok(Some(
+        Observation::builder(
+            id.to_owned(),
+            session_id.to_owned(),
+            observation_type,
+            obs_json.title,
+        )
+        .maybe_project(project.map(ToOwned::to_owned))
+        .maybe_subtitle(obs_json.subtitle)
+        .maybe_narrative(obs_json.narrative)
+        .facts(obs_json.facts)
+        .concepts(concepts)
+        .files_read(obs_json.files_read)
+        .files_modified(obs_json.files_modified)
+        .keywords(obs_json.keywords)
+        .noise_level(noise_level)
+        .maybe_noise_reason(obs_json.noise_reason)
+        .created_at(Utc::now())
+        .build(),
+    ))
+}
+
+impl LlmClient {
+    /// Compress tool output into an observation using LLM.
+    ///
+    /// Orchestrates three phases: prompt construction, LLM call, response parsing.
+    /// Returns `None` if the LLM classifies the output as negligible noise.
+    ///
+    /// # Errors
+    /// Returns an error if the API call fails or response parsing fails.
+    pub async fn compress_to_observation(
+        &self,
+        id: &str,
+        input: &ObservationInput,
+        project: Option<&str>,
+        existing_titles: &[String],
+    ) -> Result<Option<Observation>> {
+        let filtered_output = filter_private_content(&input.output.output);
+        let filtered_title = filter_private_content(&input.output.title);
+
+        let prompt = build_compression_prompt(
+            &input.tool,
+            &filtered_title,
+            &filtered_output,
+            existing_titles,
         );
 
         let request = ChatRequest {
@@ -125,64 +213,7 @@ Return JSON:
             response_format: ResponseFormat { format_type: "json_object".to_owned() },
         };
 
-        let content = self.chat_completion(&request).await?;
-        let stripped = opencode_mem_core::strip_markdown_json(&content);
-        let obs_json: ObservationJson = serde_json::from_str(stripped).map_err(|e| {
-            anyhow!(
-                "Failed to parse observation JSON: {e} - content: {}",
-                content.get(..300).unwrap_or(&content)
-            )
-        })?;
-
-        let noise_level = NoiseLevel::from_str(&obs_json.noise_level).unwrap_or_else(|_| {
-            tracing::warn!(
-                invalid_level = %obs_json.noise_level,
-                "LLM returned unknown noise level, defaulting to Normal"
-            );
-            NoiseLevel::default()
-        });
-        if noise_level == NoiseLevel::Negligible {
-            tracing::debug!(title = %obs_json.title, "Skipping negligible observation");
-            return Ok(None);
-        }
-        tracing::debug!(
-            "Observation noise_level={:?}, reason={:?}, title={}",
-            noise_level,
-            obs_json.noise_reason,
-            obs_json.title
-        );
-
-        let mut concepts = Vec::new();
-        for s in &obs_json.concepts {
-            if let Some(concept) = parse_concept(s) {
-                concepts.push(concept);
-            }
-        }
-
-        let observation_type =
-            ObservationType::from_str(&obs_json.observation_type).map_err(|_ignored| {
-                anyhow!("Invalid observation type: {}", obs_json.observation_type)
-            })?;
-
-        Ok(Some(
-            Observation::builder(
-                id.to_owned(),
-                input.session_id.clone(),
-                observation_type,
-                obs_json.title,
-            )
-            .maybe_project(project.map(ToOwned::to_owned))
-            .maybe_subtitle(obs_json.subtitle)
-            .maybe_narrative(obs_json.narrative)
-            .facts(obs_json.facts)
-            .concepts(concepts)
-            .files_read(obs_json.files_read)
-            .files_modified(obs_json.files_modified)
-            .keywords(obs_json.keywords)
-            .noise_level(noise_level)
-            .maybe_noise_reason(obs_json.noise_reason)
-            .created_at(Utc::now())
-            .build(),
-        ))
+        let response = self.chat_completion(&request).await?;
+        parse_observation_response(&response, id, &input.session_id, project)
     }
 }
