@@ -9,7 +9,7 @@ Rust port of [claude-mem](https://github.com/thedotmack/claude-mem) for OpenCode
 Upstream: https://github.com/thedotmack/claude-mem
 Last reviewed commit: `b2ddf59db46cf380964379e9ba2d7279c67fc12b`
 
-## Current Status: 100% Complete (Feature Parity Achieved)
+## Current Status: Feature Parity Achieved (excluding IDE hooks)
 
 ### Implemented
 
@@ -22,7 +22,7 @@ Last reviewed commit: `b2ddf59db46cf380964379e9ba2d7279c67fc12b`
 | Storage | ✅ 100% | Core tables, session_summaries, pending queue |
 | AI Agent | ✅ 100% | compress_to_observation(), generate_session_summary() |
 | Web Viewer | ✅ 100% | Dark theme UI, SSE real-time updates |
-| Privacy Tags | ✅ 100% | `<private>` content filtering |
+| Privacy Tags | ⚠️ Partial | `<private>` content filtering (bypass in `save_memory` path — see tech debt) |
 | Pending Queue | ✅ 100% | Crash recovery, visibility timeout, dead letter queue |
 | Hook System | ✅ 100% | CLI hooks: context, session-init, observe, summarize |
 | Hybrid Capture | ✅ 100% | Per-turn observation via `session.idle` + debounce + batch endpoint |
