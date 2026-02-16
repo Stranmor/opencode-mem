@@ -3,7 +3,7 @@ use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_mcp::run_mcp_server;
-use opencode_mem_service::{KnowledgeService, ObservationService, SessionService};
+use opencode_mem_service::{KnowledgeService, ObservationService, SearchService, SessionService};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
@@ -55,16 +55,16 @@ pub(crate) async fn run() -> Result<()> {
     let session_service =
         Arc::new(SessionService::new(storage.clone(), llm, observation_service.clone()));
     let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));
+    let search_service = Arc::new(SearchService::new(storage, embeddings));
 
     let handle = tokio::runtime::Handle::current();
 
     run_mcp_server(
-        storage,
-        embeddings,
         infinite_mem,
         observation_service,
         session_service,
         knowledge_service,
+        search_service,
         handle,
     )
     .await;

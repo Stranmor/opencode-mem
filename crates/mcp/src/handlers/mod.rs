@@ -2,14 +2,11 @@ mod infinite;
 mod knowledge;
 mod memory;
 
-use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
-use opencode_mem_service::{KnowledgeService, ObservationService, SessionService};
-use opencode_mem_storage::StorageBackend;
+use opencode_mem_service::{KnowledgeService, ObservationService, SearchService, SessionService};
 use serde::Serialize;
 use serde_json::json;
 use std::fmt::Display;
-use std::sync::Arc;
 use tokio::runtime::Handle;
 
 use crate::tools::{McpTool, WORKFLOW_DOCS};
@@ -34,12 +31,11 @@ pub(crate) fn mcp_err(msg: impl Display) -> serde_json::Value {
 
 #[expect(clippy::too_many_arguments, reason = "MCP handler needs all service references")]
 pub async fn handle_tool_call(
-    storage: &StorageBackend,
-    embeddings: Option<Arc<EmbeddingService>>,
     infinite_mem: Option<&InfiniteMemory>,
     observation_service: &ObservationService,
     _session_service: &SessionService,
     knowledge_service: &KnowledgeService,
+    search_service: &SearchService,
     handle: &Handle,
     params: &serde_json::Value,
     id: serde_json::Value,
@@ -66,14 +62,14 @@ pub async fn handle_tool_call(
         McpTool::Important => {
             json!({ "content": [{ "type": "text", "text": WORKFLOW_DOCS }] })
         },
-        McpTool::Search => memory::handle_search(storage, embeddings.as_deref(), &args).await,
-        McpTool::Timeline => memory::handle_timeline(storage, &args).await,
-        McpTool::GetObservations => memory::handle_get_observations(storage, &args).await,
-        McpTool::MemoryGet => memory::handle_memory_get(storage, &args).await,
-        McpTool::MemoryRecent => memory::handle_memory_recent(storage, &args).await,
-        McpTool::MemoryHybridSearch => memory::handle_hybrid_search(storage, &args).await,
+        McpTool::Search => memory::handle_search(search_service, &args).await,
+        McpTool::Timeline => memory::handle_timeline(search_service, &args).await,
+        McpTool::GetObservations => memory::handle_get_observations(search_service, &args).await,
+        McpTool::MemoryGet => memory::handle_memory_get(search_service, &args).await,
+        McpTool::MemoryRecent => memory::handle_memory_recent(search_service, &args).await,
+        McpTool::MemoryHybridSearch => memory::handle_hybrid_search(search_service, &args).await,
         McpTool::MemorySemanticSearch => {
-            memory::handle_semantic_search(storage, embeddings.as_deref(), &args).await
+            memory::handle_semantic_search(search_service, &args).await
         },
         McpTool::SaveMemory => memory::handle_save_memory(observation_service, &args).await,
         McpTool::KnowledgeSearch => {

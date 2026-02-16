@@ -31,10 +31,8 @@
 mod handlers;
 mod tools;
 
-use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
-use opencode_mem_service::{KnowledgeService, ObservationService, SessionService};
-use opencode_mem_storage::StorageBackend;
+use opencode_mem_service::{KnowledgeService, ObservationService, SearchService, SessionService};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -73,12 +71,11 @@ pub struct McpError {
 }
 
 pub async fn run_mcp_server(
-    storage: Arc<StorageBackend>,
-    embeddings: Option<Arc<EmbeddingService>>,
     infinite_mem: Option<Arc<InfiniteMemory>>,
     observation_service: Arc<ObservationService>,
     session_service: Arc<SessionService>,
     knowledge_service: Arc<KnowledgeService>,
+    search_service: Arc<SearchService>,
     handle: Handle,
 ) {
     tracing::info!("MCP server starting on stdio");
@@ -147,12 +144,11 @@ pub async fn run_mcp_server(
         };
 
         if let Some(response) = handle_request(
-            &storage,
-            embeddings.clone(),
             infinite_mem.as_deref(),
             &observation_service,
             &session_service,
             &knowledge_service,
+            &search_service,
             &handle,
             &request,
         )
@@ -172,14 +168,12 @@ pub async fn run_mcp_server(
     }
 }
 
-#[expect(clippy::too_many_arguments, reason = "MCP request handler needs all service references")]
 async fn handle_request(
-    storage: &StorageBackend,
-    embeddings: Option<Arc<EmbeddingService>>,
     infinite_mem: Option<&InfiniteMemory>,
     observation_service: &ObservationService,
     session_service: &SessionService,
     knowledge_service: &KnowledgeService,
+    search_service: &SearchService,
     handle: &Handle,
     req: &McpRequest,
 ) -> Option<McpResponse> {
@@ -207,12 +201,11 @@ async fn handle_request(
         },
         "tools/call" => {
             handle_tool_call(
-                storage,
-                embeddings,
                 infinite_mem,
                 observation_service,
                 session_service,
                 knowledge_service,
+                search_service,
                 handle,
                 &req.params,
                 id,

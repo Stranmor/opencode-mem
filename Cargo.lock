@@ -2349,10 +2349,8 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "opencode-mem-core",
- "opencode-mem-embeddings",
  "opencode-mem-infinite",
  "opencode-mem-llm",
- "opencode-mem-search",
  "opencode-mem-service",
  "opencode-mem-storage",
  "serde",
@@ -2360,7 +2358,6 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
- "uuid",
 ]
 
 [[package]]

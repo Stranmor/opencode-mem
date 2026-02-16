@@ -151,7 +151,7 @@ pub(super) async fn handle_save_memory(
 mod tests {
     use super::*;
     use opencode_mem_core::{Observation, ObservationType};
-    use opencode_mem_storage::Storage;
+    use opencode_mem_storage::{Storage, StorageBackend};
     use serde_json::json;
     use std::sync::Arc;
     use tempfile::tempdir;
@@ -162,6 +162,10 @@ mod tests {
         let storage = Storage::new(&db_path).unwrap();
         let backend = StorageBackend::Sqlite(storage.clone());
         (storage, backend, dir)
+    }
+
+    fn setup_search_service(backend: StorageBackend) -> SearchService {
+        SearchService::new(Arc::new(backend), None)
     }
 
     fn setup_observation_service(
@@ -272,8 +276,9 @@ mod tests {
     #[tokio::test]
     async fn test_memory_get_empty_id() {
         let (_storage, backend, _dir) = setup_storage();
+        let search_svc = setup_search_service(backend);
         let args = json!({"id": ""});
-        let result = handle_memory_get(&backend, &args).await;
+        let result = handle_memory_get(&search_svc, &args).await;
         assert_eq!(result["isError"].as_bool(), Some(true));
         assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
     }
@@ -281,8 +286,9 @@ mod tests {
     #[tokio::test]
     async fn test_memory_get_missing_id() {
         let (_storage, backend, _dir) = setup_storage();
+        let search_svc = setup_search_service(backend);
         let args = json!({});
-        let result = handle_memory_get(&backend, &args).await;
+        let result = handle_memory_get(&search_svc, &args).await;
         assert_eq!(result["isError"].as_bool(), Some(true));
         assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
     }
@@ -290,8 +296,9 @@ mod tests {
     #[tokio::test]
     async fn test_hybrid_search_empty_query() {
         let (_storage, backend, _dir) = setup_storage();
+        let search_svc = setup_search_service(backend);
         let args = json!({"query": ""});
-        let result = handle_hybrid_search(&backend, &args).await;
+        let result = handle_hybrid_search(&search_svc, &args).await;
         assert_eq!(result["isError"].as_bool(), Some(true));
         assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
     }
@@ -299,8 +306,9 @@ mod tests {
     #[tokio::test]
     async fn test_hybrid_search_missing_query() {
         let (_storage, backend, _dir) = setup_storage();
+        let search_svc = setup_search_service(backend);
         let args = json!({});
-        let result = handle_hybrid_search(&backend, &args).await;
+        let result = handle_hybrid_search(&search_svc, &args).await;
         assert_eq!(result["isError"].as_bool(), Some(true));
         assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
     }
@@ -308,8 +316,9 @@ mod tests {
     #[tokio::test]
     async fn test_semantic_search_empty_query() {
         let (_storage, backend, _dir) = setup_storage();
+        let search_svc = setup_search_service(backend);
         let args = json!({"query": ""});
-        let result = handle_semantic_search(&backend, None, &args).await;
+        let result = handle_semantic_search(&search_svc, &args).await;
         assert_eq!(result["isError"].as_bool(), Some(true));
         assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
     }
@@ -317,9 +326,10 @@ mod tests {
     #[tokio::test]
     async fn test_get_observations_too_many_ids() {
         let (_storage, backend, _dir) = setup_storage();
+        let search_svc = setup_search_service(backend);
         let ids: Vec<String> = (0..501).map(|i| format!("id-{i}")).collect();
         let args = json!({"ids": ids});
-        let result = handle_get_observations(&backend, &args).await;
+        let result = handle_get_observations(&search_svc, &args).await;
         assert_eq!(result["isError"].as_bool(), Some(true));
         assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("500"));
     }
@@ -327,8 +337,9 @@ mod tests {
     #[tokio::test]
     async fn test_search_limit_capped() {
         let (_storage, backend, _dir) = setup_storage();
+        let search_svc = setup_search_service(backend);
         let args = json!({"query": "test", "limit": 5000});
-        let result = handle_search(&backend, None, &args).await;
+        let result = handle_search(&search_svc, &args).await;
         assert!(result.get("isError").is_none());
     }
 
@@ -346,23 +357,19 @@ mod tests {
         .build();
         assert!(storage.save_observation(&obs).unwrap());
 
-        let result = handle_search(
-            &backend,
-            None,
-            &json!({"query": "date filter test", "from": "2020-01-01"}),
-        )
-        .await;
+        let search_svc = setup_search_service(StorageBackend::Sqlite(storage));
+
+        let result =
+            handle_search(&search_svc, &json!({"query": "date filter test", "from": "2020-01-01"}))
+                .await;
         assert!(result.get("isError").is_none());
         let content_text = result["content"][0]["text"].as_str().unwrap();
         let results: Vec<serde_json::Value> = serde_json::from_str(content_text).unwrap();
         assert_eq!(results.len(), 1);
 
-        let result = handle_search(
-            &backend,
-            None,
-            &json!({"query": "date filter test", "to": "2020-01-01"}),
-        )
-        .await;
+        let result =
+            handle_search(&search_svc, &json!({"query": "date filter test", "to": "2020-01-01"}))
+                .await;
         assert!(result.get("isError").is_none());
         let content_text = result["content"][0]["text"].as_str().unwrap();
         let results: Vec<serde_json::Value> = serde_json::from_str(content_text).unwrap();
