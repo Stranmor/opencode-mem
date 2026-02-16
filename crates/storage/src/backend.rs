@@ -59,7 +59,7 @@ impl ObservationStore for StorageBackend {
         dispatch!(self, ObservationStore, get_by_id(id))
     }
 
-    async fn get_recent(&self, limit: usize) -> Result<Vec<SearchResult>> {
+    async fn get_recent(&self, limit: usize) -> Result<Vec<Observation>> {
         dispatch!(self, ObservationStore, get_recent(limit))
     }
 

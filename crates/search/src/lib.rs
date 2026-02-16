@@ -95,7 +95,7 @@ impl HybridSearch {
     /// Get recent observations (convenience method).
     ///
     /// Returns the most recent observations without any search query.
-    pub async fn recent(&self, limit: usize) -> Result<Vec<SearchResult>> {
+    pub async fn recent(&self, limit: usize) -> Result<Vec<Observation>> {
         self.storage.get_recent(limit).await
     }
 

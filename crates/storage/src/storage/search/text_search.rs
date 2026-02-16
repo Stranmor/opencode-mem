@@ -20,7 +20,11 @@ impl Storage {
         let fts_query = build_fts_query(query);
 
         if fts_query.is_empty() {
-            return self.get_recent(limit);
+            return Ok(self
+                .get_recent(limit)?
+                .into_iter()
+                .map(|o| SearchResult::from_observation(&o))
+                .collect());
         }
 
         let conn = get_conn(&self.pool)?;
@@ -49,7 +53,11 @@ impl Storage {
         let fts_query = build_fts_query(query);
 
         if fts_query.is_empty() {
-            return self.get_recent(limit);
+            return Ok(self
+                .get_recent(limit)?
+                .into_iter()
+                .map(|o| SearchResult::from_observation(&o))
+                .collect());
         }
 
         let conn = get_conn(&self.pool)?;
@@ -157,8 +165,7 @@ impl Storage {
         }
         if let Some(t) = obs_type {
             conditions.push("o.observation_type = ?".to_owned());
-            params_vec
-                .push(Box::new(serde_json::to_string(t).unwrap_or_else(|_| format!("\"{t}\""))));
+            params_vec.push(Box::new(t.to_owned()));
         }
         if let Some(f) = from {
             conditions.push("o.created_at >= ?".to_owned());

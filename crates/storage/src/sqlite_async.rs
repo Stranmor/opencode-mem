@@ -61,7 +61,7 @@ impl ObservationStore for Storage {
     async fn get_by_id(&self, id: &str) -> Result<Option<Observation>> {
         delegate!(self, get_by_id, @str id)
     }
-    async fn get_recent(&self, limit: usize) -> Result<Vec<SearchResult>> {
+    async fn get_recent(&self, limit: usize) -> Result<Vec<Observation>> {
         delegate!(self, get_recent, @val limit)
     }
     async fn get_session_observations(&self, session_id: &str) -> Result<Vec<Observation>> {

@@ -143,7 +143,7 @@ pub async fn get_observation(
 pub async fn get_recent(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, StatusCode> {
+) -> Result<Json<Vec<Observation>>, StatusCode> {
     state.storage.get_recent(query.capped_limit()).await.map(Json).map_err(|e| {
         tracing::error!("Get recent error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR

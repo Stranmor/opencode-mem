@@ -21,8 +21,8 @@ pub trait ObservationStore: Send + Sync {
     /// Get observation by ID.
     async fn get_by_id(&self, id: &str) -> Result<Option<Observation>>;
 
-    /// Get recent observations as search results.
-    async fn get_recent(&self, limit: usize) -> Result<Vec<SearchResult>>;
+    /// Get recent observations.
+    async fn get_recent(&self, limit: usize) -> Result<Vec<Observation>>;
 
     /// Get all observations for a session.
     async fn get_session_observations(&self, session_id: &str) -> Result<Vec<Observation>>;

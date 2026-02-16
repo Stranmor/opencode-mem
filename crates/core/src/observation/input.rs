@@ -138,4 +138,17 @@ impl SearchResult {
     ) -> Self {
         Self { id, title, subtitle, observation_type, noise_level, score }
     }
+
+    /// Converts a full Observation into a compact SearchResult with default score.
+    #[must_use]
+    pub fn from_observation(obs: &crate::Observation) -> Self {
+        Self {
+            id: obs.id.clone(),
+            title: obs.title.clone(),
+            subtitle: obs.subtitle.clone(),
+            observation_type: obs.observation_type,
+            noise_level: obs.noise_level,
+            score: 0.0,
+        }
+    }
 }

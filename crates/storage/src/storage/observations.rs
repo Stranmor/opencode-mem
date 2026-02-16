@@ -68,32 +68,15 @@ impl Storage {
     ///
     /// # Errors
     /// Returns error if database query fails.
-    pub fn get_recent(&self, limit: usize) -> Result<Vec<SearchResult>> {
+    pub fn get_recent(&self, limit: usize) -> Result<Vec<Observation>> {
         let conn = get_conn(&self.pool)?;
         let mut stmt = conn.prepare(
-            "SELECT id, title, subtitle, observation_type, noise_level
+            "SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, 
+                      files_read, files_modified, keywords, prompt_number, discovery_tokens, noise_level, noise_reason, created_at
                FROM observations ORDER BY created_at DESC LIMIT ?1",
         )?;
         let results = stmt
-            .query_map(params![limit], |row| {
-                let noise_str: Option<String> = row.get(4)?;
-                let noise_level = match noise_str {
-                    Some(s) => NoiseLevel::from_str(&s).unwrap_or_else(|_| {
-                        tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
-                        NoiseLevel::default()
-                    }),
-                    None => NoiseLevel::default(),
-                };
-                Ok(SearchResult::new(
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    parse_observation_type(&row.get::<_, String>(3)?)
-                        .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?,
-                    noise_level,
-                    1.0,
-                ))
-            })?
+            .query_map(params![limit], Self::row_to_observation)?
             .filter_map(log_row_error)
             .collect();
         Ok(results)

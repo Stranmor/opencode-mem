@@ -69,15 +69,17 @@ impl ObservationStore for PgStorage {
         row.map(|r| row_to_observation(&r)).transpose()
     }
 
-    async fn get_recent(&self, limit: usize) -> Result<Vec<SearchResult>> {
+    async fn get_recent(&self, limit: usize) -> Result<Vec<Observation>> {
         let rows = sqlx::query(
-            "SELECT id, title, subtitle, observation_type, noise_level, 1.0::float8 as score
+            "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
+                    facts, concepts, files_read, files_modified, keywords,
+                    prompt_number, discovery_tokens, noise_level, noise_reason, created_at
              FROM observations ORDER BY created_at DESC LIMIT $1",
         )
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_search_result).collect()
+        rows.iter().map(row_to_observation).collect()
     }
 
     async fn get_session_observations(&self, session_id: &str) -> Result<Vec<Observation>> {
