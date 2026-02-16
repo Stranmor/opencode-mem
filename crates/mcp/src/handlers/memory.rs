@@ -7,7 +7,7 @@ pub(super) async fn handle_search(
     search_service: &SearchService,
     args: &serde_json::Value,
 ) -> serde_json::Value {
-    let query = args.get("query").and_then(|q| q.as_str());
+    let query = args.get("query").and_then(|q| q.as_str()).filter(|s| !s.is_empty());
     let limit = (args.get("limit").and_then(serde_json::Value::as_u64).unwrap_or(50) as usize)
         .min(MAX_QUERY_LIMIT);
     let project = args.get("project").and_then(|p| p.as_str());
