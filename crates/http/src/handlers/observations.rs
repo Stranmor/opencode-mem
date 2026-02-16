@@ -6,8 +6,7 @@ use axum::{
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    is_low_value_observation, Observation, ObservationType, ProjectFilter, SearchResult,
-    SessionSummary, ToolCall, UserPrompt,
+    Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall, UserPrompt,
 };
 use opencode_mem_storage::{
     ObservationStore, PaginatedResult, PendingQueueStore, PromptStore, SearchStore, StatsStore,
@@ -92,42 +91,23 @@ pub async fn save_memory(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SaveMemoryRequest>,
 ) -> Result<(StatusCode, Json<Observation>), StatusCode> {
-    let text = req.text.trim().to_owned();
+    let text = req.text.trim();
     if text.is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
 
-    let title = req
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| text.chars().take(50).collect());
-    let project =
-        req.project.as_deref().map(str::trim).filter(|p| !p.is_empty()).map(ToOwned::to_owned);
-
-    let observation = Observation::builder(
-        uuid::Uuid::new_v4().to_string(),
-        "manual".to_owned(),
-        ObservationType::Discovery,
-        title,
-    )
-    .maybe_project(project)
-    .narrative(text)
-    .build();
-
-    if is_low_value_observation(&observation.title) {
-        tracing::debug!("Filtered low-value save_memory: {}", observation.title);
-        return Ok((StatusCode::UNPROCESSABLE_ENTITY, Json(observation)));
+    match state
+        .observation_service
+        .save_memory(text, req.title.as_deref(), req.project.as_deref())
+        .await
+    {
+        Ok(Some(obs)) => Ok((StatusCode::CREATED, Json(obs))),
+        Ok(None) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+        Err(e) => {
+            tracing::error!("Save memory error: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        },
     }
-
-    state.observation_service.save_observation(&observation).await.map_err(|e| {
-        tracing::error!("Save observation error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
-
-    Ok((StatusCode::CREATED, Json(observation)))
 }
 
 pub async fn get_observation(

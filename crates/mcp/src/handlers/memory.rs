@@ -1,4 +1,4 @@
-use opencode_mem_core::{is_low_value_observation, Observation, ObservationType, MAX_QUERY_LIMIT};
+use opencode_mem_core::MAX_QUERY_LIMIT;
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_storage::traits::{ObservationStore, SearchStore};
 use opencode_mem_storage::StorageBackend;
@@ -145,40 +145,14 @@ pub(super) async fn handle_save_memory(
         return mcp_err("text is required and must not be empty");
     }
 
-    let title = args
-        .get("title")
-        .and_then(|t| t.as_str())
-        .map(str::trim)
-        .filter(|t| !t.is_empty())
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| raw_text.chars().take(50).collect());
-    let project = args
-        .get("project")
-        .and_then(|p| p.as_str())
-        .map(str::trim)
-        .filter(|p| !p.is_empty())
-        .map(ToOwned::to_owned);
+    let title = args.get("title").and_then(|t| t.as_str());
+    let project = args.get("project").and_then(|p| p.as_str());
 
-    let observation = Observation::builder(
-        uuid::Uuid::new_v4().to_string(),
-        "manual".to_owned(),
-        ObservationType::Discovery,
-        title,
-    )
-    .maybe_project(project)
-    .narrative(raw_text.to_owned())
-    .build();
-
-    if is_low_value_observation(&observation.title) {
-        tracing::debug!("Filtered low-value MCP save_memory: {}", observation.title);
-        return mcp_text("Observation filtered as low-value");
+    match observation_service.save_memory(raw_text, title, project).await {
+        Ok(Some(obs)) => mcp_ok(&obs),
+        Ok(None) => mcp_text("Observation filtered as low-value"),
+        Err(e) => mcp_err(e),
     }
-
-    if let Err(e) = observation_service.save_observation(&observation).await {
-        return mcp_err(e);
-    }
-
-    mcp_ok(&observation)
 }
 
 #[cfg(test)]
@@ -186,6 +160,7 @@ pub(super) async fn handle_save_memory(
 #[expect(clippy::indexing_slicing, reason = "test code — asserts guard length")]
 mod tests {
     use super::*;
+    use opencode_mem_core::{Observation, ObservationType};
     use opencode_mem_storage::Storage;
     use serde_json::json;
     use std::sync::Arc;

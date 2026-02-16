@@ -2,11 +2,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
-use opencode_mem_core::{filter_private_content, ObservationInput, ProjectFilter, ToolOutput};
-use opencode_mem_infinite::tool_event;
+use opencode_mem_core::{ProjectFilter, ToolCall};
 use opencode_mem_storage::{
-    default_visibility_timeout_secs, ObservationStore, PendingMessage, PendingQueueStore,
-    SessionStore,
+    default_visibility_timeout_secs, PendingMessage, PendingQueueStore, SessionStore,
 };
 
 use crate::AppState;
@@ -24,63 +22,34 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
     }
 
     let tool_name = msg.tool_name.as_deref().unwrap_or("unknown");
-    let tool_input = msg.tool_input.clone();
+    let tool_input: serde_json::Value = msg
+        .tool_input
+        .as_ref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or(serde_json::Value::Null);
     let tool_response = msg.tool_response.as_deref().unwrap_or("");
 
-    let input = ObservationInput::new(
+    let tool_call = ToolCall::new(
         tool_name.to_owned(),
         msg.session_id.clone(),
         String::new(),
-        ToolOutput::new(
-            format!("Observation from {tool_name}"),
-            tool_response.to_owned(),
-            tool_input
-                .as_ref()
-                .and_then(|s| serde_json::from_str(s).ok())
-                .unwrap_or(serde_json::Value::Null),
-        ),
+        msg.project.clone(),
+        tool_input,
+        tool_response.to_owned(),
     );
 
     // Deterministic UUID v5 based on message ID to prevent duplicates
     // If same message is processed twice (race condition), same observation ID is generated
     let id =
         uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, msg.id.to_string().as_bytes()).to_string();
-    let observation = state
-        .llm
-        .compress_to_observation(
-            &id,
-            &input,
-            msg.project.as_deref().filter(|p| !p.is_empty() && *p != "unknown"),
-            &[],
-        )
-        .await?;
 
-    // Store raw event in Infinite Memory REGARDLESS of whether observation is trivial.
-    // Architecture invariant: raw events are NEVER lost — drill-down must always work.
-    // Privacy invariant: <private> content is filtered BEFORE storage.
-    if let Some(infinite_mem) = state.infinite_mem.as_ref() {
-        let files = observation.as_ref().map(|obs| obs.files_modified.clone()).unwrap_or_default();
-        let filtered_response = filter_private_content(tool_response);
-        let event = tool_event(
-            &msg.session_id,
-            None,
-            tool_name,
-            tool_input
-                .and_then(|s| serde_json::from_str(&s).ok())
-                .unwrap_or(serde_json::Value::Null),
-            serde_json::json!({"output": filtered_response}),
-            files,
-        );
-        infinite_mem.store_event(event).await?;
-    }
+    let result = state.observation_service.process(&id, tool_call).await?;
 
-    let Some(observation) = observation else {
+    if let Some(observation) = result {
+        tracing::info!("Processed pending message {} -> observation {}", msg.id, observation.id);
+    } else {
         tracing::debug!("Observation filtered as trivial for message {}", msg.id);
-        return Ok(());
-    };
-
-    state.observation_service.save_observation(&observation).await?;
-    tracing::info!("Processed pending message {} -> observation {}", msg.id, observation.id);
+    }
 
     Ok(())
 }
