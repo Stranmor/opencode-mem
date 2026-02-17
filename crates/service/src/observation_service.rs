@@ -35,7 +35,13 @@ impl ObservationService {
     ) -> Self {
         let dedup_threshold = env_parse_with_default("OPENCODE_MEM_DEDUP_THRESHOLD", 0.92_f32);
         let injection_dedup_threshold =
-            env_parse_with_default("OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD", 0.6_f32);
+            env_parse_with_default("OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD", 0.80_f32);
+        if injection_dedup_threshold > 0.0 && embeddings.is_none() {
+            tracing::warn!(
+                threshold = %injection_dedup_threshold,
+                "Injection dedup threshold is configured but embeddings are disabled — echo detection will not function"
+            );
+        }
         Self {
             storage,
             llm,

@@ -13,6 +13,7 @@ impl InjectionStore for PgStorage {
         if observation_ids.is_empty() {
             return Ok(());
         }
+        let mut tx = self.pool.begin().await?;
         for obs_id in observation_ids {
             sqlx::query(
                 "INSERT INTO injected_observations (session_id, observation_id)
@@ -21,9 +22,10 @@ impl InjectionStore for PgStorage {
             )
             .bind(session_id)
             .bind(obs_id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
         }
+        tx.commit().await?;
         Ok(())
     }
 
