@@ -118,7 +118,7 @@ impl Storage {
 
             Ok(GlobalKnowledge::new(
                 row.id,
-                input.knowledge_type.clone(),
+                input.knowledge_type,
                 input.title.clone(),
                 input.description.clone(),
                 input.instructions.clone(),
@@ -174,7 +174,7 @@ impl Storage {
 
             Ok(GlobalKnowledge::new(
                 id,
-                input.knowledge_type.clone(),
+                input.knowledge_type,
                 input.title.clone(),
                 input.description.clone(),
                 input.instructions.clone(),
