@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
 
 use opencode_mem_core::{Observation, SearchResult};
+use opencode_mem_storage::traits::InjectionStore;
 use opencode_mem_storage::StorageStats;
 
 use crate::api_types::{
@@ -25,15 +26,24 @@ pub async fn get_context_recent(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextQuery>,
 ) -> Result<Json<Vec<Observation>>, StatusCode> {
-    state
-        .search_service
-        .get_context_for_project(&query.project, query.limit)
-        .await
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get context error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })
+    let observations =
+        state.search_service.get_context_for_project(&query.project, query.limit).await.map_err(
+            |e| {
+                tracing::error!("Get context error: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            },
+        )?;
+
+    if let Some(ref session_id) = query.session_id {
+        let ids: Vec<String> = observations.iter().map(|o| o.id.clone()).collect();
+        if !ids.is_empty() {
+            if let Err(e) = state.storage.save_injected_observations(session_id, &ids).await {
+                tracing::warn!("Failed to record injected observations: {}", e);
+            }
+        }
+    }
+
+    Ok(Json(observations))
 }
 
 pub async fn get_projects(

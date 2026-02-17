@@ -144,5 +144,15 @@ pub async fn run_startup_recovery(state: &AppState) -> anyhow::Result<usize> {
         tracing::info!("Startup recovery: closed {} stale sessions (>24h active)", closed);
     }
 
+    match state.observation_service.cleanup_old_injections().await {
+        Ok(cleaned) if cleaned > 0 => {
+            tracing::info!("Startup recovery: cleaned {} stale injection records", cleaned);
+        },
+        Ok(_) => {},
+        Err(e) => {
+            tracing::warn!("Failed to clean up old injection records: {}", e);
+        },
+    }
+
     Ok(released)
 }

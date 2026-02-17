@@ -63,6 +63,7 @@ pub struct ContextQuery {
     pub project: String,
     #[serde(default = "default_context_limit")]
     pub limit: usize,
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    env_parse_with_default, filter_injected_memory, filter_private_content,
+    cosine_similarity, env_parse_with_default, filter_injected_memory, filter_private_content,
     is_low_value_observation, observation_embedding_text, Observation, ObservationInput,
     ObservationType, ToolCall, ToolOutput,
 };
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
 use opencode_mem_infinite::{tool_event, InfiniteMemory};
 use opencode_mem_llm::LlmClient;
-use opencode_mem_storage::traits::{EmbeddingStore, KnowledgeStore, ObservationStore};
+use opencode_mem_storage::traits::{
+    EmbeddingStore, InjectionStore, KnowledgeStore, ObservationStore,
+};
 use opencode_mem_storage::StorageBackend;
 use tokio::sync::broadcast;
 
@@ -19,6 +21,7 @@ pub struct ObservationService {
     event_tx: broadcast::Sender<String>,
     embeddings: Option<Arc<EmbeddingService>>,
     dedup_threshold: f32,
+    injection_dedup_threshold: f32,
 }
 
 impl ObservationService {
@@ -31,7 +34,17 @@ impl ObservationService {
         embeddings: Option<Arc<EmbeddingService>>,
     ) -> Self {
         let dedup_threshold = env_parse_with_default("OPENCODE_MEM_DEDUP_THRESHOLD", 0.92_f32);
-        Self { storage, llm, infinite_mem, event_tx, embeddings, dedup_threshold }
+        let injection_dedup_threshold =
+            env_parse_with_default("OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD", 0.6_f32);
+        Self {
+            storage,
+            llm,
+            infinite_mem,
+            event_tx,
+            embeddings,
+            dedup_threshold,
+            injection_dedup_threshold,
+        }
     }
 
     pub async fn process(
@@ -97,7 +110,7 @@ impl ObservationService {
             return Ok(None);
         };
 
-        let was_new = self.persist_and_notify(&observation).await?;
+        let was_new = self.persist_and_notify(&observation, Some(&tool_call.session_id)).await?;
 
         Ok(Some((observation, was_new)))
     }
@@ -241,12 +254,16 @@ impl ObservationService {
     }
 
     pub async fn save_observation(&self, observation: &Observation) -> anyhow::Result<()> {
-        let _was_new = self.persist_and_notify(observation).await?;
+        let _was_new = self.persist_and_notify(observation, None).await?;
         Ok(())
     }
 
     /// Returns `true` if a new observation was persisted, `false` if merged into existing or filtered.
-    async fn persist_and_notify(&self, observation: &Observation) -> anyhow::Result<bool> {
+    async fn persist_and_notify(
+        &self,
+        observation: &Observation,
+        session_id: Option<&str>,
+    ) -> anyhow::Result<bool> {
         if is_low_value_observation(&observation.title) {
             tracing::debug!("Filtered low-value observation: {}", observation.title);
             return Ok(false);
@@ -255,6 +272,14 @@ impl ObservationService {
         let embedding_vec = self.generate_embedding(observation).await;
 
         if let Some(ref vec) = embedding_vec {
+            if self.is_echo_of_injected(session_id, vec).await {
+                tracing::info!(
+                    title = %observation.title,
+                    "Skipping observation — echo of injected context"
+                );
+                return Ok(false);
+            }
+
             if let Some(merged) = self.try_dedup_merge(observation, vec).await? {
                 self.regenerate_embedding(&merged).await;
                 return Ok(false);
@@ -351,6 +376,56 @@ impl ObservationService {
         }
 
         Ok(true)
+    }
+
+    async fn is_echo_of_injected(&self, session_id: Option<&str>, embedding: &[f32]) -> bool {
+        let session_id = match session_id {
+            Some(id) if !id.is_empty() => id,
+            _ => return false,
+        };
+
+        if self.injection_dedup_threshold <= 0.0 {
+            return false;
+        }
+
+        let injected_ids = match self.storage.get_injected_observation_ids(session_id).await {
+            Ok(ids) => ids,
+            Err(e) => {
+                tracing::warn!("Failed to get injected observation IDs: {}", e);
+                return false;
+            },
+        };
+
+        if injected_ids.is_empty() {
+            return false;
+        }
+
+        let injected_embeddings = match self.storage.get_embeddings_for_ids(&injected_ids).await {
+            Ok(embs) => embs,
+            Err(e) => {
+                tracing::warn!("Failed to get embeddings for injected observations: {}", e);
+                return false;
+            },
+        };
+
+        for (obs_id, inj_emb) in &injected_embeddings {
+            let sim = cosine_similarity(embedding, inj_emb);
+            if sim >= self.injection_dedup_threshold {
+                tracing::info!(
+                    injected_id = %obs_id,
+                    similarity = %sim,
+                    threshold = %self.injection_dedup_threshold,
+                    "Echo detected: new observation matches injected context"
+                );
+                return true;
+            }
+        }
+
+        false
+    }
+
+    pub async fn cleanup_old_injections(&self) -> anyhow::Result<u64> {
+        self.storage.cleanup_old_injections(24).await
     }
 
     async fn generate_embedding(&self, observation: &Observation) -> Option<Vec<f32>> {
