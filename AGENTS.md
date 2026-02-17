@@ -84,7 +84,7 @@ crates/
 - **Typed error enums partial** — Leaf crates have typed errors (`CoreError`, `EmbeddingError`, `LlmError`), but storage/service/http still use `anyhow::Result`. HTTP layer converts everything to 500 via blanket `From<anyhow::Error>`. Next step: `StorageError` in storage trait → `ServiceError` → `ApiError` `From` impls.
 - ~~PG search_vec missing columns~~ — `search_vec` tsvector now includes `facts` (weight C) and `keywords` (weight D) via trigger function (generated column replaced due to subquery limitation)
 - **Session observations not durable** — `POST /api/sessions/observations` uses `tokio::spawn` (ephemeral), while `/observe` uses persistent DB queue. Server crash loses session observations.
-- **Knowledge save race condition** — No unique constraint on `global_knowledge.title`. Concurrent saves with same title create duplicates.
+- ~~Knowledge save race condition~~ — Unique index `idx_knowledge_title_unique` on `LOWER(title)` (PG) / `title COLLATE NOCASE` (SQLite). Save methods retry on constraint violation, merging via SELECT+UPDATE on retry.
 - ~~PG noise_level default mismatch~~ — PG migration default changed to `'medium'`, existing `'normal'` rows migrated
 - **Migration skips embeddings** — `migrate` command (SQLite→PG) doesn't transfer vector embeddings. Semantic search breaks until manual backfill.
 - ~~SQLite merge_into_existing deadlock risk~~ — `merge_into_existing` now uses `TransactionBehavior::Immediate` to prevent SQLITE_BUSY in WAL mode
@@ -102,7 +102,7 @@ crates/
 - ~~Unbounded injected IDs per session~~ — Capped at 500 most recent IDs per session via `MAX_INJECTED_IDS` constant
 - ~~PG get_embeddings_for_ids no batching~~ — PG implementation now chunks IDs via `MAX_BATCH_IDS`, matching SQLite behavior
 - **CUDA GPU acceleration blocked on Pascal** — ort-sys 2.0.0-rc.11 pre-built CUDA provider includes only SM 7.0+ (Volta+). GTX 1060 (SM 6.1 Pascal) gets `cudaErrorSymbolNotFound` at inference. CUDA EP registers successfully but all inference ops fail. CUDA 12 compat libs installed at `/opt/cuda-12-compat/lib/` on home-server. Workaround: CPU-only embeddings with `OPENCODE_MEM_DISABLE_EMBEDDINGS=1` for throttling. To resolve: either build ONNX Runtime from source with `CMAKE_CUDA_ARCHITECTURES=61`, or upgrade to Volta+ GPU.
-- ~~No DB path env var~~ — `get_db_path()` checks `OPENCODE_MEM_DB_PATH` env var before falling back to default path
+- **No DB path env var** — `get_db_path()` in CLI hardcodes `~/.local/share/opencode-memory/memory.db`. No env var to override. Makes it hard to point at different DB files (e.g., for remote backfill).
 
 ### Resolved
 - ~~Code Duplication in observation_service.rs~~ — extracted shared `persist_and_notify` method
