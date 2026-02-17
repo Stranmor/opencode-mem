@@ -92,6 +92,9 @@ enum Commands {
 
 #[must_use]
 pub fn get_db_path() -> PathBuf {
+    if let Ok(path) = std::env::var("OPENCODE_MEM_DB_PATH") {
+        return PathBuf::from(path);
+    }
     dirs::data_local_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("opencode-memory")

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 
 use opencode_mem_core::{ProjectFilter, ToolCall};
-use opencode_mem_storage::{default_visibility_timeout_secs, PendingMessage};
+use opencode_mem_service::{default_visibility_timeout_secs, PendingMessage};
 
 use crate::AppState;
 
@@ -56,11 +56,21 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
 pub fn start_background_processor(state: Arc<AppState>) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+        let mut loop_count: u64 = 0;
         loop {
             interval.tick().await;
             if !state.processing_active.load(Ordering::SeqCst) {
                 continue;
             }
+
+            // Periodic injection cleanup (~once per hour at 5s interval: 720 * 5s = 3600s)
+            loop_count = loop_count.wrapping_add(1);
+            if loop_count.is_multiple_of(720) {
+                if let Err(e) = state.observation_service.cleanup_old_injections().await {
+                    tracing::warn!(error = %e, "Periodic injection cleanup failed");
+                }
+            }
+
             tracing::debug!("Background processor: checking queue...");
 
             let max_workers = max_queue_workers();

@@ -64,7 +64,17 @@ pub fn is_zero_vector(v: &[f32]) -> bool {
 /// Returns 0.0 if either vector is empty or zero-length.
 #[must_use]
 pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
-    if a.len() != b.len() || a.is_empty() {
+    if a.len() != b.len() {
+        if !a.is_empty() && !b.is_empty() {
+            tracing::warn!(
+                a_dim = a.len(),
+                b_dim = b.len(),
+                "Embedding dimension mismatch in cosine_similarity — returning 0.0"
+            );
+        }
+        return 0.0;
+    }
+    if a.is_empty() {
         return 0.0;
     }
     if a.iter().chain(b.iter()).any(|v| !v.is_finite()) {
@@ -84,7 +94,7 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if denom == 0.0 {
         return 0.0;
     }
-    #[allow(
+    #[expect(
         clippy::cast_possible_truncation,
         reason = "cosine similarity is bounded [-1,1], safe f64→f32"
     )]

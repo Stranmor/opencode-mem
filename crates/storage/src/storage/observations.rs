@@ -156,7 +156,7 @@ impl Storage {
             params![session_id],
             |row| row.get(0),
         )?;
-        Ok(count as usize)
+        Ok(usize::try_from(count).unwrap_or(0))
     }
 
     /// Search observations by file path.
@@ -234,8 +234,8 @@ impl Storage {
     }
 
     pub fn merge_into_existing(&self, existing_id: &str, newer: &Observation) -> Result<()> {
-        let conn = get_conn(&self.pool)?;
-        let tx = conn.unchecked_transaction()?;
+        let mut conn = get_conn(&self.pool)?;
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         let existing = {
             let mut stmt = tx.prepare(
                 "SELECT id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts,
@@ -254,8 +254,9 @@ impl Storage {
         tx.execute(
             "UPDATE observations SET facts = ?1, keywords = ?2, files_read = ?3,
                     files_modified = ?4, narrative = ?5, created_at = ?6, concepts = ?7,
-                    noise_level = ?8, subtitle = ?9
-               WHERE id = ?10",
+                    noise_level = ?8, subtitle = ?9, noise_reason = ?10,
+                    prompt_number = ?11, discovery_tokens = ?12
+               WHERE id = ?13",
             params![
                 serde_json::to_string(&merged.facts)?,
                 serde_json::to_string(&merged.keywords)?,
@@ -266,6 +267,9 @@ impl Storage {
                 serde_json::to_string(&merged.concepts)?,
                 merged.noise_level.as_str(),
                 merged.subtitle,
+                merged.noise_reason,
+                merged.prompt_number.map(|v| v.0),
+                merged.discovery_tokens.map(|v| v.0),
                 existing_id,
             ],
         )?;

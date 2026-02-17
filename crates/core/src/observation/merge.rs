@@ -7,7 +7,7 @@
 use chrono::{DateTime, Utc};
 
 use super::dedup::{union_dedup, union_dedup_concepts};
-use super::{Concept, NoiseLevel, Observation};
+use super::{Concept, DiscoveryTokens, NoiseLevel, Observation, PromptNumber};
 
 /// Result of merging two observations.
 ///
@@ -31,6 +31,12 @@ pub struct MergeResult {
     pub subtitle: Option<String>,
     /// Most important (lowest discriminant) noise level.
     pub noise_level: NoiseLevel,
+    /// Noise reason from the newer observation if present, else existing.
+    pub noise_reason: Option<String>,
+    /// Prompt number from newer if present, else existing.
+    pub prompt_number: Option<PromptNumber>,
+    /// Discovery tokens from newer if present, else existing.
+    pub discovery_tokens: Option<DiscoveryTokens>,
     /// The later of the two timestamps.
     pub created_at: DateTime<Utc>,
 }
@@ -60,6 +66,10 @@ pub fn compute_merge(existing: &Observation, newer: &Observation) -> MergeResult
     // min picks the most important (lowest discriminant = highest importance)
     let noise_level = std::cmp::min(existing.noise_level, newer.noise_level);
 
+    let noise_reason = newer.noise_reason.clone().or_else(|| existing.noise_reason.clone());
+    let prompt_number = newer.prompt_number.or(existing.prompt_number);
+    let discovery_tokens = newer.discovery_tokens.or(existing.discovery_tokens);
+
     let created_at = existing.created_at.max(newer.created_at);
 
     MergeResult {
@@ -71,6 +81,9 @@ pub fn compute_merge(existing: &Observation, newer: &Observation) -> MergeResult
         narrative,
         subtitle,
         noise_level,
+        noise_reason,
+        prompt_number,
+        discovery_tokens,
         created_at,
     }
 }

@@ -23,7 +23,7 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
             keywords JSONB NOT NULL DEFAULT '[]',
             prompt_number INTEGER,
             discovery_tokens INTEGER,
-            noise_level TEXT DEFAULT 'normal',
+            noise_level TEXT DEFAULT 'medium',
             noise_reason TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
@@ -324,6 +324,96 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
     )
     .execute(pool)
     .await?;
+
+    // Fix noise_level default from 'normal' to 'medium' (NoiseLevel enum has no Normal variant).
+    // Idempotent: SET DEFAULT is a no-op if already 'medium', UPDATE only touches 'normal' rows.
+    sqlx::query("ALTER TABLE observations ALTER COLUMN noise_level SET DEFAULT 'medium'")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("UPDATE observations SET noise_level = 'medium' WHERE noise_level = 'normal'")
+        .execute(pool)
+        .await?;
+
+    // Upgrade search_vec from generated column (title+subtitle+narrative only) to
+    // trigger-maintained column that also includes facts and keywords JSONB arrays.
+    // Generated columns cannot use subqueries (jsonb_array_elements_text is set-returning),
+    // so we must use a trigger function instead.
+    sqlx::query(
+        r#"
+        DO $$ BEGIN
+            -- Only run if search_vec is still a generated column (attgenerated != '')
+            IF EXISTS (
+                SELECT 1 FROM pg_attribute
+                WHERE attrelid = 'observations'::regclass
+                AND attname = 'search_vec'
+                AND attgenerated != ''
+            ) THEN
+                ALTER TABLE observations DROP COLUMN search_vec;
+                ALTER TABLE observations ADD COLUMN search_vec tsvector;
+            END IF;
+        END $$
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create or replace the trigger function that computes search_vec
+    // including facts and keywords JSONB arrays.
+    sqlx::query(
+        r#"
+        CREATE OR REPLACE FUNCTION observations_search_vec_update() RETURNS trigger AS $$
+        DECLARE
+            facts_text TEXT;
+            keywords_text TEXT;
+        BEGIN
+            SELECT COALESCE(string_agg(elem, ' '), '')
+              INTO facts_text
+              FROM jsonb_array_elements_text(COALESCE(NEW.facts, '[]'::jsonb)) AS elem;
+
+            SELECT COALESCE(string_agg(elem, ' '), '')
+              INTO keywords_text
+              FROM jsonb_array_elements_text(COALESCE(NEW.keywords, '[]'::jsonb)) AS elem;
+
+            NEW.search_vec :=
+                setweight(to_tsvector('english', COALESCE(NEW.title, '')), 'A') ||
+                setweight(to_tsvector('english', COALESCE(NEW.subtitle, '')), 'B') ||
+                setweight(to_tsvector('english', COALESCE(NEW.narrative, '')), 'C') ||
+                setweight(to_tsvector('english', facts_text), 'C') ||
+                setweight(to_tsvector('english', keywords_text), 'D');
+            RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql;
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Create trigger (idempotent via DROP IF EXISTS)
+    sqlx::query(
+        r#"
+        DROP TRIGGER IF EXISTS trg_observations_search_vec ON observations;
+        CREATE TRIGGER trg_observations_search_vec
+            BEFORE INSERT OR UPDATE ON observations
+            FOR EACH ROW
+            EXECUTE FUNCTION observations_search_vec_update();
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Recreate GIN index (may have been dropped with the column)
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_obs_search_vec ON observations USING GIN (search_vec)",
+    )
+    .execute(pool)
+    .await?;
+
+    // Backfill search_vec for existing rows by touching each row to fire the trigger.
+    // Uses a no-op UPDATE (set title = title) which is safe and idempotent.
+    sqlx::query("UPDATE observations SET title = title WHERE search_vec IS NULL")
+        .execute(pool)
+        .await?;
 
     tracing::info!("PostgreSQL migrations completed");
     Ok(())

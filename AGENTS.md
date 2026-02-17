@@ -22,7 +22,7 @@ Last reviewed commit: `b2ddf59db46cf380964379e9ba2d7279c67fc12b`
 | Storage | ✅ 100% | Core tables, session_summaries, pending queue |
 | AI Agent | ✅ 100% | compress_to_observation(), generate_session_summary() |
 | Web Viewer | ✅ 100% | Dark theme UI, SSE real-time updates |
-| Privacy Tags | ⚠️ Partial | `<private>` content filtering (bypass in `save_memory` path — see tech debt) |
+| Privacy Tags | ✅ 100% | `<private>` content filtering applied in all paths (save_memory, compress_and_save, store_infinite_memory) |
 | Pending Queue | ✅ 100% | Crash recovery, visibility timeout, dead letter queue |
 | Hook System | ✅ 100% | CLI hooks: context, session-init, observe, summarize |
 | Hybrid Capture | ✅ 100% | Per-turn observation via `session.idle` + debounce + batch endpoint |
@@ -82,25 +82,27 @@ crates/
 - Gate MCP review tooling intermittently returns 429/502 or "Max retries exceeded", blocking automated code review.
 - Test coverage: ~40% of critical paths. Service layer, HTTP handlers, infinite-memory, CLI still have zero tests.
 - **Typed error enums partial** — Leaf crates have typed errors (`CoreError`, `EmbeddingError`, `LlmError`), but storage/service/http still use `anyhow::Result`. HTTP layer converts everything to 500 via blanket `From<anyhow::Error>`. Next step: `StorageError` in storage trait → `ServiceError` → `ApiError` `From` impls.
-- **PG search_vec missing columns** — PostgreSQL `search_vec` tsvector omits `facts` and `keywords` columns (SQLite FTS5 includes them). Search degrades on PG when terms appear only in facts/keywords.
+- ~~PG search_vec missing columns~~ — `search_vec` tsvector now includes `facts` (weight C) and `keywords` (weight D) via trigger function (generated column replaced due to subquery limitation)
 - **Session observations not durable** — `POST /api/sessions/observations` uses `tokio::spawn` (ephemeral), while `/observe` uses persistent DB queue. Server crash loses session observations.
 - **Knowledge save race condition** — No unique constraint on `global_knowledge.title`. Concurrent saves with same title create duplicates.
-- **PG noise_level default mismatch** — PG migration defaults to `'normal'` but `NoiseLevel` enum has no `Normal` variant (should be `'medium'`).
+- ~~PG noise_level default mismatch~~ — PG migration default changed to `'medium'`, existing `'normal'` rows migrated
 - **Migration skips embeddings** — `migrate` command (SQLite→PG) doesn't transfer vector embeddings. Semantic search breaks until manual backfill.
-- **SQLite merge_into_existing deadlock risk** — `merge_into_existing` uses deferred transaction (SELECT then UPDATE), susceptible to SQLITE_BUSY in WAL mode. Should use `TransactionBehavior::Immediate`.
+- ~~SQLite merge_into_existing deadlock risk~~ — `merge_into_existing` now uses `TransactionBehavior::Immediate` to prevent SQLITE_BUSY in WAL mode
 - **Queue processor UUID collision** — UUID v5 based on `pending_messages.id` (DB row ID). If queue table is truncated while observations persist, new messages reuse old IDs → colliding UUIDs → silent data loss.
-- **Privacy filter bypass in save_memory** — `save_memory` endpoint (HTTP + MCP) constructs Observation from user input without calling `filter_private_content`. `<private>` tagged data stored in plain text.
-- **Blocking I/O in session_service** — `summarize_session_from_export` uses `std::process::Command::output()` synchronously in async context. Should use `tokio::process::Command` or `spawn_blocking`.
+- ~~Privacy filter bypass in save_memory~~ — `filter_private_content` now applied in `save_memory` before observation creation
+- ~~Blocking I/O in session_service~~ — replaced `std::process::Command` with `tokio::process::Command`
 - **Phantom observation return after dedup merge** — `process` and `save_memory` return the local Observation even when merged into existing via dedup. Caller gets temporary ID that doesn't exist in DB.
 - **Infinite memory compression pipeline starvation** — `run_full_compression` fetches fixed batch (100) of unaggregated summaries across sessions. If distributed across many sessions, no single session meets threshold → pipeline stalls.
-- **PG search_by_file uses LIKE on JSONB text** — `search_by_file` casts `files_read::text` and uses `LIKE`, which is fragile. Should use JSONB containment operator `@>`.
-- **merge_into_existing incomplete field update** — Updates `noise_level` but not `noise_reason`, `prompt_number`, or `discovery_tokens`. Merged observations may have inconsistent metadata.
+- ~~PG search_by_file uses LIKE on JSONB text~~ — `search_by_file` now uses `jsonb_array_elements_text` to search within JSONB arrays properly
+- ~~merge_into_existing incomplete field update~~ — Updates all merge-relevant fields including `noise_reason`, `prompt_number`, `discovery_tokens`
 - **PG save_observation dead error handling** — `ON CONFLICT (id) DO NOTHING` suppresses constraint violation, making the explicit SQLSTATE 23505 error match arm unreachable.
-- **Privacy filter fallback leaks unfiltered data** — In `store_infinite_memory` and `compress_and_save`, `serde_json::from_str(&filtered).unwrap_or(tool_call.input.clone())` falls back to the original unfiltered input if the filter corrupts JSON structure, bypassing the security filter entirely.
+- **Privacy filter fallback leaks unfiltered data** — ~~In `store_infinite_memory` and `compress_and_save`, `serde_json::from_str(&filtered).unwrap_or(tool_call.input.clone())` falls back to the original unfiltered input if the filter corrupts JSON structure, bypassing the security filter entirely.~~ **RESOLVED:** Fallback now returns `Value::Null` with warning log instead of unfiltered input.
 - **Sequential LLM calls in observation process** — `extract_knowledge` and `store_infinite_memory` are awaited sequentially in `process()`, adding latency to the critical path. Should be spawned as background tasks.
 - **Injection cleanup only on startup** — `cleanup_old_injections` runs only in `run_startup_recovery`. Long-running servers accumulate stale injection records until next restart. Should run periodically (e.g., hourly in background processor loop).
 - **Unbounded injected IDs per session** — No cap on how many observation IDs are recorded per session via `/context/inject`. A project with 10K observations causes 10K embeddings loaded into memory per echo check (~40MB). Should cap at ~500 or paginate comparison.
 - **PG get_embeddings_for_ids no batching** — PG implementation passes all IDs via `ANY($1)` without chunking, unlike SQLite which uses `MAX_BATCH_IDS`. Could hit PG parameter limits for very large ID sets.
+- **CUDA GPU acceleration blocked on Pascal** — ort-sys 2.0.0-rc.11 pre-built CUDA provider includes only SM 7.0+ (Volta+). GTX 1060 (SM 6.1 Pascal) gets `cudaErrorSymbolNotFound` at inference. CUDA EP registers successfully but all inference ops fail. CUDA 12 compat libs installed at `/opt/cuda-12-compat/lib/` on home-server. Workaround: CPU-only embeddings with `OPENCODE_MEM_DISABLE_EMBEDDINGS=1` for throttling. To resolve: either build ONNX Runtime from source with `CMAKE_CUDA_ARCHITECTURES=61`, or upgrade to Volta+ GPU.
+- ~~No DB path env var~~ — `get_db_path()` checks `OPENCODE_MEM_DB_PATH` env var before falling back to default path
 
 ### Resolved
 - ~~Code Duplication in observation_service.rs~~ — extracted shared `persist_and_notify` method

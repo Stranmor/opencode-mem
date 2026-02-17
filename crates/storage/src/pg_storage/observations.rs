@@ -143,7 +143,8 @@ impl ObservationStore for PgStorage {
         let rows = sqlx::query(
             r#"SELECT id, title, subtitle, observation_type, noise_level, 0.0::float8 as score
                FROM observations
-               WHERE files_read::text LIKE $1 OR files_modified::text LIKE $1
+               WHERE EXISTS (SELECT 1 FROM jsonb_array_elements_text(files_read) AS f WHERE f LIKE $1)
+                  OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(files_modified) AS f WHERE f LIKE $1)
                ORDER BY created_at DESC LIMIT $2"#,
         )
         .bind(&pattern)
@@ -176,8 +177,9 @@ impl ObservationStore for PgStorage {
         sqlx::query(
             "UPDATE observations SET facts = $1, keywords = $2, files_read = $3,
                     files_modified = $4, narrative = $5, created_at = $6, concepts = $7,
-                    noise_level = $8, subtitle = $9
-               WHERE id = $10",
+                    noise_level = $8, subtitle = $9, noise_reason = $10,
+                    prompt_number = $11, discovery_tokens = $12
+               WHERE id = $13",
         )
         .bind(serde_json::to_value(&merged.facts)?)
         .bind(serde_json::to_value(&merged.keywords)?)
@@ -188,6 +190,21 @@ impl ObservationStore for PgStorage {
         .bind(serde_json::to_value(&merged.concepts)?)
         .bind(merged.noise_level.as_str())
         .bind(&merged.subtitle)
+        .bind(&merged.noise_reason)
+        .bind(
+            merged
+                .prompt_number
+                .map(|v| i32::try_from(v.0))
+                .transpose()
+                .context("prompt_number exceeds i32::MAX")?,
+        )
+        .bind(
+            merged
+                .discovery_tokens
+                .map(|v| i32::try_from(v.0))
+                .transpose()
+                .context("discovery_tokens exceeds i32::MAX")?,
+        )
         .bind(existing_id)
         .execute(&mut *tx)
         .await?;

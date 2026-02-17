@@ -5,6 +5,8 @@ use opencode_mem_core::{
     is_low_value_observation, observation_embedding_text, Observation, ObservationInput,
     ObservationType, ToolCall, ToolOutput,
 };
+
+const MAX_INJECTED_IDS: usize = 500;
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
 use opencode_mem_infinite::{tool_event, InfiniteMemory};
 use opencode_mem_llm::LlmClient;
@@ -33,11 +35,25 @@ impl ObservationService {
         event_tx: broadcast::Sender<String>,
         embeddings: Option<Arc<EmbeddingService>>,
     ) -> Self {
-        let dedup_threshold =
-            env_parse_with_default("OPENCODE_MEM_DEDUP_THRESHOLD", 0.92_f32).clamp(0.0, 1.0);
-        let injection_dedup_threshold =
-            env_parse_with_default("OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD", 0.80_f32)
-                .clamp(0.0, 1.0);
+        let raw_dedup = env_parse_with_default("OPENCODE_MEM_DEDUP_THRESHOLD", 0.92_f32);
+        let dedup_threshold = raw_dedup.clamp(0.0, 1.0);
+        if (dedup_threshold - raw_dedup).abs() > f32::EPSILON {
+            tracing::warn!(
+                original = raw_dedup,
+                clamped = dedup_threshold,
+                "OPENCODE_MEM_DEDUP_THRESHOLD clamped to [0.0, 1.0]"
+            );
+        }
+        let raw_injection =
+            env_parse_with_default("OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD", 0.80_f32);
+        let injection_dedup_threshold = raw_injection.clamp(0.0, 1.0);
+        if (injection_dedup_threshold - raw_injection).abs() > f32::EPSILON {
+            tracing::warn!(
+                original = raw_injection,
+                clamped = injection_dedup_threshold,
+                "OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD clamped to [0.0, 1.0]"
+            );
+        }
         if injection_dedup_threshold > 0.0 && embeddings.is_none() {
             tracing::warn!(
                 threshold = %injection_dedup_threshold,
@@ -63,10 +79,13 @@ impl ObservationService {
         if let Some((observation, was_new)) = self.compress_and_save(id, &tool_call).await? {
             // Only extract knowledge for genuinely new observations.
             // Merged observations already had knowledge extracted on first save.
-            if was_new {
-                self.extract_knowledge(&observation).await;
-            }
-            self.store_infinite_memory(&tool_call, &observation).await;
+            let extract_fut = async {
+                if was_new {
+                    self.extract_knowledge(&observation).await;
+                }
+            };
+            let infinite_fut = self.store_infinite_memory(&tool_call, &observation);
+            tokio::join!(extract_fut, infinite_fut);
             Ok(Some(observation))
         } else {
             Ok(None)
@@ -86,7 +105,13 @@ impl ObservationService {
         let filtered_input = {
             let input_str = serde_json::to_string(&tool_call.input).unwrap_or_default();
             let filtered = filter_injected_memory(&input_str);
-            serde_json::from_str(&filtered).unwrap_or(tool_call.input.clone())
+            serde_json::from_str(&filtered).unwrap_or_else(|e| {
+                tracing::warn!(
+                    error = %e,
+                    "Privacy/injection filter corrupted JSON input — using Null instead of unfiltered fallback"
+                );
+                serde_json::Value::Null
+            })
         };
 
         let input = ObservationInput::new(
@@ -201,7 +226,13 @@ impl ObservationService {
             let filtered_input = {
                 let input_str = serde_json::to_string(&tool_call.input).unwrap_or_default();
                 let filtered = filter_injected_memory(&filter_private_content(&input_str));
-                serde_json::from_str(&filtered).unwrap_or(tool_call.input.clone())
+                serde_json::from_str(&filtered).unwrap_or_else(|e| {
+                    tracing::warn!(
+                        error = %e,
+                        "Privacy/injection filter corrupted JSON input in infinite memory — using Null instead of unfiltered fallback"
+                    );
+                    serde_json::Value::Null
+                })
             };
             let event = tool_event(
                 &tool_call.session_id,
@@ -230,6 +261,7 @@ impl ObservationService {
         project: Option<&str>,
     ) -> anyhow::Result<Option<Observation>> {
         let text = text.trim();
+        let text = &filter_private_content(text);
         let text = &filter_injected_memory(text);
         if text.is_empty() {
             anyhow::bail!("Text is required for save_memory");
@@ -396,7 +428,7 @@ impl ObservationService {
             return false;
         }
 
-        let injected_ids = match self.storage.get_injected_observation_ids(session_id).await {
+        let mut injected_ids = match self.storage.get_injected_observation_ids(session_id).await {
             Ok(ids) => ids,
             Err(e) => {
                 tracing::warn!("Failed to get injected observation IDs: {}", e);
@@ -406,6 +438,12 @@ impl ObservationService {
 
         if injected_ids.is_empty() {
             return false;
+        }
+
+        if injected_ids.len() > MAX_INJECTED_IDS {
+            tracing::warn!(session_id = %session_id, count = injected_ids.len(), cap = MAX_INJECTED_IDS, "Truncating injected observation IDs to cap (most recent)");
+            let start = injected_ids.len().saturating_sub(MAX_INJECTED_IDS);
+            injected_ids = injected_ids.split_off(start);
         }
 
         let injected_embeddings = match self.storage.get_embeddings_for_ids(&injected_ids).await {
@@ -434,6 +472,15 @@ impl ObservationService {
 
     pub async fn cleanup_old_injections(&self) -> anyhow::Result<u64> {
         self.storage.cleanup_old_injections(24).await
+    }
+
+    /// Record which observation IDs were injected into a session for echo detection.
+    pub async fn save_injected_observations(
+        &self,
+        session_id: &str,
+        observation_ids: &[String],
+    ) -> anyhow::Result<()> {
+        self.storage.save_injected_observations(session_id, observation_ids).await
     }
 
     async fn generate_embedding(&self, observation: &Observation) -> Option<Vec<f32>> {

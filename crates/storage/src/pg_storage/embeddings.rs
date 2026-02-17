@@ -4,7 +4,7 @@ use super::*;
 
 use crate::traits::EmbeddingStore;
 use async_trait::async_trait;
-use opencode_mem_core::{is_zero_vector, SimilarMatch, EMBEDDING_DIMENSION};
+use opencode_mem_core::{is_zero_vector, SimilarMatch, EMBEDDING_DIMENSION, MAX_BATCH_IDS};
 
 #[async_trait]
 impl EmbeddingStore for PgStorage {
@@ -78,7 +78,7 @@ impl EmbeddingStore for PgStorage {
         match row {
             Some(r) => {
                 let similarity: f64 = r.try_get("similarity")?;
-                #[allow(
+                #[expect(
                     clippy::cast_possible_truncation,
                     reason = "similarity score f64→f32 is acceptable lossy narrowing"
                 )]
@@ -125,7 +125,7 @@ impl EmbeddingStore for PgStorage {
         let mut matches = Vec::new();
         for r in &rows {
             let similarity: f64 = r.try_get("similarity")?;
-            #[allow(
+            #[expect(
                 clippy::cast_possible_truncation,
                 reason = "similarity score f64→f32 is acceptable lossy narrowing"
             )]
@@ -147,23 +147,26 @@ impl EmbeddingStore for PgStorage {
             return Ok(Vec::new());
         }
 
-        let rows = sqlx::query(
-            "SELECT id, embedding::text
-               FROM observations
-              WHERE id = ANY($1) AND embedding IS NOT NULL",
-        )
-        .bind(ids)
-        .fetch_all(&self.pool)
-        .await?;
+        let mut all_results = Vec::new();
+        for chunk in ids.chunks(MAX_BATCH_IDS) {
+            let chunk_vec: Vec<String> = chunk.to_vec();
+            let rows = sqlx::query(
+                "SELECT id, embedding::text
+                   FROM observations
+                  WHERE id = ANY($1) AND embedding IS NOT NULL",
+            )
+            .bind(&chunk_vec)
+            .fetch_all(&self.pool)
+            .await?;
 
-        let mut results = Vec::new();
-        for r in &rows {
-            let id: String = r.try_get("id")?;
-            let emb_text: String = r.try_get("embedding")?;
-            let floats = parse_pg_vector_text(&emb_text);
-            results.push((id, floats));
+            for r in &rows {
+                let id: String = r.try_get("id")?;
+                let emb_text: String = r.try_get("embedding")?;
+                let floats = parse_pg_vector_text(&emb_text);
+                all_results.push((id, floats));
+            }
         }
-        Ok(results)
+        Ok(all_results)
     }
 }
 

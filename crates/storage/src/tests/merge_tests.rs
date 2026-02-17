@@ -412,11 +412,12 @@ fn test_merge_preserves_non_merged_fields() {
     assert_eq!(merged.observation_type, ObservationType::Discovery, "type must be preserved");
     assert_eq!(merged.project.as_deref(), Some("original-project"), "project must be preserved");
     assert_eq!(merged.subtitle.as_deref(), Some("different subtitle"), "subtitle picks longer");
-    assert_eq!(merged.prompt_number, Some(PromptNumber(42)), "prompt_number must be preserved");
+    // prompt_number and discovery_tokens now use newer.or(existing) merge semantics:
+    assert_eq!(merged.prompt_number, Some(PromptNumber(99)), "prompt_number takes newer value");
     assert_eq!(
         merged.discovery_tokens,
-        Some(DiscoveryTokens(999)),
-        "discovery_tokens must be preserved"
+        Some(DiscoveryTokens(1)),
+        "discovery_tokens takes newer value"
     );
 
     // Narrative was merged (newer is longer → wins):
