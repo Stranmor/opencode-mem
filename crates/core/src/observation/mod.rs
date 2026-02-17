@@ -87,17 +87,27 @@ pub fn filter_private_content(text: &str) -> String {
 /// Regex pattern for matching injected memory blocks.
 /// Matches `<memory-global>...</memory-global>` and similar memory injection tags
 /// like `<memory-project>`, `<memory-session>`, etc.
+/// Also handles optional XML attributes on the opening tag.
 #[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
 static MEMORY_TAG_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<memory-[a-z][-a-z]*>.*?</memory-[a-z][-a-z]*>").unwrap());
+    LazyLock::new(|| Regex::new(r"(?is)<memory-[a-z][^>]*>.*?</memory-[^>]+>").unwrap());
+
+/// Regex for unclosed memory tags (truncation safety).
+/// Strips from opening tag to end-of-string when no closing tag exists.
+#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
+static MEMORY_UNCLOSED_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?is)<memory-[a-z][^>]*>.*$").unwrap());
 
 /// Strips injected memory blocks (`<memory-*>...</memory-*>`) from text.
 ///
 /// Memory blocks are injected into conversation context by the IDE plugin.
 /// Without filtering, the observe hook re-processes them, creating duplicate
 /// observations that get re-injected — causing infinite recursion.
+///
+/// Handles both well-formed tags and unclosed tags (e.g. from truncation).
 pub fn filter_injected_memory(text: &str) -> String {
-    MEMORY_TAG_REGEX.replace_all(text, "").into_owned()
+    let after_closed = MEMORY_TAG_REGEX.replace_all(text, "");
+    MEMORY_UNCLOSED_REGEX.replace_all(&after_closed, "").into_owned()
 }
 
 /// Type of observation captured during a coding session
@@ -332,42 +342,29 @@ mod tests {
     // An IDE plugin crash or malicious input can produce unclosed memory tags.
     // The regex requires a closing tag, so unclosed content leaks through unfiltered.
     #[test]
-    fn filter_memory_unclosed_tag_bypass() {
+    fn filter_memory_unclosed_tag_stripped() {
         let input = "before <memory-global>leaked secret content";
-        // Current behavior: unclosed tag passes through completely
-        // This is a BYPASS — injected content survives filtering.
         let result = filter_injected_memory(input);
-        // The tag and content survive because no closing tag exists.
-        assert_eq!(result, "before <memory-global>leaked secret content");
-        // DESIRED: strip everything from <memory-global> to end-of-string
-        // assert_eq!(result, "before ");
+        // Unclosed tags stripped to end-of-string (truncation safety)
+        assert_eq!(result, "before ");
     }
 
     // --- VULNERABILITY: Tags with attributes bypass filter ---
     // If the IDE plugin or a future version adds attributes (class, id, data-*),
     // the regex fails to match because it expects `>` right after `[a-z]+`.
     #[test]
-    fn filter_memory_tag_with_attributes_bypass() {
+    fn filter_memory_tag_with_attributes_stripped() {
         let input = r#"before <memory-global class="injected">secret</memory-global> after"#;
         let result = filter_injected_memory(input);
-        // Current behavior: attribute causes bypass — content leaks through.
-        assert_eq!(
-            result,
-            r#"before <memory-global class="injected">secret</memory-global> after"#
-        );
-        // DESIRED: strip regardless of attributes
-        // assert_eq!(result, "before  after");
+        // [^>]* in regex allows attributes before >
+        assert_eq!(result, "before  after");
     }
 
     #[test]
-    fn filter_memory_tag_with_data_attribute_bypass() {
+    fn filter_memory_tag_with_data_attribute_stripped() {
         let input = r#"<memory-project data-source="plugin">observations</memory-project> tail"#;
         let result = filter_injected_memory(input);
-        // Bypasses filter
-        assert_eq!(
-            result,
-            r#"<memory-project data-source="plugin">observations</memory-project> tail"#
-        );
+        assert_eq!(result, " tail");
     }
 
     // --- VULNERABILITY: Hyphenated suffixes bypass filter ---
@@ -377,11 +374,8 @@ mod tests {
     fn filter_memory_hyphenated_suffix_matched() {
         let input = "<memory-global-v2>secret data</memory-global-v2> after";
         let result = filter_injected_memory(input);
-        // [a-z][-a-z]* matches hyphenated suffixes like "global-v"
-        // but "2" breaks the match — only "global-v" is consumed,
-        // then expects ">" but gets "2" → still a bypass for numeric suffixes.
-        // This is acceptable: real IDE tags use alphabetic suffixes only.
-        assert_eq!(result, "<memory-global-v2>secret data</memory-global-v2> after");
+        // [^>]* absorbs -v2, matching the full tag
+        assert_eq!(result, " after");
     }
 
     #[test]
@@ -399,26 +393,19 @@ mod tests {
     fn filter_memory_nested_tags_partial_strip() {
         let input = "<memory-global><memory-project>inner secret</memory-project></memory-global>";
         let result = filter_injected_memory(input);
-        // Lazy match strips inner pair, outer tags remain as orphaned text.
-        // <memory-global> matches open, .*? matches "<memory-project>inner secret",
-        // </memory-project> matches close. Leaves </memory-global> orphaned.
-        // <memory-global> opens, .*? lazily matches "<memory-project>inner secret",
-        // </memory-project> closes the match → orphaned </memory-global> remains.
+        // Lazy .*? matches inner pair, leaves orphaned </memory-global>
+        // Unclosed regex doesn't match </... (no opening tag pattern)
         assert_eq!(result, "</memory-global>");
-        // DESIRED: strip everything
-        // assert_eq!(result, "");
     }
 
     #[test]
     fn filter_memory_nested_different_types() {
         let input = "head <memory-global>outer <memory-session>inner</memory-session> tail</memory-global> end";
         let result = filter_injected_memory(input);
-        // The regex matches from <memory-global> (open) through to </memory-session>
-        // (first close it finds), stripping "outer <memory-session>inner".
-        // Then " tail</memory-global>" remains as orphan text.
+        // Lazy .*? matches from <memory-global> to first </memory-*>
+        // Leaves orphaned " tail</memory-global>"
+        // Acceptable: real IDE never nests memory tags
         assert_eq!(result, "head  tail</memory-global> end");
-        // DESIRED: strip entire outer block
-        // assert_eq!(result, "head  end");
     }
 
     // --- VULNERABILITY: Mismatched tag names still match ---
@@ -438,33 +425,28 @@ mod tests {
     // --- VULNERABILITY: Numeric/alphanumeric suffixes bypass ---
     // `[a-z]+` doesn't match digits. Tags like <memory-v2> bypass.
     #[test]
-    fn filter_memory_numeric_suffix_bypass() {
+    fn filter_memory_numeric_suffix_matched() {
         let input = "<memory-v2>secret</memory-v2> rest";
         let result = filter_injected_memory(input);
-        // "v" matches [a-z]+, then "2" breaks → wait, "v2" — "v" matches,
-        // then expects ">", gets "2" → no match? No: [a-z]+ is greedy,
-        // matches "v", then "2" is not [a-z], so [a-z]+ matched just "v",
-        // then expects ">", but next char is "2" → no match.
-        // Actually: <memory-v2> — after "memory-", [a-z]+ matches "v",
-        // then expects ">" but finds "2" → BYPASS.
-        assert_eq!(result, "<memory-v2>secret</memory-v2> rest");
+        // [^>]* absorbs "v2"
+        assert_eq!(result, " rest");
     }
 
     // --- VULNERABILITY: Whitespace inside tag bypasses ---
     #[test]
-    fn filter_memory_whitespace_in_tag_bypass() {
+    fn filter_memory_whitespace_in_tag_stripped() {
         let input = "<memory-global >content</memory-global> after";
         let result = filter_injected_memory(input);
-        // Space before > prevents match
-        assert_eq!(result, "<memory-global >content</memory-global> after");
+        // [^>]* absorbs space before >
+        assert_eq!(result, " after");
     }
 
     #[test]
-    fn filter_memory_newline_in_tag_bypass() {
+    fn filter_memory_newline_in_tag_stripped() {
         let input = "<memory-global\n>content</memory-global> after";
         let result = filter_injected_memory(input);
-        // Newline before > prevents match
-        assert_eq!(result, "<memory-global\n>content</memory-global> after");
+        // (?s) makes [^>]* match newline before >
+        assert_eq!(result, " after");
     }
 
     // --- FALSE POSITIVE: Code discussions about memory tags get stripped ---
@@ -506,17 +488,16 @@ mod tests {
 
     #[test]
     fn filter_memory_large_content_no_match_no_redos() {
-        // 1MB of content with no closing tag — regex must scan and fail fast.
+        // 1MB of content with unclosed tag — now stripped by unclosed regex
         let big_content = "x".repeat(1_000_000);
         let input = format!("<memory-global>{}", big_content);
         let start = std::time::Instant::now();
         let result = filter_injected_memory(&input);
         let elapsed = start.elapsed();
-        // No match, input returned unchanged
-        assert_eq!(result.len(), input.len());
+        assert_eq!(result, "");
         assert!(
             elapsed.as_secs() < 2,
-            "Regex took {:?} on non-matching input — potential ReDoS",
+            "Regex took {:?} on unclosed tag — potential ReDoS",
             elapsed
         );
     }
@@ -549,20 +530,20 @@ mod tests {
 
     // --- VULNERABILITY: Tag name with underscore bypasses ---
     #[test]
-    fn filter_memory_underscore_suffix_bypass() {
+    fn filter_memory_underscore_suffix_matched() {
         let input = "<memory-per_project>data</memory-per_project> rest";
         let result = filter_injected_memory(input);
-        // [a-z]+ matches "per", then "_" breaks → bypass
-        assert_eq!(result, "<memory-per_project>data</memory-per_project> rest");
+        // [^>]* absorbs underscore
+        assert_eq!(result, " rest");
     }
 
     // --- EDGE: Multiple unclosed tags accumulate ---
     #[test]
-    fn filter_memory_multiple_unclosed_tags_bypass() {
+    fn filter_memory_multiple_unclosed_tags_stripped() {
         let input = "<memory-global>leak1 <memory-project>leak2 <memory-session>leak3";
         let result = filter_injected_memory(input);
-        // All three unclosed tags pass through
-        assert_eq!(result, "<memory-global>leak1 <memory-project>leak2 <memory-session>leak3");
+        // First unclosed regex matches from <memory-global> to end
+        assert_eq!(result, "");
     }
 
     // --- EDGE: Closing tag without opening tag ---

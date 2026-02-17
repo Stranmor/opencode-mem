@@ -141,7 +141,7 @@ impl ObservationStore for PgStorage {
     async fn search_by_file(&self, file_path: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let pattern = format!("%{}%", escape_like(file_path));
         let rows = sqlx::query(
-            r#"SELECT id, title, subtitle, observation_type, noise_level, 1.0::float8 as score
+            r#"SELECT id, title, subtitle, observation_type, noise_level, 0.0::float8 as score
                FROM observations
                WHERE files_read::text LIKE $1 OR files_modified::text LIKE $1
                ORDER BY created_at DESC LIMIT $2"#,

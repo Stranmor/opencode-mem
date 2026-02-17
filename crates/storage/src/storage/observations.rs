@@ -191,7 +191,7 @@ impl Storage {
                     parse_observation_type(&row.get::<_, String>(3)?)
                         .map_err(|e| rusqlite::Error::ToSqlConversionFailure(e.into()))?,
                     noise_level,
-                    1.0,
+                    0.0,
                 ))
             })?
             .filter_map(log_row_error)
