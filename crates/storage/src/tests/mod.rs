@@ -49,6 +49,7 @@ pub fn create_test_session(id: &str) -> Session {
 
 mod embedding_text_tests;
 mod find_similar_tests;
+mod injection_tests;
 mod merge_tests;
 mod observation_tests;
 mod search_tests;
