@@ -132,7 +132,7 @@ impl Storage {
             [],
             |row| row.get(0),
         )?;
-        Ok(count as usize)
+        Ok(usize::try_from(count).unwrap_or(0))
     }
 
     /// Release stale processing messages.

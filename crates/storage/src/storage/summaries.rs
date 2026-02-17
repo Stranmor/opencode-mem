@@ -154,12 +154,7 @@ impl Storage {
                 .collect()
         };
 
-        Ok(PaginatedResult {
-            items,
-            total: total as u64,
-            offset: offset as u64,
-            limit: limit as u64,
-        })
+        Ok(PaginatedResult::new(items, total, offset, limit))
     }
 
     /// Search sessions using FTS.

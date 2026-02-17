@@ -1,11 +1,10 @@
 //! Semantic and hybrid vector search functions
 
-use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::str::FromStr as _;
 
 use anyhow::Result;
-use opencode_mem_core::{NoiseLevel, SearchResult};
+use opencode_mem_core::{sort_by_score_descending, NoiseLevel, SearchResult};
 use rusqlite::params;
 
 use crate::storage::{
@@ -175,7 +174,7 @@ impl Storage {
             })
             .collect();
 
-        combined.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
+        sort_by_score_descending(&mut combined);
 
         let top_ids: Vec<String> = combined.into_iter().take(limit).map(|(id, _)| id).collect();
 
@@ -230,7 +229,7 @@ impl Storage {
             .filter_map(log_row_error)
             .collect();
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
+        sort_by_score_descending(&mut results);
 
         Ok(results)
     }

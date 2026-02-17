@@ -39,6 +39,6 @@ impl Storage {
             "DELETE FROM injected_observations WHERE injected_at < datetime('now', ?1)",
             params![format!("-{older_than_hours} hours")],
         )?;
-        Ok(rows as u64)
+        Ok(u64::try_from(rows).unwrap_or(0))
     }
 }

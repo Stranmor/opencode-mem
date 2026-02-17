@@ -72,7 +72,7 @@ impl Storage {
            WHERE v.rowid IS NULL
            LIMIT ?1",
         )?;
-        let limit_i64 = limit as i64;
+        let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
         let results = stmt
             .query_map(params![limit_i64], Self::row_to_observation)?
             .filter_map(log_row_error)
@@ -125,6 +125,10 @@ impl Storage {
 
         match result {
             Ok((id, title, similarity)) => {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "similarity score f64→f32 is acceptable lossy narrowing"
+                )]
                 let sim_f32 = similarity as f32;
                 if sim_f32 >= threshold {
                     Ok(Some(SimilarMatch { observation_id: id, similarity: sim_f32, title }))
@@ -160,7 +164,7 @@ impl Storage {
         }
 
         let query_bytes = embedding.as_bytes();
-        #[allow(
+        #[expect(
             clippy::cast_possible_wrap,
             reason = "limit is always small (≤100), safe usize→i64"
         )]
@@ -197,7 +201,7 @@ impl Storage {
         for row in rows {
             match row {
                 Ok((id, title, similarity)) => {
-                    #[allow(
+                    #[expect(
                         clippy::cast_possible_truncation,
                         reason = "similarity score f64→f32 is acceptable lossy narrowing"
                     )]

@@ -81,11 +81,6 @@ impl StatsStore for PgStorage {
             .await?
         };
         let items: Vec<Observation> = rows.iter().map(row_to_observation).collect::<Result<_>>()?;
-        Ok(PaginatedResult {
-            items,
-            total: u64::try_from(total).unwrap_or(0),
-            offset: u64::try_from(offset).unwrap_or(0),
-            limit: u64::try_from(limit).unwrap_or(0),
-        })
+        Ok(PaginatedResult::new(items, total, offset, limit))
     }
 }

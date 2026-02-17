@@ -1,7 +1,7 @@
 //! Text-based search functions (FTS5)
 
 use anyhow::Result;
-use opencode_mem_core::{NoiseLevel, SearchResult};
+use opencode_mem_core::{sort_by_score_descending, NoiseLevel, SearchResult};
 use rusqlite::params;
 use std::collections::HashSet;
 use std::str::FromStr as _;
@@ -128,7 +128,15 @@ impl Storage {
                 // Invert: best (most negative) → 1.0, worst (least negative) → 0.0
                 let fts_normalized =
                     if fts_range > 0.0 { (max_fts - fts_score) / fts_range } else { 1.0 };
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "keyword count will never exceed f64 precision"
+                )]
                 let keyword_overlap = keywords.intersection(&obs_kw).count() as f64;
+                #[expect(
+                    clippy::cast_precision_loss,
+                    reason = "keyword count will never exceed f64 precision"
+                )]
                 let keyword_score =
                     if keywords.is_empty() { 0.0 } else { keyword_overlap / keywords.len() as f64 };
                 result.score = (fts_normalized * 0.7) + (keyword_score * 0.3);
@@ -137,7 +145,7 @@ impl Storage {
             })
             .collect();
 
-        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        sort_by_score_descending(&mut results);
         Ok(results.into_iter().take(limit).map(|(r, _)| r).collect())
     }
 

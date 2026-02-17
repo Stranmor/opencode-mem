@@ -151,12 +151,7 @@ impl SummaryStore for PgStorage {
         };
 
         let items: Vec<SessionSummary> = rows.iter().map(row_to_summary).collect::<Result<_>>()?;
-        Ok(PaginatedResult {
-            items,
-            total: u64::try_from(total).unwrap_or(0),
-            offset: u64::try_from(offset).unwrap_or(0),
-            limit: u64::try_from(limit).unwrap_or(0),
-        })
+        Ok(PaginatedResult::new(items, total, offset, limit))
     }
 
     async fn search_sessions(&self, query: &str, limit: usize) -> Result<Vec<SessionSummary>> {

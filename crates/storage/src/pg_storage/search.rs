@@ -2,7 +2,6 @@
 
 use super::*;
 
-use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use crate::traits::{ObservationStore, SearchStore};
@@ -90,12 +89,12 @@ impl SearchStore for PgStorage {
             .map(|(mut result, fts_score, obs_kw)| {
                 let fts_normalized =
                     if fts_range > 0.0 { (fts_score - min_fts) / fts_range } else { 1.0 };
-                #[allow(
+                #[expect(
                     clippy::cast_precision_loss,
                     reason = "keyword count will never exceed f64 precision"
                 )]
                 let keyword_overlap = keywords.intersection(&obs_kw).count() as f64;
-                #[allow(
+                #[expect(
                     clippy::cast_precision_loss,
                     reason = "keyword count will never exceed f64 precision"
                 )]
@@ -107,7 +106,7 @@ impl SearchStore for PgStorage {
             })
             .collect();
 
-        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
+        sort_by_score_descending(&mut results);
         Ok(results.into_iter().take(limit).map(|(r, _)| r).collect())
     }
 
@@ -337,7 +336,7 @@ impl SearchStore for PgStorage {
             })
             .collect();
 
-        combined.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
+        sort_by_score_descending(&mut combined);
 
         let top: Vec<(String, f64)> = combined.into_iter().take(limit).collect();
         if top.is_empty() {
@@ -370,7 +369,7 @@ impl SearchStore for PgStorage {
             })
             .collect::<Result<_>>()?;
 
-        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(Ordering::Equal));
+        sort_by_score_descending(&mut results);
         Ok(results)
     }
 }

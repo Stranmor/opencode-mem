@@ -33,6 +33,22 @@ pub struct PaginatedResult<T> {
     pub limit: u64,
 }
 
+impl<T> PaginatedResult<T> {
+    /// Construct from raw values (safe conversion, no `as` casts).
+    ///
+    /// Accepts `i64` for `total` because SQL `COUNT(*)` returns `i64`.
+    /// Negative or out-of-range values saturate to 0 or `u64::MAX`.
+    #[must_use]
+    pub fn new(items: Vec<T>, total: i64, offset: usize, limit: usize) -> Self {
+        Self {
+            items,
+            total: u64::try_from(total).unwrap_or(0),
+            offset: u64::try_from(offset).unwrap_or(u64::MAX),
+            limit: u64::try_from(limit).unwrap_or(u64::MAX),
+        }
+    }
+}
+
 /// Status of a pending message in the processing queue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

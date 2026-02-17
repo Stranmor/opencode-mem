@@ -64,12 +64,7 @@ impl PromptStore for PgStorage {
         };
 
         let items: Vec<UserPrompt> = rows.iter().map(row_to_prompt).collect::<Result<_>>()?;
-        Ok(PaginatedResult {
-            items,
-            total: u64::try_from(total).unwrap_or(0),
-            offset: u64::try_from(offset).unwrap_or(0),
-            limit: u64::try_from(limit).unwrap_or(0),
-        })
+        Ok(PaginatedResult::new(items, total, offset, limit))
     }
 
     async fn get_prompt_by_id(&self, id: &str) -> Result<Option<UserPrompt>> {

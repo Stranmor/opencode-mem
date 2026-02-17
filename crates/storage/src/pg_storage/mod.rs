@@ -26,9 +26,10 @@ use std::collections::HashSet;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use opencode_mem_core::{
-    DiscoveryTokens, GlobalKnowledge, KnowledgeType, NoiseLevel, Observation, ObservationType,
-    PromptNumber, SearchResult, Session, SessionStatus, SessionSummary, UserPrompt,
-    PG_POOL_ACQUIRE_TIMEOUT_SECS, PG_POOL_IDLE_TIMEOUT_SECS, PG_POOL_MAX_CONNECTIONS,
+    sort_by_score_descending, DiscoveryTokens, GlobalKnowledge, KnowledgeType, NoiseLevel,
+    Observation, ObservationType, PromptNumber, SearchResult, Session, SessionStatus,
+    SessionSummary, UserPrompt, PG_POOL_ACQUIRE_TIMEOUT_SECS, PG_POOL_IDLE_TIMEOUT_SECS,
+    PG_POOL_MAX_CONNECTIONS,
 };
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};

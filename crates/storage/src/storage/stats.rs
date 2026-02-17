@@ -26,11 +26,11 @@ impl Storage {
             |row| row.get(0),
         )?;
         Ok(StorageStats {
-            observation_count: observation_count as u64,
-            session_count: session_count as u64,
-            summary_count: summary_count as u64,
-            prompt_count: prompt_count as u64,
-            project_count: project_count as u64,
+            observation_count: u64::try_from(observation_count).unwrap_or(0),
+            session_count: u64::try_from(session_count).unwrap_or(0),
+            summary_count: u64::try_from(summary_count).unwrap_or(0),
+            prompt_count: u64::try_from(prompt_count).unwrap_or(0),
+            project_count: u64::try_from(project_count).unwrap_or(0),
         })
     }
 
@@ -90,11 +90,6 @@ impl Storage {
                 .collect()
         };
 
-        Ok(PaginatedResult {
-            items,
-            total: total as u64,
-            offset: offset as u64,
-            limit: limit as u64,
-        })
+        Ok(PaginatedResult::new(items, total, offset, limit))
     }
 }
