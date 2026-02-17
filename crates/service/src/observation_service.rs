@@ -30,7 +30,7 @@ impl ObservationService {
         event_tx: broadcast::Sender<String>,
         embeddings: Option<Arc<EmbeddingService>>,
     ) -> Self {
-        let dedup_threshold = env_parse_with_default("OPENCODE_MEM_DEDUP_THRESHOLD", 0.82_f32);
+        let dedup_threshold = env_parse_with_default("OPENCODE_MEM_DEDUP_THRESHOLD", 0.92_f32);
         Self { storage, llm, infinite_mem, event_tx, embeddings, dedup_threshold }
     }
 
