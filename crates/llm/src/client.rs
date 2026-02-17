@@ -4,7 +4,7 @@ use crate::error::LlmError;
 /// Maximum output length for truncation.
 pub const MAX_OUTPUT_LEN: usize = 2000;
 /// Default LLM model to use.
-pub const DEFAULT_MODEL: &str = "gemini-3-flash";
+pub const DEFAULT_MODEL: &str = "gemini-3-pro-high";
 
 /// Client for LLM API calls.
 pub struct LlmClient {
