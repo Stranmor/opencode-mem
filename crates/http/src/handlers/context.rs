@@ -10,8 +10,7 @@ use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
 
 use opencode_mem_core::{Observation, SearchResult};
-use opencode_mem_storage::traits::InjectionStore;
-use opencode_mem_storage::StorageStats;
+use opencode_mem_service::StorageStats;
 
 use crate::api_types::{
     ContextPreview, ContextPreviewQuery, ContextQuery, SearchHelpResponse, SearchQuery,
@@ -37,7 +36,9 @@ pub async fn get_context_recent(
     if let Some(ref session_id) = query.session_id {
         let ids: Vec<String> = observations.iter().map(|o| o.id.clone()).collect();
         if !ids.is_empty() {
-            if let Err(e) = state.storage.save_injected_observations(session_id, &ids).await {
+            if let Err(e) =
+                state.observation_service.save_injected_observations(session_id, &ids).await
+            {
                 tracing::warn!("Failed to record injected observations: {}", e);
             }
         }

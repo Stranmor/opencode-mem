@@ -5,7 +5,9 @@ use axum::{
 };
 use std::sync::Arc;
 
-use opencode_mem_core::{SearchResult, SessionSummary, UserPrompt, MAX_QUERY_LIMIT};
+use opencode_mem_core::{
+    sort_by_score_descending, SearchResult, SessionSummary, UserPrompt, MAX_QUERY_LIMIT,
+};
 
 use crate::api_types::{
     FileSearchQuery, RankedItem, SearchQuery, TimelineResult, UnifiedSearchResult,
@@ -112,7 +114,7 @@ pub async fn search_by_file(
         })
 }
 
-#[allow(
+#[expect(
     clippy::cast_precision_loss,
     reason = "session/prompt counts never exceed f64 mantissa precision (2^53)"
 )]
@@ -203,7 +205,7 @@ pub async fn unified_search(
     }
 
     // Sort by score descending
-    ranked.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    sort_by_score_descending(&mut ranked);
 
     Ok(Json(UnifiedSearchResult { observations, sessions, prompts, ranked }))
 }

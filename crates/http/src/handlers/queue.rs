@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tokio::sync::Semaphore;
 
-use opencode_mem_storage::default_visibility_timeout_secs;
+use opencode_mem_service::default_visibility_timeout_secs;
 
 use crate::api_types::{
     ClearQueueResponse, PendingQueueResponse, ProcessQueueResponse, ProcessingStatusResponse,

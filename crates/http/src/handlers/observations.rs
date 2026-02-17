@@ -9,7 +9,7 @@ use opencode_mem_core::{
     filter_injected_memory, Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall,
     UserPrompt,
 };
-use opencode_mem_storage::PaginatedResult;
+use opencode_mem_service::PaginatedResult;
 
 use crate::api_types::{
     BatchRequest, ObserveBatchResponse, ObserveResponse, PaginationQuery, SaveMemoryRequest,

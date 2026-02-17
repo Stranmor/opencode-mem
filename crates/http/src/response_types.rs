@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use opencode_mem_core::{SearchResult, SessionStatus, SessionSummary, UserPrompt};
-use opencode_mem_storage::{PendingMessage, QueueStats};
+use opencode_mem_core::{Scored, SearchResult, SessionStatus, SessionSummary, UserPrompt};
+use opencode_mem_service::{PendingMessage, QueueStats};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ObserveResponse {
@@ -86,6 +86,12 @@ pub struct RankedItem {
     pub subtitle: Option<String>,
     pub collection: String,
     pub score: f64,
+}
+
+impl Scored for RankedItem {
+    fn score(&self) -> f64 {
+        self.score
+    }
 }
 
 #[derive(Debug, Serialize)]

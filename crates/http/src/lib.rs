@@ -42,13 +42,10 @@ use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock, Semaphore};
 use tower_http::cors::CorsLayer;
 
-use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
-use opencode_mem_llm::LlmClient;
 use opencode_mem_service::{
     KnowledgeService, ObservationService, QueueService, SearchService, SessionService,
 };
-use opencode_mem_storage::StorageBackend;
 
 pub use api_types::{ReadinessResponse, Settings, VersionResponse};
 pub use handlers::queue_processor::{run_startup_recovery, start_background_processor};
@@ -90,13 +87,9 @@ pub fn start_compression_pipeline(infinite_mem: Arc<InfiniteMemory>) {
 
 /// Shared application state for all HTTP handlers.
 ///
-/// Contains database connections, LLM client, and service instances.
+/// Contains service instances and infrastructure (SSE, semaphore, settings).
 /// Wrapped in `Arc` for thread-safe sharing across handlers.
 pub struct AppState {
-    /// Storage backend (SQLite or PostgreSQL)
-    pub storage: Arc<StorageBackend>,
-    /// LLM client for AI operations (compression, knowledge extraction)
-    pub llm: Arc<LlmClient>,
     /// Semaphore limiting concurrent queue processing
     pub semaphore: Arc<Semaphore>,
     /// Broadcast channel for SSE real-time updates
@@ -117,8 +110,6 @@ pub struct AppState {
     pub search_service: Arc<SearchService>,
     /// Service for pending message queue operations
     pub queue_service: Arc<QueueService>,
-    /// Optional embedding service for semantic search
-    pub embeddings: Option<Arc<EmbeddingService>>,
 }
 
 pub fn create_router(state: Arc<AppState>) -> Router {
