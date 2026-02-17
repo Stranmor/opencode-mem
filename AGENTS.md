@@ -88,14 +88,13 @@ crates/
 - ~~PG noise_level default mismatch~~ — PG migration default changed to `'medium'`, existing `'normal'` rows migrated
 - **Migration skips embeddings** — `migrate` command (SQLite→PG) doesn't transfer vector embeddings. Semantic search breaks until manual backfill.
 - ~~SQLite merge_into_existing deadlock risk~~ — `merge_into_existing` now uses `TransactionBehavior::Immediate` to prevent SQLITE_BUSY in WAL mode
-- **Queue processor UUID collision** — UUID v5 based on `pending_messages.id` (DB row ID). If queue table is truncated while observations persist, new messages reuse old IDs → colliding UUIDs → silent data loss.
+- ~~Queue processor UUID collision~~ — UUID v5 now generated from content hash (tool_name + session_id + tool_response + created_at_epoch) instead of DB row ID. Table truncation no longer causes UUID collisions.
 - ~~Privacy filter bypass in save_memory~~ — `filter_private_content` now applied in `save_memory` before observation creation
 - ~~Blocking I/O in session_service~~ — replaced `std::process::Command` with `tokio::process::Command`
-- **Phantom observation return after dedup merge** — `process` and `save_memory` return the local Observation even when merged into existing via dedup. Caller gets temporary ID that doesn't exist in DB.
-- **Infinite memory compression pipeline starvation** — `run_full_compression` fetches fixed batch (100) of unaggregated summaries across sessions. If distributed across many sessions, no single session meets threshold → pipeline stalls.
+- ~~Phantom observation return after dedup merge~~ — `persist_and_notify` now returns `Option<(Observation, bool)>`: after dedup merge, fetches the actual merged observation from DB via `get_by_id`. Callers (`process`, `save_memory`, `compress_and_save`) receive the real persisted entity, not a phantom with temporary ID.
 - ~~PG search_by_file uses LIKE on JSONB text~~ — `search_by_file` now uses `jsonb_array_elements_text` to search within JSONB arrays properly
 - ~~merge_into_existing incomplete field update~~ — Updates all merge-relevant fields including `noise_reason`, `prompt_number`, `discovery_tokens`
-- **PG save_observation dead error handling** — `ON CONFLICT (id) DO NOTHING` suppresses constraint violation, making the explicit SQLSTATE 23505 error match arm unreachable.
+- ~~PG save_observation dead error handling~~ — Removed unreachable SQLSTATE 23505 match arm; `ON CONFLICT (id) DO NOTHING` already handles duplicates via `rows_affected() == 0` → `Ok(false)`.
 - **Privacy filter fallback leaks unfiltered data** — ~~In `store_infinite_memory` and `compress_and_save`, `serde_json::from_str(&filtered).unwrap_or(tool_call.input.clone())` falls back to the original unfiltered input if the filter corrupts JSON structure, bypassing the security filter entirely.~~ **RESOLVED:** Fallback now returns `Value::Null` with warning log instead of unfiltered input.
 - ~~Sequential LLM calls in observation process~~ — `extract_knowledge` and `store_infinite_memory` now run concurrently via `tokio::join!`
 - ~~Injection cleanup only on startup~~ — `cleanup_old_injections` now runs periodically (~hourly) in the background processor loop
@@ -105,6 +104,7 @@ crates/
 - **No DB path env var** — `get_db_path()` in CLI hardcodes `~/.local/share/opencode-memory/memory.db`. No env var to override. Makes it hard to point at different DB files (e.g., for remote backfill).
 
 ### Resolved
+- ~~Infinite memory compression pipeline starvation~~ — `run_full_compression` now queries per-session via `get_sessions_with_unaggregated_*` + `get_unaggregated_*_for_session`, eliminating fixed cross-session batch that caused threshold starvation
 - ~~Code Duplication in observation_service.rs~~ — extracted shared `persist_and_notify` method
 - ~~Blocking I/O in observation_service.rs~~ — embedding calls wrapped in `spawn_blocking`
 - ~~Data Loss on Update in knowledge.rs~~ — implemented provenance merging logic
