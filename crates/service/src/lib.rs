@@ -27,3 +27,8 @@ pub use observation_service::ObservationService;
 pub use queue_service::QueueService;
 pub use search_service::SearchService;
 pub use session_service::SessionService;
+
+// Re-export storage types used by HTTP handlers so they don't need direct storage dependency.
+pub use opencode_mem_storage::{
+    default_visibility_timeout_secs, PaginatedResult, PendingMessage, QueueStats, StorageStats,
+};

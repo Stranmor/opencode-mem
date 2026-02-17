@@ -1,10 +1,10 @@
-use std::process::Command;
 use std::sync::Arc;
 
 use opencode_mem_core::{Observation, Session, SessionStatus};
 use opencode_mem_llm::LlmClient;
 use opencode_mem_storage::traits::{ObservationStore, SessionStore, SummaryStore};
 use opencode_mem_storage::StorageBackend;
+use tokio::process::Command;
 
 use crate::observation_service::ObservationService;
 
@@ -97,7 +97,7 @@ impl SessionService {
         &self,
         content_session_id: &str,
     ) -> anyhow::Result<Vec<Observation>> {
-        let output = Command::new("opencode").args(["export", content_session_id]).output()?;
+        let output = Command::new("opencode").args(["export", content_session_id]).output().await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
