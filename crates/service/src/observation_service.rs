@@ -209,6 +209,7 @@ impl ObservationService {
         project: Option<&str>,
     ) -> anyhow::Result<Option<Observation>> {
         let text = text.trim();
+        let text = &filter_injected_memory(text);
         if text.is_empty() {
             anyhow::bail!("Text is required for save_memory");
         }

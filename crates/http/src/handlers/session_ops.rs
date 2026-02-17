@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::http::StatusCode;
-use opencode_mem_core::{Session, SessionStatus, ToolCall};
+use opencode_mem_core::{filter_injected_memory, Session, SessionStatus, ToolCall};
 
 use crate::api_types::{SessionInitResponse, SessionObservationsResponse};
 use crate::AppState;
@@ -47,7 +47,14 @@ pub(crate) fn spawn_observation_processing(
     observations: Vec<ToolCall>,
 ) -> SessionObservationsResponse {
     let count = observations.len();
-    for tool_call in observations {
+    for mut tool_call in observations {
+        tool_call.output = filter_injected_memory(&tool_call.output);
+        if let Ok(input_str) = serde_json::to_string(&tool_call.input) {
+            let filtered = filter_injected_memory(&input_str);
+            if let Ok(parsed) = serde_json::from_str(&filtered) {
+                tool_call.input = parsed;
+            }
+        }
         let id = uuid::Uuid::new_v4().to_string();
         let service = state.observation_service.clone();
         let semaphore = state.semaphore.clone();

@@ -82,8 +82,10 @@ fn build_observation_request(
     }
     let output_str = filter_injected_memory(&output_str);
     let tool_name = tool.unwrap_or_else(|| "unknown".to_owned());
-    let input: Option<serde_json::Value> =
-        input_json.as_ref().and_then(|s| serde_json::from_str(s).ok());
+    let input: Option<serde_json::Value> = input_json
+        .as_ref()
+        .map(|s| filter_injected_memory(s))
+        .and_then(|s| serde_json::from_str(&s).ok());
     Ok(ObservationHookRequest::new(tool_name, session_id, None, project, input, output_str))
 }
 
