@@ -284,4 +284,26 @@ pub trait EmbeddingStore: Send + Sync {
         threshold: f32,
         limit: usize,
     ) -> Result<Vec<SimilarMatch>>;
+
+    /// Get embeddings for specific observation IDs.
+    ///
+    /// Returns `(observation_id, embedding_vector)` pairs for IDs that have embeddings.
+    async fn get_embeddings_for_ids(&self, ids: &[String]) -> Result<Vec<(String, Vec<f32>)>>;
+}
+
+/// Injection tracking for dedup (records which observations were injected into context).
+#[async_trait]
+pub trait InjectionStore: Send + Sync {
+    /// Record that the given observation IDs were injected for a session.
+    async fn save_injected_observations(
+        &self,
+        session_id: &str,
+        observation_ids: &[String],
+    ) -> Result<()>;
+
+    /// Get all injected observation IDs for a session.
+    async fn get_injected_observation_ids(&self, session_id: &str) -> Result<Vec<String>>;
+
+    /// Delete injections older than `older_than_hours`. Returns count deleted.
+    async fn cleanup_old_injections(&self, older_than_hours: u32) -> Result<u64>;
 }
