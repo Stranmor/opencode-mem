@@ -62,6 +62,11 @@ impl ObservationService {
         // observe hook captures tool output containing these blocks →
         // without filtering, they'd be re-processed and re-stored → infinite loop.
         let filtered_output = filter_injected_memory(&tool_call.output);
+        let filtered_input = {
+            let input_str = serde_json::to_string(&tool_call.input).unwrap_or_default();
+            let filtered = filter_injected_memory(&input_str);
+            serde_json::from_str(&filtered).unwrap_or(tool_call.input.clone())
+        };
 
         let input = ObservationInput::new(
             tool_call.tool.clone(),
@@ -70,7 +75,7 @@ impl ObservationService {
             ToolOutput::new(
                 format!("Observation from {}", tool_call.tool),
                 filtered_output.clone(),
-                tool_call.input.clone(),
+                filtered_input,
             ),
         );
 
@@ -174,7 +179,7 @@ impl ObservationService {
                 filter_injected_memory(&filter_private_content(&tool_call.output));
             let filtered_input = {
                 let input_str = serde_json::to_string(&tool_call.input).unwrap_or_default();
-                let filtered = filter_private_content(&input_str);
+                let filtered = filter_injected_memory(&filter_private_content(&input_str));
                 serde_json::from_str(&filtered).unwrap_or(tool_call.input.clone())
             };
             let event = tool_event(

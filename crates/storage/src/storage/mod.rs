@@ -103,7 +103,7 @@ pub(crate) fn map_search_result(
     };
     let score: f64 = match score_col {
         Some(idx) => row.get(idx)?,
-        None => 1.0,
+        None => 0.0,
     };
     Ok(opencode_mem_core::SearchResult::new(
         row.get(0)?,
