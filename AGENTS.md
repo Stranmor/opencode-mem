@@ -117,7 +117,7 @@ crates/
 - ~~pg_storage.rs monolith (1826 lines)~~ — split into modular directory: mod.rs + 9 domain modules
 - ~~4-way SPOT violation in save+embed~~ — centralized through ObservationService::save_observation()
 - ~~Blocking async in embedding calls~~ — wrapped in spawn_blocking
-- ~~~70 unsafe `as` casts in pg_storage~~ — replaced with TryFrom/checked conversions (3 intentional casts with #[allow(reason)])
+- ~~\~70 unsafe `as` casts in pg_storage~~ — replaced with TryFrom/checked conversions (3 intentional casts with #[allow(reason)])
 - ~~sqlite_async.rs boilerplate (62 self.clone())~~ — delegate! macro, 483→336 lines
 - ~~Zero-vector embedding corruption~~ — guard in store_embedding + find_similar (both SQLite + PG)
 - ~~Stale embedding after dedup merge~~ — re-generate from merged content
