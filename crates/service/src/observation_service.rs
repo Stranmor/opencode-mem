@@ -33,9 +33,11 @@ impl ObservationService {
         event_tx: broadcast::Sender<String>,
         embeddings: Option<Arc<EmbeddingService>>,
     ) -> Self {
-        let dedup_threshold = env_parse_with_default("OPENCODE_MEM_DEDUP_THRESHOLD", 0.92_f32);
+        let dedup_threshold =
+            env_parse_with_default("OPENCODE_MEM_DEDUP_THRESHOLD", 0.92_f32).clamp(0.0, 1.0);
         let injection_dedup_threshold =
-            env_parse_with_default("OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD", 0.80_f32);
+            env_parse_with_default("OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD", 0.80_f32)
+                .clamp(0.0, 1.0);
         if injection_dedup_threshold > 0.0 && embeddings.is_none() {
             tracing::warn!(
                 threshold = %injection_dedup_threshold,

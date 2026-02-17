@@ -263,10 +263,6 @@ impl SearchStore for PgStorage {
         rows.iter().map(row_to_search_result).collect()
     }
 
-    #[expect(
-        clippy::too_many_lines,
-        reason = "hybrid v2 combines FTS + vector scoring in two passes"
-    )]
     async fn hybrid_search_v2(
         &self,
         query: &str,
