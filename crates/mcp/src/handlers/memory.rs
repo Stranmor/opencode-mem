@@ -341,7 +341,7 @@ mod tests {
     #[tokio::test]
     #[expect(clippy::unwrap_used, reason = "test code")]
     async fn test_search_with_date_filters() {
-        let (storage, backend, _dir) = setup_storage();
+        let (storage, _backend, _dir) = setup_storage();
 
         let obs = Observation::builder(
             "obs-date-1".to_owned(),
