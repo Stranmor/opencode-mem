@@ -1,9 +1,9 @@
 use anyhow::Result;
-use opencode_mem_core::{is_zero_vector, Observation, SimilarMatch};
+use opencode_mem_core::{is_zero_vector, Observation, SimilarMatch, EMBEDDING_DIMENSION};
 use rusqlite::params;
 use zerocopy::IntoBytes;
 
-use super::{get_conn, log_row_error, Storage};
+use super::{coerce_to_sql, get_conn, log_row_error, Storage};
 
 impl Storage {
     /// Stores an embedding vector for an observation.
@@ -11,6 +11,12 @@ impl Storage {
     /// # Errors
     /// Returns error if database operation fails.
     pub fn store_embedding(&self, observation_id: &str, embedding: &[f32]) -> Result<()> {
+        if embedding.len() != EMBEDDING_DIMENSION {
+            anyhow::bail!(
+                "embedding dimension mismatch: expected {EMBEDDING_DIMENSION}, got {}",
+                embedding.len()
+            );
+        }
         if is_zero_vector(embedding) {
             tracing::warn!(
                 observation_id,
@@ -41,12 +47,12 @@ impl Storage {
     /// Returns error if database operation fails.
     pub fn clear_embeddings(&self) -> Result<()> {
         let conn = get_conn(&self.pool)?;
-        conn.execute_batch(
+        conn.execute_batch(&format!(
             "DROP TABLE IF EXISTS observations_vec;
              CREATE VIRTUAL TABLE IF NOT EXISTS observations_vec USING vec0(
-                 embedding float[384] distance_metric=cosine
+                 embedding float[{EMBEDDING_DIMENSION}] distance_metric=cosine
              );",
-        )?;
+        ))?;
         Ok(())
     }
 
@@ -212,4 +218,58 @@ impl Storage {
 
         Ok(matches)
     }
+
+    pub fn get_embeddings_for_ids(&self, ids: &[String]) -> Result<Vec<(String, Vec<f32>)>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = get_conn(&self.pool)?;
+        let mut results = Vec::new();
+        for chunk in ids.chunks(opencode_mem_core::MAX_BATCH_IDS) {
+            let placeholders = chunk.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+            let sql = format!(
+                "SELECT o.id, v.embedding
+                   FROM observations o
+                   JOIN observations_vec v ON o.rowid = v.rowid
+                  WHERE o.id IN ({placeholders})"
+            );
+            let stmt_result = conn.prepare(&sql);
+            let mut stmt = match stmt_result {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!("Vector table unavailable for get_embeddings_for_ids: {}", e);
+                    return Ok(Vec::new());
+                },
+            };
+            let sql_params: Vec<&dyn rusqlite::ToSql> = chunk.iter().map(coerce_to_sql).collect();
+            let rows = stmt.query_map(sql_params.as_slice(), |row| {
+                let id: String = row.get(0)?;
+                let blob: Vec<u8> = row.get(1)?;
+                Ok((id, blob))
+            })?;
+
+            for row in rows {
+                match row {
+                    Ok((id, blob)) => {
+                        let floats = blob_to_f32_vec(&blob);
+                        results.push((id, floats));
+                    },
+                    Err(e) => {
+                        tracing::warn!("get_embeddings_for_ids row error: {}", e);
+                    },
+                }
+            }
+        }
+        Ok(results)
+    }
+}
+
+fn blob_to_f32_vec(blob: &[u8]) -> Vec<f32> {
+    blob.chunks_exact(4)
+        .map(|chunk| {
+            let mut arr = [0u8; 4];
+            arr.copy_from_slice(chunk);
+            f32::from_le_bytes(arr)
+        })
+        .collect()
 }

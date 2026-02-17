@@ -26,6 +26,7 @@
 )]
 
 mod embeddings;
+mod injections;
 mod knowledge;
 mod knowledge_mapping;
 mod observations;
