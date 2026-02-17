@@ -9,9 +9,44 @@ use super::{build_fts_query, get_conn, log_row_error, parse_json, Storage};
 impl Storage {
     /// Save new knowledge entry.
     ///
+    /// Retries on unique constraint violation (race condition where two
+    /// concurrent transactions both find no existing row and both INSERT).
+    ///
     /// # Errors
-    /// Returns error if database insert fails.
+    /// Returns error if database insert fails after retries.
     pub fn save_knowledge(&self, input: KnowledgeInput) -> Result<GlobalKnowledge> {
+        for attempt in 0u8..3u8 {
+            match self.save_knowledge_inner(&input) {
+                Ok(knowledge) => return Ok(knowledge),
+                Err(e) => {
+                    let is_constraint = e.downcast_ref::<rusqlite::Error>().is_some_and(|re| {
+                        matches!(
+                            re,
+                            rusqlite::Error::SqliteFailure(
+                                rusqlite::ffi::Error {
+                                    code: rusqlite::ffi::ErrorCode::ConstraintViolation,
+                                    ..
+                                },
+                                _,
+                            )
+                        )
+                    });
+                    if is_constraint && attempt < 2 {
+                        tracing::debug!(
+                            title = %input.title,
+                            attempt,
+                            "knowledge save hit unique constraint, retrying"
+                        );
+                        continue;
+                    }
+                    return Err(e);
+                },
+            }
+        }
+        unreachable!()
+    }
+
+    fn save_knowledge_inner(&self, input: &KnowledgeInput) -> Result<GlobalKnowledge> {
         let mut conn = get_conn(&self.pool)?;
         let tx = conn.transaction()?;
 
@@ -41,19 +76,19 @@ impl Storage {
         let now = Utc::now().to_rfc3339();
 
         if let Some(mut row) = existing {
-            for t in input.triggers {
-                if !row.triggers.contains(&t) {
-                    row.triggers.push(t);
+            for t in &input.triggers {
+                if !row.triggers.contains(t) {
+                    row.triggers.push(t.clone());
                 }
             }
-            if let Some(p) = input.source_project {
-                if !row.source_projects.contains(&p) {
-                    row.source_projects.push(p);
+            if let Some(ref p) = input.source_project {
+                if !row.source_projects.contains(p) {
+                    row.source_projects.push(p.clone());
                 }
             }
-            if let Some(o) = input.source_observation {
-                if !row.source_observations.contains(&o) {
-                    row.source_observations.push(o);
+            if let Some(ref o) = input.source_observation {
+                if !row.source_observations.contains(o) {
+                    row.source_observations.push(o.clone());
                 }
             }
 
@@ -83,10 +118,10 @@ impl Storage {
 
             Ok(GlobalKnowledge::new(
                 row.id,
-                input.knowledge_type,
-                input.title,
-                input.description,
-                input.instructions,
+                input.knowledge_type.clone(),
+                input.title.clone(),
+                input.description.clone(),
+                input.instructions.clone(),
                 row.triggers,
                 row.source_projects,
                 row.source_observations,
@@ -139,13 +174,13 @@ impl Storage {
 
             Ok(GlobalKnowledge::new(
                 id,
-                input.knowledge_type,
-                input.title,
-                input.description,
-                input.instructions,
-                input.triggers,
-                input.source_project.map(|p| vec![p]).unwrap_or_default(),
-                input.source_observation.map(|o| vec![o]).unwrap_or_default(),
+                input.knowledge_type.clone(),
+                input.title.clone(),
+                input.description.clone(),
+                input.instructions.clone(),
+                input.triggers.clone(),
+                input.source_project.clone().map(|p| vec![p]).unwrap_or_default(),
+                input.source_observation.clone().map(|o| vec![o]).unwrap_or_default(),
                 0.5,
                 0,
                 None,

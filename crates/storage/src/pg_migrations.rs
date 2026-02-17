@@ -415,6 +415,14 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         .execute(pool)
         .await?;
 
+    // Unique index on global_knowledge title (case-insensitive) to prevent
+    // duplicate knowledge entries from concurrent saves (race condition fix).
+    sqlx::query(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_title_unique ON global_knowledge (LOWER(title))",
+    )
+    .execute(pool)
+    .await?;
+
     tracing::info!("PostgreSQL migrations completed");
     Ok(())
 }

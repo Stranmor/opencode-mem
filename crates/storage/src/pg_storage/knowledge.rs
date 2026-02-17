@@ -6,9 +6,8 @@ use crate::traits::KnowledgeStore;
 use async_trait::async_trait;
 use opencode_mem_core::{KnowledgeInput, KnowledgeSearchResult};
 
-#[async_trait]
-impl KnowledgeStore for PgStorage {
-    async fn save_knowledge(&self, input: KnowledgeInput) -> Result<GlobalKnowledge> {
+impl PgStorage {
+    async fn save_knowledge_inner(&self, input: &KnowledgeInput) -> Result<GlobalKnowledge> {
         let mut tx = self.pool.begin().await?;
         let now = Utc::now();
 
@@ -85,10 +84,10 @@ impl KnowledgeStore for PgStorage {
 
             Ok(GlobalKnowledge::new(
                 id,
-                input.knowledge_type,
-                input.title,
-                input.description,
-                input.instructions,
+                input.knowledge_type.clone(),
+                input.title.clone(),
+                input.description.clone(),
+                input.instructions.clone(),
                 triggers,
                 source_projects,
                 source_observations,
@@ -129,11 +128,11 @@ impl KnowledgeStore for PgStorage {
 
             Ok(GlobalKnowledge::new(
                 id,
-                input.knowledge_type,
-                input.title,
-                input.description,
-                input.instructions,
-                input.triggers,
+                input.knowledge_type.clone(),
+                input.title.clone(),
+                input.description.clone(),
+                input.instructions.clone(),
+                input.triggers.clone(),
                 source_projects,
                 source_observations,
                 0.5,
@@ -143,6 +142,33 @@ impl KnowledgeStore for PgStorage {
                 now.to_rfc3339(),
             ))
         }
+    }
+}
+
+#[async_trait]
+impl KnowledgeStore for PgStorage {
+    async fn save_knowledge(&self, input: KnowledgeInput) -> Result<GlobalKnowledge> {
+        for attempt in 0u8..3u8 {
+            match self.save_knowledge_inner(&input).await {
+                Ok(knowledge) => return Ok(knowledge),
+                Err(e) => {
+                    let is_unique_violation = e
+                        .downcast_ref::<sqlx::Error>()
+                        .and_then(|se| se.as_database_error())
+                        .is_some_and(|de| de.code().is_some_and(|c| c == "23505"));
+                    if is_unique_violation && attempt < 2 {
+                        tracing::debug!(
+                            title = %input.title,
+                            attempt,
+                            "knowledge save hit unique constraint, retrying"
+                        );
+                        continue;
+                    }
+                    return Err(e);
+                },
+            }
+        }
+        unreachable!()
     }
 
     async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>> {

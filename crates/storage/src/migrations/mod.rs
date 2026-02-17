@@ -12,6 +12,7 @@ mod v13;
 mod v14;
 mod v15;
 mod v16;
+mod v17;
 mod v2;
 mod v3;
 mod v4;
@@ -24,7 +25,7 @@ mod v9;
 use column_helpers::add_column_if_not_exists;
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: i32 = 16;
+pub const SCHEMA_VERSION: i32 = 17;
 
 #[expect(clippy::cognitive_complexity, reason = "Sequential migrations are inherently linear")]
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -142,6 +143,13 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
             "Running migration v16: injected_observations table for injection-aware dedup"
         );
         conn.execute_batch(v16::SQL)?;
+    }
+
+    if current_version < 17i32 {
+        tracing::info!(
+            "Running migration v17: unique index on global_knowledge title (race condition fix)"
+        );
+        conn.execute_batch(v17::SQL)?;
     }
 
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
