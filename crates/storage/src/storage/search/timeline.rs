@@ -22,7 +22,7 @@ impl Storage {
         let results: Vec<SearchResult> = match (from, to) {
             (Some(f), Some(t)) => {
                 let mut stmt = conn.prepare(
-                    "SELECT id, title, subtitle, observation_type FROM observations WHERE created_at >= ?1 AND created_at <= ?2 ORDER BY created_at DESC LIMIT ?3"
+                    "SELECT id, title, subtitle, observation_type, noise_level FROM observations WHERE created_at >= ?1 AND created_at <= ?2 ORDER BY created_at DESC LIMIT ?3"
                 )?;
                 let res: Vec<SearchResult> = stmt
                     .query_map(params![f, t, limit], |row| map_search_result(row, None))?
@@ -32,7 +32,7 @@ impl Storage {
             },
             (Some(f), None) => {
                 let mut stmt = conn.prepare(
-                    "SELECT id, title, subtitle, observation_type FROM observations WHERE created_at >= ?1 ORDER BY created_at DESC LIMIT ?2"
+                    "SELECT id, title, subtitle, observation_type, noise_level FROM observations WHERE created_at >= ?1 ORDER BY created_at DESC LIMIT ?2"
                 )?;
                 let res: Vec<SearchResult> = stmt
                     .query_map(params![f, limit], |row| map_search_result(row, None))?
@@ -42,7 +42,7 @@ impl Storage {
             },
             (None, Some(t)) => {
                 let mut stmt = conn.prepare(
-                    "SELECT id, title, subtitle, observation_type FROM observations WHERE created_at <= ?1 ORDER BY created_at DESC LIMIT ?2"
+                    "SELECT id, title, subtitle, observation_type, noise_level FROM observations WHERE created_at <= ?1 ORDER BY created_at DESC LIMIT ?2"
                 )?;
                 let res: Vec<SearchResult> = stmt
                     .query_map(params![t, limit], |row| map_search_result(row, None))?
@@ -52,7 +52,7 @@ impl Storage {
             },
             (None, None) => {
                 let mut stmt = conn.prepare(
-                    "SELECT id, title, subtitle, observation_type FROM observations ORDER BY created_at DESC LIMIT ?1"
+                    "SELECT id, title, subtitle, observation_type, noise_level FROM observations ORDER BY created_at DESC LIMIT ?1"
                 )?;
                 let res: Vec<SearchResult> = stmt
                     .query_map(params![limit], |row| map_search_result(row, None))?

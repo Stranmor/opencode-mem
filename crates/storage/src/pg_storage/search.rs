@@ -13,7 +13,8 @@ impl SearchStore for PgStorage {
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let tsquery = build_tsquery(query);
         if tsquery.is_empty() {
-            return self.get_recent(limit).await;
+            let recent = self.get_recent(limit).await?;
+            return Ok(recent.into_iter().map(|o| SearchResult::from_observation(&o)).collect());
         }
         let rows = sqlx::query(
             "SELECT id, title, subtitle, observation_type, noise_level,
@@ -34,7 +35,8 @@ impl SearchStore for PgStorage {
         let keywords: HashSet<String> = query.split_whitespace().map(str::to_lowercase).collect();
         let tsquery = build_tsquery(query);
         if tsquery.is_empty() {
-            return self.get_recent(limit).await;
+            let recent = self.get_recent(limit).await?;
+            return Ok(recent.into_iter().map(|o| SearchResult::from_observation(&o)).collect());
         }
 
         let rows = sqlx::query(
