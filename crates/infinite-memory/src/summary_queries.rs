@@ -33,6 +33,54 @@ pub async fn get_unaggregated_5min_summaries(pool: &PgPool, limit: i64) -> Resul
     Ok(rows.into_iter().map(row_to_summary).collect())
 }
 
+/// Get distinct session_ids that have unaggregated 5min summaries.
+pub async fn get_sessions_with_unaggregated_5min(pool: &PgPool) -> Result<Vec<Option<String>>> {
+    let rows: Vec<(Option<String>,)> = sqlx::query_as(
+        r#"
+        SELECT DISTINCT session_id
+        FROM summaries_5min
+        WHERE summary_hour_id IS NULL
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows.into_iter().map(|(sid,)| sid).collect())
+}
+
+/// Get all unaggregated 5min summaries for a specific session.
+pub async fn get_unaggregated_5min_for_session(
+    pool: &PgPool,
+    session_id: Option<&str>,
+) -> Result<Vec<Summary>> {
+    let rows = if let Some(sid) = session_id {
+        sqlx::query_as::<_, SummaryRow>(
+            r#"
+            SELECT id, ts_start, ts_end, session_id, project, content, event_count, entities
+            FROM summaries_5min
+            WHERE summary_hour_id IS NULL AND session_id = $1
+            ORDER BY ts_start ASC
+            "#,
+        )
+        .bind(sid)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query_as::<_, SummaryRow>(
+            r#"
+            SELECT id, ts_start, ts_end, session_id, project, content, event_count, entities
+            FROM summaries_5min
+            WHERE summary_hour_id IS NULL AND session_id IS NULL
+            ORDER BY ts_start ASC
+            "#,
+        )
+        .fetch_all(pool)
+        .await?
+    };
+
+    Ok(rows.into_iter().map(row_to_summary).collect())
+}
+
 pub async fn get_unaggregated_hour_summaries(pool: &PgPool, limit: i64) -> Result<Vec<Summary>> {
     let rows = sqlx::query_as::<_, SummaryRow>(
         r#"
@@ -46,6 +94,54 @@ pub async fn get_unaggregated_hour_summaries(pool: &PgPool, limit: i64) -> Resul
     .bind(limit)
     .fetch_all(pool)
     .await?;
+
+    Ok(rows.into_iter().map(row_to_summary).collect())
+}
+
+/// Get distinct session_ids that have unaggregated hour summaries.
+pub async fn get_sessions_with_unaggregated_hour(pool: &PgPool) -> Result<Vec<Option<String>>> {
+    let rows: Vec<(Option<String>,)> = sqlx::query_as(
+        r#"
+        SELECT DISTINCT session_id
+        FROM summaries_hour
+        WHERE summary_day_id IS NULL
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows.into_iter().map(|(sid,)| sid).collect())
+}
+
+/// Get all unaggregated hour summaries for a specific session.
+pub async fn get_unaggregated_hour_for_session(
+    pool: &PgPool,
+    session_id: Option<&str>,
+) -> Result<Vec<Summary>> {
+    let rows = if let Some(sid) = session_id {
+        sqlx::query_as::<_, SummaryRow>(
+            r#"
+            SELECT id, ts_start, ts_end, session_id, project, content, event_count, entities
+            FROM summaries_hour
+            WHERE summary_day_id IS NULL AND session_id = $1
+            ORDER BY ts_start ASC
+            "#,
+        )
+        .bind(sid)
+        .fetch_all(pool)
+        .await?
+    } else {
+        sqlx::query_as::<_, SummaryRow>(
+            r#"
+            SELECT id, ts_start, ts_end, session_id, project, content, event_count, entities
+            FROM summaries_hour
+            WHERE summary_day_id IS NULL AND session_id IS NULL
+            ORDER BY ts_start ASC
+            "#,
+        )
+        .fetch_all(pool)
+        .await?
+    };
 
     Ok(rows.into_iter().map(row_to_summary).collect())
 }
