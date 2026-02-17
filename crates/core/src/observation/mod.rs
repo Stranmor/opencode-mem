@@ -5,6 +5,8 @@ mod input;
 mod low_value_filter;
 
 mod dedup;
+#[cfg(test)]
+mod dedup_tests;
 mod merge;
 
 pub use builder::*;
