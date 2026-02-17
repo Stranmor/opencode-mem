@@ -41,7 +41,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
 
     let embeddings = match EmbeddingService::new() {
         Ok(emb) => {
-            tracing::info!("Embedding service initialized (384 dimensions)");
+            tracing::info!("Embedding service initialized (BGE-M3, 1024 dimensions)");
             Some(Arc::new(emb))
         },
         Err(e) => {

@@ -1,6 +1,6 @@
 //! Embedding generation for semantic search using fastembed-rs
 //!
-//! Provides local embedding generation using `AllMiniLML6V2` model (384 dimensions).
+//! Provides local embedding generation using `BGE-M3` model (1024 dimensions, 100+ languages).
 
 #![allow(clippy::missing_docs_in_private_items, reason = "Internal crate")]
 #![allow(clippy::implicit_return, reason = "Implicit return is idiomatic Rust")]
@@ -13,8 +13,8 @@ use fastembed::{InitOptions, TextEmbedding};
 use std::fmt::{Debug, Formatter, Result as FmtResult};
 use std::sync::Mutex;
 
-/// Embedding dimension for `AllMiniLML6V2` model
-pub const EMBEDDING_DIMENSION: usize = 384;
+/// Embedding dimension for `BGE-M3` model (re-exported from core)
+pub use opencode_mem_core::EMBEDDING_DIMENSION;
 
 /// Trait for embedding providers
 pub trait EmbeddingProvider: Send + Sync {
@@ -34,7 +34,7 @@ pub trait EmbeddingProvider: Send + Sync {
     fn dimension(&self) -> usize;
 }
 
-/// Embedding service using fastembed with `AllMiniLML6V2` model
+/// Embedding service using fastembed with `BGE-M3` multilingual model
 pub struct EmbeddingService {
     model: Mutex<TextEmbedding>,
 }
@@ -53,15 +53,15 @@ impl EmbeddingService {
     /// # Errors
     /// Returns error if model initialization fails
     pub fn new() -> Result<Self, EmbeddingError> {
-        let options = InitOptions::new(fastembed::EmbeddingModel::AllMiniLML6V2)
-            .with_show_download_progress(true);
+        let options =
+            InitOptions::new(fastembed::EmbeddingModel::BGEM3).with_show_download_progress(true);
 
         let model = TextEmbedding::try_new(options)
             .map_err(|e| EmbeddingError::ModelInit(e.to_string()))?;
 
         tracing::info!(
-            model = "AllMiniLML6V2",
-            dimension = 384i32,
+            model = "BGE-M3",
+            dimension = EMBEDDING_DIMENSION,
             "Embedding service initialized"
         );
 
@@ -103,6 +103,6 @@ mod tests {
     #[expect(clippy::expect_used, reason = "test code - panic on failure is acceptable")]
     fn test_embedding_dimension() {
         let service = EmbeddingService::new().expect("Failed to create service");
-        assert_eq!(service.dimension(), 384);
+        assert_eq!(service.dimension(), EMBEDDING_DIMENSION);
     }
 }

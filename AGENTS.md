@@ -41,7 +41,7 @@ Last reviewed commit: `b2ddf59db46cf380964379e9ba2d7279c67fc12b`
 |---------|--------|-------|
 | **Infinite Memory** | ✅ Ready | PostgreSQL + pgvector backend for long-term AGI memory. Session isolation, hierarchical summaries (5min→hour→day), content truncation. Enabled via INFINITE_MEMORY_URL. **Raw events are NEVER deleted** — drill-down API allows zooming from any summary back to original events. |
 | **Dynamic Memory** | ✅ Ready | Solves "static summaries" problem. **Deep Zoom:** 4 HTTP endpoints (`/api/infinite/expand_summary/:id`, `/time_range`, `/drill_hour/:id`, `/drill_minute/:id`) for drilling down from summaries to raw events. **Structured Metadata:** `SummaryEntities` (files, functions, libraries, errors, decisions) extracted via `response_format: json_object`. Enables fact-based search even when text summary is vague. |
-| **Semantic Search** | ✅ Ready | fastembed-rs (AllMiniLML6V2, 384d). SQLite: sqlite-vec. PostgreSQL: pgvector. Hybrid search: FTS BM25 (50%) + vector similarity (50%). HTTP endpoint: `/semantic-search?q=...`. |
+| **Semantic Search** | ✅ Ready | fastembed-rs (BGE-M3, 1024d, 100+ languages). SQLite: sqlite-vec. PostgreSQL: pgvector. Hybrid search: FTS BM25 (50%) + vector similarity (50%). HTTP endpoint: `/semantic-search?q=...`. |
 
 ## Upstream Sync
 
@@ -56,7 +56,7 @@ Last reviewed commit: `b2ddf59db46cf380964379e9ba2d7279c67fc12b`
 crates/
 ├── core/        # Domain types (Observation, Session, etc.)
 ├── storage/     # SQLite + FTS5 + migrations
-├── embeddings/  # Vector embeddings (fastembed AllMiniLML6V2)
+├── embeddings/  # Vector embeddings (fastembed BGE-M3, 1024d, multilingual)
 ├── search/      # Hybrid search (FTS + keyword + semantic)
 ├── llm/         # LLM compression (Antigravity API)
 ├── service/     # Business logic layer (ObservationService, SessionService, QueueService)

@@ -2284,6 +2284,7 @@ name = "opencode-mem-embeddings"
 version = "0.1.0"
 dependencies = [
  "fastembed",
+ "opencode-mem-core",
  "thiserror 2.0.18",
  "tracing",
 ]

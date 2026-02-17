@@ -26,3 +26,6 @@ pub const DEFAULT_QUERY_LIMIT: usize = 20;
 /// Error message when Infinite Memory is not configured.
 pub const INFINITE_MEMORY_NOT_CONFIGURED: &str =
     "Infinite Memory not configured (INFINITE_MEMORY_URL not set)";
+
+/// Embedding vector dimension (BGE-M3 model: 1024d, 100+ languages).
+pub const EMBEDDING_DIMENSION: usize = 1024;

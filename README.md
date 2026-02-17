@@ -15,7 +15,7 @@ SQLite (default) or PostgreSQL (opt-in). When `DATABASE_URL` is set, the app aut
 crates/
   core/              Domain types (Observation, Session, etc.)
   storage/           Database layer — SQLite + FTS5 / PostgreSQL + pgvector
-  embeddings/        Vector embeddings (fastembed AllMiniLML6V2, 384d)
+  embeddings/        Vector embeddings (fastembed BGE-M3, 1024d, multilingual)
   search/            Hybrid search (FTS BM25 50% + vector similarity 50%)
   llm/               LLM compression (Antigravity API)
   service/           Business logic (ObservationService, SessionService)

@@ -1,6 +1,7 @@
 #![expect(clippy::unwrap_used, reason = "test code")]
 
 use super::{create_test_observation, create_test_storage};
+use opencode_mem_core::EMBEDDING_DIMENSION;
 
 #[test]
 fn test_storage_new() {
@@ -93,14 +94,15 @@ fn test_store_embedding_overwrites_existing() {
     assert!(storage.save_observation(&obs).unwrap());
 
     // given: an observation with an existing embedding
-    let embedding_v1: Vec<f32> = (0..384).map(|i: u16| f32::from(i) * 0.001).collect();
+    let embedding_v1: Vec<f32> = (0..EMBEDDING_DIMENSION).map(|i| (i as f32) * 0.001).collect();
     storage.store_embedding("obs-emb-1", &embedding_v1).unwrap();
     let without = storage.get_observations_without_embeddings(100).unwrap();
     assert!(without.iter().all(|o| o.id != "obs-emb-1"));
 
     // when: overwriting with a different embedding
-    let embedding_v2: Vec<f32> =
-        (0..384_u16).map(|i| f32::from(384_u16.saturating_sub(i)) * 0.001).collect();
+    let embedding_v2: Vec<f32> = (0..EMBEDDING_DIMENSION)
+        .map(|i| ((EMBEDDING_DIMENSION.saturating_sub(i)) as f32) * 0.001)
+        .collect();
     storage.store_embedding("obs-emb-1", &embedding_v2).unwrap();
 
     // then: exactly one embedding exists (atomic replace, no duplicate)

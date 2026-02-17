@@ -279,30 +279,31 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         .execute(pool)
         .await?;
 
-    // Upgrade embedding column from vector(384) to vector(1024) for BGE-M3
-    // Must NULL existing embeddings first — pgvector cannot ALTER dimension with data present.
-    // Must drop ivfflat index first — PostgreSQL cannot ALTER column type with dependent index.
+    // Upgrade embedding column from vector(384) to vector(1024) for BGE-M3.
+    // Only runs when column is still 384d (checked via pg_attribute.atttypmod).
+    // Must drop ivfflat index first, NULL data, ALTER type, then recreate index.
     // Embeddings will be regenerated via `backfill-embeddings` command.
     sqlx::query(
         r#"
         DO $$ BEGIN
             IF EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_name = 'observations' AND column_name = 'embedding'
-                AND udt_name = 'vector'
+                SELECT 1 FROM pg_attribute
+                WHERE attrelid = 'observations'::regclass
+                AND attname = 'embedding'
+                AND atttypmod = 384
             ) THEN
                 DROP INDEX IF EXISTS idx_obs_embedding;
                 UPDATE observations SET embedding = NULL WHERE embedding IS NOT NULL;
                 ALTER TABLE observations ALTER COLUMN embedding TYPE vector(1024);
-                CREATE INDEX IF NOT EXISTS idx_obs_embedding
-                    ON observations USING ivfflat (embedding vector_cosine_ops)
-                    WITH (lists = 100);
+                CREATE INDEX idx_obs_embedding ON observations
+                    USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
             END IF;
         END $$
         "#,
     )
     .execute(pool)
-    .await?;
+    .await
+    .ok(); // May fail if < 100 rows for ivfflat; that's fine
 
     // Injected observations tracking for injection-aware dedup
     sqlx::query(

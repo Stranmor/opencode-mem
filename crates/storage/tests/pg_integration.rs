@@ -6,7 +6,8 @@
 
 use chrono::Utc;
 use opencode_mem_core::{
-    KnowledgeInput, KnowledgeType, NoiseLevel, Observation, ObservationType, Session, SessionStatus,
+    KnowledgeInput, KnowledgeType, NoiseLevel, Observation, ObservationType, Session,
+    SessionStatus, EMBEDDING_DIMENSION,
 };
 use opencode_mem_storage::traits::{
     EmbeddingStore, KnowledgeStore, ObservationStore, PendingQueueStore, SearchStore, SessionStore,
@@ -332,8 +333,7 @@ async fn pg_store_and_search_embedding() {
     let obs = make_observation(&id, "pg-test-session", &project, &title);
     storage.save_observation(&obs).await.unwrap();
 
-    // Create a 384-dimensional test vector (AllMiniLML6V2 dimensions)
-    let mut embedding = vec![0.0_f32; 384];
+    let mut embedding = vec![0.0_f32; EMBEDDING_DIMENSION];
     embedding[0] = 1.0;
     embedding[1] = 0.5;
     embedding[2] = 0.25;

@@ -31,9 +31,9 @@ Full feature parity with [claude-mem](https://github.com/thedotmack/claude-mem).
 
 ## Phase 5: Vector Search (Embeddings)
 
-- [ ] sqlite-vec integration
-- [ ] Local embedding model (all-MiniLM-L6-v2 via candle/ort)
-- [ ] Hybrid search (FTS5 + vector similarity)
+- [x] sqlite-vec integration
+- [x] Local embedding model (BGE-M3 via fastembed/ort, 1024d, multilingual)
+- [x] Hybrid search (FTS5 + vector similarity)
 - [ ] Granular sync (each field → separate embedding)
 
 ## Phase 6: 3-Layer Search Pattern

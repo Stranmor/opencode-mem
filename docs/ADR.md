@@ -43,11 +43,11 @@
 
 ## ADR-003: Local Embedding Model
 
-**Status:** Accepted
+**Status:** Superseded by ADR-003a
 
 **Context:** Need embedding model for vector search.
 
-**Decision:** Use `all-MiniLM-L6-v2` (384 dim) via candle or onnxruntime.
+**Decision:** ~~Use `all-MiniLM-L6-v2` (384 dim) via candle or onnxruntime.~~ Replaced by BGE-M3.
 
 **Rationale:**
 - Small model (~50MB)
@@ -58,6 +58,29 @@
 **Alternatives considered:**
 - OpenAI API embeddings (rejected: API dependency, cost)
 - Larger models (rejected: overkill for this use case)
+
+---
+
+## ADR-003a: Multilingual Embedding Model (BGE-M3)
+
+**Status:** Accepted
+
+**Context:** all-MiniLM-L6-v2 (384d) is English-only. Russian-language observations and knowledge entries produce low-quality embeddings, degrading semantic search for multilingual content.
+
+**Decision:** Use `BGE-M3` (1024 dim, 8192 token context) via fastembed-rs/onnxruntime.
+
+**Rationale:**
+- 100+ languages including Russian — top scores on RusBEIR and ruMTEB benchmarks
+- 1024 dimensions — higher fidelity vector representation
+- 8192 token context — captures long observations without truncation
+- Local inference, no API dependency
+- fastembed-rs native support (`EmbeddingModel::BGEM3`)
+
+**Tradeoffs:**
+- Larger model (~1.1GB vs ~50MB) — acceptable, downloaded once and cached
+- Slower inference (~50ms vs ~10ms) — acceptable for write-path embedding generation
+
+**Migration:** SQLite migration v15 drops and recreates vec0 table with 1024 dimensions. PostgreSQL ALTER COLUMN from vector(384) to vector(1024). Existing embeddings must be regenerated via `backfill-embeddings` command.
 
 ---
 
