@@ -96,6 +96,8 @@ crates/
 - **PG search_by_file uses LIKE on JSONB text** — `search_by_file` casts `files_read::text` and uses `LIKE`, which is fragile. Should use JSONB containment operator `@>`.
 - **merge_into_existing incomplete field update** — Updates `noise_level` but not `noise_reason`, `prompt_number`, or `discovery_tokens`. Merged observations may have inconsistent metadata.
 - **PG save_observation dead error handling** — `ON CONFLICT (id) DO NOTHING` suppresses constraint violation, making the explicit SQLSTATE 23505 error match arm unreachable.
+- **Privacy filter fallback leaks unfiltered data** — In `store_infinite_memory` and `compress_and_save`, `serde_json::from_str(&filtered).unwrap_or(tool_call.input.clone())` falls back to the original unfiltered input if the filter corrupts JSON structure, bypassing the security filter entirely.
+- **Sequential LLM calls in observation process** — `extract_knowledge` and `store_infinite_memory` are awaited sequentially in `process()`, adding latency to the critical path. Should be spawned as background tasks.
 
 ### Resolved
 - ~~Code Duplication in observation_service.rs~~ — extracted shared `persist_and_notify` method
