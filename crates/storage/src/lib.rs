@@ -47,8 +47,8 @@ pub use pg_storage::PgStorage;
 #[cfg(feature = "sqlite")]
 pub use storage::Storage;
 pub use traits::{
-    EmbeddingStore, KnowledgeStore, ObservationStore, PendingQueueStore, PromptStore, SearchStore,
-    SessionStore, StatsStore, SummaryStore,
+    EmbeddingStore, InjectionStore, KnowledgeStore, ObservationStore, PendingQueueStore,
+    PromptStore, SearchStore, SessionStore, StatsStore, SummaryStore,
 };
 #[cfg(feature = "sqlite")]
 pub use vec_init::init_sqlite_vec;

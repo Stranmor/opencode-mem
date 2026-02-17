@@ -9,8 +9,8 @@ use opencode_mem_core::{
 
 use crate::pending_queue::{PaginatedResult, PendingMessage, QueueStats, StorageStats};
 use crate::traits::{
-    EmbeddingStore, KnowledgeStore, ObservationStore, PendingQueueStore, PromptStore, SearchStore,
-    SessionStore, StatsStore, SummaryStore,
+    EmbeddingStore, InjectionStore, KnowledgeStore, ObservationStore, PendingQueueStore,
+    PromptStore, SearchStore, SessionStore, StatsStore, SummaryStore,
 };
 use crate::Storage;
 
@@ -340,5 +340,27 @@ impl EmbeddingStore for Storage {
         limit: usize,
     ) -> Result<Vec<SimilarMatch>> {
         delegate!(self, find_similar_many, @slice embedding, @val threshold, @val limit)
+    }
+    async fn get_embeddings_for_ids(&self, ids: &[String]) -> Result<Vec<(String, Vec<f32>)>> {
+        delegate!(self, get_embeddings_for_ids, @slice ids)
+    }
+}
+
+// ── InjectionStore ──────────────────────────────────────────────
+
+#[async_trait]
+impl InjectionStore for Storage {
+    async fn save_injected_observations(
+        &self,
+        session_id: &str,
+        observation_ids: &[String],
+    ) -> Result<()> {
+        delegate!(self, save_injected_observations, @str session_id, @slice observation_ids)
+    }
+    async fn get_injected_observation_ids(&self, session_id: &str) -> Result<Vec<String>> {
+        delegate!(self, get_injected_observation_ids, @str session_id)
+    }
+    async fn cleanup_old_injections(&self, older_than_hours: u32) -> Result<u64> {
+        delegate!(self, cleanup_old_injections, @val older_than_hours)
     }
 }

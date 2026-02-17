@@ -12,8 +12,8 @@ use opencode_mem_core::{
 
 use crate::pending_queue::{PaginatedResult, PendingMessage, QueueStats, StorageStats};
 use crate::traits::{
-    EmbeddingStore, KnowledgeStore, ObservationStore, PendingQueueStore, PromptStore, SearchStore,
-    SessionStore, StatsStore, SummaryStore,
+    EmbeddingStore, InjectionStore, KnowledgeStore, ObservationStore, PendingQueueStore,
+    PromptStore, SearchStore, SessionStore, StatsStore, SummaryStore,
 };
 
 macro_rules! dispatch {
@@ -391,5 +391,30 @@ impl EmbeddingStore for StorageBackend {
         limit: usize,
     ) -> Result<Vec<SimilarMatch>> {
         dispatch!(self, EmbeddingStore, find_similar_many(embedding, threshold, limit))
+    }
+
+    async fn get_embeddings_for_ids(&self, ids: &[String]) -> Result<Vec<(String, Vec<f32>)>> {
+        dispatch!(self, EmbeddingStore, get_embeddings_for_ids(ids))
+    }
+}
+
+// ── InjectionStore ──────────────────────────────────────────────
+
+#[async_trait]
+impl InjectionStore for StorageBackend {
+    async fn save_injected_observations(
+        &self,
+        session_id: &str,
+        observation_ids: &[String],
+    ) -> Result<()> {
+        dispatch!(self, InjectionStore, save_injected_observations(session_id, observation_ids))
+    }
+
+    async fn get_injected_observation_ids(&self, session_id: &str) -> Result<Vec<String>> {
+        dispatch!(self, InjectionStore, get_injected_observation_ids(session_id))
+    }
+
+    async fn cleanup_old_injections(&self, older_than_hours: u32) -> Result<u64> {
+        dispatch!(self, InjectionStore, cleanup_old_injections(older_than_hours))
     }
 }
