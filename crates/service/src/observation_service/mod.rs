@@ -142,9 +142,12 @@ impl ObservationService {
             return Ok(None);
         };
 
-        let was_new = self.persist_and_notify(&observation, Some(&tool_call.session_id)).await?;
+        let result = self.persist_and_notify(&observation, Some(&tool_call.session_id)).await?;
 
-        Ok(Some((observation, was_new)))
+        match result {
+            Some((persisted_obs, was_new)) => Ok(Some((persisted_obs, was_new))),
+            None => Ok(None),
+        }
     }
 
     async fn find_existing_similar_titles(&self, raw_text: &str) -> Vec<String> {
@@ -238,7 +241,7 @@ impl ObservationService {
         .narrative(text.to_owned())
         .build();
 
-        self.save_observation(&obs).await?;
-        Ok(Some(obs))
+        let result = self.persist_and_notify(&obs, None).await?;
+        Ok(result.map(|(persisted_obs, _was_new)| persisted_obs))
     }
 }

@@ -5,19 +5,24 @@ use super::ObservationService;
 
 impl ObservationService {
     pub async fn save_observation(&self, observation: &Observation) -> anyhow::Result<()> {
-        let _was_new = self.persist_and_notify(observation, None).await?;
+        let _result = self.persist_and_notify(observation, None).await?;
         Ok(())
     }
 
-    /// Returns `true` if a new observation was persisted, `false` if merged into existing or filtered.
+    /// Persist an observation, handling dedup merge and filtering.
+    ///
+    /// Returns:
+    /// - `Ok(None)` — observation was filtered (low-value or echo of injected context)
+    /// - `Ok(Some((obs, true)))` — newly inserted observation
+    /// - `Ok(Some((obs, false)))` — merged into existing; returns the **existing** (merged) observation
     pub(crate) async fn persist_and_notify(
         &self,
         observation: &Observation,
         session_id: Option<&str>,
-    ) -> anyhow::Result<bool> {
+    ) -> anyhow::Result<Option<(Observation, bool)>> {
         if is_low_value_observation(&observation.title) {
             tracing::debug!("Filtered low-value observation: {}", observation.title);
-            return Ok(false);
+            return Ok(None);
         }
 
         let embedding_vec = self.generate_embedding(observation).await;
@@ -28,12 +33,26 @@ impl ObservationService {
                     title = %observation.title,
                     "Skipping observation — echo of injected context"
                 );
-                return Ok(false);
+                return Ok(None);
             }
 
-            if let Some(merged) = self.try_dedup_merge(observation, vec).await? {
-                self.regenerate_embedding(&merged).await;
-                return Ok(false);
+            if let Some(merged_id) = self.try_dedup_merge(observation, vec).await? {
+                self.regenerate_embedding(&merged_id).await;
+                // Fetch the actual merged observation from storage so callers
+                // get a real persisted entity, not a phantom with a temporary ID.
+                let merged_obs = self.storage.get_by_id(&merged_id).await?;
+                return match merged_obs {
+                    Some(obs) => Ok(Some((obs, false))),
+                    None => {
+                        // Merged target was deleted between merge and fetch — shouldn't
+                        // happen in practice, but handle gracefully by saving as new.
+                        tracing::warn!(
+                            merged_id = %merged_id,
+                            "Merged observation disappeared after merge, saving as new"
+                        );
+                        self.save_and_notify(observation, embedding_vec).await
+                    },
+                };
             }
         }
 
@@ -98,16 +117,15 @@ impl ObservationService {
         }
     }
 
-    /// Insert a new observation into storage, send SSE notification, and store embedding.
     async fn save_and_notify(
         &self,
         observation: &Observation,
         embedding_vec: Option<Vec<f32>>,
-    ) -> anyhow::Result<bool> {
+    ) -> anyhow::Result<Option<(Observation, bool)>> {
         let inserted = self.storage.save_observation(observation).await?;
         if !inserted {
             tracing::debug!("Skipping duplicate observation: {}", observation.title);
-            return Ok(false);
+            return Ok(None);
         }
 
         tracing::info!("Saved observation: {} - {}", observation.id, observation.title);
@@ -126,6 +144,6 @@ impl ObservationService {
             }
         }
 
-        Ok(true)
+        Ok(Some((observation.clone(), true)))
     }
 }
