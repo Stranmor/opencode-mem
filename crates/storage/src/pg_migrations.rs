@@ -87,7 +87,7 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
                 SELECT 1 FROM information_schema.columns
                 WHERE table_name = 'observations' AND column_name = 'embedding'
             ) THEN
-                ALTER TABLE observations ADD COLUMN embedding vector(384);
+                ALTER TABLE observations ADD COLUMN embedding vector(1024);
             END IF;
         END $$
         "#,
@@ -278,6 +278,51 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_up_created ON user_prompts (created_at DESC)")
         .execute(pool)
         .await?;
+
+    // Upgrade embedding column from vector(384) to vector(1024) for BGE-M3
+    // Must NULL existing embeddings first — pgvector cannot ALTER dimension with data present.
+    // Must drop ivfflat index first — PostgreSQL cannot ALTER column type with dependent index.
+    // Embeddings will be regenerated via `backfill-embeddings` command.
+    sqlx::query(
+        r#"
+        DO $$ BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'observations' AND column_name = 'embedding'
+                AND udt_name = 'vector'
+            ) THEN
+                DROP INDEX IF EXISTS idx_obs_embedding;
+                UPDATE observations SET embedding = NULL WHERE embedding IS NOT NULL;
+                ALTER TABLE observations ALTER COLUMN embedding TYPE vector(1024);
+                CREATE INDEX IF NOT EXISTS idx_obs_embedding
+                    ON observations USING ivfflat (embedding vector_cosine_ops)
+                    WITH (lists = 100);
+            END IF;
+        END $$
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    // Injected observations tracking for injection-aware dedup
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS injected_observations (
+            session_id TEXT NOT NULL,
+            observation_id TEXT NOT NULL,
+            injected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (session_id, observation_id)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_injected_obs_session ON injected_observations(session_id)",
+    )
+    .execute(pool)
+    .await?;
 
     tracing::info!("PostgreSQL migrations completed");
     Ok(())

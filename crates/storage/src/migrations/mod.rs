@@ -10,6 +10,8 @@ mod v11;
 mod v12;
 mod v13;
 mod v14;
+mod v15;
+mod v16;
 mod v2;
 mod v3;
 mod v4;
@@ -22,7 +24,7 @@ mod v9;
 use column_helpers::add_column_if_not_exists;
 use rusqlite::Connection;
 
-pub const SCHEMA_VERSION: i32 = 14;
+pub const SCHEMA_VERSION: i32 = 16;
 
 #[expect(clippy::cognitive_complexity, reason = "Sequential migrations are inherently linear")]
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
@@ -124,6 +126,22 @@ pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     if current_version < 14i32 {
         tracing::info!("Running migration v14: FTS5 AFTER UPDATE/DELETE triggers for observations");
         conn.execute_batch(v14::SQL)?;
+    }
+
+    if current_version < 15i32 {
+        tracing::info!("Running migration v15: Upgrade embedding dimension 384→1024 (BGE-M3)");
+        let vec_result = conn.execute_batch(v15::SQL);
+        match vec_result {
+            Ok(()) => tracing::info!("Embedding table recreated with 1024 dimensions"),
+            Err(e) => tracing::warn!("sqlite-vec migration failed (optional): {}", e),
+        }
+    }
+
+    if current_version < 16i32 {
+        tracing::info!(
+            "Running migration v16: injected_observations table for injection-aware dedup"
+        );
+        conn.execute_batch(v16::SQL)?;
     }
 
     conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
