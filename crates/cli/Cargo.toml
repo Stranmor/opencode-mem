@@ -14,6 +14,7 @@ path = "src/main.rs"
 default = ["sqlite"]
 sqlite = ["opencode-mem-storage/sqlite"]
 postgres = ["opencode-mem-storage/postgres"]
+cuda = ["opencode-mem-embeddings/cuda"]
 
 [dependencies]
 opencode-mem-core = { workspace = true }

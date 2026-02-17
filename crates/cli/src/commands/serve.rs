@@ -39,15 +39,24 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         None
     };
 
-    let embeddings = match EmbeddingService::new() {
-        Ok(emb) => {
-            tracing::info!("Embedding service initialized (BGE-M3, 1024 dimensions)");
-            Some(Arc::new(emb))
-        },
-        Err(e) => {
-            tracing::warn!("Failed to initialize embeddings: {}", e);
-            None
-        },
+    let embeddings_disabled = std::env::var("OPENCODE_MEM_DISABLE_EMBEDDINGS")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    let embeddings = if embeddings_disabled {
+        tracing::info!("Embeddings disabled via OPENCODE_MEM_DISABLE_EMBEDDINGS");
+        None
+    } else {
+        match EmbeddingService::new() {
+            Ok(emb) => {
+                tracing::info!("Embedding service initialized (BGE-M3, 1024 dimensions)");
+                Some(Arc::new(emb))
+            },
+            Err(e) => {
+                tracing::warn!("Failed to initialize embeddings: {}", e);
+                None
+            },
+        }
     };
 
     let observation_service = Arc::new(ObservationService::new(

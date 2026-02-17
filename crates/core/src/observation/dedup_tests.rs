@@ -1,6 +1,5 @@
 //! Tests for cosine_similarity and related dedup helpers.
 
-#[expect(clippy::unwrap_used, reason = "test code")]
 #[cfg(test)]
 mod tests {
     use crate::cosine_similarity;
@@ -58,5 +57,29 @@ mod tests {
         let result = cosine_similarity(&a, &b);
         let expected = 1.0_f32 / 2.0_f32.sqrt();
         assert!((result - expected).abs() < 0.001, "expected ≈{expected}, got {result}");
+    }
+
+    #[test]
+    fn nan_input_returns_0() {
+        let a = vec![f32::NAN, 1.0];
+        let b = vec![1.0, 1.0];
+        let result = cosine_similarity(&a, &b);
+        assert!(result.abs() < f32::EPSILON, "expected 0.0 for NaN input, got {result}");
+    }
+
+    #[test]
+    fn infinity_input_returns_0() {
+        let a = vec![f32::INFINITY, 1.0];
+        let b = vec![1.0, 1.0];
+        let result = cosine_similarity(&a, &b);
+        assert!(result.abs() < f32::EPSILON, "expected 0.0 for infinity input, got {result}");
+    }
+
+    #[test]
+    fn neg_infinity_input_returns_0() {
+        let a = vec![1.0, 1.0];
+        let b = vec![f32::NEG_INFINITY, 0.0];
+        let result = cosine_similarity(&a, &b);
+        assert!(result.abs() < f32::EPSILON, "expected 0.0 for -infinity input, got {result}");
     }
 }

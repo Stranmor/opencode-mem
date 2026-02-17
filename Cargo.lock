@@ -2285,6 +2285,7 @@ version = "0.1.0"
 dependencies = [
  "fastembed",
  "opencode-mem-core",
+ "ort",
  "thiserror 2.0.18",
  "tracing",
 ]

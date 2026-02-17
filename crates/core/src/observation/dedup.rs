@@ -67,6 +67,9 @@ pub fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() || a.is_empty() {
         return 0.0;
     }
+    if a.iter().chain(b.iter()).any(|v| !v.is_finite()) {
+        return 0.0;
+    }
     let mut dot = 0.0_f64;
     let mut norm_a = 0.0_f64;
     let mut norm_b = 0.0_f64;

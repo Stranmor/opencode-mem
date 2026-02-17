@@ -18,12 +18,21 @@ pub(crate) async fn run() -> Result<()> {
     let api_key = get_api_key()?;
     let llm = Arc::new(LlmClient::new(api_key, get_base_url())?);
 
-    let embeddings = match EmbeddingService::new() {
-        Ok(emb) => Some(Arc::new(emb)),
-        Err(e) => {
-            eprintln!("Warning: Embeddings not available: {e}. Semantic search disabled.");
-            None
-        },
+    let embeddings_disabled = std::env::var("OPENCODE_MEM_DISABLE_EMBEDDINGS")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    let embeddings = if embeddings_disabled {
+        eprintln!("Embeddings disabled via OPENCODE_MEM_DISABLE_EMBEDDINGS");
+        None
+    } else {
+        match EmbeddingService::new() {
+            Ok(emb) => Some(Arc::new(emb)),
+            Err(e) => {
+                eprintln!("Warning: Embeddings not available: {e}. Semantic search disabled.");
+                None
+            },
+        }
     };
 
     let infinite_mem = if let Ok(url) = std::env::var("INFINITE_MEMORY_URL") {

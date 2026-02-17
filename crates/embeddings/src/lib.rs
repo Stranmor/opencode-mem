@@ -53,8 +53,17 @@ impl EmbeddingService {
     /// # Errors
     /// Returns error if model initialization fails
     pub fn new() -> Result<Self, EmbeddingError> {
-        let options =
+        #[allow(unused_mut, reason = "mut needed when cuda feature is enabled")]
+        let mut options =
             InitOptions::new(fastembed::EmbeddingModel::BGEM3).with_show_download_progress(true);
+
+        #[cfg(feature = "cuda")]
+        {
+            options = options.with_execution_providers(vec![
+                ort::execution_providers::CUDAExecutionProvider::default().build(),
+            ]);
+            tracing::info!("CUDA execution provider requested for embeddings");
+        }
 
         let model = TextEmbedding::try_new(options)
             .map_err(|e| EmbeddingError::ModelInit(e.to_string()))?;
@@ -62,6 +71,7 @@ impl EmbeddingService {
         tracing::info!(
             model = "BGE-M3",
             dimension = EMBEDDING_DIMENSION,
+            gpu = cfg!(feature = "cuda"),
             "Embedding service initialized"
         );
 
