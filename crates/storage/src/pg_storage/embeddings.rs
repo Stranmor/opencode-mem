@@ -4,11 +4,17 @@ use super::*;
 
 use crate::traits::EmbeddingStore;
 use async_trait::async_trait;
-use opencode_mem_core::{is_zero_vector, SimilarMatch};
+use opencode_mem_core::{is_zero_vector, SimilarMatch, EMBEDDING_DIMENSION};
 
 #[async_trait]
 impl EmbeddingStore for PgStorage {
     async fn store_embedding(&self, observation_id: &str, embedding: &[f32]) -> Result<()> {
+        if embedding.len() != EMBEDDING_DIMENSION {
+            anyhow::bail!(
+                "embedding dimension mismatch: expected {EMBEDDING_DIMENSION}, got {}",
+                embedding.len()
+            );
+        }
         if is_zero_vector(embedding) {
             tracing::warn!(
                 observation_id,
@@ -135,4 +141,33 @@ impl EmbeddingStore for PgStorage {
 
         Ok(matches)
     }
+
+    async fn get_embeddings_for_ids(&self, ids: &[String]) -> Result<Vec<(String, Vec<f32>)>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let rows = sqlx::query(
+            "SELECT id, embedding::text
+               FROM observations
+              WHERE id = ANY($1) AND embedding IS NOT NULL",
+        )
+        .bind(ids)
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut results = Vec::new();
+        for r in &rows {
+            let id: String = r.try_get("id")?;
+            let emb_text: String = r.try_get("embedding")?;
+            let floats = parse_pg_vector_text(&emb_text);
+            results.push((id, floats));
+        }
+        Ok(results)
+    }
+}
+
+fn parse_pg_vector_text(s: &str) -> Vec<f32> {
+    let trimmed = s.trim_start_matches('[').trim_end_matches(']');
+    trimmed.split(',').filter_map(|v| v.trim().parse::<f32>().ok()).collect()
 }

@@ -11,6 +11,7 @@
 #![allow(clippy::absolute_paths, reason = "std paths in error handling are clear")]
 
 mod embeddings;
+mod injections;
 mod knowledge;
 mod observations;
 mod pending;
