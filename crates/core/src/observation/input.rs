@@ -1,9 +1,38 @@
 //! Input types for observation creation from tool calls.
 
+use std::cmp::Ordering;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::{NoiseLevel, ObservationType};
+
+/// Trait for types that carry a relevance score (NaN-safe descending sort).
+pub trait Scored {
+    /// Returns the relevance score for sorting.
+    fn score(&self) -> f64;
+}
+
+/// Sort a slice of [`Scored`] items by score descending (NaN-safe).
+///
+/// NaN scores are treated as equal to any other value, preserving
+/// their relative order (stable sort).
+pub fn sort_by_score_descending<T: Scored>(items: &mut [T]) {
+    items.sort_by(|a, b| b.score().partial_cmp(&a.score()).unwrap_or(Ordering::Equal));
+}
+
+impl Scored for SearchResult {
+    fn score(&self) -> f64 {
+        self.score
+    }
+}
+
+/// Blanket impl for `(T, f64)` tuples where the second element is the score.
+impl<T> Scored for (T, f64) {
+    fn score(&self) -> f64 {
+        self.1
+    }
+}
 
 /// Input for creating a new observation (from tool call)
 #[derive(Debug, Clone, Serialize, Deserialize)]
