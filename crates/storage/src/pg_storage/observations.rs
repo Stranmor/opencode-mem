@@ -9,7 +9,7 @@ use async_trait::async_trait;
 #[async_trait]
 impl ObservationStore for PgStorage {
     async fn save_observation(&self, obs: &Observation) -> Result<bool> {
-        let result = match sqlx::query(
+        let result = sqlx::query(
             r#"INSERT INTO observations
                (id, session_id, project, observation_type, title, subtitle, narrative,
                 facts, concepts, files_read, files_modified, keywords,
@@ -45,14 +45,7 @@ impl ObservationStore for PgStorage {
         .bind(&obs.noise_reason)
         .bind(obs.created_at)
         .execute(&self.pool)
-        .await
-        {
-            Ok(r) => r,
-            Err(sqlx::Error::Database(ref db_err)) if db_err.code().as_deref() == Some("23505") => {
-                return Ok(false);
-            },
-            Err(e) => return Err(e.into()),
-        };
+        .await?;
         Ok(result.rows_affected() > 0)
     }
 
