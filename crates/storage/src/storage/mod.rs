@@ -88,7 +88,7 @@ pub(crate) fn log_row_error<T>(result: rusqlite::Result<T>) -> Option<T> {
 }
 
 /// Map database row to `SearchResult`.
-/// If `score_col` is Some, reads score from that column index; otherwise uses 1.0.
+/// If `score_col` is Some, reads score from that column index; otherwise uses 0.0.
 pub(crate) fn map_search_result(
     row: &rusqlite::Row<'_>,
     score_col: Option<usize>,
