@@ -97,10 +97,10 @@ crates/
 - ~~merge_into_existing incomplete field update~~ — Updates all merge-relevant fields including `noise_reason`, `prompt_number`, `discovery_tokens`
 - **PG save_observation dead error handling** — `ON CONFLICT (id) DO NOTHING` suppresses constraint violation, making the explicit SQLSTATE 23505 error match arm unreachable.
 - **Privacy filter fallback leaks unfiltered data** — ~~In `store_infinite_memory` and `compress_and_save`, `serde_json::from_str(&filtered).unwrap_or(tool_call.input.clone())` falls back to the original unfiltered input if the filter corrupts JSON structure, bypassing the security filter entirely.~~ **RESOLVED:** Fallback now returns `Value::Null` with warning log instead of unfiltered input.
-- **Sequential LLM calls in observation process** — `extract_knowledge` and `store_infinite_memory` are awaited sequentially in `process()`, adding latency to the critical path. Should be spawned as background tasks.
-- **Injection cleanup only on startup** — `cleanup_old_injections` runs only in `run_startup_recovery`. Long-running servers accumulate stale injection records until next restart. Should run periodically (e.g., hourly in background processor loop).
-- **Unbounded injected IDs per session** — No cap on how many observation IDs are recorded per session via `/context/inject`. A project with 10K observations causes 10K embeddings loaded into memory per echo check (~40MB). Should cap at ~500 or paginate comparison.
-- **PG get_embeddings_for_ids no batching** — PG implementation passes all IDs via `ANY($1)` without chunking, unlike SQLite which uses `MAX_BATCH_IDS`. Could hit PG parameter limits for very large ID sets.
+- ~~Sequential LLM calls in observation process~~ — `extract_knowledge` and `store_infinite_memory` now run concurrently via `tokio::join!`
+- ~~Injection cleanup only on startup~~ — `cleanup_old_injections` now runs periodically (~hourly) in the background processor loop
+- ~~Unbounded injected IDs per session~~ — Capped at 500 most recent IDs per session via `MAX_INJECTED_IDS` constant
+- ~~PG get_embeddings_for_ids no batching~~ — PG implementation now chunks IDs via `MAX_BATCH_IDS`, matching SQLite behavior
 - **CUDA GPU acceleration blocked on Pascal** — ort-sys 2.0.0-rc.11 pre-built CUDA provider includes only SM 7.0+ (Volta+). GTX 1060 (SM 6.1 Pascal) gets `cudaErrorSymbolNotFound` at inference. CUDA EP registers successfully but all inference ops fail. CUDA 12 compat libs installed at `/opt/cuda-12-compat/lib/` on home-server. Workaround: CPU-only embeddings with `OPENCODE_MEM_DISABLE_EMBEDDINGS=1` for throttling. To resolve: either build ONNX Runtime from source with `CMAKE_CUDA_ARCHITECTURES=61`, or upgrade to Volta+ GPU.
 - ~~No DB path env var~~ — `get_db_path()` checks `OPENCODE_MEM_DB_PATH` env var before falling back to default path
 
