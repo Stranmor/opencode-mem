@@ -93,6 +93,9 @@ crates/
 - **Blocking I/O in session_service** — `summarize_session_from_export` uses `std::process::Command::output()` synchronously in async context. Should use `tokio::process::Command` or `spawn_blocking`.
 - **Phantom observation return after dedup merge** — `process` and `save_memory` return the local Observation even when merged into existing via dedup. Caller gets temporary ID that doesn't exist in DB.
 - **Infinite memory compression pipeline starvation** — `run_full_compression` fetches fixed batch (100) of unaggregated summaries across sessions. If distributed across many sessions, no single session meets threshold → pipeline stalls.
+- **PG search_by_file uses LIKE on JSONB text** — `search_by_file` casts `files_read::text` and uses `LIKE`, which is fragile. Should use JSONB containment operator `@>`.
+- **merge_into_existing incomplete field update** — Updates `noise_level` but not `noise_reason`, `prompt_number`, or `discovery_tokens`. Merged observations may have inconsistent metadata.
+- **PG save_observation dead error handling** — `ON CONFLICT (id) DO NOTHING` suppresses constraint violation, making the explicit SQLSTATE 23505 error match arm unreachable.
 
 ### Resolved
 - ~~Code Duplication in observation_service.rs~~ — extracted shared `persist_and_notify` method
