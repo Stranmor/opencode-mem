@@ -141,6 +141,4 @@ crates/
 - ~~SQLite timeline query missing noise_level~~ — all 4 timeline SELECT variants selected only 4 columns but `map_search_result` read column index 4 for `noise_level`. Every row silently failed → empty timeline. Added `noise_level` to all timeline queries.
 - ~~PG search/hybrid_search empty-query fallback type mismatch~~ — fallback returned `Vec<Observation>` where `Vec<SearchResult>` was expected. Wrapped with `SearchResult::from_observation`.
 - ~~PG knowledge usage_count INT4 vs i64 mismatch~~ — `global_knowledge.usage_count` was `INT4` in PG but decoded as `i64`. ALTERed column to `BIGINT`.
-- ~~SQLite timeline query missing noise_level~~ — all 4 timeline SELECT variants selected only 4 columns but `map_search_result` read column index 4 for `noise_level`. Every row silently failed → empty timeline. Added `noise_level` to all timeline queries.
-- ~~PG search/hybrid_search empty-query fallback type mismatch~~ — fallback returned `Vec<Observation>` where `Vec<SearchResult>` was expected. Wrapped with `SearchResult::from_observation`.
-- ~~PG knowledge usage_count INT4 vs i64 mismatch~~ — `global_knowledge.usage_count` was `INT4` in PG but decoded as `i64`. ALTERed column to `BIGINT`.
+- ~~Memory injection recursion~~ — observe hook re-processed `<memory-*>` blocks injected by IDE plugin, creating duplicate observations that got re-injected in a loop. Added `filter_injected_memory()` to strip these blocks before LLM compression and infinite memory storage.
