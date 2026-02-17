@@ -265,6 +265,12 @@ impl Storage {
 }
 
 fn blob_to_f32_vec(blob: &[u8]) -> Vec<f32> {
+    if blob.len() % 4 != 0 {
+        tracing::warn!(
+            blob_len = blob.len(),
+            "Embedding blob has non-aligned length — trailing bytes will be dropped"
+        );
+    }
     blob.chunks_exact(4)
         .map(|chunk| {
             let mut arr = [0u8; 4];

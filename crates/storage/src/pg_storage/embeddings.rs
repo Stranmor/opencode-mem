@@ -169,5 +169,15 @@ impl EmbeddingStore for PgStorage {
 
 fn parse_pg_vector_text(s: &str) -> Vec<f32> {
     let trimmed = s.trim_start_matches('[').trim_end_matches(']');
-    trimmed.split(',').filter_map(|v| v.trim().parse::<f32>().ok()).collect()
+    let result: Vec<f32> =
+        trimmed.split(',').filter_map(|v| v.trim().parse::<f32>().ok()).collect();
+    let expected = opencode_mem_core::EMBEDDING_DIMENSION;
+    if !result.is_empty() && result.len() != expected {
+        tracing::warn!(
+            parsed = result.len(),
+            expected,
+            "Parsed PG vector has unexpected dimension — cosine similarity will return 0.0"
+        );
+    }
+    result
 }
