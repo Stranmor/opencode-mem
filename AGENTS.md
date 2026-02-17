@@ -98,6 +98,9 @@ crates/
 - **PG save_observation dead error handling** — `ON CONFLICT (id) DO NOTHING` suppresses constraint violation, making the explicit SQLSTATE 23505 error match arm unreachable.
 - **Privacy filter fallback leaks unfiltered data** — In `store_infinite_memory` and `compress_and_save`, `serde_json::from_str(&filtered).unwrap_or(tool_call.input.clone())` falls back to the original unfiltered input if the filter corrupts JSON structure, bypassing the security filter entirely.
 - **Sequential LLM calls in observation process** — `extract_knowledge` and `store_infinite_memory` are awaited sequentially in `process()`, adding latency to the critical path. Should be spawned as background tasks.
+- **Injection cleanup only on startup** — `cleanup_old_injections` runs only in `run_startup_recovery`. Long-running servers accumulate stale injection records until next restart. Should run periodically (e.g., hourly in background processor loop).
+- **Unbounded injected IDs per session** — No cap on how many observation IDs are recorded per session via `/context/inject`. A project with 10K observations causes 10K embeddings loaded into memory per echo check (~40MB). Should cap at ~500 or paginate comparison.
+- **PG get_embeddings_for_ids no batching** — PG implementation passes all IDs via `ANY($1)` without chunking, unlike SQLite which uses `MAX_BATCH_IDS`. Could hit PG parameter limits for very large ID sets.
 
 ### Resolved
 - ~~Code Duplication in observation_service.rs~~ — extracted shared `persist_and_notify` method
