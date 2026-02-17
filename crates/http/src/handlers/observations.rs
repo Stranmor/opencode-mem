@@ -6,7 +6,8 @@ use axum::{
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall, UserPrompt,
+    filter_injected_memory, Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall,
+    UserPrompt,
 };
 use opencode_mem_storage::PaginatedResult;
 
@@ -26,11 +27,12 @@ pub async fn observe(
         }
     }
 
-    // Serialize tool_call.input as tool_input for queue processing
-    let tool_input = serde_json::to_string(&tool_call.input).ok();
+    // Filter injected memory tags BEFORE queuing to prevent re-observation recursion
+    let tool_input =
+        serde_json::to_string(&tool_call.input).ok().map(|s| filter_injected_memory(&s));
     let session_id = tool_call.session_id.clone();
     let tool_name = tool_call.tool.clone();
-    let tool_response = tool_call.output.clone();
+    let tool_response = filter_injected_memory(&tool_call.output);
     let project = tool_call.project.clone();
 
     let message_id = state
@@ -63,14 +65,16 @@ pub async fn observe_batch(
                 continue;
             }
         }
-        let tool_input = serde_json::to_string(&tool_call.input).ok();
+        let tool_input =
+            serde_json::to_string(&tool_call.input).ok().map(|s| filter_injected_memory(&s));
+        let filtered_output = filter_injected_memory(&tool_call.output);
         match state
             .queue_service
             .queue_message(
                 &tool_call.session_id,
                 Some(&tool_call.tool),
                 tool_input.as_deref(),
-                Some(&tool_call.output),
+                Some(&filtered_output),
                 tool_call.project.as_deref(),
             )
             .await

@@ -1,7 +1,8 @@
 use anyhow::Result;
 use clap::Subcommand;
 use opencode_mem_core::{
-    ObservationHookRequest, ProjectFilter, SessionInitHookRequest, SummarizeHookRequest,
+    filter_injected_memory, ObservationHookRequest, ProjectFilter, SessionInitHookRequest,
+    SummarizeHookRequest,
 };
 use std::io::{IsTerminal, Read};
 
@@ -79,6 +80,7 @@ fn build_observation_request(
     if !std::io::stdin().is_terminal() {
         std::io::stdin().read_to_string(&mut output_str)?;
     }
+    let output_str = filter_injected_memory(&output_str);
     let tool_name = tool.unwrap_or_else(|| "unknown".to_owned());
     let input: Option<serde_json::Value> =
         input_json.as_ref().and_then(|s| serde_json::from_str(s).ok());
