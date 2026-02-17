@@ -170,7 +170,11 @@ pub async fn create_day_summary(
 const MAX_EVENTS_PER_BATCH: usize = 100;
 
 pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<u32> {
-    let events = event_queries::get_unsummarized_events(pool, MAX_EVENTS_PER_BATCH as i64).await?;
+    let events = event_queries::get_unsummarized_events(
+        pool,
+        i64::try_from(MAX_EVENTS_PER_BATCH).unwrap_or(i64::MAX),
+    )
+    .await?;
     if events.is_empty() {
         return Ok(0);
     }

@@ -73,8 +73,6 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     let queue_service = Arc::new(QueueService::new(storage.clone()));
 
     let state = Arc::new(AppState {
-        storage,
-        llm: llm.clone(),
         semaphore: Arc::new(Semaphore::new(10)),
         event_tx,
         processing_active: AtomicBool::new(true),
@@ -85,7 +83,6 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         knowledge_service,
         search_service,
         queue_service,
-        embeddings,
     });
 
     if let Err(e) = run_startup_recovery(&state).await {
