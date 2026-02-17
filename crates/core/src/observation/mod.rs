@@ -84,6 +84,22 @@ pub fn filter_private_content(text: &str) -> String {
     PRIVATE_TAG_REGEX.replace_all(text, "").into_owned()
 }
 
+/// Regex pattern for matching injected memory blocks.
+/// Matches `<memory-global>...</memory-global>` and similar memory injection tags
+/// like `<memory-project>`, `<memory-session>`, etc.
+#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
+static MEMORY_TAG_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?is)<memory-[a-z]+>.*?</memory-[a-z]+>").unwrap());
+
+/// Strips injected memory blocks (`<memory-*>...</memory-*>`) from text.
+///
+/// Memory blocks are injected into conversation context by the IDE plugin.
+/// Without filtering, the observe hook re-processes them, creating duplicate
+/// observations that get re-injected — causing infinite recursion.
+pub fn filter_injected_memory(text: &str) -> String {
+    MEMORY_TAG_REGEX.replace_all(text, "").into_owned()
+}
+
 /// Type of observation captured during a coding session
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -270,5 +286,41 @@ mod tests {
     fn filter_private_nested_content() {
         let input = "Data <private>API_KEY=sk-12345\nPASSWORD=hunter2</private> end";
         assert_eq!(filter_private_content(input), "Data  end");
+    }
+
+    #[test]
+    fn filter_memory_global() {
+        let input = "Normal text\n<memory-global>\n- [gotcha] Some memory\n- [decision] Another\n</memory-global>\nMore text";
+        assert_eq!(filter_injected_memory(input), "Normal text\n\nMore text");
+    }
+
+    #[test]
+    fn filter_memory_multiple_tags() {
+        let input = "A <memory-global>x</memory-global> B <memory-project>y</memory-project> C";
+        assert_eq!(filter_injected_memory(input), "A  B  C");
+    }
+
+    #[test]
+    fn filter_memory_case_insensitive() {
+        let input = "Hello <MEMORY-GLOBAL>data</MEMORY-GLOBAL> world";
+        assert_eq!(filter_injected_memory(input), "Hello  world");
+    }
+
+    #[test]
+    fn filter_memory_no_tags() {
+        let input = "No memory tags here";
+        assert_eq!(filter_injected_memory(input), "No memory tags here");
+    }
+
+    #[test]
+    fn filter_memory_multiline_content() {
+        let input = "Start\n<memory-global>\n- line 1\n- line 2\n- line 3\n</memory-global>\nEnd";
+        assert_eq!(filter_injected_memory(input), "Start\n\nEnd");
+    }
+
+    #[test]
+    fn filter_memory_preserves_private_tags() {
+        let input = "A <private>secret</private> B <memory-global>mem</memory-global> C";
+        assert_eq!(filter_injected_memory(input), "A <private>secret</private> B  C");
     }
 }

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    env_parse_with_default, filter_private_content, is_low_value_observation,
-    observation_embedding_text, Observation, ObservationInput, ObservationType, ToolCall,
-    ToolOutput,
+    env_parse_with_default, filter_injected_memory, filter_private_content,
+    is_low_value_observation, observation_embedding_text, Observation, ObservationInput,
+    ObservationType, ToolCall, ToolOutput,
 };
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
 use opencode_mem_infinite::{tool_event, InfiniteMemory};
@@ -57,18 +57,24 @@ impl ObservationService {
         id: &str,
         tool_call: &ToolCall,
     ) -> anyhow::Result<Option<(Observation, bool)>> {
+        // Strip injected memory blocks to prevent recursion:
+        // IDE injects <memory-global>...</memory-global> into conversation →
+        // observe hook captures tool output containing these blocks →
+        // without filtering, they'd be re-processed and re-stored → infinite loop.
+        let filtered_output = filter_injected_memory(&tool_call.output);
+
         let input = ObservationInput::new(
             tool_call.tool.clone(),
             tool_call.session_id.clone(),
             tool_call.call_id.clone(),
             ToolOutput::new(
                 format!("Observation from {}", tool_call.tool),
-                tool_call.output.clone(),
+                filtered_output.clone(),
                 tool_call.input.clone(),
             ),
         );
 
-        let existing_titles = self.find_existing_similar_titles(&tool_call.output).await;
+        let existing_titles = self.find_existing_similar_titles(&filtered_output).await;
 
         let observation = if let Some(obs) = self
             .llm
@@ -164,7 +170,8 @@ impl ObservationService {
 
     async fn store_infinite_memory(&self, tool_call: &ToolCall, observation: &Observation) {
         if let Some(ref infinite_mem) = self.infinite_mem {
-            let filtered_output = filter_private_content(&tool_call.output);
+            let filtered_output =
+                filter_injected_memory(&filter_private_content(&tool_call.output));
             let filtered_input = {
                 let input_str = serde_json::to_string(&tool_call.input).unwrap_or_default();
                 let filtered = filter_private_content(&input_str);
