@@ -13,7 +13,7 @@ use crate::api_types::{
 use crate::AppState;
 use opencode_mem_core::SessionStatus;
 
-use super::session_ops::{create_session, spawn_observation_processing};
+use super::session_ops::{create_session, enqueue_session_observations};
 
 pub async fn generate_summary(
     State(state): State<Arc<AppState>>,
@@ -47,7 +47,7 @@ pub async fn session_observations_legacy(
     Path(session_db_id): Path<String>,
     Json(req): Json<SessionObservationsRequest>,
 ) -> Result<Json<SessionObservationsResponse>, StatusCode> {
-    let resp = spawn_observation_processing(&state, session_db_id, req.observations);
+    let resp = enqueue_session_observations(&state, session_db_id, req.observations).await?;
     Ok(Json(resp))
 }
 

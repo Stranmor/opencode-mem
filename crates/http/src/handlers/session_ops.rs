@@ -36,43 +36,38 @@ pub(crate) async fn create_session(
     Ok(SessionInitResponse { session_id: session_db_id, status: "active".to_owned() })
 }
 
-/// Spawn observation processing tasks and return the queued count response.
+/// Enqueue session observations into the persistent DB queue for durable processing.
 ///
-/// Each observation gets a unique ID, acquires a semaphore permit, and is
-/// processed asynchronously. Identical logic used by both legacy and API
-/// observation endpoints.
-pub(crate) fn spawn_observation_processing(
+/// Each observation is individually enqueued via `QueueService::queue_message`,
+/// the same mechanism used by the `/observe` endpoint. The background queue
+/// processor picks them up — no data loss on server crash.
+pub(crate) async fn enqueue_session_observations(
     state: &Arc<AppState>,
     session_id: String,
     observations: Vec<ToolCall>,
-) -> SessionObservationsResponse {
-    let count = observations.len();
-    for mut tool_call in observations {
-        tool_call.output = filter_injected_memory(&tool_call.output);
-        if let Ok(input_str) = serde_json::to_string(&tool_call.input) {
-            let filtered = filter_injected_memory(&input_str);
-            if let Ok(parsed) = serde_json::from_str(&filtered) {
-                tool_call.input = parsed;
-            }
+) -> Result<SessionObservationsResponse, StatusCode> {
+    let mut queued = 0usize;
+    for tool_call in &observations {
+        let tool_input =
+            serde_json::to_string(&tool_call.input).ok().map(|s| filter_injected_memory(&s));
+        let filtered_output = filter_injected_memory(&tool_call.output);
+
+        match state
+            .queue_service
+            .queue_message(
+                &session_id,
+                Some(&tool_call.tool),
+                tool_input.as_deref(),
+                Some(&filtered_output),
+                tool_call.project.as_deref(),
+            )
+            .await
+        {
+            Ok(_id) => queued = queued.saturating_add(1),
+            Err(e) => {
+                tracing::error!("Failed to queue session observation {}: {}", tool_call.tool, e);
+            },
         }
-        let id = uuid::Uuid::new_v4().to_string();
-        let service = state.observation_service.clone();
-        let semaphore = state.semaphore.clone();
-        let sid = session_id.clone();
-        tokio::spawn(async move {
-            let permit = match semaphore.acquire().await {
-                Ok(p) => p,
-                Err(e) => {
-                    tracing::error!("Semaphore closed: {}", e);
-                    return;
-                },
-            };
-            let tool_call_with_session = tool_call.with_session_id(sid.clone());
-            if let Err(e) = service.process(&id, tool_call_with_session).await {
-                tracing::error!("Failed to process observation: {}", e);
-            }
-            drop(permit);
-        });
     }
-    SessionObservationsResponse { queued: count, session_id }
+    Ok(SessionObservationsResponse { queued, session_id })
 }

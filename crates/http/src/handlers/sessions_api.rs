@@ -7,7 +7,7 @@ use crate::api_types::{
 };
 use crate::AppState;
 
-use super::session_ops::{create_session, spawn_observation_processing};
+use super::session_ops::{create_session, enqueue_session_observations};
 
 pub async fn api_session_init(
     State(state): State<Arc<AppState>>,
@@ -33,7 +33,7 @@ pub async fn api_session_observations(
             },
         )?;
     let session_id = session.map(|s| s.id).ok_or(StatusCode::NOT_FOUND)?;
-    let resp = spawn_observation_processing(&state, session_id, req.observations);
+    let resp = enqueue_session_observations(&state, session_id, req.observations).await?;
     Ok(Json(resp))
 }
 

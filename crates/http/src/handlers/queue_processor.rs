@@ -36,10 +36,20 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
         tool_response.to_owned(),
     );
 
-    // Deterministic UUID v5 based on message ID to prevent duplicates
-    // If same message is processed twice (race condition), same observation ID is generated
-    let id =
-        uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, msg.id.to_string().as_bytes()).to_string();
+    // Deterministic UUID v5 based on message CONTENT (not row ID) to prevent duplicates.
+    // Using content-based hash avoids UUID collisions when the queue table is truncated
+    // while observations persist — new messages reusing old row IDs won't collide.
+    // If the same message is processed twice (race condition), same observation ID is generated.
+    let id = {
+        use std::hash::{Hash, Hasher};
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        tool_name.hash(&mut hasher);
+        msg.session_id.hash(&mut hasher);
+        tool_response.hash(&mut hasher);
+        msg.created_at_epoch.hash(&mut hasher);
+        let content_hash = hasher.finish();
+        uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, &content_hash.to_le_bytes()).to_string()
+    };
 
     let result = state.observation_service.process(&id, tool_call).await?;
 
