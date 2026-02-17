@@ -83,7 +83,7 @@ crates/
 - Test coverage: ~40% of critical paths. Service layer, HTTP handlers, infinite-memory, CLI still have zero tests.
 - **Typed error enums partial** — Leaf crates have typed errors (`CoreError`, `EmbeddingError`, `LlmError`), but storage/service/http still use `anyhow::Result`. HTTP layer converts everything to 500 via blanket `From<anyhow::Error>`. Next step: `StorageError` in storage trait → `ServiceError` → `ApiError` `From` impls.
 - ~~PG search_vec missing columns~~ — `search_vec` tsvector now includes `facts` (weight C) and `keywords` (weight D) via trigger function (generated column replaced due to subquery limitation)
-- **Session observations not durable** — `POST /api/sessions/observations` uses `tokio::spawn` (ephemeral), while `/observe` uses persistent DB queue. Server crash loses session observations.
+- ~~Session observations not durable~~ — `POST /api/sessions/observations` now uses persistent DB queue (`queue_service.queue_message()`) instead of ephemeral `tokio::spawn`. Server crash no longer loses session observations.
 - ~~Knowledge save race condition~~ — Unique index `idx_knowledge_title_unique` on `LOWER(title)` (PG) / `title COLLATE NOCASE` (SQLite). Save methods retry on constraint violation, merging via SELECT+UPDATE on retry.
 - ~~PG noise_level default mismatch~~ — PG migration default changed to `'medium'`, existing `'normal'` rows migrated
 - **Migration skips embeddings** — `migrate` command (SQLite→PG) doesn't transfer vector embeddings. Semantic search breaks until manual backfill.
@@ -95,13 +95,13 @@ crates/
 - ~~PG search_by_file uses LIKE on JSONB text~~ — `search_by_file` now uses `jsonb_array_elements_text` to search within JSONB arrays properly
 - ~~merge_into_existing incomplete field update~~ — Updates all merge-relevant fields including `noise_reason`, `prompt_number`, `discovery_tokens`
 - ~~PG save_observation dead error handling~~ — Removed unreachable SQLSTATE 23505 match arm; `ON CONFLICT (id) DO NOTHING` already handles duplicates via `rows_affected() == 0` → `Ok(false)`.
-- **Privacy filter fallback leaks unfiltered data** — ~~In `store_infinite_memory` and `compress_and_save`, `serde_json::from_str(&filtered).unwrap_or(tool_call.input.clone())` falls back to the original unfiltered input if the filter corrupts JSON structure, bypassing the security filter entirely.~~ **RESOLVED:** Fallback now returns `Value::Null` with warning log instead of unfiltered input.
+- ~~Privacy filter fallback leaks unfiltered data~~ — Fallback now returns `Value::Null` with warning log instead of unfiltered input.
 - ~~Sequential LLM calls in observation process~~ — `extract_knowledge` and `store_infinite_memory` now run concurrently via `tokio::join!`
 - ~~Injection cleanup only on startup~~ — `cleanup_old_injections` now runs periodically (~hourly) in the background processor loop
 - ~~Unbounded injected IDs per session~~ — Capped at 500 most recent IDs per session via `MAX_INJECTED_IDS` constant
 - ~~PG get_embeddings_for_ids no batching~~ — PG implementation now chunks IDs via `MAX_BATCH_IDS`, matching SQLite behavior
 - **CUDA GPU acceleration blocked on Pascal** — ort-sys 2.0.0-rc.11 pre-built CUDA provider includes only SM 7.0+ (Volta+). GTX 1060 (SM 6.1 Pascal) gets `cudaErrorSymbolNotFound` at inference. CUDA EP registers successfully but all inference ops fail. CUDA 12 compat libs installed at `/opt/cuda-12-compat/lib/` on home-server. Workaround: CPU-only embeddings with `OPENCODE_MEM_DISABLE_EMBEDDINGS=1` for throttling. To resolve: either build ONNX Runtime from source with `CMAKE_CUDA_ARCHITECTURES=61`, or upgrade to Volta+ GPU.
-- **No DB path env var** — `get_db_path()` in CLI hardcodes `~/.local/share/opencode-memory/memory.db`. No env var to override. Makes it hard to point at different DB files (e.g., for remote backfill).
+- ~~No DB path env var~~ — `OPENCODE_MEM_DB_PATH` env var now overrides default `~/.local/share/opencode-memory/memory.db` in `get_db_path()`.
 
 ### Resolved
 - ~~Infinite memory compression pipeline starvation~~ — `run_full_compression` now queries per-session via `get_sessions_with_unaggregated_*` + `get_unaggregated_*_for_session`, eliminating fixed cross-session batch that caused threshold starvation
