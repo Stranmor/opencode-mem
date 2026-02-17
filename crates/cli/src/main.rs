@@ -77,6 +77,9 @@ enum Commands {
     BackfillEmbeddings {
         #[arg(short, long, default_value = "100")]
         batch_size: usize,
+        /// Drop and recreate vec0 table before backfill (fixes chunk errors)
+        #[arg(long)]
+        reset_vec: bool,
     },
     ImportInsights {
         #[arg(short, long)]
@@ -174,8 +177,8 @@ async fn main() -> Result<()> {
         Commands::Get { id } => {
             commands::search::run_get(id).await?;
         },
-        Commands::BackfillEmbeddings { batch_size } => {
-            commands::search::run_backfill_embeddings(batch_size).await?;
+        Commands::BackfillEmbeddings { batch_size, reset_vec } => {
+            commands::search::run_backfill_embeddings(batch_size, reset_vec).await?;
         },
         Commands::ImportInsights { file, dir } => {
             commands::import_insights::run(file, dir).await?;

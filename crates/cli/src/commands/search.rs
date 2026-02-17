@@ -54,11 +54,17 @@ pub(crate) async fn run_get(id: String) -> Result<()> {
     Ok(())
 }
 
-pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
+pub(crate) async fn run_backfill_embeddings(batch_size: usize, reset_vec: bool) -> Result<()> {
     #[cfg(feature = "sqlite")]
     opencode_mem_storage::init_sqlite_vec();
 
     let storage = crate::create_storage().await?;
+
+    if reset_vec {
+        println!("Resetting vec0 table (dropping all embeddings)...");
+        storage.clear_embeddings().await?;
+        println!("Vec0 table recreated.");
+    }
 
     println!("Initializing embedding model (first run downloads ~100MB)...");
     let embeddings = EmbeddingService::new()?;
