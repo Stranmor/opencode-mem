@@ -108,14 +108,14 @@ fn test_store_embedding_wrong_dimension_rejected() {
     assert!(storage.save_observation(&obs).unwrap());
 
     // Too few dimensions
-    let short_vec = vec![1.0_f32; 384];
+    let short_vec = vec![1.0_f32; EMBEDDING_DIMENSION - 1];
     let result = storage.store_embedding("obs-wrong-dim", &short_vec);
-    assert!(result.is_err(), "embedding with 384 dimensions (old size) must be rejected");
+    assert!(result.is_err(), "embedding with EMBEDDING_DIMENSION-1 must be rejected");
 
     // Too many dimensions
-    let long_vec = vec![1.0_f32; 2048];
+    let long_vec = vec![1.0_f32; EMBEDDING_DIMENSION + 1];
     let result = storage.store_embedding("obs-wrong-dim", &long_vec);
-    assert!(result.is_err(), "embedding with 2048 dimensions must be rejected");
+    assert!(result.is_err(), "embedding with EMBEDDING_DIMENSION+1 must be rejected");
 
     // Empty
     let empty_vec: Vec<f32> = vec![];
@@ -161,7 +161,9 @@ fn test_find_similar_many_ordering_monotonic() {
         assert!(storage.save_observation(&obs).unwrap());
 
         let mut vec = vec![0.0_f32; EMBEDDING_DIMENSION];
-        vec[i] = 1.0;
+        if let Some(v) = vec.get_mut(i) {
+            *v = 1.0;
+        }
         storage.store_embedding(&id, &vec).unwrap();
     }
 
