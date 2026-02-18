@@ -60,6 +60,13 @@ pub fn is_zero_vector(v: &[f32]) -> bool {
     v.iter().all(|f| *f == 0.0)
 }
 
+/// Returns `true` if the vector contains any NaN or Infinity values.
+/// Non-finite values corrupt similarity computations.
+#[must_use]
+pub fn contains_non_finite(v: &[f32]) -> bool {
+    v.iter().any(|f| !f.is_finite())
+}
+
 /// Cosine similarity between two vectors (0.0–1.0 for non-negative embeddings).
 /// Returns 0.0 if either vector is empty or zero-length.
 #[must_use]

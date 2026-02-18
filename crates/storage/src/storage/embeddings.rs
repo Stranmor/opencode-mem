@@ -1,5 +1,7 @@
 use anyhow::Result;
-use opencode_mem_core::{is_zero_vector, Observation, SimilarMatch, EMBEDDING_DIMENSION};
+use opencode_mem_core::{
+    contains_non_finite, is_zero_vector, Observation, SimilarMatch, EMBEDDING_DIMENSION,
+};
 use rusqlite::params;
 use zerocopy::IntoBytes;
 
@@ -23,6 +25,9 @@ impl Storage {
                 "Rejecting zero vector embedding (would produce NaN in cosine distance)"
             );
             return Ok(());
+        }
+        if contains_non_finite(embedding) {
+            anyhow::bail!("embedding contains NaN or Infinity values");
         }
         let conn = get_conn(&self.pool)?;
         let rowid: i64 = conn.query_row(

@@ -364,16 +364,14 @@ fn test_store_embedding_nan_values() {
         *first = f32::NAN;
     }
 
-    // NaN in embedding: behavior depends on sqlite-vec.
-    // At minimum, it must not panic. It may error or succeed.
+    // NaN in embedding must be rejected at the guard level.
     let result = storage.store_embedding("obs-nan", &nan_vec);
-    // We don't assert Ok/Err — just that it doesn't panic.
-    // If it stores, verify find_similar doesn't crash
-    if result.is_ok() {
-        let query = vec![1.0_f32; EMBEDDING_DIMENSION];
-        // Must not panic
-        let _ = storage.find_similar(&query, 0.5);
-    }
+    assert!(result.is_err(), "NaN embedding should be rejected");
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("NaN or Infinity"),
+        "error should mention NaN or Infinity, got: {err_msg}"
+    );
 }
 
 // ─── VULNERABILITY #14 ─────────────────────────────────────────────
@@ -391,12 +389,14 @@ fn test_store_embedding_infinity_values() {
         *first = f32::INFINITY;
     }
 
-    // Infinity in embedding: must not panic
+    // Infinity in embedding must be rejected at the guard level.
     let result = storage.store_embedding("obs-inf", &inf_vec);
-    if result.is_ok() {
-        let query = vec![1.0_f32; EMBEDDING_DIMENSION];
-        let _ = storage.find_similar(&query, 0.5);
-    }
+    assert!(result.is_err(), "Infinity embedding should be rejected");
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("NaN or Infinity"),
+        "error should mention NaN or Infinity, got: {err_msg}"
+    );
 }
 
 // ─── VULNERABILITY #15 ─────────────────────────────────────────────

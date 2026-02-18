@@ -4,7 +4,9 @@ use super::*;
 
 use crate::traits::EmbeddingStore;
 use async_trait::async_trait;
-use opencode_mem_core::{is_zero_vector, SimilarMatch, EMBEDDING_DIMENSION, MAX_BATCH_IDS};
+use opencode_mem_core::{
+    contains_non_finite, is_zero_vector, SimilarMatch, EMBEDDING_DIMENSION, MAX_BATCH_IDS,
+};
 
 #[async_trait]
 impl EmbeddingStore for PgStorage {
@@ -21,6 +23,9 @@ impl EmbeddingStore for PgStorage {
                 "Rejecting zero vector embedding (would produce NaN in cosine distance)"
             );
             return Ok(());
+        }
+        if contains_non_finite(embedding) {
+            anyhow::bail!("embedding contains NaN or Infinity values");
         }
         let vec_str =
             format!("[{}]", embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
