@@ -4,11 +4,19 @@
 mod tests {
     use crate::cosine_similarity;
 
+    /// Tolerance for computed floating-point results (dot products, sqrt).
+    /// Empirically, f32 cosine similarity on small vectors stays within 1e-4.
+    const COMPUTED_EPSILON: f32 = 1e-4;
+
+    /// Tolerance for cases where the function returns exactly 0.0
+    /// (NaN, Inf, empty, mismatched-length inputs trigger early return).
+    const EXACT_ZERO_EPSILON: f32 = f32::EPSILON;
+
     #[test]
     fn identical_vectors_returns_1() {
         let v = vec![1.0_f32, 2.0, 3.0];
         let result = cosine_similarity(&v, &v);
-        assert!((result - 1.0).abs() < 0.001, "expected ≈1.0, got {result}");
+        assert!((result - 1.0).abs() < COMPUTED_EPSILON, "expected ≈1.0, got {result}");
     }
 
     #[test]
@@ -16,7 +24,7 @@ mod tests {
         let a = vec![1.0_f32, 0.0, 0.0];
         let b = vec![0.0_f32, 1.0, 0.0];
         let result = cosine_similarity(&a, &b);
-        assert!(result.abs() < 0.001, "expected ≈0.0, got {result}");
+        assert!(result.abs() < COMPUTED_EPSILON, "expected ≈0.0, got {result}");
     }
 
     #[test]
@@ -24,13 +32,13 @@ mod tests {
         let a = vec![1.0_f32, 0.0];
         let b = vec![-1.0_f32, 0.0];
         let result = cosine_similarity(&a, &b);
-        assert!((result - (-1.0)).abs() < 0.001, "expected ≈-1.0, got {result}");
+        assert!((result - (-1.0)).abs() < COMPUTED_EPSILON, "expected ≈-1.0, got {result}");
     }
 
     #[test]
     fn empty_vectors_returns_0() {
         let result = cosine_similarity(&[], &[]);
-        assert!(result.abs() < f32::EPSILON, "expected 0.0, got {result}");
+        assert!(result.abs() < EXACT_ZERO_EPSILON, "expected 0.0, got {result}");
     }
 
     #[test]
@@ -38,7 +46,10 @@ mod tests {
         let a = vec![1.0_f32, 2.0];
         let b = vec![1.0_f32, 2.0, 3.0];
         let result = cosine_similarity(&a, &b);
-        assert!(result.abs() < f32::EPSILON, "expected 0.0 for mismatched lengths, got {result}");
+        assert!(
+            result.abs() < EXACT_ZERO_EPSILON,
+            "expected 0.0 for mismatched lengths, got {result}"
+        );
     }
 
     #[test]
@@ -46,7 +57,7 @@ mod tests {
         let a = vec![0.0_f32, 0.0, 0.0];
         let b = vec![0.0_f32, 0.0, 0.0];
         let result = cosine_similarity(&a, &b);
-        assert!(result.abs() < f32::EPSILON, "expected 0.0 for zero vectors, got {result}");
+        assert!(result.abs() < EXACT_ZERO_EPSILON, "expected 0.0 for zero vectors, got {result}");
     }
 
     #[test]
@@ -56,7 +67,7 @@ mod tests {
         let b = vec![1.0_f32, 0.0, 0.0];
         let result = cosine_similarity(&a, &b);
         let expected = 1.0_f32 / 2.0_f32.sqrt();
-        assert!((result - expected).abs() < 0.001, "expected ≈{expected}, got {result}");
+        assert!((result - expected).abs() < COMPUTED_EPSILON, "expected ≈{expected}, got {result}");
     }
 
     #[test]
@@ -64,7 +75,7 @@ mod tests {
         let a = vec![f32::NAN, 1.0];
         let b = vec![1.0, 1.0];
         let result = cosine_similarity(&a, &b);
-        assert!(result.abs() < f32::EPSILON, "expected 0.0 for NaN input, got {result}");
+        assert!(result.abs() < EXACT_ZERO_EPSILON, "expected 0.0 for NaN input, got {result}");
     }
 
     #[test]
@@ -72,7 +83,7 @@ mod tests {
         let a = vec![f32::INFINITY, 1.0];
         let b = vec![1.0, 1.0];
         let result = cosine_similarity(&a, &b);
-        assert!(result.abs() < f32::EPSILON, "expected 0.0 for infinity input, got {result}");
+        assert!(result.abs() < EXACT_ZERO_EPSILON, "expected 0.0 for infinity input, got {result}");
     }
 
     #[test]
@@ -80,7 +91,10 @@ mod tests {
         let a = vec![1.0, 1.0];
         let b = vec![f32::NEG_INFINITY, 0.0];
         let result = cosine_similarity(&a, &b);
-        assert!(result.abs() < f32::EPSILON, "expected 0.0 for -infinity input, got {result}");
+        assert!(
+            result.abs() < EXACT_ZERO_EPSILON,
+            "expected 0.0 for -infinity input, got {result}"
+        );
     }
 
     // ─── Property: cosine_similarity is scale-invariant ─────────────
@@ -92,7 +106,7 @@ mod tests {
         let sim_identical = cosine_similarity(&v, &v);
         let sim_scaled = cosine_similarity(&v, &scaled);
         assert!(
-            (sim_identical - sim_scaled).abs() < 0.001,
+            (sim_identical - sim_scaled).abs() < COMPUTED_EPSILON,
             "cosine_similarity must be scale-invariant: identity={sim_identical}, scaled={sim_scaled}"
         );
     }
@@ -106,7 +120,7 @@ mod tests {
         let ab = cosine_similarity(&a, &b);
         let ba = cosine_similarity(&b, &a);
         assert!(
-            (ab - ba).abs() < f32::EPSILON,
+            (ab - ba).abs() < EXACT_ZERO_EPSILON,
             "cosine_similarity must be commutative: ({a:?},{b:?})={ab} vs ({b:?},{a:?})={ba}"
         );
     }
@@ -125,7 +139,7 @@ mod tests {
             for b in &test_vectors {
                 let sim = cosine_similarity(a, b);
                 assert!(
-                    (-1.0..=1.001).contains(&sim),
+                    (-1.0 - COMPUTED_EPSILON..=1.0 + COMPUTED_EPSILON).contains(&sim),
                     "cosine_similarity({a:?}, {b:?}) = {sim} is out of [-1, 1] bounds"
                 );
             }
@@ -181,7 +195,7 @@ mod tests {
         let sim_neg_ab = cosine_similarity(&neg_a, &b);
 
         assert!(
-            (sim_ab + sim_neg_ab).abs() < 0.001,
+            (sim_ab + sim_neg_ab).abs() < COMPUTED_EPSILON,
             "cos(-a,b) should equal -cos(a,b): {sim_neg_ab} vs -{sim_ab}"
         );
     }
