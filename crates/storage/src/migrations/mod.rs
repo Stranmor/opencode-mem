@@ -30,8 +30,6 @@ pub const SCHEMA_VERSION: i32 = 17;
 #[expect(clippy::cognitive_complexity, reason = "Sequential migrations are inherently linear")]
 pub fn run_migrations(conn: &Connection) -> Result<(), rusqlite::Error> {
     conn.pragma_update(None, "journal_mode", "WAL")?;
-    conn.pragma_update(None, "synchronous", "NORMAL")?;
-    conn.pragma_update(None, "busy_timeout", 5000i32)?;
 
     let current_version: i32 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
 
