@@ -25,7 +25,7 @@ anyhow = { workspace = true }
 uuid = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
-sqlite-vec = { version = "0.1", optional = true }
+sqlite-vec = { version = "0.1.7-alpha.10", optional = true }
 zerocopy = { version = "0.8", features = ["derive"], optional = true }
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono", "json"], optional = true }
 
