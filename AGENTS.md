@@ -106,6 +106,10 @@ crates/
 - ~~Session summarization uses wrong ID for API sessions~~ — `summarize_session` now queries via `session_id` (UUID) instead of `content_session_id` (IDE ID)
 - ~~PG save_observation title dedup mismatch~~ — PG `save_observation` catches SQLSTATE 23505 (`idx_obs_title_norm` unique constraint) and returns `Ok(false)`, matching SQLite `INSERT OR IGNORE` behavior
 - ~~AppState semaphore ignored~~ — `process_pending_queue` and `start_background_processor` now use shared `AppState.semaphore` instead of creating local semaphores
+- **SQLite vs PG enum parse divergence** — SQLite fails fast (returns Error) on invalid `ObservationType`/`NoiseLevel` strings, PG silently defaults to `Change`/`Medium`. Both backends should behave consistently — either fail fast or recover with warning log.
+- **Inconsistent HTTP error responses** — Some handlers (`infinite.rs`, `queue.rs`) return structured JSON error bodies `{"error": "..."}`, others return bare HTTP status codes with no body. Unified `ApiError` pattern needed.
+- **Pagination limit inconsistency** — Pagination endpoints (`/api/observations`, `/api/summaries`) hardcode cap of 100, while search/recent endpoints use `MAX_QUERY_LIMIT` (1000). Should use a single constant or define explicit `MAX_PAGINATION_LIMIT`.
+- **save_memory ambiguous 422** — Returns `422 Unprocessable Entity` for both 'low-value filtered' AND 'exact duplicate' observations. Clients cannot distinguish. Should return `200 OK` for duplicates (idempotent) and `422` for filtered only.
 
 ### Resolved
 - ~~Infinite memory compression pipeline starvation~~ — `run_full_compression` now queries per-session via `get_sessions_with_unaggregated_*` + `get_unaggregated_*_for_session`, eliminating fixed cross-session batch that caused threshold starvation
