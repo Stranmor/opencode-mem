@@ -76,9 +76,9 @@ impl SessionService {
     pub async fn summarize_session(
         &self,
         session_id: &str,
-        content_session_id: &str,
+        _content_session_id: &str,
     ) -> anyhow::Result<String> {
-        let observations = self.storage.get_session_observations(content_session_id).await?;
+        let observations = self.storage.get_session_observations(session_id).await?;
         if observations.is_empty() {
             return Ok("No observations in this session.".to_owned());
         }
