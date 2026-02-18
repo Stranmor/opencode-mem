@@ -45,8 +45,19 @@ impl ObservationStore for PgStorage {
         .bind(&obs.noise_reason)
         .bind(obs.created_at)
         .execute(&self.pool)
-        .await?;
-        Ok(result.rows_affected() > 0)
+        .await;
+        match result {
+            Ok(r) => Ok(r.rows_affected() > 0),
+            Err(sqlx::Error::Database(db_err)) if db_err.code().as_deref() == Some("23505") => {
+                tracing::debug!(
+                    id = %obs.id,
+                    title = %obs.title,
+                    "Observation already exists (duplicate id or title), skipping"
+                );
+                Ok(false)
+            },
+            Err(e) => Err(e.into()),
+        }
     }
 
     async fn get_by_id(&self, id: &str) -> Result<Option<Observation>> {

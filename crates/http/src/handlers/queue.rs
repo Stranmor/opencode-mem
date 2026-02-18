@@ -5,7 +5,6 @@ use axum::{
 };
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
 
 use opencode_mem_service::default_visibility_timeout_secs;
 
@@ -51,11 +50,10 @@ pub async fn process_pending_queue(
     }
 
     let count = messages.len();
-    let semaphore = Arc::new(Semaphore::new(max_workers));
     let mut handles = Vec::with_capacity(count);
 
     for msg in messages {
-        let permit = Arc::clone(&semaphore).acquire_owned().await.map_err(|_sem_err| {
+        let permit = Arc::clone(&state.semaphore).acquire_owned().await.map_err(|_sem_err| {
             tracing::error!("Semaphore closed unexpectedly");
             StatusCode::INTERNAL_SERVER_ERROR
         })?;

@@ -1,6 +1,5 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use tokio::sync::Semaphore;
 
 use opencode_mem_core::{ProjectFilter, ToolCall};
 use opencode_mem_service::{default_visibility_timeout_secs, PendingMessage};
@@ -101,11 +100,10 @@ pub fn start_background_processor(state: Arc<AppState>) {
             }
 
             let count = messages.len();
-            let semaphore = Arc::new(Semaphore::new(max_workers));
             let mut handles = Vec::with_capacity(count);
 
             for msg in messages {
-                let permit = match Arc::clone(&semaphore).acquire_owned().await {
+                let permit = match Arc::clone(&state.semaphore).acquire_owned().await {
                     Ok(p) => p,
                     Err(_) => continue,
                 };
