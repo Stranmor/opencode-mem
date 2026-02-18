@@ -260,3 +260,109 @@ fn test_find_similar_rejects_zero_vector() {
     let result = storage.find_similar(&zero_query, 0.0).unwrap();
     assert!(result.is_none(), "zero vector query must return None");
 }
+
+// ─── BREAKER: VULN find_similar NaN query ──────────────────────────
+// find_similar guards against empty and zero vectors, but not NaN.
+// A NaN query vector passed to SQLite vec_distance_cosine() may produce
+// garbage similarity scores or undefined behavior.
+
+#[test]
+fn test_find_similar_nan_query_returns_none() {
+    let (storage, _dir) = create_test_storage();
+
+    let obs = create_test_observation("obs-nan-query", "proj");
+    assert!(storage.save_observation(&obs).unwrap());
+
+    let norm: f32 = (EMBEDDING_DIMENSION as f32).sqrt();
+    let unit_vec: Vec<f32> = vec![1.0 / norm; EMBEDDING_DIMENSION];
+    storage.store_embedding("obs-nan-query", &unit_vec).unwrap();
+
+    // Query with NaN in first position — must NOT return a match
+    let mut nan_query = vec![0.1_f32; EMBEDDING_DIMENSION];
+    if let Some(first) = nan_query.first_mut() {
+        *first = f32::NAN;
+    }
+    let result = storage.find_similar(&nan_query, 0.0).unwrap();
+    assert!(result.is_none(), "NaN query vector must return None, not garbage similarity");
+}
+
+#[test]
+fn test_find_similar_infinity_query_returns_none() {
+    let (storage, _dir) = create_test_storage();
+
+    let obs = create_test_observation("obs-inf-query", "proj");
+    assert!(storage.save_observation(&obs).unwrap());
+
+    let norm: f32 = (EMBEDDING_DIMENSION as f32).sqrt();
+    let unit_vec: Vec<f32> = vec![1.0 / norm; EMBEDDING_DIMENSION];
+    storage.store_embedding("obs-inf-query", &unit_vec).unwrap();
+
+    // Query with Infinity in first position — must NOT produce a match
+    let mut inf_query = vec![0.1_f32; EMBEDDING_DIMENSION];
+    if let Some(first) = inf_query.first_mut() {
+        *first = f32::INFINITY;
+    }
+    let result = storage.find_similar(&inf_query, 0.0).unwrap();
+    assert!(result.is_none(), "Infinity query vector must return None, not garbage similarity");
+}
+
+#[test]
+fn test_find_similar_neg_infinity_query_returns_none() {
+    let (storage, _dir) = create_test_storage();
+
+    let obs = create_test_observation("obs-neginf-query", "proj");
+    assert!(storage.save_observation(&obs).unwrap());
+
+    let norm: f32 = (EMBEDDING_DIMENSION as f32).sqrt();
+    let unit_vec: Vec<f32> = vec![1.0 / norm; EMBEDDING_DIMENSION];
+    storage.store_embedding("obs-neginf-query", &unit_vec).unwrap();
+
+    // Query with -Infinity
+    let mut neginf_query = vec![0.1_f32; EMBEDDING_DIMENSION];
+    if let Some(first) = neginf_query.first_mut() {
+        *first = f32::NEG_INFINITY;
+    }
+    let result = storage.find_similar(&neginf_query, 0.0).unwrap();
+    assert!(result.is_none(), "NEG_INFINITY query vector must return None");
+}
+
+// ─── BREAKER: VULN find_similar_many NaN query ─────────────────────
+// Same vulnerability as find_similar but on the _many variant.
+
+#[test]
+fn test_find_similar_many_nan_query_returns_empty() {
+    let (storage, _dir) = create_test_storage();
+
+    let obs = create_test_observation("obs-nan-many", "proj");
+    assert!(storage.save_observation(&obs).unwrap());
+
+    let norm: f32 = (EMBEDDING_DIMENSION as f32).sqrt();
+    let unit_vec: Vec<f32> = vec![1.0 / norm; EMBEDDING_DIMENSION];
+    storage.store_embedding("obs-nan-many", &unit_vec).unwrap();
+
+    let mut nan_query = vec![0.1_f32; EMBEDDING_DIMENSION];
+    if let Some(first) = nan_query.first_mut() {
+        *first = f32::NAN;
+    }
+    let results = storage.find_similar_many(&nan_query, 0.0, 10).unwrap();
+    assert!(results.is_empty(), "NaN query vector in find_similar_many must return empty vec");
+}
+
+#[test]
+fn test_find_similar_many_infinity_query_returns_empty() {
+    let (storage, _dir) = create_test_storage();
+
+    let obs = create_test_observation("obs-inf-many", "proj");
+    assert!(storage.save_observation(&obs).unwrap());
+
+    let norm: f32 = (EMBEDDING_DIMENSION as f32).sqrt();
+    let unit_vec: Vec<f32> = vec![1.0 / norm; EMBEDDING_DIMENSION];
+    storage.store_embedding("obs-inf-many", &unit_vec).unwrap();
+
+    let mut inf_query = vec![0.1_f32; EMBEDDING_DIMENSION];
+    if let Some(first) = inf_query.first_mut() {
+        *first = f32::INFINITY;
+    }
+    let results = storage.find_similar_many(&inf_query, 0.0, 10).unwrap();
+    assert!(results.is_empty(), "Infinity query vector in find_similar_many must return empty vec");
+}
