@@ -62,7 +62,7 @@ impl EmbeddingStore for PgStorage {
         embedding: &[f32],
         threshold: f32,
     ) -> Result<Option<SimilarMatch>> {
-        if embedding.is_empty() || is_zero_vector(embedding) {
+        if embedding.is_empty() || is_zero_vector(embedding) || contains_non_finite(embedding) {
             return Ok(None);
         }
 
@@ -108,7 +108,7 @@ impl EmbeddingStore for PgStorage {
         threshold: f32,
         limit: usize,
     ) -> Result<Vec<SimilarMatch>> {
-        if embedding.is_empty() || is_zero_vector(embedding) {
+        if embedding.is_empty() || is_zero_vector(embedding) || contains_non_finite(embedding) {
             return Ok(Vec::new());
         }
 

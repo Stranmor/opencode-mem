@@ -73,7 +73,10 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     let queue_service = Arc::new(QueueService::new(storage.clone()));
 
     let state = Arc::new(AppState {
-        semaphore: Arc::new(Semaphore::new(10)),
+        semaphore: Arc::new(Semaphore::new(opencode_mem_core::env_parse_with_default(
+            "OPENCODE_MEM_QUEUE_WORKERS",
+            10,
+        ))),
         event_tx,
         processing_active: AtomicBool::new(true),
         settings: RwLock::new(Settings::default()),

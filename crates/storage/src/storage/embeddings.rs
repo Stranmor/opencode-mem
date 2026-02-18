@@ -86,7 +86,7 @@ impl Storage {
     }
 
     pub fn find_similar(&self, embedding: &[f32], threshold: f32) -> Result<Option<SimilarMatch>> {
-        if embedding.is_empty() || is_zero_vector(embedding) {
+        if embedding.is_empty() || is_zero_vector(embedding) || contains_non_finite(embedding) {
             return Ok(None);
         }
 
@@ -155,7 +155,7 @@ impl Storage {
         threshold: f32,
         limit: usize,
     ) -> Result<Vec<SimilarMatch>> {
-        if embedding.is_empty() || is_zero_vector(embedding) {
+        if embedding.is_empty() || is_zero_vector(embedding) || contains_non_finite(embedding) {
             return Ok(Vec::new());
         }
 
