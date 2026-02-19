@@ -2,14 +2,14 @@
 
 use super::*;
 
+use crate::error::StorageError;
 use crate::pending_queue::PaginatedResult;
 use crate::traits::PromptStore;
-use anyhow::Context;
 use async_trait::async_trait;
 
 #[async_trait]
 impl PromptStore for PgStorage {
-    async fn save_user_prompt(&self, prompt: &UserPrompt) -> Result<()> {
+    async fn save_user_prompt(&self, prompt: &UserPrompt) -> Result<(), StorageError> {
         sqlx::query(
             "INSERT INTO user_prompts (id, content_session_id, prompt_number, prompt_text, project, created_at)
                VALUES ($1, $2, $3, $4, $5, $6)
@@ -18,7 +18,10 @@ impl PromptStore for PgStorage {
         )
         .bind(&prompt.id)
         .bind(&prompt.content_session_id)
-        .bind(i32::try_from(prompt.prompt_number.0).context("prompt_number exceeds i32::MAX")?)
+        .bind(i32::try_from(prompt.prompt_number.0).map_err(|e| StorageError::DataCorruption {
+            context: "prompt_number exceeds i32::MAX".into(),
+            source: Box::new(e),
+        })?)
         .bind(&prompt.prompt_text)
         .bind(&prompt.project)
         .bind(prompt.created_at)
@@ -32,7 +35,7 @@ impl PromptStore for PgStorage {
         offset: usize,
         limit: usize,
         project: Option<&str>,
-    ) -> Result<PaginatedResult<UserPrompt>> {
+    ) -> Result<PaginatedResult<UserPrompt>, StorageError> {
         let total: i64 = if let Some(p) = project {
             sqlx::query_scalar("SELECT COUNT(*) FROM user_prompts WHERE project = $1")
                 .bind(p)
@@ -63,11 +66,12 @@ impl PromptStore for PgStorage {
             .await?
         };
 
-        let items: Vec<UserPrompt> = rows.iter().map(row_to_prompt).collect::<Result<_>>()?;
+        let items: Vec<UserPrompt> =
+            rows.iter().map(row_to_prompt).collect::<Result<_, StorageError>>()?;
         Ok(PaginatedResult::new(items, total, offset, limit))
     }
 
-    async fn get_prompt_by_id(&self, id: &str) -> Result<Option<UserPrompt>> {
+    async fn get_prompt_by_id(&self, id: &str) -> Result<Option<UserPrompt>, StorageError> {
         let row = sqlx::query(
             "SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
                FROM user_prompts WHERE id = $1",
@@ -78,7 +82,11 @@ impl PromptStore for PgStorage {
         row.as_ref().map(row_to_prompt).transpose()
     }
 
-    async fn search_prompts(&self, query: &str, limit: usize) -> Result<Vec<UserPrompt>> {
+    async fn search_prompts(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<UserPrompt>, StorageError> {
         if query.trim().is_empty() {
             return Ok(Vec::new());
         }
@@ -94,6 +102,6 @@ impl PromptStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_prompt).collect()
+        rows.iter().map(row_to_prompt).collect::<Result<_, StorageError>>()
     }
 }

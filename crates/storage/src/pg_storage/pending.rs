@@ -2,6 +2,7 @@
 
 use super::*;
 
+use crate::error::StorageError;
 use crate::pending_queue::{QueueStats, max_retry_count};
 use crate::traits::PendingQueueStore;
 use async_trait::async_trait;
@@ -15,7 +16,7 @@ impl PendingQueueStore for PgStorage {
         tool_input: Option<&str>,
         tool_response: Option<&str>,
         project: Option<&str>,
-    ) -> Result<i64> {
+    ) -> Result<i64, StorageError> {
         let now = Utc::now().timestamp();
         let id: i64 = sqlx::query_scalar(
             "INSERT INTO pending_messages
@@ -38,7 +39,7 @@ impl PendingQueueStore for PgStorage {
         &self,
         limit: usize,
         visibility_timeout_secs: i64,
-    ) -> Result<Vec<PendingMessage>> {
+    ) -> Result<Vec<PendingMessage>, StorageError> {
         let now = Utc::now().timestamp();
         let stale_threshold = now - visibility_timeout_secs;
         let rows = sqlx::query(
@@ -60,10 +61,10 @@ impl PendingQueueStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_pending_message).collect()
+        rows.iter().map(row_to_pending_message).collect::<Result<_, StorageError>>()
     }
 
-    async fn complete_message(&self, id: i64) -> Result<()> {
+    async fn complete_message(&self, id: i64) -> Result<(), StorageError> {
         sqlx::query("DELETE FROM pending_messages WHERE id = $1")
             .bind(id)
             .execute(&self.pool)
@@ -71,7 +72,7 @@ impl PendingQueueStore for PgStorage {
         Ok(())
     }
 
-    async fn fail_message(&self, id: i64, increment_retry: bool) -> Result<()> {
+    async fn fail_message(&self, id: i64, increment_retry: bool) -> Result<(), StorageError> {
         if increment_retry {
             sqlx::query(
                 "UPDATE pending_messages
@@ -96,7 +97,7 @@ impl PendingQueueStore for PgStorage {
         Ok(())
     }
 
-    async fn get_pending_count(&self) -> Result<usize> {
+    async fn get_pending_count(&self) -> Result<usize, StorageError> {
         let count: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM pending_messages WHERE status = 'pending'")
                 .fetch_one(&self.pool)
@@ -104,7 +105,10 @@ impl PendingQueueStore for PgStorage {
         Ok(usize::try_from(count).unwrap_or(0))
     }
 
-    async fn release_stale_messages(&self, visibility_timeout_secs: i64) -> Result<usize> {
+    async fn release_stale_messages(
+        &self,
+        visibility_timeout_secs: i64,
+    ) -> Result<usize, StorageError> {
         let now = Utc::now().timestamp();
         let stale_threshold = now - visibility_timeout_secs;
         let result = sqlx::query(
@@ -118,7 +122,7 @@ impl PendingQueueStore for PgStorage {
         Ok(usize::try_from(result.rows_affected()).unwrap_or(usize::MAX))
     }
 
-    async fn get_failed_messages(&self, limit: usize) -> Result<Vec<PendingMessage>> {
+    async fn get_failed_messages(&self, limit: usize) -> Result<Vec<PendingMessage>, StorageError> {
         let rows = sqlx::query(
             "SELECT id, session_id, status, tool_name, tool_input, tool_response,
                     retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch, project
@@ -130,10 +134,13 @@ impl PendingQueueStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_pending_message).collect()
+        rows.iter().map(row_to_pending_message).collect::<Result<_, StorageError>>()
     }
 
-    async fn get_all_pending_messages(&self, limit: usize) -> Result<Vec<PendingMessage>> {
+    async fn get_all_pending_messages(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<PendingMessage>, StorageError> {
         let rows = sqlx::query(
             "SELECT id, session_id, status, tool_name, tool_input, tool_response,
                     retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch, project
@@ -144,10 +151,10 @@ impl PendingQueueStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_pending_message).collect()
+        rows.iter().map(row_to_pending_message).collect::<Result<_, StorageError>>()
     }
 
-    async fn get_queue_stats(&self) -> Result<QueueStats> {
+    async fn get_queue_stats(&self) -> Result<QueueStats, StorageError> {
         let row = sqlx::query(
             "SELECT
                COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) as pending,
@@ -166,14 +173,14 @@ impl PendingQueueStore for PgStorage {
         })
     }
 
-    async fn clear_failed_messages(&self) -> Result<usize> {
+    async fn clear_failed_messages(&self) -> Result<usize, StorageError> {
         let result = sqlx::query("DELETE FROM pending_messages WHERE status = 'failed'")
             .execute(&self.pool)
             .await?;
         Ok(usize::try_from(result.rows_affected()).unwrap_or(usize::MAX))
     }
 
-    async fn retry_failed_messages(&self) -> Result<usize> {
+    async fn retry_failed_messages(&self) -> Result<usize, StorageError> {
         let result = sqlx::query(
             "UPDATE pending_messages
                SET status = 'pending', retry_count = 0, claimed_at_epoch = NULL
@@ -184,7 +191,7 @@ impl PendingQueueStore for PgStorage {
         Ok(usize::try_from(result.rows_affected()).unwrap_or(usize::MAX))
     }
 
-    async fn clear_all_pending_messages(&self) -> Result<usize> {
+    async fn clear_all_pending_messages(&self) -> Result<usize, StorageError> {
         let result = sqlx::query("DELETE FROM pending_messages").execute(&self.pool).await?;
         Ok(usize::try_from(result.rows_affected()).unwrap_or(usize::MAX))
     }

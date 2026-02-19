@@ -2,6 +2,7 @@
 
 use super::*;
 
+use crate::error::StorageError;
 use crate::traits::EmbeddingStore;
 use async_trait::async_trait;
 use opencode_mem_core::{
@@ -10,12 +11,19 @@ use opencode_mem_core::{
 
 #[async_trait]
 impl EmbeddingStore for PgStorage {
-    async fn store_embedding(&self, observation_id: &str, embedding: &[f32]) -> Result<()> {
+    async fn store_embedding(
+        &self,
+        observation_id: &str,
+        embedding: &[f32],
+    ) -> Result<(), StorageError> {
         if embedding.len() != EMBEDDING_DIMENSION {
-            anyhow::bail!(
-                "embedding dimension mismatch: expected {EMBEDDING_DIMENSION}, got {}",
-                embedding.len()
-            );
+            return Err(StorageError::DataCorruption {
+                context: format!(
+                    "embedding dimension mismatch: expected {EMBEDDING_DIMENSION}, got {}",
+                    embedding.len()
+                ),
+                source: "dimension check".into(),
+            });
         }
         if is_zero_vector(embedding) {
             tracing::warn!(
@@ -25,7 +33,10 @@ impl EmbeddingStore for PgStorage {
             return Ok(());
         }
         if contains_non_finite(embedding) {
-            anyhow::bail!("embedding contains NaN or Infinity values");
+            return Err(StorageError::DataCorruption {
+                context: "embedding contains NaN or Infinity values".to_owned(),
+                source: Box::from("non-finite check"),
+            });
         }
         let vec_str =
             format!("[{}]", embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
@@ -37,7 +48,10 @@ impl EmbeddingStore for PgStorage {
         Ok(())
     }
 
-    async fn get_observations_without_embeddings(&self, limit: usize) -> Result<Vec<Observation>> {
+    async fn get_observations_without_embeddings(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<Observation>, StorageError> {
         let rows = sqlx::query(
             "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
                     facts, concepts, files_read, files_modified, keywords, prompt_number,
@@ -52,7 +66,7 @@ impl EmbeddingStore for PgStorage {
         rows.iter().map(row_to_observation).collect()
     }
 
-    async fn clear_embeddings(&self) -> Result<()> {
+    async fn clear_embeddings(&self) -> Result<(), StorageError> {
         sqlx::query("UPDATE observations SET embedding = NULL").execute(&self.pool).await?;
         Ok(())
     }
@@ -61,7 +75,7 @@ impl EmbeddingStore for PgStorage {
         &self,
         embedding: &[f32],
         threshold: f32,
-    ) -> Result<Option<SimilarMatch>> {
+    ) -> Result<Option<SimilarMatch>, StorageError> {
         if embedding.is_empty() || is_zero_vector(embedding) || contains_non_finite(embedding) {
             return Ok(None);
         }
@@ -107,7 +121,7 @@ impl EmbeddingStore for PgStorage {
         embedding: &[f32],
         threshold: f32,
         limit: usize,
-    ) -> Result<Vec<SimilarMatch>> {
+    ) -> Result<Vec<SimilarMatch>, StorageError> {
         if embedding.is_empty() || is_zero_vector(embedding) || contains_non_finite(embedding) {
             return Ok(Vec::new());
         }
@@ -147,7 +161,10 @@ impl EmbeddingStore for PgStorage {
         Ok(matches)
     }
 
-    async fn get_embeddings_for_ids(&self, ids: &[String]) -> Result<Vec<(String, Vec<f32>)>> {
+    async fn get_embeddings_for_ids(
+        &self,
+        ids: &[String],
+    ) -> Result<Vec<(String, Vec<f32>)>, StorageError> {
         if ids.is_empty() {
             return Ok(Vec::new());
         }

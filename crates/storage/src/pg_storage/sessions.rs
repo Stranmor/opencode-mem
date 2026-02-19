@@ -2,13 +2,13 @@
 
 use super::*;
 
+use crate::error::StorageError;
 use crate::traits::SessionStore;
-use anyhow::Context;
 use async_trait::async_trait;
 
 #[async_trait]
 impl SessionStore for PgStorage {
-    async fn save_session(&self, session: &Session) -> Result<()> {
+    async fn save_session(&self, session: &Session) -> Result<(), StorageError> {
         sqlx::query(&format!(
             "INSERT INTO sessions ({SESSION_COLUMNS})
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
@@ -30,13 +30,16 @@ impl SessionStore for PgStorage {
         .bind(session.started_at)
         .bind(session.ended_at)
         .bind(session.status.as_str())
-        .bind(i32::try_from(session.prompt_counter).context("prompt_counter exceeds i32::MAX")?)
+        .bind(i32::try_from(session.prompt_counter).map_err(|e| StorageError::DataCorruption {
+            context: "prompt_counter exceeds i32::MAX".into(),
+            source: Box::new(e),
+        })?)
         .execute(&self.pool)
         .await?;
         Ok(())
     }
 
-    async fn get_session(&self, id: &str) -> Result<Option<Session>> {
+    async fn get_session(&self, id: &str) -> Result<Option<Session>, StorageError> {
         let row = sqlx::query(&format!("SELECT {SESSION_COLUMNS} FROM sessions WHERE id = $1"))
             .bind(id)
             .fetch_optional(&self.pool)
@@ -44,7 +47,10 @@ impl SessionStore for PgStorage {
         row.map(|r| row_to_session(&r)).transpose()
     }
 
-    async fn get_session_by_content_id(&self, content_session_id: &str) -> Result<Option<Session>> {
+    async fn get_session_by_content_id(
+        &self,
+        content_session_id: &str,
+    ) -> Result<Option<Session>, StorageError> {
         let row = sqlx::query(&format!(
             "SELECT {SESSION_COLUMNS} FROM sessions WHERE content_session_id = $1"
         ))
@@ -54,7 +60,11 @@ impl SessionStore for PgStorage {
         row.map(|r| row_to_session(&r)).transpose()
     }
 
-    async fn update_session_status(&self, id: &str, status: SessionStatus) -> Result<()> {
+    async fn update_session_status(
+        &self,
+        id: &str,
+        status: SessionStatus,
+    ) -> Result<(), StorageError> {
         let ended_at: Option<DateTime<Utc>> = (status != SessionStatus::Active).then(Utc::now);
         sqlx::query("UPDATE sessions SET status = $1, ended_at = $2 WHERE id = $3")
             .bind(status.as_str())
@@ -65,7 +75,7 @@ impl SessionStore for PgStorage {
         Ok(())
     }
 
-    async fn delete_session(&self, session_id: &str) -> Result<bool> {
+    async fn delete_session(&self, session_id: &str) -> Result<bool, StorageError> {
         let result = sqlx::query("DELETE FROM sessions WHERE id = $1")
             .bind(session_id)
             .execute(&self.pool)
@@ -73,7 +83,7 @@ impl SessionStore for PgStorage {
         Ok(result.rows_affected() > 0)
     }
 
-    async fn close_stale_sessions(&self, max_age_hours: i64) -> Result<usize> {
+    async fn close_stale_sessions(&self, max_age_hours: i64) -> Result<usize, StorageError> {
         let now = Utc::now();
         let threshold = now - chrono::Duration::hours(max_age_hours);
         let result = sqlx::query(

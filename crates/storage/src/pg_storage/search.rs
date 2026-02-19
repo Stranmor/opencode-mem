@@ -4,12 +4,13 @@ use super::*;
 
 use std::collections::HashMap;
 
+use crate::error::StorageError;
 use crate::traits::{ObservationStore, SearchStore};
 use async_trait::async_trait;
 
 #[async_trait]
 impl SearchStore for PgStorage {
-    async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+    async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>, StorageError> {
         let tsquery = build_tsquery(query);
         if tsquery.is_empty() {
             let recent = self.get_recent(limit).await?;
@@ -27,10 +28,14 @@ impl SearchStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_search_result).collect()
+        rows.iter().map(row_to_search_result).collect::<Result<_, StorageError>>()
     }
 
-    async fn hybrid_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+    async fn hybrid_search(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<SearchResult>, StorageError> {
         let keywords: HashSet<String> = query.split_whitespace().map(str::to_lowercase).collect();
         let tsquery = build_tsquery(query);
         if tsquery.is_empty() {
@@ -76,7 +81,7 @@ impl SearchStore for PgStorage {
                 );
                 Ok((sr, fts_score, obs_kw))
             })
-            .collect::<Result<_>>()?;
+            .collect::<Result<_, StorageError>>()?;
 
         let (min_fts, max_fts) =
             raw_results.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(mn, mx), (_, fts, _)| {
@@ -87,7 +92,7 @@ impl SearchStore for PgStorage {
         let mut results: Vec<(SearchResult, f64)> = raw_results
             .into_iter()
             .map(|(mut result, fts_score, obs_kw)| {
-                let fts_normalized =
+                let fts_normalized: f64 =
                     if fts_range > 0.0 { (fts_score - min_fts) / fts_range } else { 1.0 };
                 #[expect(
                     clippy::cast_precision_loss,
@@ -118,7 +123,7 @@ impl SearchStore for PgStorage {
         from: Option<&str>,
         to: Option<&str>,
         limit: usize,
-    ) -> Result<Vec<SearchResult>> {
+    ) -> Result<Vec<SearchResult>, StorageError> {
         let mut conditions = Vec::new();
         let mut param_idx: usize = 1;
         let mut bind_strings: Vec<String> = Vec::new();
@@ -173,7 +178,7 @@ impl SearchStore for PgStorage {
                 q = q.bind(&tsquery);
                 q = q.bind(usize_to_i64(limit));
                 let rows = q.fetch_all(&self.pool).await?;
-                return rows.iter().map(row_to_search_result).collect();
+                return rows.iter().map(row_to_search_result).collect::<Result<_, StorageError>>();
             }
         }
 
@@ -195,7 +200,7 @@ impl SearchStore for PgStorage {
         }
         q = q.bind(usize_to_i64(limit));
         let rows = q.fetch_all(&self.pool).await?;
-        rows.iter().map(row_to_search_result).collect()
+        rows.iter().map(row_to_search_result).collect::<Result<_, StorageError>>()
     }
 
     async fn get_timeline(
@@ -203,7 +208,7 @@ impl SearchStore for PgStorage {
         from: Option<&str>,
         to: Option<&str>,
         limit: usize,
-    ) -> Result<Vec<SearchResult>> {
+    ) -> Result<Vec<SearchResult>, StorageError> {
         let mut conditions = Vec::new();
         let mut param_idx: usize = 1;
         let mut bind_strings: Vec<String> = Vec::new();
@@ -237,10 +242,14 @@ impl SearchStore for PgStorage {
         }
         q = q.bind(usize_to_i64(limit));
         let rows = q.fetch_all(&self.pool).await?;
-        rows.iter().map(row_to_search_result).collect()
+        rows.iter().map(row_to_search_result).collect::<Result<_, StorageError>>()
     }
 
-    async fn semantic_search(&self, query_vec: &[f32], limit: usize) -> Result<Vec<SearchResult>> {
+    async fn semantic_search(
+        &self,
+        query_vec: &[f32],
+        limit: usize,
+    ) -> Result<Vec<SearchResult>, StorageError> {
         if query_vec.is_empty() {
             return Ok(Vec::new());
         }
@@ -259,7 +268,7 @@ impl SearchStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_search_result).collect()
+        rows.iter().map(row_to_search_result).collect::<Result<_, StorageError>>()
     }
 
     async fn hybrid_search_v2(
@@ -267,7 +276,7 @@ impl SearchStore for PgStorage {
         query: &str,
         query_vec: &[f32],
         limit: usize,
-    ) -> Result<Vec<SearchResult>> {
+    ) -> Result<Vec<SearchResult>, StorageError> {
         if query_vec.is_empty() {
             return self.hybrid_search(query, limit).await;
         }
@@ -367,7 +376,7 @@ impl SearchStore for PgStorage {
                 let score = score_lookup.get(id.as_str()).copied().unwrap_or(0.0_f64);
                 row_to_search_result_with_score(row, score)
             })
-            .collect::<Result<_>>()?;
+            .collect::<Result<_, StorageError>>()?;
 
         sort_by_score_descending(&mut results);
         Ok(results)

@@ -2,13 +2,13 @@
 
 use super::*;
 
+use crate::error::StorageError;
 use crate::traits::ObservationStore;
-use anyhow::Context;
 use async_trait::async_trait;
 
 #[async_trait]
 impl ObservationStore for PgStorage {
-    async fn save_observation(&self, obs: &Observation) -> Result<bool> {
+    async fn save_observation(&self, obs: &Observation) -> Result<bool, StorageError> {
         let result = sqlx::query(
             r#"INSERT INTO observations
                (id, session_id, project, observation_type, title, subtitle, narrative,
@@ -29,18 +29,18 @@ impl ObservationStore for PgStorage {
         .bind(serde_json::to_value(&obs.files_read)?)
         .bind(serde_json::to_value(&obs.files_modified)?)
         .bind(serde_json::to_value(&obs.keywords)?)
-        .bind(
-            obs.prompt_number
-                .map(|v| i32::try_from(v.0))
-                .transpose()
-                .context("prompt_number exceeds i32::MAX")?,
-        )
-        .bind(
-            obs.discovery_tokens
-                .map(|v| i32::try_from(v.0))
-                .transpose()
-                .context("discovery_tokens exceeds i32::MAX")?,
-        )
+        .bind(obs.prompt_number.map(|v| i32::try_from(v.0)).transpose().map_err(|e| {
+            StorageError::DataCorruption {
+                context: "prompt_number exceeds i32::MAX".into(),
+                source: Box::new(e),
+            }
+        })?)
+        .bind(obs.discovery_tokens.map(|v| i32::try_from(v.0)).transpose().map_err(|e| {
+            StorageError::DataCorruption {
+                context: "discovery_tokens exceeds i32::MAX".into(),
+                source: Box::new(e),
+            }
+        })?)
         .bind(obs.noise_level.as_str())
         .bind(&obs.noise_reason)
         .bind(obs.created_at)
@@ -60,7 +60,7 @@ impl ObservationStore for PgStorage {
         }
     }
 
-    async fn get_by_id(&self, id: &str) -> Result<Option<Observation>> {
+    async fn get_by_id(&self, id: &str) -> Result<Option<Observation>, StorageError> {
         let row = sqlx::query(
             "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
                     facts, concepts, files_read, files_modified, keywords,
@@ -73,7 +73,7 @@ impl ObservationStore for PgStorage {
         row.map(|r| row_to_observation(&r)).transpose()
     }
 
-    async fn get_recent(&self, limit: usize) -> Result<Vec<Observation>> {
+    async fn get_recent(&self, limit: usize) -> Result<Vec<Observation>, StorageError> {
         let rows = sqlx::query(
             "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
                     facts, concepts, files_read, files_modified, keywords,
@@ -86,7 +86,10 @@ impl ObservationStore for PgStorage {
         rows.iter().map(row_to_observation).collect()
     }
 
-    async fn get_session_observations(&self, session_id: &str) -> Result<Vec<Observation>> {
+    async fn get_session_observations(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<Observation>, StorageError> {
         let rows = sqlx::query(
             "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
                     facts, concepts, files_read, files_modified, keywords,
@@ -99,7 +102,10 @@ impl ObservationStore for PgStorage {
         rows.iter().map(row_to_observation).collect()
     }
 
-    async fn get_observations_by_ids(&self, ids: &[String]) -> Result<Vec<Observation>> {
+    async fn get_observations_by_ids(
+        &self,
+        ids: &[String],
+    ) -> Result<Vec<Observation>, StorageError> {
         if ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -119,7 +125,7 @@ impl ObservationStore for PgStorage {
         &self,
         project: &str,
         limit: usize,
-    ) -> Result<Vec<Observation>> {
+    ) -> Result<Vec<Observation>, StorageError> {
         let rows = sqlx::query(
             "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
                     facts, concepts, files_read, files_modified, keywords,
@@ -133,7 +139,7 @@ impl ObservationStore for PgStorage {
         rows.iter().map(row_to_observation).collect()
     }
 
-    async fn get_session_observation_count(&self, session_id: &str) -> Result<usize> {
+    async fn get_session_observation_count(&self, session_id: &str) -> Result<usize, StorageError> {
         let count: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM observations WHERE session_id = $1")
                 .bind(session_id)
@@ -142,7 +148,11 @@ impl ObservationStore for PgStorage {
         Ok(usize::try_from(count).unwrap_or(0))
     }
 
-    async fn search_by_file(&self, file_path: &str, limit: usize) -> Result<Vec<SearchResult>> {
+    async fn search_by_file(
+        &self,
+        file_path: &str,
+        limit: usize,
+    ) -> Result<Vec<SearchResult>, StorageError> {
         let pattern = format!("%{}%", escape_like(file_path));
         let rows = sqlx::query(
             r#"SELECT id, title, subtitle, observation_type, noise_level, 0.0::float8 as score
@@ -158,7 +168,11 @@ impl ObservationStore for PgStorage {
         rows.iter().map(row_to_search_result).collect()
     }
 
-    async fn merge_into_existing(&self, existing_id: &str, newer: &Observation) -> Result<()> {
+    async fn merge_into_existing(
+        &self,
+        existing_id: &str,
+        newer: &Observation,
+    ) -> Result<(), StorageError> {
         let mut tx = self.pool.begin().await?;
 
         let row = sqlx::query(
@@ -171,10 +185,9 @@ impl ObservationStore for PgStorage {
         .fetch_optional(&mut *tx)
         .await?;
 
-        let existing = row
-            .map(|r| row_to_observation(&r))
-            .transpose()?
-            .ok_or_else(|| anyhow::anyhow!("observation not found: {existing_id}"))?;
+        let existing = row.map(|r| row_to_observation(&r)).transpose()?.ok_or_else(|| {
+            StorageError::NotFound { entity: "observation", id: existing_id.to_owned() }
+        })?;
 
         let merged = opencode_mem_core::compute_merge(&existing, newer);
 
@@ -195,20 +208,18 @@ impl ObservationStore for PgStorage {
         .bind(merged.noise_level.as_str())
         .bind(&merged.subtitle)
         .bind(&merged.noise_reason)
-        .bind(
-            merged
-                .prompt_number
-                .map(|v| i32::try_from(v.0))
-                .transpose()
-                .context("prompt_number exceeds i32::MAX")?,
-        )
-        .bind(
-            merged
-                .discovery_tokens
-                .map(|v| i32::try_from(v.0))
-                .transpose()
-                .context("discovery_tokens exceeds i32::MAX")?,
-        )
+        .bind(merged.prompt_number.map(|v| i32::try_from(v.0)).transpose().map_err(|e| {
+            StorageError::DataCorruption {
+                context: "prompt_number exceeds i32::MAX".into(),
+                source: Box::new(e),
+            }
+        })?)
+        .bind(merged.discovery_tokens.map(|v| i32::try_from(v.0)).transpose().map_err(|e| {
+            StorageError::DataCorruption {
+                context: "discovery_tokens exceeds i32::MAX".into(),
+                source: Box::new(e),
+            }
+        })?)
         .bind(existing_id)
         .execute(&mut *tx)
         .await?;

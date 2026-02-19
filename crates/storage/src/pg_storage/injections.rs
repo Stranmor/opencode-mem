@@ -1,5 +1,6 @@
 use super::*;
 
+use crate::error::StorageError;
 use crate::traits::InjectionStore;
 use async_trait::async_trait;
 
@@ -9,7 +10,7 @@ impl InjectionStore for PgStorage {
         &self,
         session_id: &str,
         observation_ids: &[String],
-    ) -> Result<()> {
+    ) -> Result<(), StorageError> {
         if observation_ids.is_empty() {
             return Ok(());
         }
@@ -29,7 +30,10 @@ impl InjectionStore for PgStorage {
         Ok(())
     }
 
-    async fn get_injected_observation_ids(&self, session_id: &str) -> Result<Vec<String>> {
+    async fn get_injected_observation_ids(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<String>, StorageError> {
         let rows: Vec<(String,)> = sqlx::query_as(
             "SELECT observation_id FROM injected_observations WHERE session_id = $1",
         )
@@ -39,7 +43,7 @@ impl InjectionStore for PgStorage {
         Ok(rows.into_iter().map(|(id,)| id).collect())
     }
 
-    async fn cleanup_old_injections(&self, older_than_hours: u32) -> Result<u64> {
+    async fn cleanup_old_injections(&self, older_than_hours: u32) -> Result<u64, StorageError> {
         let interval = format!("{older_than_hours} hours");
         let result = sqlx::query(
             "DELETE FROM injected_observations WHERE injected_at < NOW() - $1::interval",

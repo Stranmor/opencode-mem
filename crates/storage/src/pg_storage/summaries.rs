@@ -2,13 +2,14 @@
 
 use super::*;
 
+use crate::error::StorageError;
 use crate::pending_queue::PaginatedResult;
 use crate::traits::SummaryStore;
 use async_trait::async_trait;
 
 #[async_trait]
 impl SummaryStore for PgStorage {
-    async fn save_summary(&self, summary: &SessionSummary) -> Result<()> {
+    async fn save_summary(&self, summary: &SessionSummary) -> Result<(), StorageError> {
         sqlx::query(&format!(
             "INSERT INTO session_summaries ({SUMMARY_COLUMNS})
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
@@ -38,7 +39,10 @@ impl SummaryStore for PgStorage {
         Ok(())
     }
 
-    async fn get_session_summary(&self, session_id: &str) -> Result<Option<SessionSummary>> {
+    async fn get_session_summary(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<SessionSummary>, StorageError> {
         let row = sqlx::query(&format!(
             "SELECT {SUMMARY_COLUMNS} FROM session_summaries WHERE session_id = $1"
         ))
@@ -53,7 +57,7 @@ impl SummaryStore for PgStorage {
         session_id: &str,
         status: SessionStatus,
         summary: Option<&str>,
-    ) -> Result<()> {
+    ) -> Result<(), StorageError> {
         let mut tx = self.pool.begin().await?;
         let ended_at: Option<DateTime<Utc>> = (status != SessionStatus::Active).then(Utc::now);
 
@@ -117,7 +121,7 @@ impl SummaryStore for PgStorage {
         offset: usize,
         limit: usize,
         project: Option<&str>,
-    ) -> Result<PaginatedResult<SessionSummary>> {
+    ) -> Result<PaginatedResult<SessionSummary>, StorageError> {
         let total: i64 = if let Some(p) = project {
             sqlx::query_scalar("SELECT COUNT(*) FROM session_summaries WHERE project = $1")
                 .bind(p)
@@ -150,11 +154,16 @@ impl SummaryStore for PgStorage {
             .await?
         };
 
-        let items: Vec<SessionSummary> = rows.iter().map(row_to_summary).collect::<Result<_>>()?;
+        let items: Vec<SessionSummary> =
+            rows.iter().map(row_to_summary).collect::<Result<_, StorageError>>()?;
         Ok(PaginatedResult::new(items, total, offset, limit))
     }
 
-    async fn search_sessions(&self, query: &str, limit: usize) -> Result<Vec<SessionSummary>> {
+    async fn search_sessions(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<SessionSummary>, StorageError> {
         let tsquery = build_tsquery(query);
         if tsquery.is_empty() {
             return Ok(Vec::new());

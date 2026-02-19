@@ -2,13 +2,14 @@
 
 use super::*;
 
+use crate::error::StorageError;
 use crate::pending_queue::{PaginatedResult, StorageStats};
 use crate::traits::StatsStore;
 use async_trait::async_trait;
 
 #[async_trait]
 impl StatsStore for PgStorage {
-    async fn get_stats(&self) -> Result<StorageStats> {
+    async fn get_stats(&self) -> Result<StorageStats, StorageError> {
         let observation_count: i64 =
             sqlx::query_scalar("SELECT COUNT(*) FROM observations").fetch_one(&self.pool).await?;
         let session_count: i64 =
@@ -32,7 +33,7 @@ impl StatsStore for PgStorage {
         })
     }
 
-    async fn get_all_projects(&self) -> Result<Vec<String>> {
+    async fn get_all_projects(&self) -> Result<Vec<String>, StorageError> {
         let rows: Vec<String> = sqlx::query_scalar(
             "SELECT DISTINCT project FROM observations WHERE project IS NOT NULL ORDER BY project",
         )
@@ -46,7 +47,7 @@ impl StatsStore for PgStorage {
         offset: usize,
         limit: usize,
         project: Option<&str>,
-    ) -> Result<PaginatedResult<Observation>> {
+    ) -> Result<PaginatedResult<Observation>, StorageError> {
         let total: i64 = if let Some(p) = project {
             sqlx::query_scalar("SELECT COUNT(*) FROM observations WHERE project = $1")
                 .bind(p)
@@ -80,7 +81,8 @@ impl StatsStore for PgStorage {
             .fetch_all(&self.pool)
             .await?
         };
-        let items: Vec<Observation> = rows.iter().map(row_to_observation).collect::<Result<_>>()?;
+        let items: Vec<Observation> =
+            rows.iter().map(row_to_observation).collect::<Result<_, StorageError>>()?;
         Ok(PaginatedResult::new(items, total, offset, limit))
     }
 }

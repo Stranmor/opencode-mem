@@ -23,7 +23,7 @@ mod summaries;
 
 use std::collections::HashSet;
 
-use anyhow::Result;
+use crate::error::StorageError;
 use chrono::{DateTime, Utc};
 use opencode_mem_core::{
     DiscoveryTokens, GlobalKnowledge, KnowledgeType, NoiseLevel, Observation, ObservationType,
@@ -43,7 +43,7 @@ pub struct PgStorage {
 }
 
 impl PgStorage {
-    pub async fn new(database_url: &str) -> Result<Self> {
+    pub async fn new(database_url: &str) -> Result<Self, StorageError> {
         let pool = PgPoolOptions::new()
             .max_connections(PG_POOL_MAX_CONNECTIONS)
             .acquire_timeout(std::time::Duration::from_secs(PG_POOL_ACQUIRE_TIMEOUT_SECS))
@@ -51,7 +51,7 @@ impl PgStorage {
             .test_before_acquire(true)
             .connect(database_url)
             .await?;
-        run_pg_migrations(&pool).await?;
+        run_pg_migrations(&pool).await.map_err(|e| StorageError::Migration(e.to_string()))?;
         tracing::info!("PgStorage initialized");
         Ok(Self { pool })
     }
@@ -82,7 +82,7 @@ pub(crate) fn parse_pg_noise_level(s: Option<&str>) -> NoiseLevel {
     }
 }
 
-pub(crate) fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observation> {
+pub(crate) fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observation, StorageError> {
     let obs_type = parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?);
     let noise_level =
         parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref());
@@ -132,7 +132,9 @@ pub(crate) fn usize_to_i64(val: usize) -> i64 {
     i64::try_from(val).unwrap_or(i64::MAX)
 }
 
-pub(crate) fn row_to_search_result(row: &sqlx::postgres::PgRow) -> Result<SearchResult> {
+pub(crate) fn row_to_search_result(
+    row: &sqlx::postgres::PgRow,
+) -> Result<SearchResult, StorageError> {
     let obs_type = parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?);
     let noise_level =
         parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref());
@@ -150,7 +152,7 @@ pub(crate) fn row_to_search_result(row: &sqlx::postgres::PgRow) -> Result<Search
 pub(crate) fn row_to_search_result_with_score(
     row: &sqlx::postgres::PgRow,
     score: f64,
-) -> Result<SearchResult> {
+) -> Result<SearchResult, StorageError> {
     let obs_type = parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?);
     let noise_level =
         parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref());
@@ -164,7 +166,7 @@ pub(crate) fn row_to_search_result_with_score(
     ))
 }
 
-pub(crate) fn row_to_session(row: &sqlx::postgres::PgRow) -> Result<Session> {
+pub(crate) fn row_to_session(row: &sqlx::postgres::PgRow) -> Result<Session, StorageError> {
     let started_at: DateTime<Utc> = row.try_get("started_at")?;
     let ended_at: Option<DateTime<Utc>> = row.try_get("ended_at")?;
     let status_str: String = row.try_get("status")?;
@@ -188,7 +190,7 @@ pub(crate) fn row_to_session(row: &sqlx::postgres::PgRow) -> Result<Session> {
     ))
 }
 
-pub(crate) fn row_to_summary(row: &sqlx::postgres::PgRow) -> Result<SessionSummary> {
+pub(crate) fn row_to_summary(row: &sqlx::postgres::PgRow) -> Result<SessionSummary, StorageError> {
     let created_at: DateTime<Utc> = row.try_get("created_at")?;
     let files_read: serde_json::Value = row.try_get("files_read")?;
     let files_edited: serde_json::Value = row.try_get("files_edited")?;
@@ -211,7 +213,9 @@ pub(crate) fn row_to_summary(row: &sqlx::postgres::PgRow) -> Result<SessionSumma
     ))
 }
 
-pub(crate) fn row_to_knowledge(row: &sqlx::postgres::PgRow) -> Result<GlobalKnowledge> {
+pub(crate) fn row_to_knowledge(
+    row: &sqlx::postgres::PgRow,
+) -> Result<GlobalKnowledge, StorageError> {
     let kt_str: String = row.try_get("knowledge_type")?;
     let knowledge_type: KnowledgeType = kt_str.parse().unwrap_or_else(|_| {
         tracing::warn!(invalid_type = %kt_str, "corrupt knowledge_type in DB, defaulting to Pattern");
@@ -240,7 +244,7 @@ pub(crate) fn row_to_knowledge(row: &sqlx::postgres::PgRow) -> Result<GlobalKnow
     ))
 }
 
-pub(crate) fn row_to_prompt(row: &sqlx::postgres::PgRow) -> Result<UserPrompt> {
+pub(crate) fn row_to_prompt(row: &sqlx::postgres::PgRow) -> Result<UserPrompt, StorageError> {
     let created_at: DateTime<Utc> = row.try_get("created_at")?;
     Ok(UserPrompt::new(
         row.try_get("id")?,
@@ -252,7 +256,9 @@ pub(crate) fn row_to_prompt(row: &sqlx::postgres::PgRow) -> Result<UserPrompt> {
     ))
 }
 
-pub(crate) fn row_to_pending_message(row: &sqlx::postgres::PgRow) -> Result<PendingMessage> {
+pub(crate) fn row_to_pending_message(
+    row: &sqlx::postgres::PgRow,
+) -> Result<PendingMessage, StorageError> {
     let status_str: String = row.try_get("status")?;
     let status =
         status_str.parse::<PendingMessageStatus>().unwrap_or_else(|_| {

@@ -2,12 +2,16 @@
 
 use super::*;
 
+use crate::error::StorageError;
 use crate::traits::KnowledgeStore;
 use async_trait::async_trait;
 use opencode_mem_core::{KnowledgeInput, KnowledgeSearchResult};
 
 impl PgStorage {
-    async fn save_knowledge_inner(&self, input: &KnowledgeInput) -> Result<GlobalKnowledge> {
+    async fn save_knowledge_inner(
+        &self,
+        input: &KnowledgeInput,
+    ) -> Result<GlobalKnowledge, StorageError> {
         let mut tx = self.pool.begin().await?;
         let now = Utc::now();
 
@@ -148,31 +152,25 @@ impl PgStorage {
 
 #[async_trait]
 impl KnowledgeStore for PgStorage {
-    async fn save_knowledge(&self, input: KnowledgeInput) -> Result<GlobalKnowledge> {
+    async fn save_knowledge(&self, input: KnowledgeInput) -> Result<GlobalKnowledge, StorageError> {
         for attempt in 0u8..3u8 {
             match self.save_knowledge_inner(&input).await {
                 Ok(knowledge) => return Ok(knowledge),
-                Err(e) => {
-                    let is_unique_violation = e
-                        .downcast_ref::<sqlx::Error>()
-                        .and_then(|se| se.as_database_error())
-                        .is_some_and(|de| de.code().is_some_and(|c| c == "23505"));
-                    if is_unique_violation && attempt < 2 {
-                        tracing::debug!(
-                            title = %input.title,
-                            attempt,
-                            "knowledge save hit unique constraint, retrying"
-                        );
-                        continue;
-                    }
-                    return Err(e);
+                Err(ref e) if e.is_duplicate() && attempt < 2 => {
+                    tracing::debug!(
+                        title = %input.title,
+                        attempt,
+                        "knowledge save hit unique constraint, retrying"
+                    );
+                    continue;
                 },
+                Err(e) => return Err(e),
             }
         }
         unreachable!()
     }
 
-    async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>> {
+    async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, StorageError> {
         let row =
             sqlx::query(&format!("SELECT {KNOWLEDGE_COLUMNS} FROM global_knowledge WHERE id = $1"))
                 .bind(id)
@@ -181,7 +179,7 @@ impl KnowledgeStore for PgStorage {
         row.map(|r| row_to_knowledge(&r)).transpose()
     }
 
-    async fn delete_knowledge(&self, id: &str) -> Result<bool> {
+    async fn delete_knowledge(&self, id: &str) -> Result<bool, StorageError> {
         let result = sqlx::query("DELETE FROM global_knowledge WHERE id = $1")
             .bind(id)
             .execute(&self.pool)
@@ -193,7 +191,7 @@ impl KnowledgeStore for PgStorage {
         &self,
         query: &str,
         limit: usize,
-    ) -> Result<Vec<KnowledgeSearchResult>> {
+    ) -> Result<Vec<KnowledgeSearchResult>, StorageError> {
         let tsquery = build_tsquery(query);
         if tsquery.is_empty() {
             return self.list_knowledge(None, limit).await.map(|items| {
@@ -224,7 +222,7 @@ impl KnowledgeStore for PgStorage {
         &self,
         knowledge_type: Option<KnowledgeType>,
         limit: usize,
-    ) -> Result<Vec<GlobalKnowledge>> {
+    ) -> Result<Vec<GlobalKnowledge>, StorageError> {
         let rows = if let Some(kt) = knowledge_type {
             sqlx::query(&format!(
                 "SELECT {KNOWLEDGE_COLUMNS} FROM global_knowledge
@@ -247,7 +245,7 @@ impl KnowledgeStore for PgStorage {
         rows.iter().map(row_to_knowledge).collect()
     }
 
-    async fn update_knowledge_usage(&self, id: &str) -> Result<()> {
+    async fn update_knowledge_usage(&self, id: &str) -> Result<(), StorageError> {
         let now = Utc::now();
         sqlx::query(
             "UPDATE global_knowledge
