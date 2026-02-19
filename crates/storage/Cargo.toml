@@ -7,16 +7,8 @@ license.workspace = true
 [lints]
 workspace = true
 
-[features]
-default = ["sqlite"]
-sqlite = ["dep:rusqlite", "dep:r2d2", "dep:r2d2_sqlite", "dep:sqlite-vec", "dep:zerocopy"]
-postgres = ["dep:sqlx"]
-
 [dependencies]
 opencode-mem-core = { workspace = true }
-rusqlite = { workspace = true, optional = true }
-r2d2 = { workspace = true, optional = true }
-r2d2_sqlite = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
@@ -25,10 +17,7 @@ anyhow = { workspace = true }
 uuid = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
-sqlite-vec = { version = "0.1.7-alpha.10", optional = true }
-zerocopy = { version = "0.8", features = ["derive"], optional = true }
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono", "json"], optional = true }
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono", "json"] }
 
 [dev-dependencies]
-tempfile = "3.10"
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

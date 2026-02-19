@@ -1,19 +1,18 @@
 //! Integration tests for PgStorage.
-//! Run with: DATABASE_URL=... cargo test -p opencode-mem-storage --features postgres -- --ignored pg_
+//! Run with: DATABASE_URL=... cargo test -p opencode-mem-storage -- --ignored pg_
 
-#![cfg(feature = "postgres")]
 #![allow(clippy::unwrap_used, reason = "integration test code")]
 
 use chrono::Utc;
 use opencode_mem_core::{
-    KnowledgeInput, KnowledgeType, NoiseLevel, Observation, ObservationType, Session,
-    SessionStatus, EMBEDDING_DIMENSION,
+    EMBEDDING_DIMENSION, KnowledgeInput, KnowledgeType, NoiseLevel, Observation, ObservationType,
+    Session, SessionStatus,
 };
+use opencode_mem_storage::PgStorage;
 use opencode_mem_storage::traits::{
     EmbeddingStore, KnowledgeStore, ObservationStore, PendingQueueStore, SearchStore, SessionStore,
     StatsStore,
 };
-use opencode_mem_storage::PgStorage;
 use uuid::Uuid;
 
 async fn create_pg_storage() -> PgStorage {

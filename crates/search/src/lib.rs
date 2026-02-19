@@ -208,27 +208,27 @@ pub async fn run_semantic_search_with_fallback(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
 
     #[expect(clippy::expect_used, reason = "test code")]
-    fn create_test_storage() -> (TempDir, Arc<StorageBackend>) {
-        let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let db_path = temp_dir.path().join("test.db");
-        let storage = StorageBackend::new_sqlite(&db_path).expect("Failed to create storage");
-        (temp_dir, Arc::new(storage))
+    async fn create_test_storage() -> Arc<StorageBackend> {
+        let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
+        let storage = StorageBackend::new(&url).await.expect("Failed to connect to PG");
+        Arc::new(storage)
     }
 
-    #[test]
-    fn test_hybrid_search_creation() {
-        let (_temp, storage) = create_test_storage();
+    #[tokio::test]
+    #[ignore = "requires DATABASE_URL"]
+    async fn test_hybrid_search_creation() {
+        let storage = create_test_storage().await;
         let search = HybridSearch::new(storage, None);
         assert!(!search.has_embeddings());
     }
 
     #[tokio::test]
+    #[ignore = "requires DATABASE_URL"]
     #[expect(clippy::expect_used, reason = "test code")]
     async fn test_search_without_embeddings() {
-        let (_temp, storage) = create_test_storage();
+        let storage = create_test_storage().await;
         let search = HybridSearch::new(storage, None);
 
         // Should not panic, returns empty results
@@ -237,9 +237,10 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires DATABASE_URL"]
     #[expect(clippy::expect_used, reason = "test code")]
     async fn test_timeline_empty() {
-        let (_temp, storage) = create_test_storage();
+        let storage = create_test_storage().await;
         let search = HybridSearch::new(storage, None);
 
         let results = search.timeline(None, None, 10).await.expect("Timeline failed");
@@ -247,9 +248,10 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires DATABASE_URL"]
     #[expect(clippy::expect_used, reason = "test code")]
     async fn test_get_full_empty() {
-        let (_temp, storage) = create_test_storage();
+        let storage = create_test_storage().await;
         let search = HybridSearch::new(storage, None);
 
         let results = search.get_full(&[]).await.expect("Get full failed");
@@ -257,9 +259,10 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires DATABASE_URL"]
     #[expect(clippy::expect_used, reason = "test code")]
     async fn test_semantic_search_without_embeddings() {
-        let (_temp, storage) = create_test_storage();
+        let storage = create_test_storage().await;
         let search = HybridSearch::new(storage, None);
 
         let result = search.semantic_search("test", 10).await.expect("Semantic search failed");

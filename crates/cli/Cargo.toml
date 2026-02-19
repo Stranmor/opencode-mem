@@ -11,14 +11,11 @@ name = "opencode-mem"
 path = "src/main.rs"
 
 [features]
-default = ["sqlite"]
-sqlite = ["opencode-mem-storage/sqlite"]
-postgres = ["opencode-mem-storage/postgres"]
 cuda = ["opencode-mem-embeddings/cuda"]
 
 [dependencies]
 opencode-mem-core = { workspace = true }
-opencode-mem-storage = { workspace = true, default-features = false }
+opencode-mem-storage = { workspace = true }
 opencode-mem-llm = { workspace = true }
 opencode-mem-http = { workspace = true }
 opencode-mem-mcp = { workspace = true }
@@ -29,7 +26,6 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
-dirs = { workspace = true }
 axum = { workspace = true }
 clap = { version = "4", features = ["derive"] }
 serde_json = { workspace = true }

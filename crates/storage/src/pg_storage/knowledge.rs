@@ -11,7 +11,7 @@ impl PgStorage {
         let mut tx = self.pool.begin().await?;
         let now = Utc::now();
 
-        let existing: Option<(
+        type ExistingRow = (
             String,
             DateTime<Utc>,
             serde_json::Value,
@@ -20,7 +20,8 @@ impl PgStorage {
             f64,
             i64,
             Option<DateTime<Utc>>,
-        )> = sqlx::query_as(
+        );
+        let existing: Option<ExistingRow> = sqlx::query_as(
             "SELECT id, created_at, triggers, source_projects, source_observations,
                         confidence, usage_count, last_used_at
                  FROM global_knowledge
@@ -84,7 +85,7 @@ impl PgStorage {
 
             Ok(GlobalKnowledge::new(
                 id,
-                input.knowledge_type.clone(),
+                input.knowledge_type,
                 input.title.clone(),
                 input.description.clone(),
                 input.instructions.clone(),
@@ -128,7 +129,7 @@ impl PgStorage {
 
             Ok(GlobalKnowledge::new(
                 id,
-                input.knowledge_type.clone(),
+                input.knowledge_type,
                 input.title.clone(),
                 input.description.clone(),
                 input.instructions.clone(),

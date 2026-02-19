@@ -36,7 +36,6 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use commands::hook::HookCommands;
 use opencode_mem_storage::StorageBackend;
-use std::path::PathBuf;
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
@@ -77,9 +76,6 @@ enum Commands {
     BackfillEmbeddings {
         #[arg(short, long, default_value = "100")]
         batch_size: usize,
-        /// Drop and recreate vec0 table before backfill (fixes chunk errors)
-        #[arg(long)]
-        reset_vec: bool,
     },
     ImportInsights {
         #[arg(short, long)]
@@ -89,19 +85,6 @@ enum Commands {
     },
     #[command(subcommand)]
     Hook(HookCommands),
-    #[cfg(all(feature = "sqlite", feature = "postgres"))]
-    Migrate,
-}
-
-#[must_use]
-pub fn get_db_path() -> PathBuf {
-    if let Ok(path) = std::env::var("OPENCODE_MEM_DB_PATH") {
-        return PathBuf::from(path);
-    }
-    dirs::data_local_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("opencode-memory")
-        .join("memory.db")
 }
 
 pub fn get_api_key() -> Result<String> {
@@ -120,30 +103,11 @@ pub fn get_base_url() -> String {
         .unwrap_or_else(|_| "https://antigravity.quantumind.ru".to_owned())
 }
 
-pub fn ensure_db_dir(db_path: &std::path::Path) -> Result<()> {
-    if let Some(parent) = db_path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    Ok(())
-}
-
 pub async fn create_storage() -> Result<StorageBackend> {
-    #[cfg(feature = "postgres")]
-    if let Ok(url) = std::env::var("DATABASE_URL") {
-        tracing::info!("Using PostgreSQL backend");
-        return StorageBackend::new_postgres(&url).await;
-    }
-
-    #[cfg(feature = "sqlite")]
-    {
-        let db_path = get_db_path();
-        ensure_db_dir(&db_path)?;
-        tracing::info!("Using SQLite backend: {}", db_path.display());
-        return StorageBackend::new_sqlite(&db_path);
-    }
-
-    #[allow(unreachable_code)]
-    Err(anyhow::anyhow!("No storage backend enabled. Enable 'sqlite' or 'postgres' feature."))
+    let url = std::env::var("DATABASE_URL")
+        .map_err(|_| anyhow::anyhow!("DATABASE_URL environment variable must be set"))?;
+    tracing::info!("Connecting to PostgreSQL");
+    StorageBackend::new(&url).await
 }
 
 #[tokio::main]
@@ -177,18 +141,14 @@ async fn main() -> Result<()> {
         Commands::Get { id } => {
             commands::search::run_get(id).await?;
         },
-        Commands::BackfillEmbeddings { batch_size, reset_vec } => {
-            commands::search::run_backfill_embeddings(batch_size, reset_vec).await?;
+        Commands::BackfillEmbeddings { batch_size } => {
+            commands::search::run_backfill_embeddings(batch_size).await?;
         },
         Commands::ImportInsights { file, dir } => {
             commands::import_insights::run(file, dir).await?;
         },
         Commands::Hook(hook_cmd) => {
             commands::hook::run(hook_cmd).await?;
-        },
-        #[cfg(all(feature = "sqlite", feature = "postgres"))]
-        Commands::Migrate => {
-            commands::migrate::run().await?;
         },
     }
 

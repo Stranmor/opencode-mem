@@ -16,7 +16,7 @@ Last reviewed commit: `eea4f599c0c54eb8d7dcc0d81a9364f2302fd1e6`
 | Component | Status | Details |
 |-----------|--------|---------|
 | MCP Tools | ✅ 17 tools | search, timeline, get_observations, memory_*, knowledge_*, infinite_*, save_memory |
-| Database | ✅ | PostgreSQL primary (pgvector + tsvector/GIN) + SQLite fallback (FTS5 + sqlite-vec), enum dispatch |
+| Database | ✅ | PostgreSQL only (pgvector + tsvector/GIN), direct PgStorage (no dispatch enum) |
 | CLI | ✅ 100% | serve, mcp, search, stats, projects, recent, get, hook (context, session-init, observe, summarize) |
 | HTTP API | ✅ 100% | 65 endpoints (upstream has 56) |
 | Storage | ✅ 100% | Core tables, session_summaries, pending queue |
@@ -41,7 +41,7 @@ Last reviewed commit: `eea4f599c0c54eb8d7dcc0d81a9364f2302fd1e6`
 |---------|--------|-------|
 | **Infinite Memory** | ✅ Ready | PostgreSQL + pgvector backend for long-term AGI memory. Session isolation, hierarchical summaries (5min→hour→day), content truncation. Enabled via INFINITE_MEMORY_URL. **Raw events are NEVER deleted** — drill-down API allows zooming from any summary back to original events. |
 | **Dynamic Memory** | ✅ Ready | Solves "static summaries" problem. **Deep Zoom:** 4 HTTP endpoints (`/api/infinite/expand_summary/:id`, `/time_range`, `/drill_hour/:id`, `/drill_minute/:id`) for drilling down from summaries to raw events. **Structured Metadata:** `SummaryEntities` (files, functions, libraries, errors, decisions) extracted via `response_format: json_object`. Enables fact-based search even when text summary is vague. |
-| **Semantic Search** | ✅ Ready | fastembed-rs (BGE-M3, 1024d, 100+ languages). SQLite: sqlite-vec. PostgreSQL: pgvector. Hybrid search: FTS BM25 (50%) + vector similarity (50%). HTTP endpoint: `/semantic-search?q=...`. |
+| **Semantic Search** | ✅ Ready | fastembed-rs (BGE-M3, 1024d, 100+ languages). PostgreSQL: pgvector. Hybrid search: FTS BM25 (50%) + vector similarity (50%). HTTP endpoint: `/semantic-search?q=...`. |
 
 ## Upstream Sync
 
@@ -55,7 +55,7 @@ Last reviewed commit: `eea4f599c0c54eb8d7dcc0d81a9364f2302fd1e6`
 ```
 crates/
 ├── core/        # Domain types (Observation, Session, etc.)
-├── storage/     # SQLite + FTS5 + migrations
+├── storage/     # PostgreSQL + pgvector + migrations
 ├── embeddings/  # Vector embeddings (fastembed BGE-M3, 1024d, multilingual)
 ├── search/      # Hybrid search (FTS + keyword + semantic)
 ├── llm/         # LLM compression (Antigravity API)
@@ -68,8 +68,8 @@ crates/
 
 ## Key Files
 
-- `crates/storage/src/storage/` — modular storage (mod.rs + 10 domain modules)
-- `crates/storage/src/migrations/` — schema migrations v1-v10 (12 files)
+- `crates/storage/src/pg_storage/` — modular PG storage (mod.rs + domain modules)
+- `crates/storage/src/pg_migrations.rs` — PostgreSQL schema migrations
 - `crates/mcp/src/` — MCP server: lib.rs + tools.rs + handlers/
 - `crates/http/src/handlers/` — HTTP handlers (11 modules)
 - `crates/core/src/observation/low_value_filter.rs` — configurable noise filter (SPOT), env: `OPENCODE_MEM_FILTER_PATTERNS`
@@ -82,12 +82,19 @@ crates/
 - Gate MCP review tooling intermittently returns 429/502 or "Max retries exceeded", blocking automated code review.
 - Test coverage: ~40% of critical paths. Service layer, HTTP handlers, infinite-memory, CLI still have zero tests.
 - **Typed error enums partial** — Leaf crates have typed errors (`CoreError`, `EmbeddingError`, `LlmError`), but storage/service/http still use `anyhow::Result`. HTTP layer converts everything to 500 via blanket `From<anyhow::Error>`. Next step: `StorageError` in storage trait → `ServiceError` → `ApiError` `From` impls.
+- **Permissive CORS on HTTP server** — `CorsLayer::permissive()` in `crates/http/src/lib.rs` allows any website to read private memory data from `localhost:37777`. Should use strict origin allowlist or remove CORS entirely (local IDE plugins don't need it).
+- **Infinite Memory drops filtered observations** — `ObservationService::process` only calls `store_infinite_memory` if `compress_and_save` returns a valid observation. Filtered (low-value) or deduplicated observations are NOT stored in Infinite Memory, violating the "raw events are NEVER deleted" goal.
+- **pg_migrations non-transactional** — `run_pg_migrations()` runs 30+ SQL statements without a wrapping transaction. Partial failure leaves DB in inconsistent state (mitigated by idempotent design — re-run converges).
+- **pg_migrations .ok() swallows index errors** — `idx_obs_embedding` creation uses `.ok()` which silently swallows all errors, not just "too few rows for ivfflat". Connection errors or missing extension go unnoticed.
+- **KnowledgeType SPOT violation** — `KnowledgeType` enum variants are hardcoded separately in Rust enum, LLM prompts, and MCP tool schemas. Adding a new type requires manual updates in 3 places.
+- **strip_markdown_json duplicated** — Implemented in both `crates/core/src/json_utils.rs` and locally in `crates/llm/src/insights.rs`. The LLM crate already depends on core.
+- **Hybrid search stop-words fallback** — If `hybrid_search` receives query with only stop words (empty tsquery), falls back to `get_recent` observations instead of returning empty results.
 - ~~PG search_vec missing columns~~ — `search_vec` tsvector now includes `facts` (weight C) and `keywords` (weight D) via trigger function (generated column replaced due to subquery limitation)
 - ~~Session observations not durable~~ — `POST /api/sessions/observations` now uses persistent DB queue (`queue_service.queue_message()`) instead of ephemeral `tokio::spawn`. Server crash no longer loses session observations.
-- ~~Knowledge save race condition~~ — Unique index `idx_knowledge_title_unique` on `LOWER(title)` (PG) / `title COLLATE NOCASE` (SQLite). Save methods retry on constraint violation, merging via SELECT+UPDATE on retry.
+- ~~Knowledge save race condition~~ — Unique index `idx_knowledge_title_unique` on `LOWER(title)` (PG). Save methods retry on constraint violation, merging via SELECT+UPDATE on retry.
 - ~~PG noise_level default mismatch~~ — PG migration default changed to `'medium'`, existing `'normal'` rows migrated
-- **Migration skips embeddings** — `migrate` command (SQLite→PG) doesn't transfer vector embeddings. Semantic search breaks until manual backfill.
-- ~~SQLite merge_into_existing deadlock risk~~ — `merge_into_existing` now uses `TransactionBehavior::Immediate` to prevent SQLITE_BUSY in WAL mode
+- ~~Migration command removed~~ — SQLite→PG `migrate` command deleted (PG is now the only backend)
+
 - ~~Queue processor UUID collision~~ — UUID v5 now generated from content hash (tool_name + session_id + tool_response + created_at_epoch) instead of DB row ID. Table truncation no longer causes UUID collisions.
 - ~~Privacy filter bypass in save_memory~~ — `filter_private_content` now applied in `save_memory` before observation creation
 - ~~Blocking I/O in session_service~~ — replaced `std::process::Command` with `tokio::process::Command`
@@ -99,13 +106,15 @@ crates/
 - ~~Sequential LLM calls in observation process~~ — `extract_knowledge` and `store_infinite_memory` now run concurrently via `tokio::join!`
 - ~~Injection cleanup only on startup~~ — `cleanup_old_injections` now runs periodically (~hourly) in the background processor loop
 - ~~Unbounded injected IDs per session~~ — Capped at 500 most recent IDs per session via `MAX_INJECTED_IDS` constant
-- ~~PG get_embeddings_for_ids no batching~~ — PG implementation now chunks IDs via `MAX_BATCH_IDS`, matching SQLite behavior
+- ~~PG get_embeddings_for_ids no batching~~ — PG implementation now chunks IDs via `MAX_BATCH_IDS`
 - **CUDA GPU acceleration blocked on Pascal** — ort-sys 2.0.0-rc.11 pre-built CUDA provider includes only SM 7.0+ (Volta+). GTX 1060 (SM 6.1 Pascal) gets `cudaErrorSymbolNotFound` at inference. CUDA EP registers successfully but all inference ops fail. CUDA 12 compat libs cleaned up from home-server. Workaround: CPU-only embeddings with `OPENCODE_MEM_DISABLE_EMBEDDINGS=1` for throttling. To resolve: either build ONNX Runtime from source with `CMAKE_CUDA_ARCHITECTURES=61`, or upgrade to Volta+ GPU.
-- **sqlite-vec vec0 1024 record limit** — sqlite-vec (0.1.7-alpha.10) vec0 virtual table fails with `Could not insert a new vector chunk` after exactly 1024 records. Default `chunk_size=1024` cannot be overridden (the Rust crate's bundled C code ignores `chunk_size` parameter). Current coverage: 1024/1165 observations (87.9%). Workaround: migrate to PostgreSQL backend (pgvector has no such limit). When >2000 observations accumulate, this becomes blocking.
-- ~~No DB path env var~~ — `OPENCODE_MEM_DB_PATH` env var now overrides default `~/.local/share/opencode-memory/memory.db` in `get_db_path()`.
+- ~~sqlite-vec vec0 1024 record limit~~ — SQLite backend removed entirely. PG-only now (pgvector has no such limit).
+- ~~No DB path env var~~ — SQLite backend removed. `DATABASE_URL` is the only config needed.
 - ~~Session summarization uses wrong ID for API sessions~~ — `summarize_session` now queries via `session_id` (UUID) instead of `content_session_id` (IDE ID)
-- ~~PG save_observation title dedup mismatch~~ — PG `save_observation` catches SQLSTATE 23505 (`idx_obs_title_norm` unique constraint) and returns `Ok(false)`, matching SQLite `INSERT OR IGNORE` behavior
+- ~~PG save_observation title dedup mismatch~~ — PG `save_observation` catches SQLSTATE 23505 (`idx_obs_title_norm` unique constraint) and returns `Ok(false)`, idempotent duplicate handling
 - ~~AppState semaphore ignored~~ — `process_pending_queue` and `start_background_processor` now use shared `AppState.semaphore` instead of creating local semaphores
+- **SPOT: dual-database global_knowledge** — `global_knowledge` table exists in BOTH SQLite (`~/.local/share/opencode-memory/memory.db`) and PostgreSQL (`opencode_mem` database) with **different entries** in each. MCP tools (`memory_knowledge_list/delete/save`) operate on SQLite. The service also writes to PostgreSQL independently. This is a SPOT violation — single source of truth should be PostgreSQL only (consistent with PG-only migration). SQLite knowledge should either be removed entirely or kept as a read-through cache derived from PG.
+- **memory_knowledge_delete MCP tool broken** — Returns "database disk image is malformed" even after SQLite rebuild and service restart. The service caches the SQLite connection at startup and doesn't re-open the rebuilt file. All knowledge deletions currently require direct SQL. Likely fix: close and re-open SQLite connection on file change, or migrate knowledge ops to PG-only.
 - **SQLite vs PG enum parse divergence** — SQLite fails fast (returns Error) on invalid `ObservationType`/`NoiseLevel` strings, PG silently defaults to `Change`/`Medium`. Both backends should behave consistently — either fail fast or recover with warning log.
 - **Inconsistent HTTP error responses** — Some handlers (`infinite.rs`, `queue.rs`) return structured JSON error bodies `{"error": "..."}`, others return bare HTTP status codes with no body. Unified `ApiError` pattern needed.
 - **Pagination limit inconsistency** — Pagination endpoints (`/api/observations`, `/api/summaries`) hardcode cap of 100, while search/recent endpoints use `MAX_QUERY_LIMIT` (1000). Should use a single constant or define explicit `MAX_PAGINATION_LIMIT`.
@@ -116,12 +125,12 @@ crates/
 - ~~Code Duplication in observation_service.rs~~ — extracted shared `persist_and_notify` method
 - ~~Blocking I/O in observation_service.rs~~ — embedding calls wrapped in `spawn_blocking`
 - ~~Data Loss on Update in knowledge.rs~~ — implemented provenance merging logic
-- ~~SQLITE_LOCKED in knowledge.rs~~ — refactored to use transactions and `query_row`
+- ~~SQLITE_LOCKED in knowledge.rs~~ — SQLite backend removed
 - ~~Hardcoded filter patterns~~ — extracted to `low_value_filter.rs` with `OPENCODE_MEM_FILTER_PATTERNS` env support
 - ~~Pre-commit hooks fail on LLM integration tests~~ — marked with `#[ignore]`, run explicitly via `cargo test -- --ignored`
 - ~~Silent data loss in embedding storage~~ — atomic DELETE+INSERT via transaction
-- ~~PG/SQLite dedup divergence~~ — SQLSTATE 23505 caught, returns Ok(false) matching SQLite behavior
-- ~~SQLite crash durability~~ — PRAGMA synchronous = FULL
+- ~~PG/SQLite dedup divergence~~ — SQLite backend removed
+- ~~SQLite crash durability~~ — SQLite backend removed
 - ~~Silent data fabrication in type parsing~~ — 18 enum parsers now log warnings on invalid values
 - ~~Silent error swallowing in service layer~~ — knowledge extraction, infinite memory errors at warn level
 - ~~LLM empty summary stored silently~~ — now returns error, prevents hierarchy corruption
@@ -133,10 +142,10 @@ crates/
 - ~~4-way SPOT violation in save+embed~~ — centralized through ObservationService::save_observation()
 - ~~Blocking async in embedding calls~~ — wrapped in spawn_blocking
 - ~~\~70 unsafe `as` casts in pg_storage~~ — replaced with TryFrom/checked conversions (3 intentional casts with #[allow(reason)])
-- ~~sqlite_async.rs boilerplate (62 self.clone())~~ — delegate! macro, 483→336 lines
-- ~~Zero-vector embedding corruption~~ — guard in store_embedding + find_similar (both SQLite + PG)
+- ~~sqlite_async.rs boilerplate (62 self.clone())~~ — SQLite backend removed entirely
+- ~~Zero-vector embedding corruption~~ — guard in store_embedding + find_similar
 - ~~Stale embedding after dedup merge~~ — re-generate from merged content
-- ~~merge_into_existing not transactional (SQLite)~~ — wrapped in transaction
+- ~~merge_into_existing not transactional (SQLite)~~ — SQLite backend removed
 - ~~Nullable project crash in session summary (PG)~~ — handle Option<Option<String>> correctly
 - ~~Infinite Memory missing schema initialization~~ — added `migrations.rs` with auto-run in `InfiniteMemory::new()`
 - ~~Privacy leak: tool inputs stored unfiltered in infinite memory~~ — `filter_private_content` applied to inputs before storage
@@ -156,10 +165,10 @@ crates/
 - ~~StoredEvent.event_type String~~ — changed to `EventType` enum with `FromStr` parser. Unknown types logged as warning and skipped (Zero Fallback).
 - ~~No newtypes for prompt_number/discovery_tokens~~ — `PromptNumber(u32)` and `DiscoveryTokens(u32)` newtypes in core, used in Observation, SessionSummary, UserPrompt.
 - ~~No typed error enums in leaf crates~~ — `CoreError` (4 variants), `EmbeddingError` (4 variants), `LlmError` (7 variants with `is_transient()`) defined and used in public APIs.
-- ~~SQLite timeline query missing noise_level~~ — all 4 timeline SELECT variants selected only 4 columns but `map_search_result` read column index 4 for `noise_level`. Every row silently failed → empty timeline. Added `noise_level` to all timeline queries.
+- ~~SQLite timeline query missing noise_level~~ — SQLite backend removed
 - ~~PG search/hybrid_search empty-query fallback type mismatch~~ — fallback returned `Vec<Observation>` where `Vec<SearchResult>` was expected. Wrapped with `SearchResult::from_observation`.
 - ~~PG knowledge usage_count INT4 vs i64 mismatch~~ — `global_knowledge.usage_count` was `INT4` in PG but decoded as `i64`. ALTERed column to `BIGINT`.
 - ~~Memory injection recursion~~ — observe hook re-processed `<memory-*>` blocks injected by IDE plugin, creating duplicate observations that got re-injected in a loop. Added `filter_injected_memory()` at all entry points: HTTP observe/observe_batch (before queue), session observation endpoints, CLI hook observe, save_memory, plus service-layer defense-in-depth.
 - ~~Dedup threshold env var without bounds validation~~ — `OPENCODE_MEM_DEDUP_THRESHOLD` and `OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD` now clamped to [0.0, 1.0] on parse. Values outside cosine similarity range no longer silently disable detection.
-- ~~NaN/Inf embedding validation~~ — `store_embedding` accepts NaN/Infinity vectors. Added `contains_non_finite()` guard in both SQLite and PG implementations. Non-finite floats now rejected with error.
-- ~~SQLite PRAGMA synchronous mismatch~~ — `init_connection` sets FULL, migrations set NORMAL. Removed migration overrides — `init_connection` is the SPOT for connection-level PRAGMAs.
+- ~~NaN/Inf embedding validation~~ — `store_embedding` accepts NaN/Infinity vectors. Added `contains_non_finite()` guard. Non-finite floats now rejected with error.
+- ~~SQLite PRAGMA synchronous mismatch~~ — SQLite backend removed

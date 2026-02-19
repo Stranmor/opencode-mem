@@ -26,7 +26,6 @@
             rustToolchain
             pkg-config
             openssl
-            sqlite
           ];
 
           RUST_BACKTRACE = "1";
@@ -40,7 +39,7 @@
           cargoLock.lockFile = ./Cargo.lock;
           
           nativeBuildInputs = with pkgs; [ pkg-config ];
-          buildInputs = with pkgs; [ openssl sqlite ];
+          buildInputs = with pkgs; [ openssl ];
           
           meta = with pkgs.lib; {
             description = "Memory system for OpenCode - Rust port of claude-mem";

@@ -2,7 +2,7 @@
 
 use super::*;
 
-use crate::pending_queue::{max_retry_count, QueueStats};
+use crate::pending_queue::{QueueStats, max_retry_count};
 use crate::traits::PendingQueueStore;
 use async_trait::async_trait;
 

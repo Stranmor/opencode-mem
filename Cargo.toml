@@ -32,11 +32,6 @@ futures-util = "0.3"
 axum = "0.8"
 tower-http = { version = "0.6", features = ["cors"] }
 
-# Database
-rusqlite = { version = "0.32", features = ["bundled", "chrono"] }
-r2d2 = "0.8"
-r2d2_sqlite = "0.25"
-
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -64,7 +59,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Internal crates
 opencode-mem-core = { path = "crates/core" }
-opencode-mem-storage = { path = "crates/storage", default-features = false }
+opencode-mem-storage = { path = "crates/storage" }
 opencode-mem-embeddings = { path = "crates/embeddings" }
 opencode-mem-search = { path = "crates/search" }
 opencode-mem-llm = { path = "crates/llm" }

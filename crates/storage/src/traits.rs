@@ -1,7 +1,7 @@
 //! Storage backend trait abstraction
 //!
 //! Defines async domain traits for storage operations, enabling
-//! PostgreSQL-primary with SQLite-fallback via enum dispatch.
+//! PostgreSQL-based storage with tsvector + GIN for full-text search.
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -221,10 +221,10 @@ pub trait StatsStore: Send + Sync {
 /// Text and hybrid search operations.
 #[async_trait]
 pub trait SearchStore: Send + Sync {
-    /// FTS5 full-text search.
+    /// Full-text search.
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>>;
 
-    /// Hybrid search combining FTS5 and keyword matching.
+    /// Hybrid search combining full-text and keyword matching.
     async fn hybrid_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>>;
 
     /// Search with optional filters for project, type, and date range.
@@ -249,7 +249,7 @@ pub trait SearchStore: Send + Sync {
     /// Vector similarity search.
     async fn semantic_search(&self, query_vec: &[f32], limit: usize) -> Result<Vec<SearchResult>>;
 
-    /// Hybrid search: FTS5 BM25 (50%) + vector cosine similarity (50%).
+    /// Hybrid search: full-text BM25 (50%) + vector cosine similarity (50%).
     async fn hybrid_search_v2(
         &self,
         query: &str,

@@ -10,9 +10,6 @@ use tokio::sync::broadcast;
 use crate::{get_api_key, get_base_url};
 
 pub(crate) async fn run() -> Result<()> {
-    #[cfg(feature = "sqlite")]
-    opencode_mem_storage::init_sqlite_vec();
-
     let storage = Arc::new(crate::create_storage().await?);
 
     let api_key = get_api_key()?;

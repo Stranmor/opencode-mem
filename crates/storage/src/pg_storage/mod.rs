@@ -1,6 +1,6 @@
 //! PostgreSQL storage backend using sqlx.
 //!
-//! Split into modular files matching the SQLite storage pattern.
+//! Split into modular files by domain concern.
 
 // Arithmetic in DB operations (pagination, counting) is bounded by DB limits
 #![allow(
@@ -26,10 +26,9 @@ use std::collections::HashSet;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use opencode_mem_core::{
-    sort_by_score_descending, DiscoveryTokens, GlobalKnowledge, KnowledgeType, NoiseLevel,
-    Observation, ObservationType, PromptNumber, SearchResult, Session, SessionStatus,
-    SessionSummary, UserPrompt, PG_POOL_ACQUIRE_TIMEOUT_SECS, PG_POOL_IDLE_TIMEOUT_SECS,
-    PG_POOL_MAX_CONNECTIONS,
+    DiscoveryTokens, GlobalKnowledge, KnowledgeType, NoiseLevel, Observation, ObservationType,
+    PG_POOL_ACQUIRE_TIMEOUT_SECS, PG_POOL_IDLE_TIMEOUT_SECS, PG_POOL_MAX_CONNECTIONS, PromptNumber,
+    SearchResult, Session, SessionStatus, SessionSummary, UserPrompt, sort_by_score_descending,
 };
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
@@ -282,11 +281,7 @@ pub(crate) fn build_tsquery(query: &str) -> String {
             // Strip tsquery operators and special characters, keep only alphanumeric
             let sanitized: String =
                 w.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect();
-            if sanitized.is_empty() {
-                None
-            } else {
-                Some(format!("{}:*", sanitized))
-            }
+            if sanitized.is_empty() { None } else { Some(format!("{}:*", sanitized)) }
         })
         .collect::<Vec<_>>()
         .join(" & ")

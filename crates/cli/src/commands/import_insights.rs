@@ -145,7 +145,10 @@ async fn import_file(storage: &StorageBackend, path: &Path) -> Result<(usize, us
 
         let description = match &insight.implication {
             Some(impl_text) => {
-                format!("{}\n\n\u{418}\u{43c}\u{43f}\u{43b}\u{438}\u{43a}\u{430}\u{446}\u{438}\u{44f} \u{434}\u{43b}\u{44f} AGI: {}", insight.observation, impl_text)
+                format!(
+                    "{}\n\n\u{418}\u{43c}\u{43f}\u{43b}\u{438}\u{43a}\u{430}\u{446}\u{438}\u{44f} \u{434}\u{43b}\u{44f} AGI: {}",
+                    insight.observation, impl_text
+                )
             },
             None => insight.observation.clone(),
         };

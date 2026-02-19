@@ -1,8 +1,8 @@
 //! Pure merge computation for observation deduplication.
 //!
-//! Extracts the field-level merge logic shared by SQLite and PostgreSQL
-//! `merge_into_existing` implementations so the computation lives in one place
-//! (SPOT) and storage backends only handle DB transactions.
+//! Extracts the field-level merge logic used by the PostgreSQL
+//! `merge_into_existing` implementation so the computation lives in one place
+//! (SPOT) and the storage backend only handles DB transactions.
 
 use chrono::{DateTime, Utc};
 
