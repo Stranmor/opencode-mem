@@ -8,6 +8,14 @@ use crate::ai_types::{ChatRequest, Message, ObservationJson, ResponseFormat};
 use crate::client::{LlmClient, MAX_OUTPUT_LEN, truncate};
 use crate::error::LlmError;
 
+/// Result of context-aware LLM compression: create new, update existing, or skip.
+#[derive(Debug)]
+pub enum CompressionResult {
+    Create(Observation),
+    Update { target_id: String, observation: Observation },
+    Skip { reason: String },
+}
+
 #[must_use]
 pub fn parse_concept(s: &str) -> Option<Concept> {
     match s.to_lowercase().as_str() {
@@ -25,29 +33,37 @@ pub fn parse_concept(s: &str) -> Option<Concept> {
 /// Build the LLM prompt for compressing tool output into an observation.
 ///
 /// Returns the complete user-message prompt string including tool context,
-/// dedup context from existing titles, noise level guide, and JSON schema.
+/// candidate observations for context-aware dedup, noise level guide, and JSON schema.
 fn build_compression_prompt(
     tool: &str,
     title: &str,
     output: &str,
-    existing_titles: &[String],
+    candidates: &[Observation],
 ) -> String {
-    let existing_context = if existing_titles.is_empty() {
+    let existing_context = if candidates.is_empty() {
         String::new()
     } else {
-        let titles_list: String = existing_titles
-            .iter()
-            .enumerate()
-            .map(|(i, t)| format!("{}. {}", i.saturating_add(1), t))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let mut entries = String::new();
+        for (i, obs) in candidates.iter().enumerate() {
+            let narrative_preview =
+                obs.narrative.as_deref().unwrap_or("").chars().take(200).collect::<String>();
+            entries.push_str(&format!(
+                "[{}] id=\"{}\" title=\"{}\" | {}\n",
+                i.saturating_add(1),
+                obs.id,
+                obs.title,
+                narrative_preview,
+            ));
+        }
         format!(
             r#"
 
-ALREADY SAVED OBSERVATIONS (similar to this input):
-{titles_list}
-
-CRITICAL DEDUP RULE: If this tool output covers the SAME TOPIC, SAME CONCEPT, or SAME SYSTEM COMPONENT as any observation above — even if phrased differently — mark noise_level as "negligible" with noise_reason "semantic duplicate of: [matching title]". Two observations about the same gotcha/bug/decision are ALWAYS duplicates, even if they describe different aspects. One observation per topic."#
+EXISTING OBSERVATIONS (potentially related):
+{entries}
+DECISION (MANDATORY — choose exactly one):
+- If this is genuinely NEW knowledge not covered by any existing observation → action: "create"
+- If this REFINES or ADDS TO an existing observation above → action: "update", target_id: "<id of the observation to update>"
+- If this adds ZERO new information beyond what already exists → action: "skip""#
         )
     };
 
@@ -97,6 +113,9 @@ NOISE LEVEL GUIDE (5 levels):
 - "negligible": Routine work, generic knowledge available in docs, file edits, build output, status updates, duplicates. DISCARD.
 
 Return JSON:
+- action: one of "create", "update", "skip"
+- target_id: id of existing observation to update (required if action is "update")
+- skip_reason: why this should be skipped (required if action is "skip")
 - noise_level: one of "critical", "high", "medium", "low", "negligible"
 - noise_reason: why this is/isn't worth remembering (max 100 chars)
 - type: "gotcha", "bugfix", "decision", or "feature"
@@ -115,10 +134,13 @@ Return JSON:
     )
 }
 
-/// Parse LLM JSON response into an `Observation`, or `None` if negligible.
+/// Parse LLM JSON response into a `CompressionResult`.
 ///
-/// Deserializes the raw LLM response, checks noise level, and builds a typed
-/// `Observation` from the parsed fields.
+/// Deserializes the raw LLM response, checks the action field and noise level,
+/// and builds either Create, Update, or Skip result.
+///
+/// The `candidate_ids` set is used to validate that an "update" target_id
+/// was actually in the candidate set (hallucination guard).
 ///
 /// # Errors
 /// Returns an error if JSON deserialization fails or the observation type is invalid.
@@ -127,7 +149,8 @@ fn parse_observation_response(
     id: &str,
     session_id: &str,
     project: Option<&str>,
-) -> Result<Option<Observation>, LlmError> {
+    candidate_ids: &std::collections::HashSet<&str>,
+) -> Result<CompressionResult, LlmError> {
     let stripped = opencode_mem_core::strip_markdown_json(response);
     let obs_json: ObservationJson =
         serde_json::from_str(stripped).map_err(|e| LlmError::JsonParse {
@@ -138,6 +161,18 @@ fn parse_observation_response(
             source: e,
         })?;
 
+    let action = obs_json.action.to_lowercase();
+
+    // Skip action — return early regardless of noise_level
+    if action == "skip" {
+        let reason = obs_json
+            .skip_reason
+            .or(obs_json.noise_reason)
+            .unwrap_or_else(|| "LLM decided to skip".to_owned());
+        tracing::debug!(reason = %reason, "LLM action: skip");
+        return Ok(CompressionResult::Skip { reason });
+    }
+
     let noise_level = NoiseLevel::from_str(&obs_json.noise_level).unwrap_or_else(|_| {
         tracing::warn!(
             invalid_level = %obs_json.noise_level,
@@ -146,8 +181,9 @@ fn parse_observation_response(
         NoiseLevel::default()
     });
     if noise_level == NoiseLevel::Negligible {
-        tracing::debug!(title = %obs_json.title, "Skipping negligible observation");
-        return Ok(None);
+        let reason = obs_json.noise_reason.unwrap_or_else(|| "negligible noise level".to_owned());
+        tracing::debug!(title = %obs_json.title, "Negligible noise → skip");
+        return Ok(CompressionResult::Skip { reason });
     }
     tracing::debug!(
         "Observation noise_level={:?}, reason={:?}, title={}",
@@ -166,33 +202,48 @@ fn parse_observation_response(
         ))
     })?;
 
-    Ok(Some(
-        Observation::builder(
-            id.to_owned(),
-            session_id.to_owned(),
-            observation_type,
-            obs_json.title,
-        )
-        .maybe_project(project.map(ToOwned::to_owned))
-        .maybe_subtitle(obs_json.subtitle)
-        .maybe_narrative(obs_json.narrative)
-        .facts(obs_json.facts)
-        .concepts(concepts)
-        .files_read(obs_json.files_read)
-        .files_modified(obs_json.files_modified)
-        .keywords(obs_json.keywords)
-        .noise_level(noise_level)
-        .maybe_noise_reason(obs_json.noise_reason)
-        .created_at(Utc::now())
-        .build(),
-    ))
+    let observation = Observation::builder(
+        id.to_owned(),
+        session_id.to_owned(),
+        observation_type,
+        obs_json.title,
+    )
+    .maybe_project(project.map(ToOwned::to_owned))
+    .maybe_subtitle(obs_json.subtitle)
+    .maybe_narrative(obs_json.narrative)
+    .facts(obs_json.facts)
+    .concepts(concepts)
+    .files_read(obs_json.files_read)
+    .files_modified(obs_json.files_modified)
+    .keywords(obs_json.keywords)
+    .noise_level(noise_level)
+    .maybe_noise_reason(obs_json.noise_reason)
+    .created_at(Utc::now())
+    .build();
+
+    // Determine action: update requires valid target_id in candidate set
+    if action == "update" {
+        if let Some(ref target_id) = obs_json.target_id {
+            if candidate_ids.contains(target_id.as_str()) {
+                return Ok(CompressionResult::Update { target_id: target_id.clone(), observation });
+            }
+            tracing::warn!(
+                target_id = %target_id,
+                "LLM returned update with target_id not in candidate set — treating as create"
+            );
+        } else {
+            tracing::warn!("LLM returned action=update without target_id — treating as create");
+        }
+    }
+
+    Ok(CompressionResult::Create(observation))
 }
 
 impl LlmClient {
-    /// Compress tool output into an observation using LLM.
+    /// Compress tool output into an observation using context-aware LLM compression.
     ///
-    /// Orchestrates three phases: prompt construction, LLM call, response parsing.
-    /// Returns `None` if the LLM classifies the output as negligible noise.
+    /// Accepts candidate observations for dedup context. The LLM decides whether
+    /// to CREATE new, UPDATE existing, or SKIP.
     ///
     /// # Errors
     /// Returns an error if the API call fails or response parsing fails.
@@ -201,17 +252,13 @@ impl LlmClient {
         id: &str,
         input: &ObservationInput,
         project: Option<&str>,
-        existing_titles: &[String],
-    ) -> Result<Option<Observation>, LlmError> {
+        candidates: &[Observation],
+    ) -> Result<CompressionResult, LlmError> {
         let filtered_output = filter_private_content(&input.output.output);
         let filtered_title = filter_private_content(&input.output.title);
 
-        let prompt = build_compression_prompt(
-            &input.tool,
-            &filtered_title,
-            &filtered_output,
-            existing_titles,
-        );
+        let prompt =
+            build_compression_prompt(&input.tool, &filtered_title, &filtered_output, candidates);
 
         let request = ChatRequest {
             model: self.model.clone(),
@@ -219,7 +266,10 @@ impl LlmClient {
             response_format: ResponseFormat { format_type: "json_object".to_owned() },
         };
 
+        let candidate_ids: std::collections::HashSet<&str> =
+            candidates.iter().map(|o| o.id.as_str()).collect();
+
         let response = self.chat_completion(&request).await?;
-        parse_observation_response(&response, id, &input.session_id, project)
+        parse_observation_response(&response, id, &input.session_id, project, &candidate_ids)
     }
 }

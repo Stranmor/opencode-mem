@@ -21,6 +21,7 @@ mod summary;
 
 pub use client::LlmClient;
 pub use error::LlmError;
+pub use observation::CompressionResult;
 
 #[cfg(test)]
 mod tests;

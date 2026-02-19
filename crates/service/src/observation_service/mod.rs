@@ -3,17 +3,18 @@ mod injection;
 mod persistence;
 mod side_effects;
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use opencode_mem_core::{
     Observation, ObservationInput, ObservationType, ToolCall, ToolOutput, env_parse_with_default,
     filter_injected_memory, is_low_value_observation,
 };
-use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
+use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
-use opencode_mem_llm::LlmClient;
+use opencode_mem_llm::{CompressionResult, LlmClient};
 use opencode_mem_storage::StorageBackend;
-use opencode_mem_storage::traits::EmbeddingStore;
+use opencode_mem_storage::traits::{ObservationStore, SearchStore};
 use tokio::sync::broadcast;
 
 pub struct ObservationService {
@@ -125,77 +126,147 @@ impl ObservationService {
             ),
         );
 
-        let existing_titles = self.find_existing_similar_titles(&filtered_output).await;
+        let candidates =
+            self.find_candidate_observations(&filtered_output, &tool_call.session_id).await;
 
-        let observation = if let Some(obs) = self
+        let compression_result = self
             .llm
             .compress_to_observation(
                 id,
                 &input,
                 tool_call.project.as_deref().filter(|p| !p.is_empty() && *p != "unknown"),
-                &existing_titles,
+                &candidates,
             )
-            .await?
-        {
-            obs
-        } else {
-            tracing::debug!("Observation filtered as trivial");
-            return Ok(None);
-        };
+            .await?;
 
-        let result = self.persist_and_notify(&observation, Some(&tool_call.session_id)).await?;
+        match compression_result {
+            CompressionResult::Skip { reason } => {
+                tracing::debug!(reason = %reason, "Observation skipped by LLM");
+                Ok(None)
+            },
+            CompressionResult::Create(observation) => {
+                self.persist_and_notify(&observation, Some(&tool_call.session_id)).await
+            },
+            CompressionResult::Update { target_id, observation } => {
+                let candidate_ids: HashSet<&str> =
+                    candidates.iter().map(|o| o.id.as_str()).collect();
+                if !candidate_ids.contains(target_id.as_str()) {
+                    tracing::warn!(
+                        target_id = %target_id,
+                        "Update target not in candidate set at service layer — treating as create"
+                    );
+                    return self
+                        .persist_and_notify(&observation, Some(&tool_call.session_id))
+                        .await;
+                }
 
-        match result {
-            Some((persisted_obs, was_new)) => Ok(Some((persisted_obs, was_new))),
-            None => Ok(None),
+                match self.storage.merge_into_existing(&target_id, &observation).await {
+                    Ok(()) => {
+                        tracing::info!(
+                            target_id = %target_id,
+                            title = %observation.title,
+                            "Context-aware update: merged into existing observation"
+                        );
+                        self.regenerate_embedding(&target_id).await;
+                        let merged_obs = self.storage.get_by_id(&target_id).await?;
+                        match merged_obs {
+                            Some(obs) => Ok(Some((obs, false))),
+                            None => {
+                                tracing::warn!(
+                                    target_id = %target_id,
+                                    "Merged observation disappeared after merge, saving as new"
+                                );
+                                self.persist_and_notify(&observation, Some(&tool_call.session_id))
+                                    .await
+                            },
+                        }
+                    },
+                    Err(e) => {
+                        tracing::warn!(
+                            target_id = %target_id,
+                            error = %e,
+                            "Merge failed, falling back to create"
+                        );
+                        self.persist_and_notify(&observation, Some(&tool_call.session_id)).await
+                    },
+                }
+            },
         }
     }
 
-    async fn find_existing_similar_titles(&self, raw_text: &str) -> Vec<String> {
-        let Some(emb_service) = self.embeddings.as_ref() else {
-            return Vec::new();
+    async fn find_candidate_observations(
+        &self,
+        raw_text: &str,
+        session_id: &str,
+    ) -> Vec<Observation> {
+        // Phase 1: FTS search for top 5 candidates matching raw input
+        let fts_candidates = self.find_fts_candidates(raw_text).await;
+
+        // Phase 2: Get 3 most recent observations from same session
+        let session_candidates = match self.storage.get_session_observations(session_id).await {
+            Ok(obs) => {
+                let len = obs.len();
+                let start = len.saturating_sub(3);
+                obs.into_iter().skip(start).collect()
+            },
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to get session observations for candidates");
+                Vec::new()
+            },
         };
 
-        let max_len = 2000;
-        let end = if raw_text.len() <= max_len {
+        // Phase 3: Union by id (deduplicate)
+        let mut seen_ids: HashSet<String> = HashSet::new();
+        let mut result: Vec<Observation> = Vec::new();
+        for obs in fts_candidates.into_iter().chain(session_candidates) {
+            if seen_ids.insert(obs.id.clone()) {
+                result.push(obs);
+            }
+        }
+
+        if !result.is_empty() {
+            tracing::debug!(
+                count = result.len(),
+                "Found candidate observations for context-aware compression"
+            );
+        }
+
+        result
+    }
+
+    async fn find_fts_candidates(&self, raw_text: &str) -> Vec<Observation> {
+        let max_query_len = 500;
+        let end = if raw_text.len() <= max_query_len {
             raw_text.len()
         } else {
-            let mut boundary = max_len;
+            let mut boundary = max_query_len;
             while boundary > 0 && !raw_text.is_char_boundary(boundary) {
                 boundary = boundary.saturating_sub(1);
             }
             boundary
         };
-        let truncated = raw_text.get(..end).unwrap_or("");
-        let emb = Arc::clone(emb_service);
-        let text = truncated.to_owned();
-        let embed_result = tokio::task::spawn_blocking(move || emb.embed(&text)).await;
+        let query = raw_text.get(..end).unwrap_or("");
+        if query.is_empty() {
+            return Vec::new();
+        }
 
-        let embedding = match embed_result {
-            Ok(Ok(vec)) => vec,
-            Ok(Err(e)) => {
-                tracing::warn!("Failed to generate embedding for context search: {}", e);
-                return Vec::new();
-            },
+        let search_results = match self.storage.search(query, 5).await {
+            Ok(results) => results,
             Err(e) => {
-                tracing::warn!("Embedding task panicked for context search: {}", e);
+                tracing::warn!(error = %e, "FTS search for candidates failed");
                 return Vec::new();
             },
         };
 
-        match self.storage.find_similar_many(&embedding, 0.5, 10).await {
-            Ok(matches) => {
-                let titles: Vec<String> = matches.into_iter().map(|m| m.title).collect();
-                if !titles.is_empty() {
-                    tracing::debug!(
-                        count = titles.len(),
-                        "Found existing similar observations for dedup context"
-                    );
-                }
-                titles
-            },
+        if search_results.is_empty() {
+            return Vec::new();
+        }
+
+        let ids: Vec<String> = search_results.into_iter().map(|r| r.id).collect();
+        match self.storage.get_observations_by_ids(&ids).await {
+            Ok(obs) => obs,
             Err(e) => {
-                tracing::warn!("find_similar_many failed for context: {}", e);
+                tracing::warn!(error = %e, "Failed to fetch candidate observations by ids");
                 Vec::new()
             },
         }

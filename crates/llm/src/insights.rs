@@ -4,7 +4,7 @@ use opencode_mem_core::{Concept, Observation, ObservationType};
 use serde::Deserialize;
 
 use crate::ai_types::{ChatRequest, Message, ResponseFormat};
-use crate::client::{truncate, LlmClient};
+use crate::client::{LlmClient, truncate};
 use crate::error::LlmError;
 
 /// Single insight extracted from session analysis

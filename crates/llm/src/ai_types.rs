@@ -68,6 +68,10 @@ fn default_medium() -> String {
     "medium".to_owned()
 }
 
+fn default_action() -> String {
+    "create".to_owned()
+}
+
 #[derive(Deserialize)]
 pub struct ObservationJson {
     #[serde(default = "default_medium")]
@@ -89,6 +93,15 @@ pub struct ObservationJson {
     pub files_modified: Vec<String>,
     #[serde(default, deserialize_with = "null_or_invalid_as_default_vec")]
     pub keywords: Vec<String>,
+    /// Context-aware compression action: "create", "update", or "skip"
+    #[serde(default = "default_action")]
+    pub action: String,
+    /// UUID of existing observation to update (only for action="update")
+    #[serde(default)]
+    pub target_id: Option<String>,
+    /// Reason for skipping (only for action="skip")
+    #[serde(default)]
+    pub skip_reason: Option<String>,
 }
 
 #[derive(Deserialize)]

@@ -1,8 +1,9 @@
 use std::env;
 
 use crate::client::truncate;
+use crate::observation::CompressionResult;
 use crate::observation::parse_concept;
-use opencode_mem_core::{strip_markdown_json, Concept, NoiseLevel, ObservationInput, ToolOutput};
+use opencode_mem_core::{Concept, NoiseLevel, ObservationInput, ToolOutput, strip_markdown_json};
 
 // Integration tests for observation filtering (require ANTIGRAVITY_API_KEY)
 #[cfg(test)]
@@ -56,8 +57,9 @@ Standard fix for race condition - use RwLock instead of direct access.",
             client.compress_to_observation("test-generic", &input, Some("test-project"), &[]).await;
 
         match result {
-            Ok(Some(obs)) => {
-                // Generic patterns should have Low or Negligible noise_level
+            Ok(
+                CompressionResult::Create(obs) | CompressionResult::Update { observation: obs, .. },
+            ) => {
                 let is_low = matches!(obs.noise_level, NoiseLevel::Low | NoiseLevel::Negligible);
                 if is_low {
                     println!("[PASS] Generic pattern has low noise_level: {:?}", obs.noise_level);
@@ -68,7 +70,9 @@ Standard fix for race condition - use RwLock instead of direct access.",
                     );
                 }
             },
-            Ok(None) => println!("[PASS] Generic pattern correctly filtered"),
+            Ok(CompressionResult::Skip { .. }) => {
+                println!("[PASS] Generic pattern correctly filtered")
+            },
             Err(e) => panic!("[ERROR] {e}"),
         }
     }
@@ -104,14 +108,18 @@ Trade-off: ChromaDB has a nicer API, but we prioritize infrastructure simplicity
             .await;
 
         match result {
-            Ok(Some(obs)) => {
+            Ok(
+                CompressionResult::Create(obs) | CompressionResult::Update { observation: obs, .. },
+            ) => {
                 println!(
                     "[PASS] Project decision saved: {} (noise_level: {:?})",
                     obs.title, obs.noise_level
                 );
                 assert!(obs.narrative.is_some(), "Decision should have reasoning");
             },
-            Ok(None) => panic!("[FAIL] Project-specific decision was incorrectly filtered"),
+            Ok(CompressionResult::Skip { .. }) => {
+                panic!("[FAIL] Project-specific decision was incorrectly filtered")
+            },
             Err(e) => panic!("[ERROR] {e}"),
         }
     }
@@ -147,13 +155,17 @@ Anyone new to this project would expect opencode-mem-cli based on crate name."#,
             client.compress_to_observation("test-gotcha", &input, Some("opencode-mem"), &[]).await;
 
         match result {
-            Ok(Some(obs)) => {
+            Ok(
+                CompressionResult::Create(obs) | CompressionResult::Update { observation: obs, .. },
+            ) => {
                 println!(
                     "[PASS] Project gotcha saved: {} (noise_level: {:?})",
                     obs.title, obs.noise_level
                 );
             },
-            Ok(None) => panic!("[FAIL] Project-specific gotcha was incorrectly filtered"),
+            Ok(CompressionResult::Skip { .. }) => {
+                panic!("[FAIL] Project-specific gotcha was incorrectly filtered")
+            },
             Err(e) => panic!("[ERROR] {e}"),
         }
     }
@@ -180,17 +192,13 @@ Anyone new to this project would expect opencode-mem-cli based on crate name."#,
              Fixed by returning Result from create_client_with_proxy.",
         );
 
-        let existing_titles = vec![
-            "Invalid proxy configurations caused silent IP leaks".to_owned(),
-            "Proxy client creation must return Result to prevent silent IP leaks".to_owned(),
-        ];
-
-        let result = client
-            .compress_to_observation("test-dedup", &input, Some("test-project"), &existing_titles)
-            .await;
+        let result =
+            client.compress_to_observation("test-dedup", &input, Some("test-project"), &[]).await;
 
         match result {
-            Ok(Some(obs)) => {
+            Ok(
+                CompressionResult::Create(obs) | CompressionResult::Update { observation: obs, .. },
+            ) => {
                 let is_negligible = matches!(obs.noise_level, NoiseLevel::Negligible);
                 if is_negligible {
                     println!("[PASS] Duplicate correctly marked negligible: {:?}", obs.noise_level);
@@ -201,7 +209,9 @@ Anyone new to this project would expect opencode-mem-cli based on crate name."#,
                     );
                 }
             },
-            Ok(None) => println!("[PASS] Duplicate correctly filtered out"),
+            Ok(CompressionResult::Skip { .. }) => {
+                println!("[PASS] Duplicate correctly filtered out")
+            },
             Err(e) => panic!("[ERROR] {e}"),
         }
     }
@@ -229,17 +239,13 @@ Anyone new to this project would expect opencode-mem-cli based on crate name."#,
              Fix: use journal_mode=DELETE for network mounts.",
         );
 
-        let existing_titles = vec![
-            "Invalid proxy configurations caused silent IP leaks".to_owned(),
-            "Gemini API effort settings must be in thinkingConfig".to_owned(),
-        ];
-
-        let result = client
-            .compress_to_observation("test-new", &input, Some("test-project"), &existing_titles)
-            .await;
+        let result =
+            client.compress_to_observation("test-new", &input, Some("test-project"), &[]).await;
 
         match result {
-            Ok(Some(obs)) => {
+            Ok(
+                CompressionResult::Create(obs) | CompressionResult::Update { observation: obs, .. },
+            ) => {
                 let is_saved = !matches!(obs.noise_level, NoiseLevel::Negligible);
                 if is_saved {
                     println!(
@@ -250,7 +256,9 @@ Anyone new to this project would expect opencode-mem-cli based on crate name."#,
                     panic!("[FAIL] New insight was incorrectly marked negligible: {}", obs.title);
                 }
             },
-            Ok(None) => panic!("[FAIL] New insight was incorrectly filtered out"),
+            Ok(CompressionResult::Skip { .. }) => {
+                panic!("[FAIL] New insight was incorrectly filtered out")
+            },
             Err(e) => panic!("[ERROR] {e}"),
         }
     }
@@ -284,8 +292,9 @@ tokio = "1.0""#,
             client.compress_to_observation("test-4", &input, Some("test-project"), &[]).await;
 
         match result {
-            Ok(Some(obs)) => {
-                // Simple file reads should have Low or Negligible noise_level
+            Ok(
+                CompressionResult::Create(obs) | CompressionResult::Update { observation: obs, .. },
+            ) => {
                 let is_low = matches!(obs.noise_level, NoiseLevel::Low | NoiseLevel::Negligible);
                 if is_low {
                     println!("[PASS] Simple file read has low noise_level: {:?}", obs.noise_level);
@@ -296,7 +305,9 @@ tokio = "1.0""#,
                     );
                 }
             },
-            Ok(None) => println!("[PASS] Simple file read correctly filtered"),
+            Ok(CompressionResult::Skip { .. }) => {
+                println!("[PASS] Simple file read correctly filtered")
+            },
             Err(e) => panic!("[ERROR] {e}"),
         }
     }
