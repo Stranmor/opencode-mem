@@ -10,7 +10,12 @@ pub(super) async fn handle_knowledge_search(
     let query = args.get("query").and_then(|q| q.as_str()).unwrap_or("");
     let limit = parse_limit(args);
     match knowledge_service.search_knowledge(query, limit).await {
-        Ok(results) => mcp_ok(&results),
+        Ok(results) => {
+            for result in &results {
+                let _ = knowledge_service.update_knowledge_usage(&result.knowledge.id).await;
+            }
+            mcp_ok(&results)
+        },
         Err(e) => mcp_err(e),
     }
 }

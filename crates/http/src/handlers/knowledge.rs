@@ -1,7 +1,7 @@
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -10,8 +10,8 @@ use opencode_mem_core::{
     GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType, MAX_QUERY_LIMIT,
 };
 
-use crate::api_types::{KnowledgeQuery, KnowledgeUsageResponse, SaveKnowledgeRequest};
 use crate::AppState;
+use crate::api_types::{KnowledgeQuery, KnowledgeUsageResponse, SaveKnowledgeRequest};
 
 pub async fn list_knowledge(
     State(state): State<Arc<AppState>>,
@@ -39,15 +39,18 @@ pub async fn search_knowledge(
     if query.q.trim().is_empty() {
         return Err(StatusCode::BAD_REQUEST);
     }
-    state
+    let results = state
         .knowledge_service
         .search_knowledge(&query.q, query.limit.min(MAX_QUERY_LIMIT))
         .await
-        .map(Json)
         .map_err(|e| {
             tracing::error!("Search knowledge error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
-        })
+        })?;
+    for result in &results {
+        let _ = state.knowledge_service.update_knowledge_usage(&result.knowledge.id).await;
+    }
+    Ok(Json(results))
 }
 
 pub async fn get_knowledge_by_id(

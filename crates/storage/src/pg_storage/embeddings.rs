@@ -6,7 +6,7 @@ use crate::error::StorageError;
 use crate::traits::EmbeddingStore;
 use async_trait::async_trait;
 use opencode_mem_core::{
-    EMBEDDING_DIMENSION, MAX_BATCH_IDS, SimilarMatch, contains_non_finite, is_zero_vector,
+    contains_non_finite, is_zero_vector, SimilarMatch, EMBEDDING_DIMENSION, MAX_BATCH_IDS,
 };
 
 #[async_trait]

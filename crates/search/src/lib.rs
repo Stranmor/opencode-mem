@@ -17,8 +17,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use opencode_mem_core::{Observation, SearchResult};
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
-use opencode_mem_storage::StorageBackend;
 use opencode_mem_storage::traits::{ObservationStore, SearchStore};
+use opencode_mem_storage::StorageBackend;
 
 /// High-level search facade combining full-text search (tsvector) and vector similarity (pgvector).
 ///

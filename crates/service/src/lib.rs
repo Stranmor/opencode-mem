@@ -32,5 +32,5 @@ pub use session_service::SessionService;
 
 // Re-export storage types used by HTTP handlers so they don't need direct storage dependency.
 pub use opencode_mem_storage::{
-    PaginatedResult, PendingMessage, QueueStats, StorageStats, default_visibility_timeout_secs,
+    default_visibility_timeout_secs, PaginatedResult, PendingMessage, QueueStats, StorageStats,
 };

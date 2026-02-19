@@ -1,4 +1,4 @@
-use opencode_mem_core::{Observation, ToolCall, filter_injected_memory, filter_private_content};
+use opencode_mem_core::{filter_injected_memory, filter_private_content, Observation, ToolCall};
 use opencode_mem_infinite::tool_event;
 use opencode_mem_storage::traits::KnowledgeStore;
 

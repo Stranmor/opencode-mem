@@ -47,7 +47,7 @@ fn build_compression_prompt(
 ALREADY SAVED OBSERVATIONS (similar to this input):
 {titles_list}
 
-If this tool output teaches essentially the SAME lesson as any observation above, mark noise_level as "negligible" with noise_reason "duplicate of existing observation". Only save if this adds a genuinely NEW insight not covered above."#
+CRITICAL DEDUP RULE: If this tool output covers the SAME TOPIC, SAME CONCEPT, or SAME SYSTEM COMPONENT as any observation above — even if phrased differently — mark noise_level as "negligible" with noise_reason "semantic duplicate of: [matching title]". Two observations about the same gotcha/bug/decision are ALWAYS duplicates, even if they describe different aspects. One observation per topic."#
         )
     };
 
@@ -90,11 +90,11 @@ EVERYTHING ELSE IS NEGLIGIBLE. Specifically, ALWAYS mark as negligible:
 THE DEFAULT IS NEGLIGIBLE. When in doubt, discard. Only save what would genuinely help a future agent avoid a mistake or understand a non-obvious decision.
 {}
 NOISE LEVEL GUIDE (5 levels):
-- "critical": Project-breaking gotcha, data loss bug, security fix. Must ALWAYS be remembered.
-- "high": Important bugfix, architectural decision, significant gotcha. Should be remembered.
-- "medium": Useful but not critical. Minor gotcha, routine feature completion.
-- "low": Marginally useful. Could be helpful but not essential.
-- "negligible": Routine work, generic knowledge, duplicates. DISCARD.
+- "critical": Production outage, data loss, security vulnerability, core architectural decision that affects the entire system. If ignoring this would cause system failure, it's critical.
+- "high": Important bugfix with root cause analysis, significant gotcha that saves hours of debugging, architectural decision with clear tradeoffs, user preference that affects workflow.
+- "medium": Useful operational gotcha, minor bugfix, routine feature completion with a non-obvious implementation detail.
+- "low": Marginally useful context. Configuration tweak, minor optimization, environment-specific workaround.
+- "negligible": Routine work, generic knowledge available in docs, file edits, build output, status updates, duplicates. DISCARD.
 
 Return JSON:
 - noise_level: one of "critical", "high", "medium", "low", "negligible"

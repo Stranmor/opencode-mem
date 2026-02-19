@@ -130,7 +130,10 @@ impl ObservationStore for PgStorage {
             "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
                     facts, concepts, files_read, files_modified, keywords,
                     prompt_number, discovery_tokens, noise_level, noise_reason, created_at
-             FROM observations WHERE project = $1 ORDER BY created_at DESC LIMIT $2",
+             FROM observations
+             WHERE project = $1
+               AND noise_level NOT IN ('low', 'negligible')
+             ORDER BY created_at DESC LIMIT $2",
         )
         .bind(project)
         .bind(usize_to_i64(limit))

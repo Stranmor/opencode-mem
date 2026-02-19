@@ -146,7 +146,7 @@ pub(super) async fn handle_save_memory(
 mod tests {
     use super::*;
     use opencode_mem_core::{Observation, ObservationType};
-    use opencode_mem_storage::{StorageBackend, traits::ObservationStore};
+    use opencode_mem_storage::{traits::ObservationStore, StorageBackend};
     use serde_json::json;
     use std::sync::Arc;
 

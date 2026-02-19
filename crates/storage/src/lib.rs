@@ -30,8 +30,8 @@ pub mod traits;
 pub use backend::StorageBackend;
 pub use error::StorageError;
 pub use pending_queue::{
-    PaginatedResult, PendingMessage, PendingMessageStatus, QueueStats, StorageStats,
-    default_visibility_timeout_secs, max_retry_count,
+    default_visibility_timeout_secs, max_retry_count, PaginatedResult, PendingMessage,
+    PendingMessageStatus, QueueStats, StorageStats,
 };
 pub use pg_storage::PgStorage;
 pub use traits::{

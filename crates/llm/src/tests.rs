@@ -2,7 +2,7 @@ use std::env;
 
 use crate::client::truncate;
 use crate::observation::parse_concept;
-use opencode_mem_core::{Concept, NoiseLevel, ObservationInput, ToolOutput, strip_markdown_json};
+use opencode_mem_core::{strip_markdown_json, Concept, NoiseLevel, ObservationInput, ToolOutput};
 
 // Integration tests for observation filtering (require ANTIGRAVITY_API_KEY)
 #[cfg(test)]

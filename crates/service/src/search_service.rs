@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use opencode_mem_core::{
     GlobalKnowledge, KnowledgeSearchResult, KnowledgeType, Observation, SearchResult,
-    SessionSummary, UserPrompt,
+    SessionSummary, UserPrompt, cosine_similarity,
 };
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_storage::traits::{
@@ -12,6 +13,9 @@ use opencode_mem_storage::traits::{
 use opencode_mem_storage::{PaginatedResult, StorageBackend, StorageStats};
 
 use crate::ServiceError;
+
+/// Cosine similarity threshold above which two observations are considered semantic duplicates.
+const DEDUP_SIMILARITY_THRESHOLD: f32 = 0.85;
 
 pub struct SearchService {
     storage: Arc<StorageBackend>,
@@ -98,7 +102,8 @@ impl SearchService {
         project: &str,
         limit: usize,
     ) -> Result<Vec<Observation>, ServiceError> {
-        Ok(self.storage.get_context_for_project(project, limit).await?)
+        let observations = self.storage.get_context_for_project(project, limit).await?;
+        self.deduplicate_by_embedding(observations).await
     }
 
     pub async fn search_by_file(
@@ -203,5 +208,111 @@ impl SearchService {
 
     pub async fn clear_embeddings(&self) -> Result<(), ServiceError> {
         Ok(self.storage.clear_embeddings().await?)
+    }
+
+    // ── Semantic dedup ──────────────────────────────────────────────────
+
+    async fn deduplicate_by_embedding(
+        &self,
+        observations: Vec<Observation>,
+    ) -> Result<Vec<Observation>, ServiceError> {
+        if observations.len() <= 1 {
+            return Ok(observations);
+        }
+
+        // Without embeddings, skip dedup — just return filtered results
+        if self.embeddings.is_none() {
+            return Ok(observations);
+        }
+
+        let ids: Vec<String> = observations.iter().map(|o| o.id.clone()).collect();
+        let embedding_pairs = self.storage.get_embeddings_for_ids(&ids).await?;
+
+        if embedding_pairs.is_empty() {
+            return Ok(observations);
+        }
+
+        let embedding_map: HashMap<&str, &[f32]> =
+            embedding_pairs.iter().map(|(id, vec)| (id.as_str(), vec.as_slice())).collect();
+
+        // Union-find for grouping similar observations
+        let obs_count = observations.len();
+        let mut parent: Vec<usize> = (0..obs_count).collect();
+
+        // Find root with path compression
+        fn find(parent: &mut [usize], mut i: usize) -> usize {
+            while let Some(&p) = parent.get(i) {
+                if p == i {
+                    break;
+                }
+                // Path compression: read grandparent, then write
+                let gp = parent.get(p).copied().unwrap_or(p);
+                if let Some(slot) = parent.get_mut(i) {
+                    *slot = gp;
+                }
+                i = p;
+            }
+            i
+        }
+
+        // Compare all pairs and union those above threshold
+        for i in 0..obs_count {
+            let Some(emb_a) =
+                embedding_map.get(observations.get(i).map(|o| o.id.as_str()).unwrap_or_default())
+            else {
+                continue;
+            };
+            for j in (i.checked_add(1).unwrap_or(obs_count))..obs_count {
+                let Some(emb_b) = embedding_map
+                    .get(observations.get(j).map(|o| o.id.as_str()).unwrap_or_default())
+                else {
+                    continue;
+                };
+                let sim = cosine_similarity(emb_a, emb_b);
+                if sim > DEDUP_SIMILARITY_THRESHOLD {
+                    let ra = find(&mut parent, i);
+                    let rb = find(&mut parent, j);
+                    if ra != rb {
+                        if let Some(slot) = parent.get_mut(rb) {
+                            *slot = ra;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Group observations by their root
+        let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
+        for idx in 0..obs_count {
+            let root = find(&mut parent, idx);
+            groups.entry(root).or_default().push(idx);
+        }
+
+        // For each group, keep the observation with highest noise priority
+        // (smallest ordinal: Critical < High < Medium), then most recent as tiebreaker
+        let mut kept: Vec<&Observation> = Vec::with_capacity(groups.len());
+        for members in groups.values() {
+            let best = members.iter().filter_map(|&idx| observations.get(idx)).min_by(|a, b| {
+                a.noise_level.cmp(&b.noise_level).then_with(|| b.created_at.cmp(&a.created_at))
+            });
+            if let Some(obs) = best {
+                kept.push(obs);
+            }
+        }
+
+        // Restore chronological order (most recent first)
+        kept.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+        let deduped_count = obs_count.saturating_sub(kept.len());
+        if deduped_count > 0 {
+            tracing::debug!(
+                original = obs_count,
+                deduped = deduped_count,
+                remaining = kept.len(),
+                "Deduplicated context observations by embedding similarity"
+            );
+        }
+
+        Ok(kept.into_iter().cloned().collect())
     }
 }

@@ -5,14 +5,14 @@ mod side_effects;
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    Observation, ObservationInput, ObservationType, ToolCall, ToolOutput, env_parse_with_default,
-    filter_injected_memory, is_low_value_observation,
+    env_parse_with_default, filter_injected_memory, is_low_value_observation, Observation,
+    ObservationInput, ObservationType, ToolCall, ToolOutput,
 };
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
-use opencode_mem_storage::StorageBackend;
 use opencode_mem_storage::traits::EmbeddingStore;
+use opencode_mem_storage::StorageBackend;
 use tokio::sync::broadcast;
 
 pub struct ObservationService {
