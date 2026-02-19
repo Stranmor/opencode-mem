@@ -1,10 +1,11 @@
-use opencode_mem_core::{is_low_value_observation, Observation};
+use opencode_mem_core::{Observation, is_low_value_observation};
 use opencode_mem_storage::traits::{EmbeddingStore, ObservationStore};
 
 use super::ObservationService;
+use crate::ServiceError;
 
 impl ObservationService {
-    pub async fn save_observation(&self, observation: &Observation) -> anyhow::Result<()> {
+    pub async fn save_observation(&self, observation: &Observation) -> Result<(), ServiceError> {
         let _result = self.persist_and_notify(observation, None).await?;
         Ok(())
     }
@@ -19,7 +20,7 @@ impl ObservationService {
         &self,
         observation: &Observation,
         session_id: Option<&str>,
-    ) -> anyhow::Result<Option<(Observation, bool)>> {
+    ) -> Result<Option<(Observation, bool)>, ServiceError> {
         if is_low_value_observation(&observation.title) {
             tracing::debug!("Filtered low-value observation: {}", observation.title);
             return Ok(None);
@@ -65,7 +66,7 @@ impl ObservationService {
         &self,
         observation: &Observation,
         embedding: &[f32],
-    ) -> anyhow::Result<Option<String>> {
+    ) -> Result<Option<String>, ServiceError> {
         if self.dedup_threshold <= 0.0 {
             return Ok(None);
         }
@@ -121,7 +122,7 @@ impl ObservationService {
         &self,
         observation: &Observation,
         embedding_vec: Option<Vec<f32>>,
-    ) -> anyhow::Result<Option<(Observation, bool)>> {
+    ) -> Result<Option<(Observation, bool)>, ServiceError> {
         let inserted = self.storage.save_observation(observation).await?;
         if !inserted {
             tracing::debug!("Skipping duplicate observation: {}", observation.title);

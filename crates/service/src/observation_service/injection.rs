@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use opencode_mem_core::{cosine_similarity, observation_embedding_text, Observation};
+use opencode_mem_core::{Observation, cosine_similarity, observation_embedding_text};
 use opencode_mem_embeddings::EmbeddingProvider;
 use opencode_mem_storage::traits::{EmbeddingStore, InjectionStore};
 
@@ -65,8 +65,8 @@ impl ObservationService {
         false
     }
 
-    pub async fn cleanup_old_injections(&self) -> anyhow::Result<u64> {
-        self.storage.cleanup_old_injections(24).await.map_err(Into::into)
+    pub async fn cleanup_old_injections(&self) -> Result<u64, crate::ServiceError> {
+        Ok(self.storage.cleanup_old_injections(24).await?)
     }
 
     /// Record which observation IDs were injected into a session for echo detection.
@@ -74,8 +74,8 @@ impl ObservationService {
         &self,
         session_id: &str,
         observation_ids: &[String],
-    ) -> anyhow::Result<()> {
-        self.storage.save_injected_observations(session_id, observation_ids).await.map_err(Into::into)
+    ) -> Result<(), crate::ServiceError> {
+        Ok(self.storage.save_injected_observations(session_id, observation_ids).await?)
     }
 
     pub(crate) async fn generate_embedding(&self, observation: &Observation) -> Option<Vec<f32>> {

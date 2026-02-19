@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use opencode_mem_core::{Observation, Session, SessionStatus};
 use opencode_mem_llm::LlmClient;
-use opencode_mem_storage::traits::{ObservationStore, SessionStore, SummaryStore};
 use opencode_mem_storage::StorageBackend;
+use opencode_mem_storage::traits::{ObservationStore, SessionStore, SummaryStore};
 use tokio::process::Command;
 
+use crate::ServiceError;
 use crate::observation_service::ObservationService;
 
 pub struct SessionService {
@@ -24,35 +25,38 @@ impl SessionService {
         Self { storage, llm, observation_service }
     }
 
-    pub async fn init_session(&self, session: Session) -> anyhow::Result<Session> {
+    pub async fn init_session(&self, session: Session) -> Result<Session, ServiceError> {
         self.storage.save_session(&session).await?;
         Ok(session)
     }
 
-    pub async fn get_session(&self, id: &str) -> anyhow::Result<Option<Session>> {
-        self.storage.get_session(id).await.map_err(Into::into)
+    pub async fn get_session(&self, id: &str) -> Result<Option<Session>, ServiceError> {
+        Ok(self.storage.get_session(id).await?)
     }
 
-    pub async fn get_session_observation_count(&self, session_id: &str) -> anyhow::Result<usize> {
-        self.storage.get_session_observation_count(session_id).await.map_err(Into::into)
+    pub async fn get_session_observation_count(
+        &self,
+        session_id: &str,
+    ) -> Result<usize, ServiceError> {
+        Ok(self.storage.get_session_observation_count(session_id).await?)
     }
 
-    pub async fn delete_session(&self, session_id: &str) -> anyhow::Result<bool> {
-        self.storage.delete_session(session_id).await.map_err(Into::into)
+    pub async fn delete_session(&self, session_id: &str) -> Result<bool, ServiceError> {
+        Ok(self.storage.delete_session(session_id).await?)
     }
 
     pub async fn get_session_by_content_id(
         &self,
         content_session_id: &str,
-    ) -> anyhow::Result<Option<Session>> {
-        self.storage.get_session_by_content_id(content_session_id).await.map_err(Into::into)
+    ) -> Result<Option<Session>, ServiceError> {
+        Ok(self.storage.get_session_by_content_id(content_session_id).await?)
     }
 
-    pub async fn close_stale_sessions(&self, max_age_hours: i64) -> anyhow::Result<usize> {
-        self.storage.close_stale_sessions(max_age_hours).await.map_err(Into::into)
+    pub async fn close_stale_sessions(&self, max_age_hours: i64) -> Result<usize, ServiceError> {
+        Ok(self.storage.close_stale_sessions(max_age_hours).await?)
     }
 
-    pub async fn complete_session(&self, session_id: &str) -> anyhow::Result<Option<String>> {
+    pub async fn complete_session(&self, session_id: &str) -> Result<Option<String>, ServiceError> {
         let observations = self.storage.get_session_observations(session_id).await?;
         let summary = if observations.is_empty() {
             None
@@ -69,7 +73,10 @@ impl SessionService {
         Ok(summary)
     }
 
-    pub async fn generate_summary(&self, observations: &[Observation]) -> anyhow::Result<String> {
+    pub async fn generate_summary(
+        &self,
+        observations: &[Observation],
+    ) -> Result<String, ServiceError> {
         Ok(self.llm.generate_session_summary(observations).await?)
     }
 
@@ -77,7 +84,7 @@ impl SessionService {
         &self,
         session_id: &str,
         _content_session_id: &str,
-    ) -> anyhow::Result<String> {
+    ) -> Result<String, ServiceError> {
         let observations = self.storage.get_session_observations(session_id).await?;
         if observations.is_empty() {
             return Ok("No observations in this session.".to_owned());
@@ -96,12 +103,12 @@ impl SessionService {
     pub async fn summarize_session_from_export(
         &self,
         content_session_id: &str,
-    ) -> anyhow::Result<Vec<Observation>> {
+    ) -> Result<Vec<Observation>, ServiceError> {
         let output = Command::new("opencode").args(["export", content_session_id]).output().await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("opencode export failed: {stderr}");
+            return Err(ServiceError::ExternalCommand(format!("opencode export failed: {stderr}")));
         }
 
         let session_json = String::from_utf8(output.stdout)?;

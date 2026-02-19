@@ -4,9 +4,10 @@
 //! Handlers can return `Result<Json<T>, ApiError>` instead of losing error context
 //! with bare `StatusCode`.
 
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::Json;
+use opencode_mem_storage::StorageError;
 
 /// API error with HTTP status code and human-readable message.
 ///
@@ -52,5 +53,22 @@ impl IntoResponse for ApiError {
 impl From<anyhow::Error> for ApiError {
     fn from(err: anyhow::Error) -> Self {
         Self::Internal(err)
+    }
+}
+
+impl From<opencode_mem_service::ServiceError> for ApiError {
+    fn from(err: opencode_mem_service::ServiceError) -> Self {
+        use opencode_mem_service::ServiceError;
+        match err {
+            ServiceError::Storage(ref e) if e.is_duplicate() => {
+                Self::UnprocessableEntity(err.to_string())
+            },
+            ServiceError::Storage(StorageError::NotFound { entity, id }) => {
+                Self::NotFound(format!("{entity} '{id}' not found"))
+            },
+            ServiceError::InvalidInput(msg) => Self::BadRequest(msg),
+            ServiceError::NotConfigured(msg) => Self::ServiceUnavailable(msg),
+            _ => Self::Internal(err.into()),
+        }
     }
 }

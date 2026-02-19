@@ -5,14 +5,14 @@ mod side_effects;
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    env_parse_with_default, filter_injected_memory, is_low_value_observation, Observation,
-    ObservationInput, ObservationType, ToolCall, ToolOutput,
+    Observation, ObservationInput, ObservationType, ToolCall, ToolOutput, env_parse_with_default,
+    filter_injected_memory, is_low_value_observation,
 };
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
-use opencode_mem_storage::traits::EmbeddingStore;
 use opencode_mem_storage::StorageBackend;
+use opencode_mem_storage::traits::EmbeddingStore;
 use tokio::sync::broadcast;
 
 pub struct ObservationService {
@@ -74,7 +74,7 @@ impl ObservationService {
         &self,
         id: &str,
         tool_call: ToolCall,
-    ) -> anyhow::Result<Option<Observation>> {
+    ) -> Result<Option<Observation>, crate::ServiceError> {
         if let Some((observation, was_new)) = self.compress_and_save(id, &tool_call).await? {
             // Only extract knowledge for genuinely new observations.
             // Merged observations already had knowledge extracted on first save.
@@ -95,7 +95,7 @@ impl ObservationService {
         &self,
         id: &str,
         tool_call: &ToolCall,
-    ) -> anyhow::Result<Option<(Observation, bool)>> {
+    ) -> Result<Option<(Observation, bool)>, crate::ServiceError> {
         // Strip injected memory blocks to prevent recursion:
         // IDE injects <memory-global>...</memory-global> into conversation →
         // observe hook captures tool output containing these blocks →
@@ -211,12 +211,14 @@ impl ObservationService {
         text: &str,
         title: Option<&str>,
         project: Option<&str>,
-    ) -> anyhow::Result<Option<Observation>> {
+    ) -> Result<Option<Observation>, crate::ServiceError> {
         let text = text.trim();
         let text = &opencode_mem_core::filter_private_content(text);
         let text = &filter_injected_memory(text);
         if text.is_empty() {
-            anyhow::bail!("Text is required for save_memory");
+            return Err(crate::ServiceError::InvalidInput(
+                "Text is required for save_memory".into(),
+            ));
         }
 
         let title = match title {

@@ -16,12 +16,14 @@
 #![allow(clippy::cognitive_complexity, reason = "Complex async flows are inherent")]
 #![allow(clippy::min_ident_chars, reason = "Short error vars are idiomatic")]
 
+pub mod error;
 mod knowledge_service;
 mod observation_service;
 mod queue_service;
 mod search_service;
 mod session_service;
 
+pub use error::ServiceError;
 pub use knowledge_service::KnowledgeService;
 pub use observation_service::ObservationService;
 pub use queue_service::QueueService;
@@ -30,5 +32,5 @@ pub use session_service::SessionService;
 
 // Re-export storage types used by HTTP handlers so they don't need direct storage dependency.
 pub use opencode_mem_storage::{
-    default_visibility_timeout_secs, PaginatedResult, PendingMessage, QueueStats, StorageStats,
+    PaginatedResult, PendingMessage, QueueStats, StorageStats, default_visibility_timeout_secs,
 };

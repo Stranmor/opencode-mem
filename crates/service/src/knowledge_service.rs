@@ -1,13 +1,11 @@
 use std::sync::Arc;
 
 use opencode_mem_core::{GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType};
-use opencode_mem_storage::traits::KnowledgeStore;
 use opencode_mem_storage::StorageBackend;
+use opencode_mem_storage::traits::KnowledgeStore;
 
-/// Service layer for knowledge operations.
-///
-/// Wraps all knowledge-related storage calls, providing a single entry point
-/// for both HTTP and MCP handlers.
+use crate::ServiceError;
+
 pub struct KnowledgeService {
     storage: Arc<StorageBackend>,
 }
@@ -18,41 +16,38 @@ impl KnowledgeService {
         Self { storage }
     }
 
-    /// Get a knowledge entry by ID.
-    pub async fn get_knowledge(&self, id: &str) -> anyhow::Result<Option<GlobalKnowledge>> {
-        self.storage.get_knowledge(id).await.map_err(Into::into)
+    pub async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, ServiceError> {
+        Ok(self.storage.get_knowledge(id).await?)
     }
 
-    /// Save or update a knowledge entry (upserts by title).
-    pub async fn save_knowledge(&self, input: KnowledgeInput) -> anyhow::Result<GlobalKnowledge> {
-        self.storage.save_knowledge(input).await.map_err(Into::into)
+    pub async fn save_knowledge(
+        &self,
+        input: KnowledgeInput,
+    ) -> Result<GlobalKnowledge, ServiceError> {
+        Ok(self.storage.save_knowledge(input).await?)
     }
 
-    /// Delete a knowledge entry by ID. Returns `true` if deleted.
-    pub async fn delete_knowledge(&self, id: &str) -> anyhow::Result<bool> {
-        self.storage.delete_knowledge(id).await.map_err(Into::into)
+    pub async fn delete_knowledge(&self, id: &str) -> Result<bool, ServiceError> {
+        Ok(self.storage.delete_knowledge(id).await?)
     }
 
-    /// Full-text search over knowledge entries.
     pub async fn search_knowledge(
         &self,
         query: &str,
         limit: usize,
-    ) -> anyhow::Result<Vec<KnowledgeSearchResult>> {
-        self.storage.search_knowledge(query, limit).await.map_err(Into::into)
+    ) -> Result<Vec<KnowledgeSearchResult>, ServiceError> {
+        Ok(self.storage.search_knowledge(query, limit).await?)
     }
 
-    /// List knowledge entries, optionally filtered by type.
     pub async fn list_knowledge(
         &self,
         knowledge_type: Option<KnowledgeType>,
         limit: usize,
-    ) -> anyhow::Result<Vec<GlobalKnowledge>> {
-        self.storage.list_knowledge(knowledge_type, limit).await.map_err(Into::into)
+    ) -> Result<Vec<GlobalKnowledge>, ServiceError> {
+        Ok(self.storage.list_knowledge(knowledge_type, limit).await?)
     }
 
-    /// Increment usage count and bump confidence for a knowledge entry.
-    pub async fn update_knowledge_usage(&self, id: &str) -> anyhow::Result<()> {
-        self.storage.update_knowledge_usage(id).await.map_err(Into::into)
+    pub async fn update_knowledge_usage(&self, id: &str) -> Result<(), ServiceError> {
+        Ok(self.storage.update_knowledge_usage(id).await?)
     }
 }
