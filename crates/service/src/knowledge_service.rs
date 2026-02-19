@@ -20,17 +20,17 @@ impl KnowledgeService {
 
     /// Get a knowledge entry by ID.
     pub async fn get_knowledge(&self, id: &str) -> anyhow::Result<Option<GlobalKnowledge>> {
-        self.storage.get_knowledge(id).await
+        self.storage.get_knowledge(id).await.map_err(Into::into)
     }
 
     /// Save or update a knowledge entry (upserts by title).
     pub async fn save_knowledge(&self, input: KnowledgeInput) -> anyhow::Result<GlobalKnowledge> {
-        self.storage.save_knowledge(input).await
+        self.storage.save_knowledge(input).await.map_err(Into::into)
     }
 
     /// Delete a knowledge entry by ID. Returns `true` if deleted.
     pub async fn delete_knowledge(&self, id: &str) -> anyhow::Result<bool> {
-        self.storage.delete_knowledge(id).await
+        self.storage.delete_knowledge(id).await.map_err(Into::into)
     }
 
     /// Full-text search over knowledge entries.
@@ -39,7 +39,7 @@ impl KnowledgeService {
         query: &str,
         limit: usize,
     ) -> anyhow::Result<Vec<KnowledgeSearchResult>> {
-        self.storage.search_knowledge(query, limit).await
+        self.storage.search_knowledge(query, limit).await.map_err(Into::into)
     }
 
     /// List knowledge entries, optionally filtered by type.
@@ -48,11 +48,11 @@ impl KnowledgeService {
         knowledge_type: Option<KnowledgeType>,
         limit: usize,
     ) -> anyhow::Result<Vec<GlobalKnowledge>> {
-        self.storage.list_knowledge(knowledge_type, limit).await
+        self.storage.list_knowledge(knowledge_type, limit).await.map_err(Into::into)
     }
 
     /// Increment usage count and bump confidence for a knowledge entry.
     pub async fn update_knowledge_usage(&self, id: &str) -> anyhow::Result<()> {
-        self.storage.update_knowledge_usage(id).await
+        self.storage.update_knowledge_usage(id).await.map_err(Into::into)
     }
 }

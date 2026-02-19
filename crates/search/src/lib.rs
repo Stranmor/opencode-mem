@@ -54,11 +54,11 @@ impl HybridSearch {
             Some(emb) => {
                 // Generate query embedding for semantic search
                 let query_vec = emb.embed(query)?;
-                self.storage.hybrid_search_v2(query, &query_vec, limit).await
+                Ok(self.storage.hybrid_search_v2(query, &query_vec, limit).await?)
             },
             None => {
                 // Fall back to text-only hybrid search
-                self.storage.hybrid_search(query, limit).await
+                Ok(self.storage.hybrid_search(query, limit).await?)
             },
         }
     }
@@ -78,7 +78,7 @@ impl HybridSearch {
         to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
-        self.storage.get_timeline(from, to, limit).await
+        self.storage.get_timeline(from, to, limit).await.map_err(Into::into)
     }
 
     /// Step 3: Fetch full observations by IDs.
@@ -89,14 +89,14 @@ impl HybridSearch {
     /// # Arguments
     /// * `ids` - List of observation IDs to fetch
     pub async fn get_full(&self, ids: &[String]) -> Result<Vec<Observation>> {
-        self.storage.get_observations_by_ids(ids).await
+        self.storage.get_observations_by_ids(ids).await.map_err(Into::into)
     }
 
     /// Get recent observations (convenience method).
     ///
     /// Returns the most recent observations without any search query.
     pub async fn recent(&self, limit: usize) -> Result<Vec<Observation>> {
-        self.storage.get_recent(limit).await
+        self.storage.get_recent(limit).await.map_err(Into::into)
     }
 
     /// Search with additional filters (project, observation type, date range).
@@ -117,7 +117,10 @@ impl HybridSearch {
         to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
-        self.storage.search_with_filters(query, project, obs_type, from, to, limit).await
+        self.storage
+            .search_with_filters(query, project, obs_type, from, to, limit)
+            .await
+            .map_err(Into::into)
     }
 
     /// Pure semantic search using vector similarity only.
@@ -165,14 +168,14 @@ impl HybridSearch {
 
     /// Get a single observation by ID.
     pub async fn get_by_id(&self, id: &str) -> Result<Option<Observation>> {
-        self.storage.get_by_id(id).await
+        self.storage.get_by_id(id).await.map_err(Into::into)
     }
 
     /// Search by file path.
     ///
     /// Finds observations that mention the given file path in `files_read` or `files_modified`.
     pub async fn search_by_file(&self, file_path: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        self.storage.search_by_file(file_path, limit).await
+        self.storage.search_by_file(file_path, limit).await.map_err(Into::into)
     }
 }
 
@@ -190,18 +193,18 @@ pub async fn run_semantic_search_with_fallback(
         Some(emb) => match emb.embed(query) {
             Ok(query_vec) => match storage.semantic_search(&query_vec, limit).await {
                 Ok(results) if !results.is_empty() => Ok(results),
-                Ok(_) => storage.hybrid_search(query, limit).await,
+                Ok(_) => storage.hybrid_search(query, limit).await.map_err(Into::into),
                 Err(e) => {
                     tracing::warn!("Semantic search storage error, falling back to hybrid: {}", e);
-                    storage.hybrid_search(query, limit).await
+                    storage.hybrid_search(query, limit).await.map_err(Into::into)
                 },
             },
             Err(e) => {
                 tracing::warn!("Failed to embed query, falling back to hybrid: {}", e);
-                storage.hybrid_search(query, limit).await
+                storage.hybrid_search(query, limit).await.map_err(Into::into)
             },
         },
-        None => storage.hybrid_search(query, limit).await,
+        None => storage.hybrid_search(query, limit).await.map_err(Into::into),
     }
 }
 

@@ -107,7 +107,7 @@ pub async fn create_storage() -> Result<StorageBackend> {
     let url = std::env::var("DATABASE_URL")
         .map_err(|_| anyhow::anyhow!("DATABASE_URL environment variable must be set"))?;
     tracing::info!("Connecting to PostgreSQL");
-    StorageBackend::new(&url).await
+    StorageBackend::new(&url).await.map_err(Into::into)
 }
 
 #[tokio::main]

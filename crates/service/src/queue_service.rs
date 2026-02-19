@@ -27,7 +27,7 @@ impl QueueService {
         tool_response: Option<&str>,
         project: Option<&str>,
     ) -> anyhow::Result<i64> {
-        self.storage.queue_message(session_id, tool_name, tool_input, tool_response, project).await
+        self.storage.queue_message(session_id, tool_name, tool_input, tool_response, project).await.map_err(Into::into)
     }
 
     /// Get all pending messages up to `limit`.
@@ -35,12 +35,12 @@ impl QueueService {
         &self,
         limit: usize,
     ) -> anyhow::Result<Vec<PendingMessage>> {
-        self.storage.get_all_pending_messages(limit).await
+        self.storage.get_all_pending_messages(limit).await.map_err(Into::into)
     }
 
     /// Get queue statistics (pending, processing, failed counts).
     pub async fn get_queue_stats(&self) -> anyhow::Result<QueueStats> {
-        self.storage.get_queue_stats().await
+        self.storage.get_queue_stats().await.map_err(Into::into)
     }
 
     /// Claim pending messages for processing with visibility timeout.
@@ -49,37 +49,37 @@ impl QueueService {
         max: usize,
         visibility_timeout_secs: i64,
     ) -> anyhow::Result<Vec<PendingMessage>> {
-        self.storage.claim_pending_messages(max, visibility_timeout_secs).await
+        self.storage.claim_pending_messages(max, visibility_timeout_secs).await.map_err(Into::into)
     }
 
     /// Mark message as successfully processed.
     pub async fn complete_message(&self, id: i64) -> anyhow::Result<()> {
-        self.storage.complete_message(id).await
+        self.storage.complete_message(id).await.map_err(Into::into)
     }
 
     /// Mark message as failed. If `permanent` is true, increments retry count.
     pub async fn fail_message(&self, id: i64, permanent: bool) -> anyhow::Result<()> {
-        self.storage.fail_message(id, permanent).await
+        self.storage.fail_message(id, permanent).await.map_err(Into::into)
     }
 
     /// Clear all failed messages from the queue.
     pub async fn clear_failed_messages(&self) -> anyhow::Result<usize> {
-        self.storage.clear_failed_messages().await
+        self.storage.clear_failed_messages().await.map_err(Into::into)
     }
 
     /// Reset failed messages back to pending for retry.
     pub async fn retry_failed_messages(&self) -> anyhow::Result<usize> {
-        self.storage.retry_failed_messages().await
+        self.storage.retry_failed_messages().await.map_err(Into::into)
     }
 
     /// Clear all pending messages from the queue.
     pub async fn clear_all_pending_messages(&self) -> anyhow::Result<usize> {
-        self.storage.clear_all_pending_messages().await
+        self.storage.clear_all_pending_messages().await.map_err(Into::into)
     }
 
     /// Get count of pending messages.
     pub async fn get_pending_count(&self) -> anyhow::Result<usize> {
-        self.storage.get_pending_count().await
+        self.storage.get_pending_count().await.map_err(Into::into)
     }
 
     /// Release stale processing messages back to pending.
@@ -87,6 +87,6 @@ impl QueueService {
         &self,
         visibility_timeout_secs: i64,
     ) -> anyhow::Result<usize> {
-        self.storage.release_stale_messages(visibility_timeout_secs).await
+        self.storage.release_stale_messages(visibility_timeout_secs).await.map_err(Into::into)
     }
 }

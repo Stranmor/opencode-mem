@@ -1,8 +1,8 @@
 use anyhow::Result;
 use clap::Subcommand;
 use opencode_mem_core::{
-    filter_injected_memory, ObservationHookRequest, ProjectFilter, SessionInitHookRequest,
-    SummarizeHookRequest,
+    ObservationHookRequest, ProjectFilter, SessionInitHookRequest, SummarizeHookRequest,
+    filter_injected_memory,
 };
 use std::io::{IsTerminal, Read};
 

@@ -66,7 +66,7 @@ impl ObservationService {
     }
 
     pub async fn cleanup_old_injections(&self) -> anyhow::Result<u64> {
-        self.storage.cleanup_old_injections(24).await
+        self.storage.cleanup_old_injections(24).await.map_err(Into::into)
     }
 
     /// Record which observation IDs were injected into a session for echo detection.
@@ -75,7 +75,7 @@ impl ObservationService {
         session_id: &str,
         observation_ids: &[String],
     ) -> anyhow::Result<()> {
-        self.storage.save_injected_observations(session_id, observation_ids).await
+        self.storage.save_injected_observations(session_id, observation_ids).await.map_err(Into::into)
     }
 
     pub(crate) async fn generate_embedding(&self, observation: &Observation) -> Option<Vec<f32>> {

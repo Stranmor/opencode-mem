@@ -30,26 +30,26 @@ impl SessionService {
     }
 
     pub async fn get_session(&self, id: &str) -> anyhow::Result<Option<Session>> {
-        self.storage.get_session(id).await
+        self.storage.get_session(id).await.map_err(Into::into)
     }
 
     pub async fn get_session_observation_count(&self, session_id: &str) -> anyhow::Result<usize> {
-        self.storage.get_session_observation_count(session_id).await
+        self.storage.get_session_observation_count(session_id).await.map_err(Into::into)
     }
 
     pub async fn delete_session(&self, session_id: &str) -> anyhow::Result<bool> {
-        self.storage.delete_session(session_id).await
+        self.storage.delete_session(session_id).await.map_err(Into::into)
     }
 
     pub async fn get_session_by_content_id(
         &self,
         content_session_id: &str,
     ) -> anyhow::Result<Option<Session>> {
-        self.storage.get_session_by_content_id(content_session_id).await
+        self.storage.get_session_by_content_id(content_session_id).await.map_err(Into::into)
     }
 
     pub async fn close_stale_sessions(&self, max_age_hours: i64) -> anyhow::Result<usize> {
-        self.storage.close_stale_sessions(max_age_hours).await
+        self.storage.close_stale_sessions(max_age_hours).await.map_err(Into::into)
     }
 
     pub async fn complete_session(&self, session_id: &str) -> anyhow::Result<Option<String>> {
