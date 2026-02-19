@@ -170,6 +170,7 @@ LLM always creates NEW observations even when near-identical ones exist. The `ex
 - ~~Unbounded injected IDs per session~~ — Capped at 500 most recent IDs per session via `MAX_INJECTED_IDS` constant
 - ~~PG get_embeddings_for_ids no batching~~ — PG implementation now chunks IDs via `MAX_BATCH_IDS`
 - **CUDA GPU acceleration blocked on Pascal** — ort-sys 2.0.0-rc.11 pre-built CUDA provider includes only SM 7.0+ (Volta+). GTX 1060 (SM 6.1 Pascal) gets `cudaErrorSymbolNotFound` at inference. CUDA EP registers successfully but all inference ops fail. CUDA 12 compat libs cleaned up from home-server. Workaround: CPU-only embeddings with `OPENCODE_MEM_DISABLE_EMBEDDINGS=1` for throttling. To resolve: either build ONNX Runtime from source with `CMAKE_CUDA_ARCHITECTURES=61`, or upgrade to Volta+ GPU.
+- **`std::env::set_var` will become unsafe in edition 2024** — `EmbeddingService::new()` calls `set_var("OMP_NUM_THREADS")` inside `Once::call_once`. Safe in edition 2021, but requires `unsafe {}` block when migrating to edition 2024. Alternative: move env var setting to CLI `main()` before tokio runtime init.
 - ~~sqlite-vec vec0 1024 record limit~~ — SQLite backend removed entirely. PG-only now (pgvector has no such limit).
 - ~~No DB path env var~~ — SQLite backend removed. `DATABASE_URL` is the only config needed.
 - ~~Session summarization uses wrong ID for API sessions~~ — `summarize_session` now queries via `session_id` (UUID) instead of `content_session_id` (IDE ID)
