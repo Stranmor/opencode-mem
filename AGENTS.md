@@ -125,6 +125,15 @@ crates/
 - **Inconsistent HTTP error responses** — Some handlers (`infinite.rs`, `queue.rs`) return structured JSON error bodies `{"error": "..."}`, others return bare HTTP status codes with no body. Unified `ApiError` pattern needed.
 - **Pagination limit inconsistency** — Pagination endpoints (`/api/observations`, `/api/summaries`) hardcode cap of 100, while search/recent endpoints use `MAX_QUERY_LIMIT` (1000). Should use a single constant or define explicit `MAX_PAGINATION_LIMIT`.
 - **save_memory ambiguous 422** — Returns `422 Unprocessable Entity` for both 'low-value filtered' AND 'exact duplicate' observations. Clients cannot distinguish. Should return `200 OK` for duplicates (idempotent) and `422` for filtered only.
+- **CLI hook.rs swallows JSON parse errors** — `get_project_from_stdin` and `build_observation_request` silently resolve to `None` on malformed JSON, masking the actual syntax error.
+- **import_insights.rs regex truncation** — `OBSERVATION_RE`, `IMPLICATION_RE`, `RECOMMENDATION_RE` use `.+` (no newlines). Multi-line fields lose content after first line.
+- **import_insights.rs title_exists swallows DB errors** — `unwrap_or(false)` on `search_knowledge` result. DB failure → proceeds to insert instead of propagating error.
+- **session_service hardcoded `opencode` binary** — `summarize_session_from_export` calls `Command::new("opencode")` assuming PATH availability. Should be configurable.
+- **session_service inconsistent empty-session handling** — `summarize_session` returns early on empty observations leaving status unchanged; `complete_session` correctly marks as `Completed`.
+- **build_tsquery empty string crash** — `build_tsquery` in `pg_storage/mod.rs` returns empty string for symbol-only input. PostgreSQL's `to_tsquery('')` throws a syntax error.
+- **parse_json_value unnecessary clone** — Takes `&serde_json::Value` and clones internally. Callers own the value; should take by value.
+- **get_all_pending_messages unfiltered** — Returns all rows including 'failed' and 'processing' statuses, contradicting function name and `get_pending_count` logic.
+- **get_queue_stats dead 'processed' count** — Queries for `status = 'processed'` but `complete_message` deletes rows. Count is always zero.
 
 ### Resolved
 - ~~Infinite memory compression pipeline starvation~~ — `run_full_compression` now queries per-session via `get_sessions_with_unaggregated_*` + `get_unaggregated_*_for_session`, eliminating fixed cross-session batch that caused threshold starvation

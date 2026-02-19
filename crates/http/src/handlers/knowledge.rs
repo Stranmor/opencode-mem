@@ -47,20 +47,26 @@ pub async fn search_knowledge(
             tracing::error!("Search knowledge error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
-    for result in &results {
-        let _ = state.knowledge_service.update_knowledge_usage(&result.knowledge.id).await;
-    }
+    // Fire-and-forget usage tracking in background to avoid blocking response
+    let service = state.knowledge_service.clone();
+    let ids: Vec<String> = results.iter().map(|r| r.knowledge.id.clone()).collect();
+    tokio::spawn(async move {
+        for id in &ids {
+            let _ = service.update_knowledge_usage(id).await;
+        }
+    });
     Ok(Json(results))
 }
 
 pub async fn get_knowledge_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<Option<GlobalKnowledge>>, StatusCode> {
-    state.knowledge_service.get_knowledge(&id).await.map(Json).map_err(|e| {
+) -> Result<Json<GlobalKnowledge>, StatusCode> {
+    let knowledge = state.knowledge_service.get_knowledge(&id).await.map_err(|e| {
         tracing::error!("Get knowledge error: {}", e);
         StatusCode::INTERNAL_SERVER_ERROR
-    })
+    })?;
+    knowledge.map(Json).ok_or(StatusCode::NOT_FOUND)
 }
 
 pub async fn delete_knowledge(
