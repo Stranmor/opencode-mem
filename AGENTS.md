@@ -146,6 +146,7 @@ LLM always creates NEW observations even when near-identical ones exist. The `ex
 - **strip_markdown_json duplicated** — Implemented in both `crates/core/src/json_utils.rs` and locally in `crates/llm/src/insights.rs`. The LLM crate already depends on core.
 - **save_memory bypasses Infinite Memory** — `ObservationService::save_memory` calls `persist_and_notify` directly, bypassing `store_infinite_memory`. Manually added memories don't appear in infinite timeline.
 - **admin_restart uses exit(0)** — `admin_restart` handler calls `exit(0)`, which only triggers restart with `Restart=always` systemd config (not the default `Restart=on-failure`). Should use exit code 1.
+- **Infinite Memory migrations not evolutionary** — `crates/infinite-memory/src/migrations.rs` uses `CREATE TABLE IF NOT EXISTS` but lacks `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` for columns added later (e.g., `entities`). Database created with older version will crash at runtime when querying missing columns.
 - **search_by_file missing GIN index** — `files_read` and `files_modified` JSONB columns have no GIN index, causing full table scans for file search queries.
 - **parse_pg_vector_text string parsing overhead** — Vector data from PG is parsed via string splitting instead of binary `pgvector` crate deserialization. CPU overhead on search/retrieval.
 - **Hybrid search stop-words fallback** — If `hybrid_search` receives query with only stop words (empty tsquery), falls back to `get_recent` observations instead of returning empty results.
