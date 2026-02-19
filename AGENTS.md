@@ -74,6 +74,62 @@ crates/
 - `crates/http/src/handlers/` — HTTP handlers (11 modules)
 - `crates/core/src/observation/low_value_filter.rs` — configurable noise filter (SPOT), env: `OPENCODE_MEM_FILTER_PATTERNS`
 - `crates/llm/src/` — AI agent: client, observation, summary, knowledge, insights
+
+## ADR: Context-Aware Compression (CREATE/UPDATE/SKIP)
+
+### Problem
+LLM always creates NEW observations even when near-identical ones exist. The `existing_titles` dedup hint in the prompt only lists titles — the LLM lacks enough context to confidently mark duplicates as negligible. Post-facto dedup (cosine similarity merge, background sweep) catches some duplicates but is fundamentally reactive: duplicates are created, then cleaned.
+
+### Constraints
+- API calls are free (zero cost concern)
+- ~100 observations in DB, growing slowly
+- FTS + GIN index exists on `search_vec` tsvector column
+- `response_format: json_object` is required for all LLM calls
+- Raw events preserved in Infinite Memory (observations are derived views)
+
+### Decision: Enrich compression prompt with candidate observations, let LLM decide CREATE/UPDATE/SKIP
+
+**One code path, three outcomes.** Before LLM compression, retrieve top 5 candidate observations via FTS on raw input text. Feed their full content to the LLM alongside the new tool interaction. LLM returns a discriminated result:
+
+- **CREATE**: Genuinely new knowledge → full observation (current behavior)
+- **UPDATE(target_id)**: Refines existing observation → full replacement of target's content fields
+- **SKIP**: Zero new information → log and discard
+
+### Alternatives Considered
+
+1. **Merge-or-create gate (separate pre-search → conditional prompt branching)** — Rejected. Two code paths, two prompt templates, patch parsing, false positive recovery. Over-engineered for a context starvation problem.
+
+2. **Aggressive post-facto dedup only (lower thresholds, more frequent sweeps)** — Rejected. Treats symptoms. Duplicates still created, wasting LLM calls and storage churn.
+
+3. **Pre-embed raw input for semantic search** — Rejected. Raw tool output has low similarity to compressed observations (different vocabulary, length, structure). FTS keyword matching is sufficient for candidate retrieval.
+
+### Implementation Plan
+
+**Phase 1: Candidate retrieval** (in `ObservationService`, before LLM call)
+- Extract keywords from raw input via `plainto_tsquery`
+- Query `observations` via existing `search_vec` GIN index, limit 5
+- Also include 2-3 most recent observations from same session (most likely merge targets)
+
+**Phase 2: Prompt modification** (`crates/llm/src/observation.rs`)
+- Replace `existing_titles` with full candidate observations (id + title + narrative + facts)
+- Add DECISION section: CREATE / UPDATE(id) / SKIP
+- Response schema becomes discriminated union with `action` field
+
+**Phase 3: Response handling** (`crates/service/src/observation_service/`)
+- Parse `action` field from LLM response
+- CREATE → existing `persist_and_notify` path
+- UPDATE → validate target_id exists and was in candidate set → full field replacement → regenerate embedding
+- SKIP → log at debug, return early
+
+**Phase 4: Simplify dedup layers**
+- Post-facto cosine dedup becomes safety net only (keep threshold at 0.85)
+- Background sweep remains as defense-in-depth (30 min interval)
+- Echo detection (0.80) stays unchanged (different purpose: injection recursion prevention)
+
+### Watch Out For
+- **Candidate retrieval quality**: if FTS misses the relevant observation, LLM creates a duplicate. Mitigate by also including recent same-session observations.
+- **LLM hallucinating target_id**: validate returned ID exists AND was in candidate set. If not → treat as CREATE.
+- **Token growth**: 5 candidates × ~500 tokens = ~2500 extra tokens per call. Negligible for current models.
 - `crates/infinite-memory/src/` — PostgreSQL + pgvector backend
 
 ## Tech Debt & Known Issues

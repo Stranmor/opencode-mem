@@ -62,7 +62,8 @@ impl EmbeddingService {
             // OMP_NUM_THREADS is the ONLY reliable way to limit threads when ONNX Runtime
             // is built with OpenMP (Microsoft's prebuilt binaries). Per-session
             // `with_intra_threads` and global pool options have no effect in OpenMP builds.
-            // Set this BEFORE any ONNX session creation.
+            // Safe here: called once via Once, before any ONNX/OpenMP initialization.
+            // TODO(edition-2024): wrap in unsafe {} when migrating to Rust edition 2024
             if std::env::var("OMP_NUM_THREADS").is_err() {
                 std::env::set_var("OMP_NUM_THREADS", thread_count.to_string());
             }
@@ -113,14 +114,11 @@ impl EmbeddingService {
     }
 
     fn get_thread_count() -> usize {
-        std::env::var("OPENCODE_MEM_EMBEDDING_THREADS")
-            .ok()
-            .and_then(|v| v.parse::<usize>().ok())
-            .unwrap_or_else(|| {
-                std::thread::available_parallelism()
-                    .map(|p| p.get().saturating_sub(1).max(1))
-                    .unwrap_or(1)
-            })
+        let max_threads = std::thread::available_parallelism().map(|p| p.get()).unwrap_or(1);
+        let default_threads = max_threads.saturating_sub(1).max(1);
+        let configured =
+            opencode_mem_core::env_parse_with_default("OPENCODE_MEM_EMBEDDING_THREADS", 0_usize);
+        if configured == 0 { default_threads } else { configured.clamp(1, max_threads) }
     }
 }
 
