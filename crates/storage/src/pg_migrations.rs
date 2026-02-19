@@ -389,14 +389,18 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
     .execute(pool)
     .await?;
 
-    // Create trigger (idempotent via DROP IF EXISTS)
+    // Create trigger (idempotent via DROP IF EXISTS).
+    // Must be two separate statements — PG disallows multiple commands in a prepared statement.
+    sqlx::query("DROP TRIGGER IF EXISTS trg_observations_search_vec ON observations")
+        .execute(pool)
+        .await?;
+
     sqlx::query(
         r#"
-        DROP TRIGGER IF EXISTS trg_observations_search_vec ON observations;
         CREATE TRIGGER trg_observations_search_vec
             BEFORE INSERT OR UPDATE ON observations
             FOR EACH ROW
-            EXECUTE FUNCTION observations_search_vec_update();
+            EXECUTE FUNCTION observations_search_vec_update()
         "#,
     )
     .execute(pool)
