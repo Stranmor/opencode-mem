@@ -41,7 +41,7 @@ fn build_compression_prompt(
     candidates: &[Observation],
 ) -> String {
     let existing_context = if candidates.is_empty() {
-        String::new()
+        "\n\nThere are no existing observations. You MUST use action: \"create\".".to_owned()
     } else {
         let mut entries = String::new();
         for (i, obs) in candidates.iter().enumerate() {
@@ -65,6 +65,38 @@ DECISION (MANDATORY — choose exactly one):
 - If this REFINES or ADDS TO an existing observation above → action: "update", target_id: "<id of the observation to update>"
 - If this adds ZERO new information beyond what already exists → action: "skip""#
         )
+    };
+
+    let json_schema = if candidates.is_empty() {
+        r#"Return JSON:
+- action: "create"
+- noise_level: one of "critical", "high", "medium", "low", "negligible"
+- noise_reason: why this is/isn't worth remembering (max 100 chars)
+- type: "gotcha", "bugfix", "decision", or "feature"
+- title: the lesson learned (max 80 chars, must be a complete statement of fact)
+- subtitle: project/context this applies to
+- narrative: the full lesson — what happened, why, and what to do differently
+- facts: specific actionable facts (file paths, commands, error messages)
+- concepts: from ["problem-solution", "gotcha", "pattern", "trade-off"]
+- files_read: file paths involved
+- files_modified: file paths changed
+- keywords: search terms"#
+    } else {
+        r#"Return JSON:
+- action: one of "create", "update", "skip"
+- target_id: id of existing observation to update (required if action is "update")
+- skip_reason: why this should be skipped (required if action is "skip")
+- noise_level: one of "critical", "high", "medium", "low", "negligible"
+- noise_reason: why this is/isn't worth remembering (max 100 chars)
+- type: "gotcha", "bugfix", "decision", or "feature"
+- title: the lesson learned (max 80 chars, must be a complete statement of fact)
+- subtitle: project/context this applies to
+- narrative: the full lesson — what happened, why, and what to do differently
+- facts: specific actionable facts (file paths, commands, error messages)
+- concepts: from ["problem-solution", "gotcha", "pattern", "trade-off"]
+- files_read: file paths involved
+- files_modified: file paths changed
+- keywords: search terms"#
     };
 
     format!(
@@ -112,25 +144,12 @@ NOISE LEVEL GUIDE (5 levels):
 - "low": Marginally useful context. Configuration tweak, minor optimization, environment-specific workaround.
 - "negligible": Routine work, generic knowledge available in docs, file edits, build output, status updates, duplicates. DISCARD.
 
-Return JSON:
-- action: one of "create", "update", "skip"
-- target_id: id of existing observation to update (required if action is "update")
-- skip_reason: why this should be skipped (required if action is "skip")
-- noise_level: one of "critical", "high", "medium", "low", "negligible"
-- noise_reason: why this is/isn't worth remembering (max 100 chars)
-- type: "gotcha", "bugfix", "decision", or "feature"
-- title: the lesson learned (max 80 chars, must be a complete statement of fact)
-- subtitle: project/context this applies to
-- narrative: the full lesson — what happened, why, and what to do differently
-- facts: specific actionable facts (file paths, commands, error messages)
-- concepts: from ["problem-solution", "gotcha", "pattern", "trade-off"]
-- files_read: file paths involved
-- files_modified: file paths changed
-- keywords: search terms"#,
+{}"#,
         tool,
         title,
         truncate(output, MAX_OUTPUT_LEN),
         existing_context,
+        json_schema,
     )
 }
 
@@ -169,7 +188,7 @@ fn parse_observation_response(
             .skip_reason
             .or(obs_json.noise_reason)
             .unwrap_or_else(|| "LLM decided to skip".to_owned());
-        tracing::debug!(reason = %reason, "LLM action: skip");
+        tracing::info!(reason = %reason, "LLM action: skip");
         return Ok(CompressionResult::Skip { reason });
     }
 
@@ -234,6 +253,10 @@ fn parse_observation_response(
         } else {
             tracing::warn!("LLM returned action=update without target_id — treating as create");
         }
+    }
+
+    if action != "create" {
+        tracing::warn!(action = %action, "LLM returned unrecognized action — treating as create");
     }
 
     Ok(CompressionResult::Create(observation))
