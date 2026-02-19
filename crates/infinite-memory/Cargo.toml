@@ -14,5 +14,5 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "chrono", "json"] }
+sqlx = { workspace = true }
 uuid = { version = "1", features = ["v4"] }

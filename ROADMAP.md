@@ -34,6 +34,8 @@ Full feature parity with [claude-mem](https://github.com/thedotmack/claude-mem).
 - [x] pgvector integration
 - [x] Local embedding model (BGE-M3 via fastembed/ort, 1024d, multilingual)
 - [x] Hybrid search (tsvector BM25 50% + vector cosine similarity 50%)
+
+### Future (Vector Search)
 - [ ] Granular sync (each field → separate embedding)
 
 ## Phase 6: 3-Layer Search Pattern ✅ DONE

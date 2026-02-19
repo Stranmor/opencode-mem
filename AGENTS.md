@@ -89,6 +89,8 @@ crates/
 - **KnowledgeType SPOT violation** — `KnowledgeType` enum variants are hardcoded separately in Rust enum, LLM prompts, and MCP tool schemas. Adding a new type requires manual updates in 3 places.
 - **strip_markdown_json duplicated** — Implemented in both `crates/core/src/json_utils.rs` and locally in `crates/llm/src/insights.rs`. The LLM crate already depends on core.
 - **Hybrid search stop-words fallback** — If `hybrid_search` receives query with only stop words (empty tsquery), falls back to `get_recent` observations instead of returning empty results.
+- **sqlx missing uuid feature** — `crates/storage/Cargo.toml` sqlx dep lacks `uuid` feature flag. Works because uuid values are extracted manually from PgRow, not via `query_as!`. Adding the feature would enable compile-time checked queries.
+- **sqlx missing TLS feature** — `crates/storage/Cargo.toml` sqlx dep lacks TLS feature (`tls-rustls`). Works because connection goes through localhost SSH tunnel (no SSL). Would fail if connecting directly to SSL-enabled PG.
 - ~~PG search_vec missing columns~~ — `search_vec` tsvector now includes `facts` (weight C) and `keywords` (weight D) via trigger function (generated column replaced due to subquery limitation)
 - ~~Session observations not durable~~ — `POST /api/sessions/observations` now uses persistent DB queue (`queue_service.queue_message()`) instead of ephemeral `tokio::spawn`. Server crash no longer loses session observations.
 - ~~Knowledge save race condition~~ — Unique index `idx_knowledge_title_unique` on `LOWER(title)` (PG). Save methods retry on constraint violation, merging via SELECT+UPDATE on retry.
