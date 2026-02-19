@@ -1,4 +1,4 @@
-//! Hybrid search combining FTS5 and vector similarity
+//! Hybrid search combining full-text search (tsvector) and vector similarity (pgvector)
 //!
 //! Implements 3-layer search pattern:
 //! 1. search(query) → Get lightweight index with IDs and scores
@@ -17,10 +17,10 @@ use std::sync::Arc;
 use anyhow::Result;
 use opencode_mem_core::{Observation, SearchResult};
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
-use opencode_mem_storage::traits::{ObservationStore, SearchStore};
 use opencode_mem_storage::StorageBackend;
+use opencode_mem_storage::traits::{ObservationStore, SearchStore};
 
-/// High-level search facade combining FTS5 and vector similarity.
+/// High-level search facade combining full-text search (tsvector) and vector similarity (pgvector).
 ///
 /// Wraps `StorageBackend` and optional `EmbeddingService` to provide unified search API.
 /// When embeddings are available, uses `hybrid_search_v2` (FTS + vector).

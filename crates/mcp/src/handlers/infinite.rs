@@ -74,7 +74,7 @@ pub(super) async fn handle_infinite_time_range(
                         id,
                         result: Some(mcp_err("Invalid 'from' datetime format (use RFC3339)")),
                         error: None,
-                    }
+                    };
                 },
             };
             let end = match chrono::DateTime::parse_from_rfc3339(to) {
@@ -85,7 +85,7 @@ pub(super) async fn handle_infinite_time_range(
                         id,
                         result: Some(mcp_err("Invalid 'to' datetime format (use RFC3339)")),
                         error: None,
-                    }
+                    };
                 },
             };
             match mem.get_events_by_time_range(start, end, session_id, limit).await {

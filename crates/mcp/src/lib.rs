@@ -285,4 +285,32 @@ mod tests {
         assert_eq!(result["content"][0]["text"].as_str(), Some("hello world"));
         assert!(result.get("isError").is_none());
     }
+
+    /// Regression test: SQLite backend fully removed — no SQLite-specific terminology
+    /// in MCP tool descriptions exposed to clients.
+    ///
+    /// FTS5 is SQLite's full-text search extension. After migration to PostgreSQL
+    /// (which uses tsvector + GIN), tool descriptions must not reference FTS5
+    /// as it misleads MCP clients about query syntax and capabilities.
+    ///
+    /// Vulnerability IDs: 221, 222
+    #[test]
+    fn test_no_sqlite_references_in_tool_descriptions() {
+        let tools_json = get_tools_json();
+        let tools_str =
+            serde_json::to_string(&tools_json).expect("tools JSON serialization should not fail");
+        let tools_lower = tools_str.to_lowercase();
+
+        // SQLite-specific terms that should not appear in tool descriptions
+        let banned_terms = ["fts5", "sqlite", "sqlite-vec", "vec0", "load_extension"];
+
+        for term in banned_terms {
+            assert!(
+                !tools_lower.contains(term),
+                "MCP tool descriptions contain banned SQLite term '{term}'. \
+                 SQLite backend was removed — use PostgreSQL terminology (tsvector, pgvector). \
+                 Found in: {tools_str}"
+            );
+        }
+    }
 }

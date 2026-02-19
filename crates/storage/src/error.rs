@@ -55,7 +55,7 @@ impl From<sqlx::Error> for StorageError {
     fn from(err: sqlx::Error) -> Self {
         match &err {
             sqlx::Error::RowNotFound => Self::NotFound { entity: "row", id: "unknown".into() },
-            sqlx::Error::Database(db_err) if db_err.code().map_or(false, |c| c == "23505") => {
+            sqlx::Error::Database(db_err) if db_err.code().is_some_and(|c| c == "23505") => {
                 Self::Duplicate(db_err.message().to_owned())
             },
             _ => Self::Database(err),

@@ -6,49 +6,49 @@ Full feature parity with [claude-mem](https://github.com/thedotmack/claude-mem).
 
 - [x] Cargo workspace structure
 - [x] Core types (Observation, Session, SessionSummary)
-- [x] SQLite storage with migrations
-- [x] FTS5 full-text search
+- [x] PostgreSQL storage with migrations
+- [x] tsvector + GIN full-text search
 
-## Phase 2: Existing Code Migration 🔄 IN PROGRESS
+## Phase 2: Code Migration ✅ DONE
 
-- [ ] Migrate storage.rs → crates/storage
-- [ ] Migrate llm.rs → crates/llm  
-- [ ] Migrate http.rs → crates/http
-- [ ] Migrate mcp.rs → crates/mcp
+- [x] Migrate storage.rs → crates/storage (PostgreSQL-only)
+- [x] Migrate llm.rs → crates/llm
+- [x] Migrate http.rs → crates/http
+- [x] Migrate mcp.rs → crates/mcp
 
-## Phase 3: Session Management
+## Phase 3: Session Management ✅ DONE
 
-- [ ] Dual session IDs (content_session_id, memory_session_id)
-- [ ] Session status tracking (active, completed, failed)
-- [ ] Prompt counter per session
-- [ ] User prompts storage (separate table)
+- [x] Dual session IDs (content_session_id, memory_session_id)
+- [x] Session status tracking (active, completed, failed)
+- [x] Prompt counter per session
+- [x] User prompts storage (separate table)
 
-## Phase 4: Session Summaries
+## Phase 4: Session Summaries ✅ DONE
 
-- [ ] Structured summary (request, investigated, learned, completed, next_steps)
-- [ ] Auto-generate on session end (Stop hook)
-- [ ] FTS5 for summaries
+- [x] Structured summary (request, investigated, learned, completed, next_steps)
+- [x] Auto-generate on session end (Stop hook)
+- [x] FTS for summaries
 
-## Phase 5: Vector Search (Embeddings)
+## Phase 5: Vector Search (Embeddings) ✅ DONE
 
-- [x] sqlite-vec integration
+- [x] pgvector integration
 - [x] Local embedding model (BGE-M3 via fastembed/ort, 1024d, multilingual)
-- [x] Hybrid search (FTS5 + vector similarity)
+- [x] Hybrid search (tsvector BM25 50% + vector cosine similarity 50%)
 - [ ] Granular sync (each field → separate embedding)
 
-## Phase 6: 3-Layer Search Pattern
+## Phase 6: 3-Layer Search Pattern ✅ DONE
 
-- [ ] Index layer (id, title, subtitle only — minimal tokens)
-- [ ] Timeline layer (anchor-based context retrieval)
-- [ ] Full layer (complete observation data)
-- [ ] `__IMPORTANT` tool (workflow documentation)
+- [x] Index layer (id, title, subtitle only — minimal tokens)
+- [x] Timeline layer (anchor-based context retrieval)
+- [x] Full layer (complete observation data)
+- [x] `__IMPORTANT` tool (workflow documentation)
 
-## Phase 7: Context Injection
+## Phase 7: Context Injection ✅ DONE
 
-- [ ] SessionStart hook → inject memories
-- [ ] Configurable observation count (total, full)
-- [ ] Interleaved timeline (observations + summaries)
-- [ ] Token economics display
+- [x] SessionStart hook → inject memories
+- [x] Configurable observation count (total, full)
+- [x] Interleaved timeline (observations + summaries)
+- [x] Token economics display
 
 ## Phase 8: OpenCode Plugin
 
@@ -58,19 +58,19 @@ Full feature parity with [claude-mem](https://github.com/thedotmack/claude-mem).
 - [ ] `tool.execute.after` (capture observations)
 - [ ] `event` hook (session lifecycle)
 
-## Phase 9: Privacy & Configuration
+## Phase 9: Privacy & Configuration ✅ DONE
 
-- [ ] `<private>` tag stripping
-- [ ] `<opencode-mem-context>` anti-recursion tags
-- [ ] settings.json configuration
-- [ ] Mode profiles (code, code--ru, etc.)
+- [x] `<private>` tag stripping
+- [x] `<opencode-mem-context>` anti-recursion tags
+- [x] settings.json configuration
+- [x] Mode profiles (code, code--ru, etc.)
 
-## Phase 10: Web UI
+## Phase 10: Web UI ✅ DONE
 
-- [ ] Axum + htmx viewer
-- [ ] Real-time observation stream (SSE)
-- [ ] Session timeline view
-- [ ] Search interface
+- [x] Axum + htmx viewer
+- [x] Real-time observation stream (SSE)
+- [x] Session timeline view
+- [x] Search interface
 
 ---
 

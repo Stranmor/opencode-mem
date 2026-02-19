@@ -80,7 +80,9 @@ pub async fn handle_tool_call(
                 result: None,
                 error: Some(McpError {
                     code: -32602,
-                    message: format!("Unknown tool: '{tool_name_str}'. Available: __IMPORTANT, search, timeline, get_observations, memory_get, memory_recent, memory_hybrid_search, memory_semantic_search, save_memory, knowledge_search, knowledge_save, knowledge_get, knowledge_list, knowledge_delete, infinite_expand, infinite_time_range, infinite_drill_hour, infinite_drill_minute"),
+                    message: format!(
+                        "Unknown tool: '{tool_name_str}'. Available: __IMPORTANT, search, timeline, get_observations, memory_get, memory_recent, memory_hybrid_search, memory_semantic_search, save_memory, knowledge_search, knowledge_save, knowledge_get, knowledge_list, knowledge_delete, infinite_expand, infinite_time_range, infinite_drill_hour, infinite_drill_minute"
+                    ),
                 }),
             };
         },

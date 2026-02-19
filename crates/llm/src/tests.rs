@@ -2,7 +2,7 @@ use std::env;
 
 use crate::client::truncate;
 use crate::observation::parse_concept;
-use opencode_mem_core::{strip_markdown_json, Concept, NoiseLevel, ObservationInput, ToolOutput};
+use opencode_mem_core::{Concept, NoiseLevel, ObservationInput, ToolOutput, strip_markdown_json};
 
 // Integration tests for observation filtering (require ANTIGRAVITY_API_KEY)
 #[cfg(test)]
@@ -88,15 +88,15 @@ Standard fix for race condition - use RwLock instead of direct access.",
 
         let input = make_input(
             "edit",
-            "Architecture decision: chose sqlite-vec over pgvector",
+            "Architecture decision: chose pgvector over ChromaDB",
             "Decision for opencode-mem project:
 
-We chose sqlite-vec instead of pgvector because:
-1. Single binary deployment - no PostgreSQL dependency
-2. Embedded database - simpler ops for CLI tool
-3. sqlite-vec supports cosine similarity which is enough for our use case
+We chose pgvector instead of ChromaDB because:
+1. Single database - PostgreSQL handles both relational and vector data
+2. No Python dependency - simpler ops for CLI tool
+3. pgvector supports cosine similarity, L2, and inner product
 
-Trade-off: pgvector has better performance at scale, but we prioritize simplicity.",
+Trade-off: ChromaDB has a nicer API, but we prioritize infrastructure simplicity.",
         );
 
         let result = client

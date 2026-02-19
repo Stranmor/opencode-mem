@@ -134,7 +134,7 @@ pub fn get_tools_json() -> serde_json::Value {
             },
             {
                 "name": "memory_hybrid_search",
-                "description": "Hybrid search combining FTS5 and keyword matching",
+                "description": "Hybrid search combining FTS and keyword matching",
                 "inputSchema": {
                     "type": "object",
                     "properties": {

@@ -272,7 +272,7 @@ pub trait EmbeddingStore: Send + Sync {
 
     /// Find the most similar existing observation by cosine similarity.
     async fn find_similar(&self, embedding: &[f32], threshold: f32)
-        -> Result<Option<SimilarMatch>>;
+    -> Result<Option<SimilarMatch>>;
 
     /// Find top-N similar observations above a similarity threshold.
     ///

@@ -1,11 +1,11 @@
 use chrono::Utc;
 use opencode_mem_core::{
-    filter_private_content, Concept, NoiseLevel, Observation, ObservationInput, ObservationType,
+    Concept, NoiseLevel, Observation, ObservationInput, ObservationType, filter_private_content,
 };
 use std::str::FromStr as _;
 
 use crate::ai_types::{ChatRequest, Message, ObservationJson, ResponseFormat};
-use crate::client::{truncate, LlmClient, MAX_OUTPUT_LEN};
+use crate::client::{LlmClient, MAX_OUTPUT_LEN, truncate};
 use crate::error::LlmError;
 
 #[must_use]
@@ -70,11 +70,11 @@ ONLY SAVE observations that match ONE of these categories:
    "Stream timeout sent end_turn causing agents to stop — changed to max_tokens"
 
 3. DECISION (critical only): An irreversible architectural choice with clear reasoning.
-   "Chose sqlite-vec over ChromaDB for vector storage — no external dependency"
+   "Chose pgvector over ChromaDB for vector storage — no external dependency"
    "Hermes Core uses isolation-only design to prevent Telegram account bans"
 
 4. FEATURE (critical only): A significant new capability was completed.
-   "Implemented hybrid search: FTS5 BM25 50% + vector cosine similarity 50%"
+   "Implemented hybrid search: tsvector BM25 50% + vector cosine similarity 50%"
 
 EVERYTHING ELSE IS NEGLIGIBLE. Specifically, ALWAYS mark as negligible:
 - Reading/writing files (routine work, not a lesson)

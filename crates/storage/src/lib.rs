@@ -19,6 +19,7 @@
 #![allow(clippy::single_call_fn, reason = "Helper functions improve readability")]
 
 pub mod backend;
+pub mod error;
 mod pending_queue;
 pub mod pg_migrations;
 pub mod pg_storage;
@@ -27,9 +28,10 @@ mod tests;
 pub mod traits;
 
 pub use backend::StorageBackend;
+pub use error::StorageError;
 pub use pending_queue::{
-    default_visibility_timeout_secs, max_retry_count, PaginatedResult, PendingMessage,
-    PendingMessageStatus, QueueStats, StorageStats,
+    PaginatedResult, PendingMessage, PendingMessageStatus, QueueStats, StorageStats,
+    default_visibility_timeout_secs, max_retry_count,
 };
 pub use pg_storage::PgStorage;
 pub use traits::{

@@ -23,21 +23,43 @@
 
 ## ADR-002: sqlite-vec Instead of ChromaDB
 
-**Status:** Accepted
+**Status:** Superseded by ADR-002a
 
 **Context:** claude-mem uses ChromaDB (Python) via MCP for vector search.
 
-**Decision:** Use sqlite-vec (SQLite extension) for vector storage.
+**Decision:** ~~Use sqlite-vec (SQLite extension) for vector storage.~~ Replaced by pgvector.
 
 **Rationale:**
-- Single SQLite file (no external process)
+- ~~Single SQLite file (no external process)~~
 - No Python dependency
-- Same query interface as FTS5
-- Rust bindings available
+- ~~Same query interface as FTS5~~
+- ~~Rust bindings available~~
 
 **Consequences:**
 - Need to manage embedding model ourselves (candle/ort)
-- Simpler deployment (single binary + single db file)
+- ~~Simpler deployment (single binary + single db file)~~
+
+---
+
+## ADR-002a: pgvector Instead of sqlite-vec
+
+**Status:** Accepted
+
+**Context:** sqlite-vec has a 1024 record limit per vec0 table, no concurrent writers, and no streaming replication. PostgreSQL with pgvector eliminates all these constraints.
+
+**Decision:** Use PostgreSQL with pgvector extension for vector storage. SQLite backend fully removed.
+
+**Rationale:**
+- No record limits (pgvector scales with PG)
+- Concurrent readers and writers
+- tsvector + GIN for full-text search (replaces FTS5)
+- Streaming replication for backups
+- Single database for all data (observations, embeddings, knowledge)
+
+**Consequences:**
+- Requires PostgreSQL server (not single-file deployment)
+- pgvector extension must be installed
+- Embedding dimensions: 1024 (BGE-M3)
 
 ---
 
@@ -80,7 +102,7 @@
 - Larger model (~1.1GB vs ~50MB) — acceptable, downloaded once and cached
 - Slower inference (~50ms vs ~10ms) — acceptable for write-path embedding generation
 
-**Migration:** SQLite migration v15 drops and recreates vec0 table with 1024 dimensions. PostgreSQL ALTER COLUMN from vector(384) to vector(1024). Existing embeddings must be regenerated via `backfill-embeddings` command.
+**Migration:** PostgreSQL ALTER COLUMN from vector(384) to vector(1024). Existing embeddings must be regenerated via `backfill-embeddings` command.
 
 ---
 
@@ -90,15 +112,15 @@
 
 **Context:** Need to search memories effectively.
 
-**Decision:** Hybrid search combining FTS5 + vector similarity.
+**Decision:** Hybrid search combining tsvector (PostgreSQL) + vector similarity (pgvector).
 
 **Algorithm:**
-1. FTS5 keyword search → candidates
+1. tsvector keyword search → candidates
 2. Vector similarity on candidates → re-rank
 3. Merge scores: `0.3 * fts_score + 0.7 * vector_score`
 
 **Rationale:**
-- FTS5 fast for keyword matches
+- tsvector fast for keyword matches
 - Vector search for semantic similarity
 - Hybrid catches both exact and conceptual matches
 
