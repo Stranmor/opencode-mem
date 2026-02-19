@@ -88,6 +88,10 @@ crates/
 - **pg_migrations .ok() swallows index errors** — `idx_obs_embedding` creation uses `.ok()` which silently swallows all errors, not just "too few rows for ivfflat". Connection errors or missing extension go unnoticed.
 - **KnowledgeType SPOT violation** — `KnowledgeType` enum variants are hardcoded separately in Rust enum, LLM prompts, and MCP tool schemas. Adding a new type requires manual updates in 3 places.
 - **strip_markdown_json duplicated** — Implemented in both `crates/core/src/json_utils.rs` and locally in `crates/llm/src/insights.rs`. The LLM crate already depends on core.
+- **save_memory bypasses Infinite Memory** — `ObservationService::save_memory` calls `persist_and_notify` directly, bypassing `store_infinite_memory`. Manually added memories don't appear in infinite timeline.
+- **admin_restart uses exit(0)** — `admin_restart` handler calls `exit(0)`, which only triggers restart with `Restart=always` systemd config (not the default `Restart=on-failure`). Should use exit code 1.
+- **search_by_file missing GIN index** — `files_read` and `files_modified` JSONB columns have no GIN index, causing full table scans for file search queries.
+- **parse_pg_vector_text string parsing overhead** — Vector data from PG is parsed via string splitting instead of binary `pgvector` crate deserialization. CPU overhead on search/retrieval.
 - **Hybrid search stop-words fallback** — If `hybrid_search` receives query with only stop words (empty tsquery), falls back to `get_recent` observations instead of returning empty results.
 - **sqlx missing uuid feature** — `crates/storage/Cargo.toml` sqlx dep lacks `uuid` feature flag. Works because uuid values are extracted manually from PgRow, not via `query_as!`. Adding the feature would enable compile-time checked queries.
 - **sqlx missing TLS feature** — `crates/storage/Cargo.toml` sqlx dep lacks TLS feature (`tls-rustls`). Works because connection goes through localhost SSH tunnel (no SSL). Would fail if connecting directly to SSL-enabled PG.
