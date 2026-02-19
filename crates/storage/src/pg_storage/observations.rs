@@ -231,3 +231,17 @@ impl ObservationStore for PgStorage {
         Ok(())
     }
 }
+
+impl PgStorage {
+    /// Delete an observation by ID. Returns `true` if a row was deleted.
+    ///
+    /// Used by background dedup sweep to remove duplicate observations after merge.
+    /// Not part of the `ObservationStore` trait — only available on the concrete backend.
+    pub async fn delete_observation_by_id(&self, id: &str) -> Result<bool, StorageError> {
+        let result = sqlx::query("DELETE FROM observations WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+        Ok(result.rows_affected() > 0)
+    }
+}

@@ -1,8 +1,8 @@
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use opencode_mem_core::{ProjectFilter, ToolCall};
-use opencode_mem_service::{default_visibility_timeout_secs, PendingMessage};
+use opencode_mem_service::{PendingMessage, default_visibility_timeout_secs};
 
 use crate::AppState;
 
@@ -77,6 +77,19 @@ pub fn start_background_processor(state: Arc<AppState>) {
             if loop_count.is_multiple_of(720) {
                 if let Err(e) = state.observation_service.cleanup_old_injections().await {
                     tracing::warn!(error = %e, "Periodic injection cleanup failed");
+                }
+            }
+
+            // Periodic dedup sweep (~every 30 min at 5s interval: 360 * 5s = 1800s)
+            if loop_count.is_multiple_of(360) {
+                match state.observation_service.run_dedup_sweep().await {
+                    Ok(merged) if merged > 0 => {
+                        tracing::info!(merged, "Periodic dedup sweep completed");
+                    },
+                    Ok(_) => {},
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Periodic dedup sweep failed");
+                    },
                 }
             }
 

@@ -1,3 +1,4 @@
+mod dedup_sweep;
 mod injection;
 mod persistence;
 mod side_effects;
@@ -5,14 +6,14 @@ mod side_effects;
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    env_parse_with_default, filter_injected_memory, is_low_value_observation, Observation,
-    ObservationInput, ObservationType, ToolCall, ToolOutput,
+    Observation, ObservationInput, ObservationType, ToolCall, ToolOutput, env_parse_with_default,
+    filter_injected_memory, is_low_value_observation,
 };
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
-use opencode_mem_storage::traits::EmbeddingStore;
 use opencode_mem_storage::StorageBackend;
+use opencode_mem_storage::traits::EmbeddingStore;
 use tokio::sync::broadcast;
 
 pub struct ObservationService {
@@ -34,7 +35,7 @@ impl ObservationService {
         event_tx: broadcast::Sender<String>,
         embeddings: Option<Arc<EmbeddingService>>,
     ) -> Self {
-        let raw_dedup = env_parse_with_default("OPENCODE_MEM_DEDUP_THRESHOLD", 0.92_f32);
+        let raw_dedup = env_parse_with_default("OPENCODE_MEM_DEDUP_THRESHOLD", 0.85_f32);
         let dedup_threshold = raw_dedup.clamp(0.0, 1.0);
         if (dedup_threshold - raw_dedup).abs() > f32::EPSILON {
             tracing::warn!(

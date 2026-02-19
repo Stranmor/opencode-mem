@@ -1,4 +1,4 @@
-use opencode_mem_core::{is_low_value_observation, Observation};
+use opencode_mem_core::{Observation, is_low_value_observation};
 use opencode_mem_storage::traits::{EmbeddingStore, ObservationStore};
 
 use super::ObservationService;
@@ -97,8 +97,7 @@ impl ObservationService {
         }
     }
 
-    /// Re-generate and store the embedding for a merged observation.
-    async fn regenerate_embedding(&self, observation_id: &str) {
+    pub(crate) async fn regenerate_embedding(&self, observation_id: &str) {
         let merged_obs = match self.storage.get_by_id(observation_id).await {
             Ok(Some(obs)) => obs,
             Ok(None) => {
