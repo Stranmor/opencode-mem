@@ -11,7 +11,7 @@ pub mod error;
 use error::EmbeddingError;
 use fastembed::{InitOptions, TextEmbedding};
 use std::fmt::{Debug, Formatter, Result as FmtResult};
-use std::sync::Mutex;
+use std::sync::{Mutex, Once};
 
 /// Embedding dimension for `BGE-M3` model (re-exported from core)
 pub use opencode_mem_core::EMBEDDING_DIMENSION;
@@ -39,6 +39,9 @@ pub struct EmbeddingService {
     model: Mutex<TextEmbedding>,
 }
 
+/// Ensures ORT global thread pool is configured exactly once
+static ORT_INIT: Once = Once::new();
+
 impl Debug for EmbeddingService {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_struct("EmbeddingService").field("model", &"<TextEmbedding>").finish()
@@ -53,6 +56,36 @@ impl EmbeddingService {
     /// # Errors
     /// Returns error if model initialization fails
     pub fn new() -> Result<Self, EmbeddingError> {
+        let thread_count = Self::get_thread_count();
+
+        ORT_INIT.call_once(|| {
+            // OMP_NUM_THREADS is the ONLY reliable way to limit threads when ONNX Runtime
+            // is built with OpenMP (Microsoft's prebuilt binaries). Per-session
+            // `with_intra_threads` and global pool options have no effect in OpenMP builds.
+            // Set this BEFORE any ONNX session creation.
+            if std::env::var("OMP_NUM_THREADS").is_err() {
+                std::env::set_var("OMP_NUM_THREADS", thread_count.to_string());
+            }
+
+            let pool_opts = ort::environment::GlobalThreadPoolOptions::default()
+                .with_intra_threads(thread_count)
+                .and_then(|opts| opts.with_spin_control(false));
+
+            match pool_opts {
+                Ok(opts) => {
+                    let applied = ort::init().with_global_thread_pool(opts).commit();
+                    if applied {
+                        tracing::info!(threads = thread_count, "ORT global thread pool configured");
+                    } else {
+                        tracing::debug!("ORT environment already configured, thread pool settings skipped");
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to configure ORT global thread pool, using defaults");
+                }
+            }
+        });
+
         #[allow(unused_mut, reason = "mut needed when cuda feature is enabled")]
         let mut options =
             InitOptions::new(fastembed::EmbeddingModel::BGEM3).with_show_download_progress(true);
@@ -72,10 +105,22 @@ impl EmbeddingService {
             model = "BGE-M3",
             dimension = EMBEDDING_DIMENSION,
             gpu = cfg!(feature = "cuda"),
+            threads = thread_count,
             "Embedding service initialized"
         );
 
         Ok(Self { model: Mutex::new(model) })
+    }
+
+    fn get_thread_count() -> usize {
+        std::env::var("OPENCODE_MEM_EMBEDDING_THREADS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or_else(|| {
+                std::thread::available_parallelism()
+                    .map(|p| p.get().saturating_sub(1).max(1))
+                    .unwrap_or(1)
+            })
     }
 }
 

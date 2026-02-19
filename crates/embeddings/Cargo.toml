@@ -8,11 +8,11 @@ workspace = true
 
 [features]
 default = []
-cuda = ["dep:ort"]
+cuda = ["ort/cuda"]
 
 [dependencies]
 opencode-mem-core = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 fastembed = "5"
-ort = { version = "=2.0.0-rc.11", features = ["cuda"], optional = true }
+ort = { version = "=2.0.0-rc.11" }

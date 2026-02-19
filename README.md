@@ -37,6 +37,7 @@ cargo build -p opencode-mem-cli --release
 | `ANTIGRAVITY_API_KEY` | No | API key for LLM compression (observation summarization) |
 | `OPENCODE_MEM_FILTER_PATTERNS` | No | Custom low-value observation filter patterns |
 | `OPENCODE_MEM_EXCLUDED_PROJECTS` | No | Glob patterns for excluded projects (comma-separated, `~` expansion) |
+| `OPENCODE_MEM_EMBEDDING_THREADS` | No | Number of CPU threads for ONNX Runtime embedding inference. Default: `num_cpus - 1` |
 
 PostgreSQL requires the `pgvector` extension for semantic search:
 
