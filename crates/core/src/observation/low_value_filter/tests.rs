@@ -1,4 +1,4 @@
-use super::{is_low_value_observation, LowValueFilter};
+use super::{LowValueFilter, is_low_value_observation};
 
 fn as_strs(v: &[Box<str>]) -> Vec<&str> {
     v.iter().map(|x| x.as_ref()).collect()
@@ -64,5 +64,8 @@ fn test_unicode_bypass_prevention() {
 #[test]
 fn test_trivial_tool_call_evasion() {
     let malicious_cmd = serde_json::json!({"command": "ls -l; rm -rf /"});
-    assert!(!super::is_trivial_tool_call("bash", &malicious_cmd), "Vulnerability exists: command chaining bypasses filter");
+    assert!(
+        !super::is_trivial_tool_call("bash", &malicious_cmd),
+        "Vulnerability exists: command chaining bypasses filter"
+    );
 }

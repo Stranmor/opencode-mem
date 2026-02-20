@@ -320,27 +320,33 @@ pub fn is_trivial_tool_call(tool_name: &str, input: &serde_json::Value) -> bool 
         if let Some(cmd) = input.get("command").and_then(|c| c.as_str()) {
             let cmd_lower = cmd.to_lowercase();
             let trimmed = cmd_lower.trim();
-            // Test/build output and simple lookups are explicitly negligible per LLM rules
-            if trimmed == "ls"
-                || trimmed.starts_with("ls ")
-                || trimmed.starts_with("pwd")
-                || trimmed.starts_with("cat ")
-                || trimmed.starts_with("echo ")
-                || trimmed.starts_with("grep ")
-                || trimmed.starts_with("find ")
-                || trimmed.starts_with("git status")
-                || trimmed.starts_with("git log")
-                || trimmed.starts_with("git diff")
-                || trimmed.starts_with("cargo check")
-                || trimmed.starts_with("cargo test")
-                || trimmed.starts_with("cargo build")
-                || trimmed.starts_with("npm test")
-                || trimmed.starts_with("npm run test")
-                || trimmed.starts_with("npm run build")
-                || trimmed.starts_with("npm install")
-                || trimmed.starts_with("pytest")
-            {
-                return true;
+
+            // Check for shell metacharacters that allow command chaining or redirection
+            let has_metachars =
+                cmd.contains(|c| matches!(c, ';' | '&' | '|' | '<' | '>' | '\n' | '$' | '`'));
+
+            if !has_metachars {
+                if trimmed == "ls"
+                    || trimmed.starts_with("ls ")
+                    || trimmed.starts_with("pwd")
+                    || trimmed.starts_with("cat ")
+                    || trimmed.starts_with("echo ")
+                    || trimmed.starts_with("grep ")
+                    || trimmed.starts_with("find ")
+                    || trimmed.starts_with("git status")
+                    || trimmed.starts_with("git log")
+                    || trimmed.starts_with("git diff")
+                    || trimmed.starts_with("cargo check")
+                    || trimmed.starts_with("cargo test")
+                    || trimmed.starts_with("cargo build")
+                    || trimmed.starts_with("npm test")
+                    || trimmed.starts_with("npm run test")
+                    || trimmed.starts_with("npm run build")
+                    || trimmed.starts_with("npm install")
+                    || trimmed.starts_with("pytest")
+                {
+                    return true;
+                }
             }
         }
     }
