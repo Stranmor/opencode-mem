@@ -4,8 +4,6 @@
 //! `merge_into_existing` implementation so the computation lives in one place
 //! (SPOT) and the storage backend only handles DB transactions.
 
-use chrono::{DateTime, Utc};
-
 use super::dedup::{union_dedup, union_dedup_concepts};
 use super::{Concept, DiscoveryTokens, NoiseLevel, Observation, ObservationType, PromptNumber};
 

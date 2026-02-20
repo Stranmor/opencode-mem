@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use opencode_mem_core::{
     Observation, ObservationInput, ObservationType, ToolCall, ToolOutput, env_parse_with_default,
-    filter_injected_memory, is_low_value_observation, is_trivial_tool_call,
+    filter_injected_memory, is_trivial_tool_call,
 };
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
