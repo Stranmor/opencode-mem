@@ -273,3 +273,9 @@ LLM always creates NEW observations even when near-identical ones exist. The `ex
 - ~~Dedup threshold env var without bounds validation~~ — `OPENCODE_MEM_DEDUP_THRESHOLD` and `OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD` now clamped to [0.0, 1.0] on parse. Values outside cosine similarity range no longer silently disable detection.
 - ~~NaN/Inf embedding validation~~ — `store_embedding` accepts NaN/Infinity vectors. Added `contains_non_finite()` guard. Non-finite floats now rejected with error.
 - ~~SQLite PRAGMA synchronous mismatch~~ — SQLite backend removed
+- **SearchService bypasses HybridSearch abstraction** — The `HybridSearch` struct designed for FTS+Vector hybrid search (`hybrid_search_v2`) is never instantiated. `SearchService` duplicates search logic and bypasses it entirely.
+- **Queue processor UUID entropy reduction** — Queue processor uses `std::collections::hash_map::DefaultHasher` (64-bit) for UUID v5 generation, reducing collision resistance and risking instability across Rust compiler versions.
+- **Infinite Memory LLM request bypasses retry logic** — The summarization pipeline manually constructs LLM requests with `reqwest`, bypassing `LlmClient::chat_completion` and its exponential backoff, making it brittle to API 429/503s.
+- **Knowledge extraction skips updated observations** — In `ObservationService::process`, knowledge extraction only fires for newly created observations, missing knowledge from observations that evolved via context-aware updates.
+- **pg_migrations trigger recreation race condition** — `trg_observations_search_vec` trigger is explicitly dropped and recreated on startup, creating a race condition for concurrent INSERT/UPDATEs to miss populating `search_vec`.
+- **ObservationType SPOT violation** — Allowed types defined in Rust enum (8 variants) but hardcoded differently in LLM prompt instructions (4 variants) and MCP tool schemas (6 variants).
