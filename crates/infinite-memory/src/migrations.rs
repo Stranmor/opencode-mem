@@ -178,6 +178,26 @@ pub async fn run_migrations(pool: &PgPool) -> Result<()> {
         .execute(pool)
         .await?;
 
+    sqlx::query(
+        "ALTER TABLE summaries_5min ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMPTZ",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query("ALTER TABLE summaries_5min ADD COLUMN IF NOT EXISTS processing_instance_id TEXT")
+        .execute(pool)
+        .await?;
+    sqlx::query(
+        "ALTER TABLE summaries_hour ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMPTZ",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query("ALTER TABLE summaries_hour ADD COLUMN IF NOT EXISTS processing_instance_id TEXT")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_summaries_5min_processing ON summaries_5min(processing_started_at) WHERE processing_started_at IS NOT NULL").execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_summaries_hour_processing ON summaries_hour(processing_started_at) WHERE processing_started_at IS NOT NULL").execute(pool).await?;
+
     sqlx::query("ALTER TABLE summaries_5min ADD COLUMN IF NOT EXISTS entities JSONB")
         .execute(pool)
         .await?;
@@ -198,47 +218,53 @@ pub async fn run_migrations(pool: &PgPool) -> Result<()> {
         .execute(pool)
         .await?;
 
-    // Foreign keys (DROP IF EXISTS + ADD for idempotency)
-    sqlx::query("ALTER TABLE raw_events DROP CONSTRAINT IF EXISTS fk_raw_events_summary_5min")
-        .execute(pool)
-        .await?;
-
+    // Foreign keys (idempotent creation)
     sqlx::query(
         r#"
-        ALTER TABLE raw_events
-            ADD CONSTRAINT fk_raw_events_summary_5min
-            FOREIGN KEY (summary_5min_id) REFERENCES summaries_5min(id)
-            ON DELETE SET NULL
+        DO $$ BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'fk_raw_events_summary_5min'
+            ) THEN
+                ALTER TABLE raw_events
+                    ADD CONSTRAINT fk_raw_events_summary_5min
+                    FOREIGN KEY (summary_5min_id) REFERENCES summaries_5min(id)
+                    ON DELETE SET NULL;
+            END IF;
+        END $$;
         "#,
     )
     .execute(pool)
     .await?;
 
-    sqlx::query("ALTER TABLE summaries_5min DROP CONSTRAINT IF EXISTS fk_summaries_5min_hour")
-        .execute(pool)
-        .await?;
-
     sqlx::query(
         r#"
-        ALTER TABLE summaries_5min
-            ADD CONSTRAINT fk_summaries_5min_hour
-            FOREIGN KEY (summary_hour_id) REFERENCES summaries_hour(id)
-            ON DELETE SET NULL
+        DO $$ BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'fk_summaries_5min_hour'
+            ) THEN
+                ALTER TABLE summaries_5min
+                    ADD CONSTRAINT fk_summaries_5min_hour
+                    FOREIGN KEY (summary_hour_id) REFERENCES summaries_hour(id)
+                    ON DELETE SET NULL;
+            END IF;
+        END $$;
         "#,
     )
     .execute(pool)
     .await?;
 
-    sqlx::query("ALTER TABLE summaries_hour DROP CONSTRAINT IF EXISTS fk_summaries_hour_day")
-        .execute(pool)
-        .await?;
-
     sqlx::query(
         r#"
-        ALTER TABLE summaries_hour
-            ADD CONSTRAINT fk_summaries_hour_day
-            FOREIGN KEY (summary_day_id) REFERENCES summaries_day(id)
-            ON DELETE SET NULL
+        DO $$ BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'fk_summaries_hour_day'
+            ) THEN
+                ALTER TABLE summaries_hour
+                    ADD CONSTRAINT fk_summaries_hour_day
+                    FOREIGN KEY (summary_day_id) REFERENCES summaries_day(id)
+                    ON DELETE SET NULL;
+            END IF;
+        END $$;
         "#,
     )
     .execute(pool)

@@ -1,19 +1,19 @@
 use crate::api_error::ApiError;
 use axum::{
+    Json,
     extract::{Query, State},
     http::StatusCode,
-    Json,
 };
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use opencode_mem_service::default_visibility_timeout_secs;
 
+use crate::AppState;
 use crate::api_types::{
     ClearQueueResponse, PendingQueueResponse, ProcessQueueResponse, ProcessingStatusResponse,
     RetryQueueResponse, SearchQuery, SetProcessingRequest, SetProcessingResponse,
 };
-use crate::AppState;
 
 use super::queue_processor::{max_queue_workers, process_pending_message};
 
@@ -38,9 +38,15 @@ pub async fn process_pending_queue(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ProcessQueueResponse>, crate::api_error::ApiError> {
     let max_workers = max_queue_workers();
+    let available_permits = state.semaphore.available_permits().min(max_workers);
+
+    if available_permits == 0 {
+        return Ok(Json(ProcessQueueResponse { processed: 0, failed: 0 }));
+    }
+
     let messages = state
         .queue_service
-        .claim_pending_messages(max_workers, default_visibility_timeout_secs())
+        .claim_pending_messages(available_permits, default_visibility_timeout_secs())
         .await
         .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))?;
 

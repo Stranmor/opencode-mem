@@ -43,14 +43,16 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
     let id = {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
-        hasher.update(&tool_name);
+        hasher.update(tool_name);
         hasher.update(&msg.session_id);
-        hasher.update(&tool_response);
+        hasher.update(tool_response);
         hasher.update(msg.created_at_epoch.to_string());
         let content_hash = hasher.finalize();
         // Take the first 16 bytes of the SHA-256 hash to create a deterministic UUID
         let mut bytes = [0u8; 16];
-        bytes.copy_from_slice(&content_hash[..16]);
+        if let Some(slice) = content_hash.get(..16) {
+            bytes.copy_from_slice(slice);
+        }
         uuid::Builder::from_bytes(bytes).into_uuid().to_string()
     };
 
@@ -100,9 +102,15 @@ pub fn start_background_processor(state: Arc<AppState>) {
             tracing::debug!("Background processor: checking queue...");
 
             let max_workers = max_queue_workers();
+            let available_permits = state.semaphore.available_permits().min(max_workers);
+
+            if available_permits == 0 {
+                continue;
+            }
+
             let messages = match state
                 .queue_service
-                .claim_pending_messages(max_workers, default_visibility_timeout_secs())
+                .claim_pending_messages(available_permits, default_visibility_timeout_secs())
                 .await
             {
                 Ok(msgs) => msgs,

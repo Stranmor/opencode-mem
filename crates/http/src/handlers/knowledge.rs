@@ -1,8 +1,8 @@
 use crate::api_error::ApiError;
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -11,8 +11,8 @@ use opencode_mem_core::{
     GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType, MAX_QUERY_LIMIT,
 };
 
-use crate::api_types::{KnowledgeQuery, KnowledgeUsageResponse, SaveKnowledgeRequest};
 use crate::AppState;
+use crate::api_types::{KnowledgeQuery, KnowledgeUsageResponse, SaveKnowledgeRequest};
 
 pub async fn list_knowledge(
     State(state): State<Arc<AppState>>,
@@ -50,14 +50,6 @@ pub async fn search_knowledge(
             tracing::error!("Search knowledge error: {}", e);
             ApiError::Internal(anyhow::anyhow!("Internal Error"))
         })?;
-    // Fire-and-forget usage tracking in background to avoid blocking response
-    let service = state.knowledge_service.clone();
-    let ids: Vec<String> = results.iter().map(|r| r.knowledge.id.clone()).collect();
-    tokio::spawn(async move {
-        for id in &ids {
-            let _ = service.update_knowledge_usage(id).await;
-        }
-    });
     Ok(Json(results))
 }
 

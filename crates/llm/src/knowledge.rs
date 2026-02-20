@@ -15,6 +15,15 @@ impl LlmClient {
         &self,
         observation: &Observation,
     ) -> Result<Option<KnowledgeInput>, LlmError> {
+        // Skip extraction for low-value or negligible noise observations
+        if matches!(
+            observation.noise_level,
+            opencode_mem_core::NoiseLevel::Low | opencode_mem_core::NoiseLevel::Negligible
+        ) {
+            tracing::debug!(id = %observation.id, noise = ?observation.noise_level, "Skipping knowledge extraction for low-value observation");
+            return Ok(None);
+        }
+
         let dominated_by_generalizable = observation
             .concepts
             .iter()

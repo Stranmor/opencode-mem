@@ -284,6 +284,7 @@ impl SearchStore for PgStorage {
                 "SELECT id, ts_rank_cd(search_vec, to_tsquery('english', $1))::float8 as fts_score
                    FROM observations
                    WHERE search_vec @@ to_tsquery('english', $1)
+                   ORDER BY fts_score DESC
                    LIMIT $2",
             )
             .bind(&tsquery)
