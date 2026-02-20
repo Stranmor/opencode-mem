@@ -452,15 +452,16 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         r#"
         DO $$
         BEGIN
-            -- Clean up existing duplicates by keeping the most recently updated record
+            -- Clean up existing duplicates by keeping only the row with highest ID for each duplicate group
+            -- This perfectly handles duplicates with exactly the same updated_at timestamp.
             DELETE FROM global_knowledge a USING (
-                SELECT LOWER(title) as norm_title, MAX(updated_at) as max_updated_at
+                SELECT LOWER(title) as norm_title, MAX(id) as max_id
                 FROM global_knowledge
                 GROUP BY LOWER(title)
                 HAVING COUNT(*) > 1
             ) b
             WHERE LOWER(a.title) = b.norm_title
-            AND a.updated_at < b.max_updated_at;
+            AND a.id != b.max_id;
             
             -- Then safely create the unique index
             CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_title_unique ON global_knowledge (LOWER(title));
