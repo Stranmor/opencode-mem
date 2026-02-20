@@ -9,7 +9,7 @@ pub const MAX_QUERY_LIMIT: usize = 1000;
 pub const MAX_QUERY_LIMIT_I64: i64 = 1000;
 
 /// PostgreSQL connection pool: maximum connections.
-pub const PG_POOL_MAX_CONNECTIONS: u32 = 8;
+pub const PG_POOL_MAX_CONNECTIONS: u32 = 20;
 
 /// PostgreSQL connection pool: acquire timeout in seconds.
 pub const PG_POOL_ACQUIRE_TIMEOUT_SECS: u64 = 10;

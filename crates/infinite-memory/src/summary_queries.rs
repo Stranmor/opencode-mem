@@ -68,6 +68,7 @@ pub async fn get_unaggregated_5min_for_session(
                 WHERE summary_hour_id IS NULL AND session_id = $1
                   AND (processing_started_at IS NULL OR processing_started_at < $2)
                 ORDER BY ts_start ASC
+                LIMIT 500
                 FOR UPDATE SKIP LOCKED
             )
             RETURNING id, ts_start, ts_end, session_id, project, content, event_count, entities
@@ -89,6 +90,7 @@ pub async fn get_unaggregated_5min_for_session(
                 WHERE summary_hour_id IS NULL AND session_id IS NULL
                   AND (processing_started_at IS NULL OR processing_started_at < $1)
                 ORDER BY ts_start ASC
+                LIMIT 500
                 FOR UPDATE SKIP LOCKED
             )
             RETURNING id, ts_start, ts_end, session_id, project, content, event_count, entities
@@ -155,6 +157,7 @@ pub async fn get_unaggregated_hour_for_session(
                 WHERE summary_day_id IS NULL AND session_id = $1
                   AND (processing_started_at IS NULL OR processing_started_at < $2)
                 ORDER BY ts_start ASC
+                LIMIT 500
                 FOR UPDATE SKIP LOCKED
             )
             RETURNING id, ts_start, ts_end, session_id, project, content, event_count, entities
@@ -176,6 +179,7 @@ pub async fn get_unaggregated_hour_for_session(
                 WHERE summary_day_id IS NULL AND session_id IS NULL
                   AND (processing_started_at IS NULL OR processing_started_at < $1)
                 ORDER BY ts_start ASC
+                LIMIT 500
                 FOR UPDATE SKIP LOCKED
             )
             RETURNING id, ts_start, ts_end, session_id, project, content, event_count, entities

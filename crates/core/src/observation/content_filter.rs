@@ -9,9 +9,16 @@ use regex::Regex;
 static PRIVATE_TAG_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new("(?is)<private>.*?</private>").unwrap());
 
+/// Regex for unclosed private tags (truncation safety).
+#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
+static PRIVATE_UNCLOSED_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?is)<private>.*$").unwrap());
+
 /// Filters out content wrapped in `<private>...</private>` tags.
+/// Handles both well-formed tags and unclosed tags.
 pub fn filter_private_content(text: &str) -> String {
-    PRIVATE_TAG_REGEX.replace_all(text, "").into_owned()
+    let after_closed = PRIVATE_TAG_REGEX.replace_all(text, "");
+    PRIVATE_UNCLOSED_REGEX.replace_all(&after_closed, "").into_owned()
 }
 
 /// Regex pattern for matching injected memory blocks.
@@ -93,6 +100,13 @@ mod tests {
     fn filter_private_nested_content() {
         let input = "Data <private>API_KEY=sk-12345\nPASSWORD=hunter2</private> end";
         assert_eq!(filter_private_content(input), "Data  end");
+    }
+
+    #[test]
+    fn filter_private_unclosed_tag() {
+        let input = "before <private>leaked secret content";
+        let result = filter_private_content(input);
+        assert_eq!(result, "before ");
     }
 
     #[test]

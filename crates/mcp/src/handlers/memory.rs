@@ -17,7 +17,7 @@ pub(super) async fn handle_search(
     // Use semantic search when no filters are active and query is present
     if project.is_none() && obs_type.is_none() && from.is_none() && to.is_none() {
         if let Some(q) = query {
-            return match search_service.semantic_search_with_fallback(q, limit).await {
+            return match search_service.hybrid_search(q, limit).await {
                 Ok(results) => mcp_ok(&results),
                 Err(e) => mcp_err(e),
             };
@@ -149,7 +149,7 @@ pub(super) async fn handle_save_memory(
 mod tests {
     use super::*;
     use opencode_mem_core::{Observation, ObservationType};
-    use opencode_mem_storage::{traits::ObservationStore, StorageBackend};
+    use opencode_mem_storage::{StorageBackend, traits::ObservationStore};
     use serde_json::json;
     use std::sync::Arc;
 

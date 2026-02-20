@@ -1,22 +1,22 @@
 use crate::api_error::ApiError;
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    filter_injected_memory, Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall,
-    UserPrompt,
+    Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall, UserPrompt,
+    filter_injected_memory, filter_private_content,
 };
 use opencode_mem_service::PaginatedResult;
 
+use crate::AppState;
 use crate::api_types::{
     BatchRequest, ObserveBatchResponse, ObserveResponse, PaginationQuery, SaveMemoryRequest,
     SearchQuery, TimelineQuery,
 };
-use crate::AppState;
 
 pub async fn observe(
     State(state): State<Arc<AppState>>,
@@ -29,11 +29,12 @@ pub async fn observe(
     }
 
     // Filter injected memory tags BEFORE queuing to prevent re-observation recursion
-    let tool_input =
-        serde_json::to_string(&tool_call.input).ok().map(|s| filter_injected_memory(&s));
+    let tool_input = serde_json::to_string(&tool_call.input)
+        .ok()
+        .map(|s| filter_private_content(&filter_injected_memory(&s)));
     let session_id = tool_call.session_id.clone();
     let tool_name = tool_call.tool.clone();
-    let tool_response = filter_injected_memory(&tool_call.output);
+    let tool_response = filter_private_content(&filter_injected_memory(&tool_call.output));
     let project = tool_call.project.clone();
 
     let message_id = state
@@ -66,9 +67,10 @@ pub async fn observe_batch(
                 continue;
             }
         }
-        let tool_input =
-            serde_json::to_string(&tool_call.input).ok().map(|s| filter_injected_memory(&s));
-        let filtered_output = filter_injected_memory(&tool_call.output);
+        let tool_input = serde_json::to_string(&tool_call.input)
+            .ok()
+            .map(|s| filter_private_content(&filter_injected_memory(&s)));
+        let filtered_output = filter_private_content(&filter_injected_memory(&tool_call.output));
         match state
             .queue_service
             .queue_message(

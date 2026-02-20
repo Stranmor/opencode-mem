@@ -79,7 +79,7 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
             serde_json::from_str(stripped).map_err(|e| LlmError::JsonParse {
                 context: format!(
                     "knowledge extraction (content: {})",
-                    content.get(..300).unwrap_or(&content)
+                    content.chars().take(300).collect::<String>()
                 ),
                 source: e,
             })?;
@@ -113,7 +113,7 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
 
 #[cfg(test)]
 mod tests {
-    
+
     use opencode_mem_core::{Concept, Observation, ObservationType};
 
     #[test]

@@ -99,7 +99,7 @@ impl SummaryEntities {
         let mut functions = HashSet::new();
         let mut libraries = HashSet::new();
         let mut errors = HashSet::new();
-        let mut decisions = Vec::new();
+        let mut decisions = HashSet::new();
 
         let mut has_any = false;
         for e in entities.iter().flatten() {
@@ -120,7 +120,7 @@ impl SummaryEntities {
             functions: functions.into_iter().collect(),
             libraries: libraries.into_iter().collect(),
             errors: errors.into_iter().collect(),
-            decisions,
+            decisions: decisions.into_iter().collect(),
         })
     }
 }

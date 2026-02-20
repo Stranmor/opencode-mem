@@ -1,26 +1,46 @@
 use crate::api_error::ApiError;
 use axum::{
+    Json,
     extract::{Query, State},
     http::StatusCode,
-    Json,
 };
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    sort_by_score_descending, SearchResult, SessionSummary, UserPrompt, MAX_QUERY_LIMIT,
+    MAX_QUERY_LIMIT, SearchResult, SessionSummary, UserPrompt, sort_by_score_descending,
 };
 
+use crate::AppState;
 use crate::api_types::{
     FileSearchQuery, RankedItem, SearchQuery, TimelineResult, UnifiedSearchResult,
     UnifiedTimelineQuery,
 };
-use crate::AppState;
 
 pub async fn search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, ApiError> {
     let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
+
+    // Use hybrid search if no exact filters are applied
+    if query.project.is_none()
+        && query.obs_type.is_none()
+        && query.from.is_none()
+        && query.to.is_none()
+    {
+        if let Some(query_str) = q {
+            return state
+                .search_service
+                .hybrid_search(query_str, query.capped_limit())
+                .await
+                .map(Json)
+                .map_err(|e| {
+                    tracing::error!("Search error (hybrid fallback): {}", e);
+                    ApiError::Internal(anyhow::anyhow!("Internal Error"))
+                });
+        }
+    }
+
     state
         .search_service
         .search_with_filters(
