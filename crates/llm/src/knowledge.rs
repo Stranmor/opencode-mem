@@ -113,8 +113,8 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use opencode_mem_core::{Concept, NoiseLevel, Observation, ObservationType};
+    
+    use opencode_mem_core::{Concept, Observation, ObservationType};
 
     #[test]
     fn test_knowledge_extraction_type_bypass() {
