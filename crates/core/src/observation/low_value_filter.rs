@@ -322,11 +322,10 @@ pub fn is_trivial_tool_call(tool_name: &str, input: &serde_json::Value) -> bool 
             let trimmed = cmd_lower.trim();
 
             // Check for shell metacharacters that allow command chaining or redirection
-            let has_metachars =
-                cmd.contains(|c| matches!(c, ';' | '&' | '|' | '<' | '>' | '\n' | '$' | '`'));
+            let has_metachars = cmd.contains([';', '&', '|', '<', '>', '\n', '$', '`']);
 
-            if !has_metachars {
-                if trimmed == "ls"
+            if !has_metachars
+                && (trimmed == "ls"
                     || trimmed.starts_with("ls ")
                     || trimmed.starts_with("pwd")
                     || trimmed.starts_with("cat ")
@@ -343,10 +342,9 @@ pub fn is_trivial_tool_call(tool_name: &str, input: &serde_json::Value) -> bool 
                     || trimmed.starts_with("npm run test")
                     || trimmed.starts_with("npm run build")
                     || trimmed.starts_with("npm install")
-                    || trimmed.starts_with("pytest")
-                {
-                    return true;
-                }
+                    || trimmed.starts_with("pytest"))
+            {
+                return true;
             }
         }
     }
