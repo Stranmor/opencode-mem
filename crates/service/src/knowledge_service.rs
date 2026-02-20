@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
 use opencode_mem_core::{GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType};
-use opencode_mem_storage::traits::KnowledgeStore;
 use opencode_mem_storage::StorageBackend;
+use opencode_mem_storage::traits::KnowledgeStore;
 
 use crate::ServiceError;
 
+#[derive(Clone)]
 pub struct KnowledgeService {
     storage: Arc<StorageBackend>,
 }

@@ -1,9 +1,9 @@
 use crate::api_error::ApiError;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use opencode_mem_core::{ProjectFilter, ToolCall};
-use opencode_mem_service::{default_visibility_timeout_secs, PendingMessage};
+use opencode_mem_service::{PendingMessage, default_visibility_timeout_secs};
 
 use crate::AppState;
 
@@ -41,14 +41,17 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
     // while observations persist — new messages reusing old row IDs won't collide.
     // If the same message is processed twice (race condition), same observation ID is generated.
     let id = {
-        use std::hash::{Hash, Hasher};
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        tool_name.hash(&mut hasher);
-        msg.session_id.hash(&mut hasher);
-        tool_response.hash(&mut hasher);
-        msg.created_at_epoch.hash(&mut hasher);
-        let content_hash = hasher.finish();
-        uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, &content_hash.to_le_bytes()).to_string()
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(&tool_name);
+        hasher.update(&msg.session_id);
+        hasher.update(&tool_response);
+        hasher.update(msg.created_at_epoch.to_string());
+        let content_hash = hasher.finalize();
+        // Take the first 16 bytes of the SHA-256 hash to create a deterministic UUID
+        let mut bytes = [0u8; 16];
+        bytes.copy_from_slice(&content_hash[..16]);
+        uuid::Builder::from_bytes(bytes).into_uuid().to_string()
     };
 
     let result = state.observation_service.process(&id, tool_call).await?;

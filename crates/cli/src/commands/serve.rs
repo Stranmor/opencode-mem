@@ -1,17 +1,17 @@
 use anyhow::Result;
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_http::{
-    create_router, run_startup_recovery, start_background_processor, start_compression_pipeline,
-    AppState, Settings,
+    AppState, Settings, create_router, run_startup_recovery, start_background_processor,
+    start_compression_pipeline,
 };
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_service::{
     KnowledgeService, ObservationService, QueueService, SearchService, SessionService,
 };
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock, Semaphore};
+use std::sync::atomic::AtomicBool;
+use tokio::sync::{RwLock, Semaphore, broadcast};
 
 use crate::{get_api_key, get_base_url};
 
@@ -105,7 +105,8 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     let addr = format!("{host}:{port}");
     tracing::info!("Starting HTTP server on {}", addr);
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, router).await?;
+    axum::serve(listener, router.into_make_service_with_connect_info::<std::net::SocketAddr>())
+        .await?;
 
     Ok(())
 }

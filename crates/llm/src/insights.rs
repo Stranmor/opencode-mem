@@ -4,7 +4,7 @@ use opencode_mem_core::{Concept, Observation, ObservationType};
 use serde::Deserialize;
 
 use crate::ai_types::{ChatRequest, Message, ResponseFormat};
-use crate::client::{truncate, LlmClient};
+use crate::client::{LlmClient, truncate};
 use crate::error::LlmError;
 
 /// Single insight extracted from session analysis
@@ -184,6 +184,7 @@ impl LlmClient {
             model: self.model.clone(),
             messages: vec![Message { role: "user".to_owned(), content: prompt }],
             response_format: ResponseFormat { format_type: "json_object".to_owned() },
+            max_tokens: None,
         };
 
         let content = self.chat_completion(&request).await?;

@@ -11,9 +11,13 @@ pub(super) async fn handle_knowledge_search(
     let limit = parse_limit(args);
     match knowledge_service.search_knowledge(query, limit).await {
         Ok(results) => {
-            for result in &results {
-                let _ = knowledge_service.update_knowledge_usage(&result.knowledge.id).await;
-            }
+            let svc = knowledge_service.clone();
+            let ids: Vec<String> = results.iter().map(|r| r.knowledge.id.clone()).collect();
+            tokio::spawn(async move {
+                for id in ids {
+                    let _ = svc.update_knowledge_usage(&id).await;
+                }
+            });
             mcp_ok(&results)
         },
         Err(e) => mcp_err(e),

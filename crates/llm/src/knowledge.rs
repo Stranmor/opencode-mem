@@ -56,6 +56,7 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
             model: self.model.clone(),
             messages: vec![Message { role: "user".to_owned(), content: prompt }],
             response_format: ResponseFormat { format_type: "json_object".to_owned() },
+            max_tokens: None,
         };
 
         let content = self.chat_completion(&request).await?;

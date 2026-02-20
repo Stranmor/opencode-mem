@@ -1,11 +1,11 @@
 use chrono::Utc;
 use opencode_mem_core::{
-    filter_private_content, Concept, NoiseLevel, Observation, ObservationInput, ObservationType,
+    Concept, NoiseLevel, Observation, ObservationInput, ObservationType, filter_private_content,
 };
 use std::str::FromStr as _;
 
 use crate::ai_types::{ChatRequest, Message, ObservationJson, ResponseFormat};
-use crate::client::{truncate, LlmClient, MAX_OUTPUT_LEN};
+use crate::client::{LlmClient, MAX_OUTPUT_LEN, truncate};
 use crate::error::LlmError;
 
 /// Result of context-aware LLM compression: create new, update existing, or skip.
@@ -287,6 +287,7 @@ impl LlmClient {
             model: self.model.clone(),
             messages: vec![Message { role: "user".to_owned(), content: prompt }],
             response_format: ResponseFormat { format_type: "json_object".to_owned() },
+            max_tokens: None,
         };
 
         let candidate_ids: std::collections::HashSet<&str> =

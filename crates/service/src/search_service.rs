@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    cosine_similarity, GlobalKnowledge, KnowledgeSearchResult, KnowledgeType, Observation,
-    SearchResult, SessionSummary, UserPrompt,
+    GlobalKnowledge, KnowledgeSearchResult, KnowledgeType, Observation, SearchResult,
+    SessionSummary, UserPrompt, cosine_similarity,
 };
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_storage::traits::{
@@ -20,12 +20,15 @@ const DEDUP_SIMILARITY_THRESHOLD: f32 = 0.85;
 pub struct SearchService {
     storage: Arc<StorageBackend>,
     embeddings: Option<Arc<EmbeddingService>>,
+    hybrid_search: opencode_mem_search::HybridSearch,
 }
 
 impl SearchService {
     #[must_use]
     pub fn new(storage: Arc<StorageBackend>, embeddings: Option<Arc<EmbeddingService>>) -> Self {
-        Self { storage, embeddings }
+        let hybrid_search =
+            opencode_mem_search::HybridSearch::new(storage.clone(), embeddings.clone());
+        Self { storage, embeddings, hybrid_search }
     }
 
     // ── SearchStore delegates ──────────────────────────────────────────
@@ -47,7 +50,7 @@ impl SearchService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
-        Ok(self.storage.hybrid_search(query, limit).await?)
+        self.hybrid_search.search(query, limit).await.map_err(ServiceError::Search)
     }
 
     pub async fn get_timeline(

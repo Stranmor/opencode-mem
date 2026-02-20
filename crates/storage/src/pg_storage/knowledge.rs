@@ -29,10 +29,10 @@ impl PgStorage {
             "SELECT id, created_at, triggers, source_projects, source_observations,
                         confidence, usage_count, last_used_at
                  FROM global_knowledge
-                 WHERE LOWER(TRIM(title)) = LOWER(TRIM($1))
+                 WHERE LOWER(title) = LOWER($1)
                  FOR UPDATE",
         )
-        .bind(&input.title)
+        .bind(input.title.trim())
         .fetch_optional(&mut *tx)
         .await?;
 

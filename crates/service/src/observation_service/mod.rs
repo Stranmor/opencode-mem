@@ -7,14 +7,14 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    env_parse_with_default, filter_injected_memory, is_low_value_observation, is_trivial_tool_call,
-    Observation, ObservationInput, ObservationType, ToolCall, ToolOutput,
+    Observation, ObservationInput, ObservationType, ToolCall, ToolOutput, env_parse_with_default,
+    filter_injected_memory, is_low_value_observation, is_trivial_tool_call,
 };
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::{CompressionResult, LlmClient};
-use opencode_mem_storage::traits::{ObservationStore, SearchStore};
 use opencode_mem_storage::StorageBackend;
+use opencode_mem_storage::traits::{ObservationStore, SearchStore};
 use tokio::sync::broadcast;
 
 pub enum SaveMemoryResult {
@@ -82,14 +82,19 @@ impl ObservationService {
         id: &str,
         tool_call: ToolCall,
     ) -> Result<Option<Observation>, crate::ServiceError> {
-        // ALWAYS store raw event to infinite memory immediately, regardless of LLM compression result
-        self.store_infinite_memory(&tool_call, None).await;
-
         let save_result = self.compress_and_save(id, &tool_call).await?;
 
-        if let Some((ref obs, true)) = save_result {
-            self.extract_knowledge(obs).await;
-        }
+        // ALWAYS store raw event to infinite memory immediately, regardless of LLM compression result
+        let observation_ref = save_result.as_ref().map(|(o, _)| o);
+        let infinite_fut = self.store_infinite_memory(&tool_call, observation_ref);
+
+        let extract_fut = async {
+            if let Some((ref obs, _)) = save_result {
+                self.extract_knowledge(obs).await;
+            }
+        };
+
+        tokio::join!(extract_fut, infinite_fut);
 
         Ok(save_result.map(|(o, _)| o))
     }

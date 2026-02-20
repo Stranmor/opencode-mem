@@ -188,6 +188,16 @@ pub async fn run_migrations(pool: &PgPool) -> Result<()> {
         .execute(pool)
         .await?;
 
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_summaries_5min_entities ON summaries_5min USING GIN(entities)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_summaries_hour_entities ON summaries_hour USING GIN(entities)")
+        .execute(pool)
+        .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_summaries_day_entities ON summaries_day USING GIN(entities)")
+        .execute(pool)
+        .await?;
+
     // Foreign keys (DROP IF EXISTS + ADD for idempotency)
     sqlx::query("ALTER TABLE raw_events DROP CONSTRAINT IF EXISTS fk_raw_events_summary_5min")
         .execute(pool)

@@ -408,18 +408,19 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
     .execute(&mut *tx)
     .await?;
 
-    // Create trigger (idempotent via DROP IF EXISTS).
-    // Must be two separate statements — PG disallows multiple commands in a prepared statement.
-    sqlx::query("DROP TRIGGER IF EXISTS trg_observations_search_vec ON observations")
-        .execute(&mut *tx)
-        .await?;
-
+    // Create or replace trigger (idempotent).
+    // Uses DO block because CREATE OR REPLACE TRIGGER is PG 14+ only,
+    // and querying pg_trigger avoids dropping it which requires exclusive lock.
     sqlx::query(
         r#"
-        CREATE TRIGGER trg_observations_search_vec
-            BEFORE INSERT OR UPDATE ON observations
-            FOR EACH ROW
-            EXECUTE FUNCTION observations_search_vec_update()
+        DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'trg_observations_search_vec') THEN
+                CREATE TRIGGER trg_observations_search_vec
+                    BEFORE INSERT OR UPDATE ON observations
+                    FOR EACH ROW
+                    EXECUTE FUNCTION observations_search_vec_update();
+            END IF;
+        END $$;
         "#,
     )
     .execute(&mut *tx)

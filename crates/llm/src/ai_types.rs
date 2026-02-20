@@ -35,6 +35,8 @@ pub struct ChatRequest {
     pub model: String,
     pub messages: Vec<Message>,
     pub response_format: ResponseFormat,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
 }
 
 #[derive(Serialize)]
