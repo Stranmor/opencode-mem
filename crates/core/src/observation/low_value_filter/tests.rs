@@ -1,4 +1,4 @@
-use super::{is_low_value_observation, LowValueFilter};
+use super::{LowValueFilter, is_low_value_observation};
 
 fn as_strs(v: &[Box<str>]) -> Vec<&str> {
     v.iter().map(|x| x.as_ref()).collect()

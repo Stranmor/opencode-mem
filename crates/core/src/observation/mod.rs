@@ -15,7 +15,7 @@ pub use builder::*;
 pub use content_filter::*;
 pub use dedup::*;
 pub use input::*;
-pub use low_value_filter::is_low_value_observation;
+pub use low_value_filter::{is_low_value_observation, is_trivial_tool_call};
 pub use merge::*;
 pub use observation_type::*;
 

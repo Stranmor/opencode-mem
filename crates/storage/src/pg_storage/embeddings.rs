@@ -1,5 +1,7 @@
 //! EmbeddingStore implementation for PgStorage.
 
+use pgvector::Vector;
+
 use super::*;
 
 use crate::error::StorageError;
@@ -38,10 +40,10 @@ impl EmbeddingStore for PgStorage {
                 source: Box::from("non-finite check"),
             });
         }
-        let vec_str =
-            format!("[{}]", embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
-        sqlx::query("UPDATE observations SET embedding = $1::vector WHERE id = $2")
-            .bind(&vec_str)
+
+        let vector = Vector::from(embedding.to_vec());
+        sqlx::query("UPDATE observations SET embedding = $1 WHERE id = $2")
+            .bind(vector)
             .bind(observation_id)
             .execute(&self.pool)
             .await?;
@@ -80,17 +82,16 @@ impl EmbeddingStore for PgStorage {
             return Ok(None);
         }
 
-        let vec_str =
-            format!("[{}]", embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+        let vector = Vector::from(embedding.to_vec());
 
         let row = sqlx::query(
-            "SELECT id, title, 1.0 - (embedding <=> $1::vector) AS similarity
+            "SELECT id, title, 1.0 - (embedding <=> $1) AS similarity
                FROM observations
               WHERE embedding IS NOT NULL
-              ORDER BY embedding <=> $1::vector
+              ORDER BY embedding <=> $1
               LIMIT 1",
         )
-        .bind(&vec_str)
+        .bind(vector)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -126,17 +127,16 @@ impl EmbeddingStore for PgStorage {
             return Ok(Vec::new());
         }
 
-        let vec_str =
-            format!("[{}]", embedding.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+        let vector = Vector::from(embedding.to_vec());
 
         let rows = sqlx::query(
-            "SELECT id, title, 1.0 - (embedding <=> $1::vector) AS similarity
+            "SELECT id, title, 1.0 - (embedding <=> $1) AS similarity
                FROM observations
               WHERE embedding IS NOT NULL
-              ORDER BY embedding <=> $1::vector
+              ORDER BY embedding <=> $1
               LIMIT $2",
         )
-        .bind(&vec_str)
+        .bind(vector)
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
@@ -173,7 +173,7 @@ impl EmbeddingStore for PgStorage {
         for chunk in ids.chunks(MAX_BATCH_IDS) {
             let chunk_vec: Vec<String> = chunk.to_vec();
             let rows = sqlx::query(
-                "SELECT id, embedding::text
+                "SELECT id, embedding
                    FROM observations
                   WHERE id = ANY($1) AND embedding IS NOT NULL",
             )
@@ -183,26 +183,10 @@ impl EmbeddingStore for PgStorage {
 
             for r in &rows {
                 let id: String = r.try_get("id")?;
-                let emb_text: String = r.try_get("embedding")?;
-                let floats = parse_pg_vector_text(&emb_text);
-                all_results.push((id, floats));
+                let vector: Vector = r.try_get("embedding")?;
+                all_results.push((id, vector.to_vec()));
             }
         }
         Ok(all_results)
     }
-}
-
-fn parse_pg_vector_text(s: &str) -> Vec<f32> {
-    let trimmed = s.trim_start_matches('[').trim_end_matches(']');
-    let result: Vec<f32> =
-        trimmed.split(',').filter_map(|v| v.trim().parse::<f32>().ok()).collect();
-    let expected = opencode_mem_core::EMBEDDING_DIMENSION;
-    if !result.is_empty() && result.len() != expected {
-        tracing::warn!(
-            parsed = result.len(),
-            expected,
-            "Parsed PG vector has unexpected dimension — cosine similarity will return 0.0"
-        );
-    }
-    result
 }

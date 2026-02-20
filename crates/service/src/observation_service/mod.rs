@@ -7,8 +7,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    env_parse_with_default, filter_injected_memory, is_low_value_observation, Observation,
-    ObservationInput, ObservationType, ToolCall, ToolOutput,
+    env_parse_with_default, filter_injected_memory, is_low_value_observation, is_trivial_tool_call,
+    Observation, ObservationInput, ObservationType, ToolCall, ToolOutput,
 };
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
@@ -82,19 +82,13 @@ impl ObservationService {
         id: &str,
         tool_call: ToolCall,
     ) -> Result<Option<Observation>, crate::ServiceError> {
+        // ALWAYS store raw event to infinite memory immediately, regardless of LLM compression result
+        self.store_infinite_memory(&tool_call, None).await;
+
         let save_result = self.compress_and_save(id, &tool_call).await?;
 
-        {
-            let observation_ref = save_result.as_ref().map(|(o, _)| o);
-            let infinite_fut = self.store_infinite_memory(&tool_call, observation_ref);
-
-            let extract_fut = async {
-                if let Some((ref obs, true)) = save_result {
-                    self.extract_knowledge(obs).await;
-                }
-            };
-
-            tokio::join!(extract_fut, infinite_fut);
+        if let Some((ref obs, true)) = save_result {
+            self.extract_knowledge(obs).await;
         }
 
         Ok(save_result.map(|(o, _)| o))
@@ -105,6 +99,11 @@ impl ObservationService {
         id: &str,
         tool_call: &ToolCall,
     ) -> Result<Option<(Observation, bool)>, crate::ServiceError> {
+        if is_trivial_tool_call(&tool_call.tool, &tool_call.input) {
+            tracing::debug!(tool = %tool_call.tool, "Bypassing LLM compression for trivial tool call");
+            return Ok(None);
+        }
+
         // Strip injected memory blocks to prevent recursion:
         // IDE injects <memory-global>...</memory-global> into conversation →
         // observe hook captures tool output containing these blocks →
