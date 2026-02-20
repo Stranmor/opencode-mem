@@ -164,10 +164,9 @@ impl SummaryStore for PgStorage {
         query: &str,
         limit: usize,
     ) -> Result<Vec<SessionSummary>, StorageError> {
-        let tsquery = build_tsquery(query);
-        if tsquery.is_empty() {
+        let Some(tsquery) = build_tsquery(query) else {
             return Ok(Vec::new());
-        }
+        };
         let rows = sqlx::query(&format!(
             "SELECT {SUMMARY_COLUMNS} FROM session_summaries
              WHERE search_vec @@ to_tsquery('english', $1)

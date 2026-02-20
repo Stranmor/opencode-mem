@@ -145,6 +145,7 @@ impl PendingQueueStore for PgStorage {
             "SELECT id, session_id, status, tool_name, tool_input, tool_response,
                     retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch, project
                FROM pending_messages
+               WHERE status = 'pending'
                ORDER BY created_at_epoch DESC
                LIMIT $1",
         )
@@ -159,8 +160,7 @@ impl PendingQueueStore for PgStorage {
             "SELECT
                COALESCE(SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END), 0) as pending,
                COALESCE(SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END), 0) as processing,
-               COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) as failed,
-               COALESCE(SUM(CASE WHEN status = 'processed' THEN 1 ELSE 0 END), 0) as processed
+               COALESCE(SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END), 0) as failed
              FROM pending_messages",
         )
         .fetch_one(&self.pool)
@@ -169,7 +169,7 @@ impl PendingQueueStore for PgStorage {
             pending: u64::try_from(row.try_get::<i64, _>("pending")?).unwrap_or(0),
             processing: u64::try_from(row.try_get::<i64, _>("processing")?).unwrap_or(0),
             failed: u64::try_from(row.try_get::<i64, _>("failed")?).unwrap_or(0),
-            processed: u64::try_from(row.try_get::<i64, _>("processed")?).unwrap_or(0),
+            processed: 0, // Processed messages are deleted, so count is 0
         })
     }
 

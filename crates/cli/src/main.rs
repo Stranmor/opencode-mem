@@ -110,8 +110,29 @@ pub async fn create_storage() -> Result<StorageBackend> {
     StorageBackend::new(&url).await.map_err(Into::into)
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
+    // Set OMP_NUM_THREADS before any threads are spawned to avoid unsafe concurrent env mutation.
+    let thread_count = opencode_mem_core::env_parse_with_default(
+        "OPENCODE_MEM_EMBEDDING_THREADS",
+        std::thread::available_parallelism()
+            .map(std::num::NonZeroUsize::get)
+            .unwrap_or(4)
+            .saturating_sub(1)
+            .max(1),
+    );
+    if std::env::var("OMP_NUM_THREADS").is_err() {
+        // Safe here: called before tokio runtime starts spawning threads.
+        // In edition 2024, set_var is unsafe, so we wrap it.
+        #[allow(unused_unsafe, reason = "set_var is unsafe in edition 2024")]
+        unsafe {
+            std::env::set_var("OMP_NUM_THREADS", thread_count.to_string());
+        }
+    }
+
+    tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap().block_on(async_main())
+}
+
+async fn async_main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse()?))
         .with_writer(std::io::stderr)

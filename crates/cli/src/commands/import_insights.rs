@@ -22,19 +22,19 @@ static CATEGORY_RE: LazyLock<Regex> = LazyLock::new(|| {
 #[expect(clippy::unwrap_used, reason = "static regex patterns are compile-time validated")]
 static OBSERVATION_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"\*\*\u{41d}\u{430}\u{431}\u{43b}\u{44e}\u{434}\u{435}\u{43d}\u{438}\u{435}:\*\*\s*(.+)",
+        r"(?s)\*\*\u{41d}\u{430}\u{431}\u{43b}\u{44e}\u{434}\u{435}\u{43d}\u{438}\u{435}:\*\*\s*(.*?)(?:\*\*|$)",
     )
     .unwrap()
 });
 
 #[expect(clippy::unwrap_used, reason = "static regex patterns are compile-time validated")]
 static IMPLICATION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\*\*\u{418}\u{43c}\u{43f}\u{43b}\u{438}\u{43a}\u{430}\u{446}\u{438}\u{44f} \u{434}\u{43b}\u{44f} AGI:\*\*\s*(.+)").unwrap()
+    Regex::new(r"(?s)\*\*\u{418}\u{43c}\u{43f}\u{43b}\u{438}\u{43a}\u{430}\u{446}\u{438}\u{44f} \u{434}\u{43b}\u{44f} AGI:\*\*\s*(.*?)(?:\*\*|$)").unwrap()
 });
 
 #[expect(clippy::unwrap_used, reason = "static regex patterns are compile-time validated")]
 static RECOMMENDATION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\*\*\u{420}\u{435}\u{43a}\u{43e}\u{43c}\u{435}\u{43d}\u{434}\u{430}\u{446}\u{438}\u{44f}:\*\*\s*(.+)").unwrap()
+    Regex::new(r"(?s)\*\*\u{420}\u{435}\u{43a}\u{43e}\u{43c}\u{435}\u{43d}\u{434}\u{430}\u{446}\u{438}\u{44f}:\*\*\s*(.*?)(?:\*\*|$)").unwrap()
 });
 
 /// Parsed insight from markdown
@@ -120,12 +120,9 @@ fn parse_insights(content: &str) -> Vec<ParsedInsight> {
 }
 
 /// Check if knowledge with given title already exists
-async fn title_exists(storage: &StorageBackend, title: &str) -> bool {
-    storage
-        .search_knowledge(title, 10)
-        .await
-        .map(|results| results.iter().any(|r| r.knowledge.title == title))
-        .unwrap_or(false)
+async fn title_exists(storage: &StorageBackend, title: &str) -> Result<bool> {
+    let results = storage.search_knowledge(title, 10).await?;
+    Ok(results.iter().any(|r| r.knowledge.title == title))
 }
 
 /// Import insights from a single file
@@ -138,7 +135,7 @@ async fn import_file(storage: &StorageBackend, path: &Path) -> Result<(usize, us
     let mut skipped = 0;
 
     for insight in insights {
-        if title_exists(storage, &insight.title).await {
+        if title_exists(storage, &insight.title).await? {
             skipped += 1;
             continue;
         }

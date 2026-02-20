@@ -183,11 +183,11 @@ pub fn get_tools_json() -> serde_json::Value {
             },
             {
                 "name": "knowledge_save",
-                "description": "Save new knowledge entry (skill, pattern, gotcha, architecture, tool_usage)",
+                "description": format!("Save new knowledge entry ({})", opencode_mem_core::KnowledgeType::ALL_VARIANTS.join(", ")),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "knowledge_type": { "type": "string", "enum": ["skill", "pattern", "gotcha", "architecture", "tool_usage"] },
+                        "knowledge_type": { "type": "string", "enum": opencode_mem_core::KnowledgeType::ALL_VARIANTS },
                         "title": { "type": "string" },
                         "description": { "type": "string" },
                         "instructions": { "type": "string", "description": "Step-by-step instructions (for skills)" },
@@ -215,7 +215,7 @@ pub fn get_tools_json() -> serde_json::Value {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "knowledge_type": { "type": "string", "enum": ["skill", "pattern", "gotcha", "architecture", "tool_usage"] },
+                        "knowledge_type": { "type": "string", "enum": opencode_mem_core::KnowledgeType::ALL_VARIANTS },
                         "limit": { "type": "integer", "default": 20 }
                     }
                 }

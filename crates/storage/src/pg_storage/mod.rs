@@ -44,6 +44,10 @@ pub struct PgStorage {
 }
 
 impl PgStorage {
+    pub fn pool(&self) -> PgPool {
+        self.pool.clone()
+    }
+
     pub async fn new(database_url: &str) -> Result<Self, StorageError> {
         let pool = PgPoolOptions::new()
             .max_connections(PG_POOL_MAX_CONNECTIONS)
@@ -58,8 +62,8 @@ impl PgStorage {
     }
 }
 
-pub(crate) fn parse_json_value<T: serde::de::DeserializeOwned>(val: &serde_json::Value) -> Vec<T> {
-    serde_json::from_value(val.clone()).unwrap_or_default()
+pub(crate) fn parse_json_value<T: serde::de::DeserializeOwned>(val: serde_json::Value) -> Vec<T> {
+    serde_json::from_value(val).unwrap_or_default()
 }
 
 /// Parse `ObservationType` from a PostgreSQL text column.
@@ -104,11 +108,11 @@ pub(crate) fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observat
     .maybe_project(row.try_get("project")?)
     .maybe_subtitle(row.try_get("subtitle")?)
     .maybe_narrative(row.try_get("narrative")?)
-    .facts(parse_json_value(&facts))
-    .concepts(parse_json_value(&concepts))
-    .files_read(parse_json_value(&files_read))
-    .files_modified(parse_json_value(&files_modified))
-    .keywords(parse_json_value(&keywords))
+    .facts(parse_json_value(facts))
+    .concepts(parse_json_value(concepts))
+    .files_read(parse_json_value(files_read))
+    .files_modified(parse_json_value(files_modified))
+    .keywords(parse_json_value(keywords))
     .maybe_prompt_number(
         row.try_get::<Option<i32>, _>("prompt_number")?
             .map(|v| PromptNumber(u32::try_from(v).unwrap_or(0))),
@@ -204,8 +208,8 @@ pub(crate) fn row_to_summary(row: &sqlx::postgres::PgRow) -> Result<SessionSumma
         row.try_get("completed")?,
         row.try_get("next_steps")?,
         row.try_get("notes")?,
-        parse_json_value(&files_read),
-        parse_json_value(&files_edited),
+        parse_json_value(files_read),
+        parse_json_value(files_edited),
         row.try_get::<Option<i32>, _>("prompt_number")?
             .map(|v| PromptNumber(u32::try_from(v).unwrap_or(0))),
         row.try_get::<Option<i32>, _>("discovery_tokens")?
@@ -234,9 +238,9 @@ pub(crate) fn row_to_knowledge(
         row.try_get("title")?,
         row.try_get("description")?,
         row.try_get("instructions")?,
-        parse_json_value(&triggers),
-        parse_json_value(&source_projects),
-        parse_json_value(&source_observations),
+        parse_json_value(triggers),
+        parse_json_value(source_projects),
+        parse_json_value(source_observations),
         row.try_get("confidence")?,
         row.try_get::<i64, _>("usage_count")?,
         last_used_at.map(|d| d.to_rfc3339()),
@@ -281,8 +285,8 @@ pub(crate) fn row_to_pending_message(
     })
 }
 
-pub(crate) fn build_tsquery(query: &str) -> String {
-    query
+pub(crate) fn build_tsquery(query: &str) -> Option<String> {
+    let result = query
         .split_whitespace()
         .filter_map(|w| {
             // Strip tsquery operators and special characters, keep only alphanumeric
@@ -295,7 +299,12 @@ pub(crate) fn build_tsquery(query: &str) -> String {
             }
         })
         .collect::<Vec<_>>()
-        .join(" & ")
+        .join(" & ");
+    if result.is_empty() {
+        None
+    } else {
+        Some(result)
+    }
 }
 
 pub(crate) const SESSION_COLUMNS: &str =

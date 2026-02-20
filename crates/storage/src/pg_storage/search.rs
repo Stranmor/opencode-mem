@@ -11,11 +11,10 @@ use async_trait::async_trait;
 #[async_trait]
 impl SearchStore for PgStorage {
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>, StorageError> {
-        let tsquery = build_tsquery(query);
-        if tsquery.is_empty() {
+        let Some(tsquery) = build_tsquery(query) else {
             let recent = self.get_recent(limit).await?;
             return Ok(recent.into_iter().map(|o| SearchResult::from_observation(&o)).collect());
-        }
+        };
         let rows = sqlx::query(
             "SELECT id, title, subtitle, observation_type, noise_level,
                     ts_rank_cd(search_vec, to_tsquery('english', $1))::float8 as score
@@ -37,11 +36,10 @@ impl SearchStore for PgStorage {
         limit: usize,
     ) -> Result<Vec<SearchResult>, StorageError> {
         let keywords: HashSet<String> = query.split_whitespace().map(str::to_lowercase).collect();
-        let tsquery = build_tsquery(query);
-        if tsquery.is_empty() {
+        let Some(tsquery) = build_tsquery(query) else {
             let recent = self.get_recent(limit).await?;
             return Ok(recent.into_iter().map(|o| SearchResult::from_observation(&o)).collect());
-        }
+        };
 
         let rows = sqlx::query(
             "SELECT id, title, subtitle, observation_type, noise_level, keywords,
@@ -150,8 +148,7 @@ impl SearchStore for PgStorage {
         }
 
         if let Some(q) = query {
-            let tsquery = build_tsquery(q);
-            if !tsquery.is_empty() {
+            if let Some(tsquery) = build_tsquery(q) {
                 let fts_cond = format!("search_vec @@ to_tsquery('english', ${param_idx})");
                 param_idx += 1;
                 let score_expr = format!(
@@ -281,11 +278,10 @@ impl SearchStore for PgStorage {
             return self.hybrid_search(query, limit).await;
         }
 
-        let tsquery = build_tsquery(query);
         let mut fts_scores: HashMap<String, f64> = HashMap::new();
         let mut max_fts_score: f64 = 0.0;
 
-        if !tsquery.is_empty() {
+        if let Some(tsquery) = build_tsquery(query) {
             let fts_rows = sqlx::query(
                 "SELECT id, ts_rank_cd(search_vec, to_tsquery('english', $1))::float8 as fts_score
                    FROM observations

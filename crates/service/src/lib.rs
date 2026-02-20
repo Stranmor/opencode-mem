@@ -25,7 +25,7 @@ mod session_service;
 
 pub use error::ServiceError;
 pub use knowledge_service::KnowledgeService;
-pub use observation_service::ObservationService;
+pub use observation_service::{ObservationService, SaveMemoryResult};
 pub use queue_service::QueueService;
 pub use search_service::SearchService;
 pub use session_service::SessionService;

@@ -1,8 +1,8 @@
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use opencode_mem_core::{ProjectFilter, ToolCall};
-use opencode_mem_service::{PendingMessage, default_visibility_timeout_secs};
+use opencode_mem_service::{default_visibility_timeout_secs, PendingMessage};
 
 use crate::AppState;
 

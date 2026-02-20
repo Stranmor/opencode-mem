@@ -7,16 +7,21 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    Observation, ObservationInput, ObservationType, ToolCall, ToolOutput, env_parse_with_default,
-    filter_injected_memory, is_low_value_observation,
+    env_parse_with_default, filter_injected_memory, is_low_value_observation, Observation,
+    ObservationInput, ObservationType, ToolCall, ToolOutput,
 };
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::{CompressionResult, LlmClient};
-use opencode_mem_storage::StorageBackend;
 use opencode_mem_storage::traits::{ObservationStore, SearchStore};
+use opencode_mem_storage::StorageBackend;
 use tokio::sync::broadcast;
 
+pub enum SaveMemoryResult {
+    Created(Observation),
+    Duplicate(Observation),
+    Filtered,
+}
 pub struct ObservationService {
     pub(crate) storage: Arc<StorageBackend>,
     pub(crate) llm: Arc<LlmClient>,
@@ -77,20 +82,22 @@ impl ObservationService {
         id: &str,
         tool_call: ToolCall,
     ) -> Result<Option<Observation>, crate::ServiceError> {
-        if let Some((observation, was_new)) = self.compress_and_save(id, &tool_call).await? {
-            // Only extract knowledge for genuinely new observations.
-            // Merged observations already had knowledge extracted on first save.
+        let save_result = self.compress_and_save(id, &tool_call).await?;
+
+        {
+            let observation_ref = save_result.as_ref().map(|(o, _)| o);
+            let infinite_fut = self.store_infinite_memory(&tool_call, observation_ref);
+
             let extract_fut = async {
-                if was_new {
-                    self.extract_knowledge(&observation).await;
+                if let Some((ref obs, true)) = save_result {
+                    self.extract_knowledge(obs).await;
                 }
             };
-            let infinite_fut = self.store_infinite_memory(&tool_call, &observation);
+
             tokio::join!(extract_fut, infinite_fut);
-            Ok(Some(observation))
-        } else {
-            Ok(None)
         }
+
+        Ok(save_result.map(|(o, _)| o))
     }
 
     pub async fn compress_and_save(
@@ -283,39 +290,61 @@ impl ObservationService {
         text: &str,
         title: Option<&str>,
         project: Option<&str>,
-    ) -> Result<Option<Observation>, crate::ServiceError> {
-        let text = text.trim();
-        let text = &opencode_mem_core::filter_private_content(text);
-        let text = &filter_injected_memory(text);
+    ) -> Result<SaveMemoryResult, crate::ServiceError> {
+        let raw_text = text.trim();
+        let text = opencode_mem_core::filter_private_content(raw_text);
+        let text = filter_injected_memory(&text);
         if text.is_empty() {
             return Err(crate::ServiceError::InvalidInput(
                 "Text is required for save_memory".into(),
             ));
         }
 
-        let title = match title {
+        let title_str = match title {
             Some(t) if !t.trim().is_empty() => t.trim().to_string(),
             _ => text.chars().take(50).collect(),
         };
 
-        if is_low_value_observation(&title) {
-            tracing::debug!("Filtered low-value save_memory: {}", title);
-            return Ok(None);
+        let mut is_filtered = false;
+        if is_low_value_observation(&title_str) {
+            tracing::debug!("Filtered low-value save_memory: {}", title_str);
+            is_filtered = true;
         }
 
-        let project = project.map(str::trim).filter(|p| !p.is_empty()).map(ToOwned::to_owned);
+        let project_str = project.map(str::trim).filter(|p| !p.is_empty()).map(ToOwned::to_owned);
 
         let obs = Observation::builder(
             uuid::Uuid::new_v4().to_string(),
             "manual".to_owned(),
             ObservationType::Discovery,
-            title,
+            title_str,
         )
-        .maybe_project(project)
+        .maybe_project(project_str.clone())
         .narrative(text.to_owned())
         .build();
 
+        if let Some(ref infinite_mem) = self.infinite_mem {
+            let event = opencode_mem_infinite::tool_event(
+                "manual",
+                project_str.as_deref(),
+                "save_memory",
+                serde_json::json!({"text": text}),
+                serde_json::json!({"output": "saved manually"}),
+                vec![],
+            );
+            if let Err(e) = infinite_mem.store_event(event).await {
+                tracing::warn!(error = %e, "Failed to store manual save_memory event in infinite memory");
+            }
+        }
+
+        if is_filtered {
+            return Ok(SaveMemoryResult::Filtered);
+        }
+
         let result = self.persist_and_notify(&obs, None).await?;
-        Ok(result.map(|(persisted_obs, _was_new)| persisted_obs))
+        match result {
+            Some((persisted_obs, _was_new)) => Ok(SaveMemoryResult::Created(persisted_obs)),
+            None => Ok(SaveMemoryResult::Duplicate(obs)), // If not filtered, must be duplicate
+        }
     }
 }

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use opencode_mem_core::{MAX_BATCH_IDS, NoiseLevel, cosine_similarity};
+use opencode_mem_core::{cosine_similarity, NoiseLevel, MAX_BATCH_IDS};
 use opencode_mem_storage::traits::{EmbeddingStore, ObservationStore};
 
 use super::ObservationService;

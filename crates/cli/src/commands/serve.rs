@@ -23,10 +23,12 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     // Initial receiver dropped - subscribers use event_tx.subscribe()
     let (event_tx, _initial_rx) = broadcast::channel(100);
 
-    let infinite_mem = if let Ok(url) = std::env::var("INFINITE_MEMORY_URL") {
-        match InfiniteMemory::new(&url, llm.clone()).await {
+    let infinite_mem = if std::env::var("INFINITE_MEMORY_URL").is_ok()
+        || std::env::var("OPENCODE_MEM_INFINITE_MEMORY").is_ok()
+    {
+        match InfiniteMemory::new(storage.pool(), llm.clone()).await {
             Ok(mem) => {
-                tracing::info!("Connected to infinite memory: {}", url);
+                tracing::info!("Connected to infinite memory");
                 Some(Arc::new(mem))
             },
             Err(e) => {

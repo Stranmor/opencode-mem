@@ -200,7 +200,7 @@ pub async fn admin_restart(
     tokio::spawn(async {
         sleep(Duration::from_millis(100)).await;
         #[expect(clippy::exit, reason = "Intentional restart via systemd")]
-        std::process::exit(0);
+        std::process::exit(1);
     });
     Ok(Json(AdminResponse {
         success: true,

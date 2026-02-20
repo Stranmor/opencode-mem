@@ -204,7 +204,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/infinite/drill_hour/{id}", get(handlers::infinite::infinite_drill_hour))
         .route("/api/infinite/drill_day/{id}", get(handlers::infinite::infinite_drill_day))
         .route("/api/infinite/search_entities", get(handlers::infinite::infinite_search_entities))
-        .layer(CorsLayer::permissive())
         .with_state(state)
 }
 

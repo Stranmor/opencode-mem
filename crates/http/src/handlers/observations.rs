@@ -102,8 +102,15 @@ pub async fn save_memory(
         .save_memory(text, req.title.as_deref(), req.project.as_deref())
         .await
     {
-        Ok(Some(obs)) => Ok((StatusCode::CREATED, Json(obs))),
-        Ok(None) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+        Ok(opencode_mem_service::SaveMemoryResult::Created(obs)) => {
+            Ok((StatusCode::CREATED, Json(obs)))
+        },
+        Ok(opencode_mem_service::SaveMemoryResult::Duplicate(obs)) => {
+            Ok((StatusCode::OK, Json(obs)))
+        },
+        Ok(opencode_mem_service::SaveMemoryResult::Filtered) => {
+            Err(StatusCode::UNPROCESSABLE_ENTITY)
+        },
         Err(e) => {
             tracing::error!("Save memory error: {}", e);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -166,7 +173,7 @@ pub async fn get_observations_paginated(
     State(state): State<Arc<AppState>>,
     Query(query): Query<PaginationQuery>,
 ) -> Result<Json<PaginatedResult<Observation>>, StatusCode> {
-    let limit = query.limit.min(100);
+    let limit = query.limit.min(opencode_mem_core::MAX_QUERY_LIMIT);
     state
         .search_service
         .get_observations_paginated(query.offset, limit, query.project.as_deref())
@@ -182,7 +189,7 @@ pub async fn get_summaries_paginated(
     State(state): State<Arc<AppState>>,
     Query(query): Query<PaginationQuery>,
 ) -> Result<Json<PaginatedResult<SessionSummary>>, StatusCode> {
-    let limit = query.limit.min(100);
+    let limit = query.limit.min(opencode_mem_core::MAX_QUERY_LIMIT);
     state
         .search_service
         .get_summaries_paginated(query.offset, limit, query.project.as_deref())
@@ -198,7 +205,7 @@ pub async fn get_prompts_paginated(
     State(state): State<Arc<AppState>>,
     Query(query): Query<PaginationQuery>,
 ) -> Result<Json<PaginatedResult<UserPrompt>>, StatusCode> {
-    let limit = query.limit.min(100);
+    let limit = query.limit.min(opencode_mem_core::MAX_QUERY_LIMIT);
     state
         .search_service
         .get_prompts_paginated(query.offset, limit, query.project.as_deref())

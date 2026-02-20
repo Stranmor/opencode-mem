@@ -47,9 +47,9 @@ impl PgStorage {
             last_used_at,
         )) = existing
         {
-            let mut triggers: Vec<String> = parse_json_value(&triggers_json);
-            let mut source_projects: Vec<String> = parse_json_value(&src_proj_json);
-            let mut source_observations: Vec<String> = parse_json_value(&src_obs_json);
+            let mut triggers: Vec<String> = parse_json_value(triggers_json);
+            let mut source_projects: Vec<String> = parse_json_value(src_proj_json);
+            let mut source_observations: Vec<String> = parse_json_value(src_obs_json);
 
             for t in &input.triggers {
                 if !triggers.contains(t) {
@@ -192,12 +192,11 @@ impl KnowledgeStore for PgStorage {
         query: &str,
         limit: usize,
     ) -> Result<Vec<KnowledgeSearchResult>, StorageError> {
-        let tsquery = build_tsquery(query);
-        if tsquery.is_empty() {
+        let Some(tsquery) = build_tsquery(query) else {
             return self.list_knowledge(None, limit).await.map(|items| {
                 items.into_iter().map(|k| KnowledgeSearchResult::new(k, 1.0)).collect()
             });
-        }
+        };
         let rows = sqlx::query(&format!(
             "SELECT {KNOWLEDGE_COLUMNS},
                     ts_rank_cd(search_vec, to_tsquery('english', $1))::float8 as score

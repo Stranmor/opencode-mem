@@ -47,9 +47,9 @@ pub use event_types::{
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use opencode_mem_core::{PG_POOL_ACQUIRE_TIMEOUT_SECS, PG_POOL_IDLE_TIMEOUT_SECS};
+
 use opencode_mem_llm::LlmClient;
-use sqlx::postgres::PgPoolOptions;
+
 use sqlx::PgPool;
 use std::sync::Arc;
 
@@ -59,15 +59,7 @@ pub struct InfiniteMemory {
 }
 
 impl InfiniteMemory {
-    pub async fn new(database_url: &str, llm: Arc<LlmClient>) -> Result<Self> {
-        let pool = PgPoolOptions::new()
-            .max_connections(5)
-            .acquire_timeout(std::time::Duration::from_secs(PG_POOL_ACQUIRE_TIMEOUT_SECS))
-            .idle_timeout(std::time::Duration::from_secs(PG_POOL_IDLE_TIMEOUT_SECS))
-            .test_before_acquire(true)
-            .connect(database_url)
-            .await?;
-
+    pub async fn new(pool: sqlx::PgPool, llm: Arc<LlmClient>) -> Result<Self> {
         migrations::run_migrations(&pool).await?;
 
         Ok(Self { pool, llm })

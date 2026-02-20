@@ -64,9 +64,7 @@ impl EmbeddingService {
             // `with_intra_threads` and global pool options have no effect in OpenMP builds.
             // Safe here: called once via Once, before any ONNX/OpenMP initialization.
             // TODO(edition-2024): wrap in unsafe {} when migrating to Rust edition 2024
-            if std::env::var("OMP_NUM_THREADS").is_err() {
-                std::env::set_var("OMP_NUM_THREADS", thread_count.to_string());
-            }
+
 
             let pool_opts = ort::environment::GlobalThreadPoolOptions::default()
                 .with_intra_threads(thread_count)
@@ -118,7 +116,11 @@ impl EmbeddingService {
         let default_threads = max_threads.saturating_sub(1).max(1);
         let configured =
             opencode_mem_core::env_parse_with_default("OPENCODE_MEM_EMBEDDING_THREADS", 0_usize);
-        if configured == 0 { default_threads } else { configured.clamp(1, max_threads) }
+        if configured == 0 {
+            default_threads
+        } else {
+            configured.clamp(1, max_threads)
+        }
     }
 }
 

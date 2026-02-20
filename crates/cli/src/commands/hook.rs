@@ -48,17 +48,22 @@ pub(crate) enum HookCommands {
     },
 }
 
-fn get_project_from_stdin() -> Option<String> {
+fn get_project_from_stdin() -> Result<Option<String>> {
     if std::io::stdin().is_terminal() {
-        return None;
+        return Ok(None);
     }
     let mut input = String::new();
-    std::io::stdin().read_to_string(&mut input).ok()?;
-    let json: serde_json::Value = serde_json::from_str(&input).ok()?;
-    json.get("project")
+    std::io::stdin().read_to_string(&mut input)?;
+    if input.trim().is_empty() {
+        return Ok(None);
+    }
+    let json: serde_json::Value = serde_json::from_str(&input)
+        .map_err(|e| anyhow::anyhow!("Failed to parse JSON from stdin: {}", e))?;
+    Ok(json
+        .get("project")
         .or_else(|| json.get("project_path"))
         .and_then(|v| v.as_str())
-        .map(String::from)
+        .map(String::from))
 }
 
 fn build_session_init_request(
@@ -82,10 +87,16 @@ fn build_observation_request(
     }
     let output_str = filter_injected_memory(&output_str);
     let tool_name = tool.unwrap_or_else(|| "unknown".to_owned());
-    let input: Option<serde_json::Value> = input_json
-        .as_ref()
-        .map(|s| filter_injected_memory(s))
-        .and_then(|s| serde_json::from_str(&s).ok());
+    let input: Option<serde_json::Value> = match input_json {
+        Some(s) => {
+            let filtered = filter_injected_memory(&s);
+            Some(
+                serde_json::from_str(&filtered)
+                    .map_err(|e| anyhow::anyhow!("Failed to parse input_json: {}", e))?,
+            )
+        },
+        None => None,
+    };
     Ok(ObservationHookRequest::new(tool_name, session_id, None, project, input, output_str))
 }
 
@@ -101,7 +112,11 @@ pub(crate) async fn run(cmd: HookCommands) -> Result<()> {
 
     match cmd {
         HookCommands::Context { project, limit, endpoint } => {
-            let project = project.or_else(get_project_from_stdin).ok_or_else(|| {
+            let project = match project {
+                Some(p) => Some(p),
+                None => get_project_from_stdin()?,
+            }
+            .ok_or_else(|| {
                 anyhow::anyhow!("Project required: use --project or pipe JSON with 'project' field")
             })?;
             let url = format!("{endpoint}/context/inject");

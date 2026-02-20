@@ -159,6 +159,35 @@ pub async fn run_migrations(pool: &PgPool) -> Result<()> {
     .execute(pool)
     .await?;
 
+    sqlx::query(
+        "ALTER TABLE raw_events ADD COLUMN IF NOT EXISTS files TEXT[] NOT NULL DEFAULT '{}'",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "ALTER TABLE raw_events ADD COLUMN IF NOT EXISTS tools TEXT[] NOT NULL DEFAULT '{}'",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query(
+        "ALTER TABLE raw_events ADD COLUMN IF NOT EXISTS processing_started_at TIMESTAMPTZ",
+    )
+    .execute(pool)
+    .await?;
+    sqlx::query("ALTER TABLE raw_events ADD COLUMN IF NOT EXISTS processing_instance_id TEXT")
+        .execute(pool)
+        .await?;
+
+    sqlx::query("ALTER TABLE summaries_5min ADD COLUMN IF NOT EXISTS entities JSONB")
+        .execute(pool)
+        .await?;
+    sqlx::query("ALTER TABLE summaries_hour ADD COLUMN IF NOT EXISTS entities JSONB")
+        .execute(pool)
+        .await?;
+    sqlx::query("ALTER TABLE summaries_day ADD COLUMN IF NOT EXISTS entities JSONB")
+        .execute(pool)
+        .await?;
+
     // Foreign keys (DROP IF EXISTS + ADD for idempotency)
     sqlx::query("ALTER TABLE raw_events DROP CONSTRAINT IF EXISTS fk_raw_events_summary_5min")
         .execute(pool)

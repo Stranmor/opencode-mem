@@ -1,7 +1,7 @@
 use axum::{
-    Json,
     extract::{Path, Query, State},
     http::StatusCode,
+    Json,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -10,8 +10,8 @@ use opencode_mem_core::{
     GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType, MAX_QUERY_LIMIT,
 };
 
-use crate::AppState;
 use crate::api_types::{KnowledgeQuery, KnowledgeUsageResponse, SaveKnowledgeRequest};
+use crate::AppState;
 
 pub async fn list_knowledge(
     State(state): State<Arc<AppState>>,

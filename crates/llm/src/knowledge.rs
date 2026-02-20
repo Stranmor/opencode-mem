@@ -40,7 +40,7 @@ Observation:
 - {}
 
 If this contains a reusable skill, pattern, or gotcha that applies broadly:
-Return JSON: {{"extract": true, "knowledge_type": "skill|pattern|gotcha|architecture|tool_usage", "title": "...", "description": "...", "instructions": "...", "triggers": [...]}}
+Return JSON: {{"extract": true, "knowledge_type": "{}", "title": "...", "description": "...", "instructions": "...", "triggers": [...]}}
 
 If this is project-specific and not generalizable:
 Return JSON: {{"extract": false, "reason": "..."}}"#,
@@ -49,6 +49,7 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
             concepts_str,
             observation.narrative.as_deref().unwrap_or(""),
             facts_str,
+            opencode_mem_core::KnowledgeType::ALL_VARIANTS_STR,
         );
 
         let request = ChatRequest {

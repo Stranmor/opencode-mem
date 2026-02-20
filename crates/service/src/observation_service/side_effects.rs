@@ -1,4 +1,4 @@
-use opencode_mem_core::{Observation, ToolCall, filter_injected_memory, filter_private_content};
+use opencode_mem_core::{filter_injected_memory, filter_private_content, Observation, ToolCall};
 use opencode_mem_infinite::tool_event;
 use opencode_mem_storage::traits::KnowledgeStore;
 
@@ -29,7 +29,7 @@ impl ObservationService {
     pub(crate) async fn store_infinite_memory(
         &self,
         tool_call: &ToolCall,
-        observation: &Observation,
+        observation: Option<&Observation>,
     ) {
         if let Some(ref infinite_mem) = self.infinite_mem {
             let filtered_output =
@@ -45,16 +45,21 @@ impl ObservationService {
                     serde_json::Value::Null
                 })
             };
+
+            let files_modified = observation.map_or_else(Vec::new, |o| o.files_modified.clone());
+            let obs_id_for_log =
+                observation.map_or_else(|| tool_call.call_id.as_str(), |o| o.id.as_str());
+
             let event = tool_event(
                 &tool_call.session_id,
                 tool_call.project.as_deref(),
                 &tool_call.tool,
                 filtered_input,
                 serde_json::json!({"output": filtered_output}),
-                observation.files_modified.clone(),
+                files_modified,
             );
             if let Err(e) = infinite_mem.store_event(event).await {
-                tracing::warn!(error = %e, observation_id = %observation.id, "Failed to store in infinite memory — event will be missing from long-term history");
+                tracing::warn!(error = %e, observation_id = %obs_id_for_log, "Failed to store in infinite memory — event will be missing from long-term history");
             }
         }
     }

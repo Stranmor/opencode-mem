@@ -19,31 +19,29 @@ use super::queue_processor::{max_queue_workers, process_pending_message};
 pub async fn get_pending_queue(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<PendingQueueResponse>, StatusCode> {
-    let messages =
-        state.queue_service.get_all_pending_messages(query.capped_limit()).await.map_err(|e| {
-            tracing::error!("Get pending messages error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    let queue_stats = state.queue_service.get_queue_stats().await.map_err(|e| {
-        tracing::error!("Get queue stats error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+) -> Result<Json<PendingQueueResponse>, crate::api_error::ApiError> {
+    let messages = state
+        .queue_service
+        .get_all_pending_messages(query.capped_limit())
+        .await
+        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))?;
+    let queue_stats = state
+        .queue_service
+        .get_queue_stats()
+        .await
+        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))?;
     Ok(Json(PendingQueueResponse { messages, stats: queue_stats }))
 }
 
 pub async fn process_pending_queue(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<ProcessQueueResponse>, StatusCode> {
+) -> Result<Json<ProcessQueueResponse>, crate::api_error::ApiError> {
     let max_workers = max_queue_workers();
     let messages = state
         .queue_service
         .claim_pending_messages(max_workers, default_visibility_timeout_secs())
         .await
-        .map_err(|e| {
-            tracing::error!("Claim pending messages error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))?;
 
     if messages.is_empty() {
         return Ok(Json(ProcessQueueResponse { processed: 0, failed: 0 }));
@@ -55,7 +53,7 @@ pub async fn process_pending_queue(
     for msg in messages {
         let permit = Arc::clone(&state.semaphore).acquire_owned().await.map_err(|_sem_err| {
             tracing::error!("Semaphore closed unexpectedly");
-            StatusCode::INTERNAL_SERVER_ERROR
+            crate::api_error::ApiError::Internal(anyhow::anyhow!("Internal Error"))
         })?;
         let state_clone = Arc::clone(&state);
         let handle = tokio::spawn(async move {
@@ -95,49 +93,53 @@ pub async fn process_pending_queue(
 
 pub async fn clear_failed_queue(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<ClearQueueResponse>, StatusCode> {
-    let cleared = state.queue_service.clear_failed_messages().await.map_err(|e| {
-        tracing::error!("Clear failed messages error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+) -> Result<Json<ClearQueueResponse>, crate::api_error::ApiError> {
+    let cleared = state
+        .queue_service
+        .clear_failed_messages()
+        .await
+        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))?;
     Ok(Json(ClearQueueResponse { cleared }))
 }
 
 pub async fn retry_failed_queue(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<RetryQueueResponse>, StatusCode> {
-    let retried = state.queue_service.retry_failed_messages().await.map_err(|e| {
-        tracing::error!("Retry failed messages error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+) -> Result<Json<RetryQueueResponse>, crate::api_error::ApiError> {
+    let retried = state
+        .queue_service
+        .retry_failed_messages()
+        .await
+        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))?;
     Ok(Json(RetryQueueResponse { retried }))
 }
 
 pub async fn clear_all_queue(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<ClearQueueResponse>, StatusCode> {
-    let cleared = state.queue_service.clear_all_pending_messages().await.map_err(|e| {
-        tracing::error!("Clear all pending messages error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+) -> Result<Json<ClearQueueResponse>, crate::api_error::ApiError> {
+    let cleared = state
+        .queue_service
+        .clear_all_pending_messages()
+        .await
+        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))?;
     Ok(Json(ClearQueueResponse { cleared }))
 }
 
 pub async fn get_processing_status(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<ProcessingStatusResponse>, StatusCode> {
+) -> Result<Json<ProcessingStatusResponse>, crate::api_error::ApiError> {
     let active = state.processing_active.load(Ordering::SeqCst);
-    let pending_count = state.queue_service.get_pending_count().await.map_err(|e| {
-        tracing::error!("Get pending count error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let pending_count = state
+        .queue_service
+        .get_pending_count()
+        .await
+        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))?;
     Ok(Json(ProcessingStatusResponse { active, pending_count }))
 }
 
 pub async fn set_processing_status(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SetProcessingRequest>,
-) -> Result<Json<SetProcessingResponse>, StatusCode> {
+) -> Result<Json<SetProcessingResponse>, crate::api_error::ApiError> {
     state.processing_active.store(req.active, Ordering::SeqCst);
     Ok(Json(SetProcessingResponse { active: req.active }))
 }

@@ -32,10 +32,12 @@ pub(crate) async fn run() -> Result<()> {
         }
     };
 
-    let infinite_mem = if let Ok(url) = std::env::var("INFINITE_MEMORY_URL") {
-        match InfiniteMemory::new(&url, llm.clone()).await {
+    let infinite_mem = if std::env::var("INFINITE_MEMORY_URL").is_ok()
+        || std::env::var("OPENCODE_MEM_INFINITE_MEMORY").is_ok()
+    {
+        match InfiniteMemory::new(storage.pool(), llm.clone()).await {
             Ok(mem) => {
-                eprintln!("Connected to infinite memory: {url}");
+                eprintln!("Connected to infinite memory");
                 Some(Arc::new(mem))
             },
             Err(e) => {

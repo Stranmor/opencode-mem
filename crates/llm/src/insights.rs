@@ -4,7 +4,7 @@ use opencode_mem_core::{Concept, Observation, ObservationType};
 use serde::Deserialize;
 
 use crate::ai_types::{ChatRequest, Message, ResponseFormat};
-use crate::client::{LlmClient, truncate};
+use crate::client::{truncate, LlmClient};
 use crate::error::LlmError;
 
 /// Single insight extracted from session analysis
@@ -187,27 +187,12 @@ impl LlmClient {
         };
 
         let content = self.chat_completion(&request).await?;
-        let clean_json = strip_markdown_json(&content);
-        serde_json::from_str(&clean_json).map_err(|e| LlmError::JsonParse {
-            context: format!("insights response (content: {})", truncate(&clean_json, 300)),
+        let clean_json = opencode_mem_core::strip_markdown_json(&content);
+        serde_json::from_str(clean_json).map_err(|e| LlmError::JsonParse {
+            context: format!("insights response (content: {})", truncate(clean_json, 300)),
             source: e,
         })
     }
-}
-
-fn strip_markdown_json(content: &str) -> String {
-    let content = content.trim();
-    if let Some(stripped) = content.strip_prefix("```json") {
-        if let Some(end) = stripped.rfind("```") {
-            return stripped[..end].trim().to_owned();
-        }
-    }
-    if let Some(stripped) = content.strip_prefix("```") {
-        if let Some(end) = stripped.rfind("```") {
-            return stripped[..end].trim().to_owned();
-        }
-    }
-    content.to_owned()
 }
 
 fn build_insights_prompt(formatted: &str, project_path: &str) -> String {

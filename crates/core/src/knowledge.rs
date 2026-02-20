@@ -25,6 +25,11 @@ pub enum KnowledgeType {
 }
 
 impl KnowledgeType {
+    pub const ALL_VARIANTS: &'static [&'static str] =
+        &["skill", "pattern", "gotcha", "architecture", "tool_usage"];
+
+    pub const ALL_VARIANTS_STR: &'static str = "skill|pattern|gotcha|architecture|tool_usage";
+
     /// Returns the string representation of this knowledge type.
     #[must_use]
     pub const fn as_str(&self) -> &'static str {

@@ -5,6 +5,7 @@ use sqlx::PgPool;
 
 /// Run all PostgreSQL migrations.
 pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
+    let mut tx = pool.begin().await?;
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS observations (
@@ -29,25 +30,25 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         )
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     sqlx::query(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_obs_title_norm ON observations (title_normalized)",
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_obs_session ON observations (session_id)")
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_obs_project ON observations (project)")
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_obs_created ON observations (created_at DESC)")
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     // Full-text search: tsvector column + GIN index
@@ -68,17 +69,24 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         END $$
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_obs_search_vec ON observations USING GIN (search_vec)",
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_obs_files_read ON observations USING GIN (files_read)",
+    )
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS idx_obs_files_modified ON observations USING GIN (files_modified)").execute(&mut *tx).await?;
+
     // pgvector extension + embedding column
-    sqlx::query("CREATE EXTENSION IF NOT EXISTS vector").execute(pool).await?;
+    sqlx::query("CREATE EXTENSION IF NOT EXISTS vector").execute(&mut *tx).await?;
 
     sqlx::query(
         r#"
@@ -92,15 +100,20 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         END $$
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
-    sqlx::query(
+    match sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_obs_embedding ON observations USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)",
     )
-    .execute(pool)
-    .await
-    .ok(); // May fail if < 100 rows; that's fine
+    .execute(&mut *tx)
+    .await {
+        Ok(_) => {},
+        Err(sqlx::Error::Database(db_err)) if db_err.code().as_deref() == Some("22023") => {
+            tracing::debug!("Skipping ivfflat index creation: too few rows");
+        },
+        Err(e) => return Err(e.into()),
+    }
 
     // Sessions
     sqlx::query(
@@ -118,15 +131,15 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         )
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_sess_content ON sessions (content_session_id)")
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_sess_status ON sessions (status)")
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     // Global knowledge
@@ -149,7 +162,7 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         )
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     sqlx::query(
@@ -169,13 +182,13 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         END $$
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_gk_search_vec ON global_knowledge USING GIN (search_vec)",
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     // Session summaries
@@ -198,7 +211,7 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         )
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     sqlx::query(
@@ -221,13 +234,13 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         END $$
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_ss_search_vec ON session_summaries USING GIN (search_vec)",
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     // Pending messages queue
@@ -248,11 +261,11 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         )
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_pm_status ON pending_messages (status)")
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     // User prompts
@@ -268,22 +281,22 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         )
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_up_project ON user_prompts (project)")
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     sqlx::query("CREATE INDEX IF NOT EXISTS idx_up_created ON user_prompts (created_at DESC)")
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     // Upgrade embedding column from vector(384) to vector(1024) for BGE-M3.
     // Only runs when column is still 384d (checked via pg_attribute.atttypmod).
     // Must drop ivfflat index first, NULL data, ALTER type, then recreate index.
     // Embeddings will be regenerated via `backfill-embeddings` command.
-    sqlx::query(
+    match sqlx::query(
         r#"
         DO $$ BEGIN
             IF EXISTS (
@@ -301,9 +314,15 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         END $$
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await
-    .ok(); // May fail if < 100 rows for ivfflat; that's fine
+    {
+        Ok(_) => {},
+        Err(sqlx::Error::Database(db_err)) if db_err.code().as_deref() == Some("22023") => {
+            tracing::debug!("Skipping ivfflat index creation in upgrade script: too few rows");
+        },
+        Err(e) => return Err(e.into()),
+    }
 
     // Injected observations tracking for injection-aware dedup
     sqlx::query(
@@ -316,23 +335,23 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         )
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_injected_obs_session ON injected_observations(session_id)",
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     // Fix noise_level default from 'normal' to 'medium' (NoiseLevel enum has no Normal variant).
     // Idempotent: SET DEFAULT is a no-op if already 'medium', UPDATE only touches 'normal' rows.
     sqlx::query("ALTER TABLE observations ALTER COLUMN noise_level SET DEFAULT 'medium'")
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     sqlx::query("UPDATE observations SET noise_level = 'medium' WHERE noise_level = 'normal'")
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     // Upgrade search_vec from generated column (title+subtitle+narrative only) to
@@ -355,7 +374,7 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         END $$
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     // Create or replace the trigger function that computes search_vec
@@ -386,13 +405,13 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
         $$ LANGUAGE plpgsql;
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     // Create trigger (idempotent via DROP IF EXISTS).
     // Must be two separate statements — PG disallows multiple commands in a prepared statement.
     sqlx::query("DROP TRIGGER IF EXISTS trg_observations_search_vec ON observations")
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     sqlx::query(
@@ -403,20 +422,20 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
             EXECUTE FUNCTION observations_search_vec_update()
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     // Recreate GIN index (may have been dropped with the column)
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_obs_search_vec ON observations USING GIN (search_vec)",
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
     // Backfill search_vec for existing rows by touching each row to fire the trigger.
     // Uses a no-op UPDATE (set title = title) which is safe and idempotent.
     sqlx::query("UPDATE observations SET title = title WHERE search_vec IS NULL")
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
     // Unique index on global_knowledge title (case-insensitive) to prevent
@@ -424,9 +443,10 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
     sqlx::query(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_title_unique ON global_knowledge (LOWER(title))",
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
+    tx.commit().await?;
     tracing::info!("PostgreSQL migrations completed");
     Ok(())
 }

@@ -134,8 +134,11 @@ pub(super) async fn handle_save_memory(
     let project = args.get("project").and_then(|p| p.as_str());
 
     match observation_service.save_memory(raw_text, title, project).await {
-        Ok(Some(obs)) => mcp_ok(&obs),
-        Ok(None) => mcp_text("Observation filtered as low-value"),
+        Ok(opencode_mem_service::SaveMemoryResult::Created(obs)) => mcp_ok(&obs),
+        Ok(opencode_mem_service::SaveMemoryResult::Duplicate(obs)) => mcp_ok(&obs),
+        Ok(opencode_mem_service::SaveMemoryResult::Filtered) => {
+            mcp_text("Observation filtered as low-value")
+        },
         Err(e) => mcp_err(e),
     }
 }
