@@ -103,17 +103,20 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
     .execute(&mut *tx)
     .await?;
 
-    match sqlx::query(
-        "CREATE INDEX IF NOT EXISTS idx_obs_embedding ON observations USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100)",
+    sqlx::query(
+        r#"
+        DO $$ 
+        BEGIN
+            CREATE INDEX IF NOT EXISTS idx_obs_embedding ON observations USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+        EXCEPTION
+            WHEN invalid_parameter_value THEN
+                -- SQLSTATE 22023: too few rows for ivfflat index. Safe to ignore, handled natively.
+                NULL;
+        END $$;
+        "#,
     )
     .execute(&mut *tx)
-    .await {
-        Ok(_) => {},
-        Err(sqlx::Error::Database(db_err)) if db_err.code().as_deref() == Some("22023") => {
-            tracing::debug!("Skipping ivfflat index creation: too few rows");
-        },
-        Err(e) => return Err(e.into()),
-    }
+    .await?;
 
     // Sessions
     sqlx::query(
@@ -301,9 +304,10 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
     // Only runs when column is still 384d (checked via pg_attribute.atttypmod).
     // Must drop ivfflat index first, NULL data, ALTER type, then recreate index.
     // Embeddings will be regenerated via `backfill-embeddings` command.
-    match sqlx::query(
+    sqlx::query(
         r#"
-        DO $$ BEGIN
+        DO $$ 
+        BEGIN
             IF EXISTS (
                 SELECT 1 FROM pg_attribute
                 WHERE attrelid = 'observations'::regclass
@@ -313,21 +317,19 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
                 DROP INDEX IF EXISTS idx_obs_embedding;
                 UPDATE observations SET embedding = NULL WHERE embedding IS NOT NULL;
                 ALTER TABLE observations ALTER COLUMN embedding TYPE vector(1024);
-                CREATE INDEX idx_obs_embedding ON observations
-                    USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+                BEGIN
+                    CREATE INDEX idx_obs_embedding ON observations
+                        USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+                EXCEPTION
+                    WHEN invalid_parameter_value THEN
+                        NULL;
+                END;
             END IF;
-        END $$
+        END $$;
         "#,
     )
     .execute(&mut *tx)
-    .await
-    {
-        Ok(_) => {},
-        Err(sqlx::Error::Database(db_err)) if db_err.code().as_deref() == Some("22023") => {
-            tracing::debug!("Skipping ivfflat index creation in upgrade script: too few rows");
-        },
-        Err(e) => return Err(e.into()),
-    }
+    .await?;
 
     // Injected observations tracking for injection-aware dedup
     sqlx::query(
@@ -447,7 +449,23 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
     // Unique index on global_knowledge title (case-insensitive) to prevent
     // duplicate knowledge entries from concurrent saves (race condition fix).
     sqlx::query(
-        "CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_title_unique ON global_knowledge (LOWER(title))",
+        r#"
+        DO $$
+        BEGIN
+            -- Clean up existing duplicates by keeping the most recently updated record
+            DELETE FROM global_knowledge a USING (
+                SELECT LOWER(title) as norm_title, MAX(updated_at) as max_updated_at
+                FROM global_knowledge
+                GROUP BY LOWER(title)
+                HAVING COUNT(*) > 1
+            ) b
+            WHERE LOWER(a.title) = b.norm_title
+            AND a.updated_at < b.max_updated_at;
+            
+            -- Then safely create the unique index
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_title_unique ON global_knowledge (LOWER(title));
+        END $$;
+        "#,
     )
     .execute(&mut *tx)
     .await?;

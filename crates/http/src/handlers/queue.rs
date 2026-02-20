@@ -54,8 +54,7 @@ pub async fn process_pending_queue(
         return Ok(Json(ProcessQueueResponse { processed: 0, failed: 0 }));
     }
 
-    let count = messages.len();
-    let mut handles = Vec::with_capacity(count);
+    let mut handles = Vec::with_capacity(messages.len());
 
     let mut messages_iter = messages.into_iter();
 
@@ -97,6 +96,7 @@ pub async fn process_pending_queue(
         handles.push(handle);
     }
 
+    let processed = handles.len();
     let mut failed = 0usize;
     for handle in handles {
         match handle.await {
@@ -106,7 +106,7 @@ pub async fn process_pending_queue(
         }
     }
 
-    Ok(Json(ProcessQueueResponse { processed: count, failed }))
+    Ok(Json(ProcessQueueResponse { processed, failed }))
 }
 
 pub async fn clear_failed_queue(
