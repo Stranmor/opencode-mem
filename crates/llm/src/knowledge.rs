@@ -17,12 +17,12 @@ impl LlmClient {
     ) -> Result<Option<KnowledgeInput>, LlmError> {
         if matches!(
             observation.noise_level,
-            opencode_mem_core::NoiseLevel::Low | opencode_mem_core::NoiseLevel::Negligible
+            opencode_mem_core::NoiseLevel::Critical | opencode_mem_core::NoiseLevel::High
         ) {
             tracing::debug!(
                 id = %observation.id,
                 noise = ?observation.noise_level,
-                "Skipping knowledge extraction"
+                "Skipping knowledge extraction for noisy observation"
             );
             return Ok(None);
         }

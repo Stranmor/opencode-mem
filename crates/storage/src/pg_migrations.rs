@@ -191,6 +191,11 @@ pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
     .execute(&mut *tx)
     .await?;
 
+    // Upgrade global_knowledge usage_count to BIGINT
+    sqlx::query("ALTER TABLE global_knowledge ALTER COLUMN usage_count TYPE BIGINT")
+        .execute(&mut *tx)
+        .await?;
+
     // Session summaries
     sqlx::query(
         r#"

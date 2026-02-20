@@ -3,7 +3,7 @@
 use super::*;
 
 use crate::error::StorageError;
-use crate::pending_queue::{max_retry_count, QueueStats};
+use crate::pending_queue::{QueueStats, max_retry_count};
 use crate::traits::PendingQueueStore;
 use async_trait::async_trait;
 
@@ -119,7 +119,22 @@ impl PendingQueueStore for PgStorage {
         .bind(stale_threshold)
         .execute(&self.pool)
         .await?;
-        Ok(usize::try_from(result.rows_affected()).unwrap_or(usize::MAX))
+        Ok(usize::try_from(result.rows_affected()).unwrap_or(0))
+    }
+
+    async fn release_messages(&self, ids: &[i64]) -> Result<usize, StorageError> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let result = sqlx::query(
+            "UPDATE pending_messages
+               SET status = 'pending', claimed_at_epoch = NULL
+               WHERE status = 'processing' AND id = ANY($1)",
+        )
+        .bind(ids)
+        .execute(&self.pool)
+        .await?;
+        Ok(usize::try_from(result.rows_affected()).unwrap_or(0))
     }
 
     async fn get_failed_messages(&self, limit: usize) -> Result<Vec<PendingMessage>, StorageError> {

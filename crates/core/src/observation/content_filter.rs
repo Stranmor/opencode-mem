@@ -7,18 +7,33 @@ use regex::Regex;
 /// Regex pattern for matching private content tags.
 #[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
 static PRIVATE_TAG_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new("(?is)<private>.*?</private>").unwrap());
+    LazyLock::new(|| Regex::new(r"(?is)<private(?:>|\s[^>]*>).*?</private>").unwrap());
 
 /// Regex for unclosed private tags (truncation safety).
 #[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
 static PRIVATE_UNCLOSED_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<private>.*$").unwrap());
+    LazyLock::new(|| Regex::new(r"(?is)<private(?:>|\s[^>]*>).*$").unwrap());
+
+/// Regex for orphaned closing private tags left after nested tag stripping.
+#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
+static PRIVATE_ORPHAN_CLOSE_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)</private>").unwrap());
 
 /// Filters out content wrapped in `<private>...</private>` tags.
 /// Handles both well-formed tags and unclosed tags.
 pub fn filter_private_content(text: &str) -> String {
-    let after_closed = PRIVATE_TAG_REGEX.replace_all(text, "");
-    PRIVATE_UNCLOSED_REGEX.replace_all(&after_closed, "").into_owned()
+    let mut result = text.to_owned();
+    // Use loop to correctly strip deeply nested tags from inside-out/outside-in
+    // instead of replacing all lazy matches which leaves un-stripped content
+    loop {
+        let new_result = PRIVATE_TAG_REGEX.replace_all(&result, "").into_owned();
+        if new_result == result {
+            break;
+        }
+        result = new_result;
+    }
+    let after_unclosed = PRIVATE_UNCLOSED_REGEX.replace_all(&result, "");
+    PRIVATE_ORPHAN_CLOSE_REGEX.replace_all(&after_unclosed, "").into_owned()
 }
 
 /// Regex pattern for matching injected memory blocks.
@@ -27,13 +42,13 @@ pub fn filter_private_content(text: &str) -> String {
 /// Also handles optional XML attributes on the opening tag.
 #[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
 static MEMORY_TAG_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<memory-[a-z][^>]*>.*?</memory-[^>]+>").unwrap());
+    LazyLock::new(|| Regex::new(r"(?is)<memory-[a-z]+(?:>|\s[^>]*>).*?</memory-[a-z]+>").unwrap());
 
 /// Regex for unclosed memory tags (truncation safety).
 /// Strips from opening tag to end-of-string when no closing tag exists.
 #[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
 static MEMORY_UNCLOSED_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<memory-[a-z][^>]*>.*$").unwrap());
+    LazyLock::new(|| Regex::new(r"(?is)<memory-[a-z]+(?:>|\s[^>]*>).*$").unwrap());
 
 /// Regex for orphaned closing memory tags left after nested tag stripping.
 /// When nested tags like `<memory-global><memory-project>...</memory-project></memory-global>`
@@ -41,7 +56,7 @@ static MEMORY_UNCLOSED_REGEX: LazyLock<Regex> =
 /// `</memory-global>` as an orphan. This third pass catches those remnants.
 #[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
 static MEMORY_ORPHAN_CLOSE_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)</memory-[^>]+>").unwrap());
+    LazyLock::new(|| Regex::new(r"(?i)</memory-[a-z]+>").unwrap());
 
 /// Strips injected memory blocks (`<memory-*>...</memory-*>`) from text.
 ///
@@ -51,8 +66,16 @@ static MEMORY_ORPHAN_CLOSE_REGEX: LazyLock<Regex> =
 ///
 /// Handles both well-formed tags and unclosed tags (e.g. from truncation).
 pub fn filter_injected_memory(text: &str) -> String {
-    let after_closed = MEMORY_TAG_REGEX.replace_all(text, "");
-    let after_unclosed = MEMORY_UNCLOSED_REGEX.replace_all(&after_closed, "");
+    let mut result = text.to_owned();
+    // Loop to handle arbitrary nesting depth without leaking
+    loop {
+        let new_result = MEMORY_TAG_REGEX.replace_all(&result, "").into_owned();
+        if new_result == result {
+            break;
+        }
+        result = new_result;
+    }
+    let after_unclosed = MEMORY_UNCLOSED_REGEX.replace_all(&result, "");
     MEMORY_ORPHAN_CLOSE_REGEX.replace_all(&after_unclosed, "").into_owned()
 }
 

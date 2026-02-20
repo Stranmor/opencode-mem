@@ -78,4 +78,8 @@ impl QueueService {
     ) -> Result<usize, ServiceError> {
         Ok(self.storage.release_stale_messages(visibility_timeout_secs).await?)
     }
+
+    pub async fn release_messages(&self, ids: &[i64]) -> Result<usize, ServiceError> {
+        Ok(self.storage.release_messages(ids).await?)
+    }
 }

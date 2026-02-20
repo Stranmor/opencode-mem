@@ -57,11 +57,22 @@ pub async fn process_pending_queue(
     let count = messages.len();
     let mut handles = Vec::with_capacity(count);
 
-    for msg in messages {
-        let permit = Arc::clone(&state.semaphore).acquire_owned().await.map_err(|_sem_err| {
-            tracing::error!("Semaphore closed unexpectedly");
-            crate::api_error::ApiError::Internal(anyhow::anyhow!("Internal Error"))
-        })?;
+    let mut messages_iter = messages.into_iter();
+
+    while let Some(msg) = messages_iter.next() {
+        let permit = match Arc::clone(&state.semaphore).try_acquire_owned() {
+            Ok(p) => p,
+            Err(_) => {
+                // Return remaining messages to queue
+                let mut remaining_ids = vec![msg.id];
+                remaining_ids.extend(messages_iter.map(|m| m.id));
+                if let Err(e) = state.queue_service.release_messages(&remaining_ids).await {
+                    tracing::error!("Failed to release un-acquired messages: {}", e);
+                }
+                break;
+            },
+        };
+
         let state_clone = Arc::clone(&state);
         let handle = tokio::spawn(async move {
             let _permit = permit;

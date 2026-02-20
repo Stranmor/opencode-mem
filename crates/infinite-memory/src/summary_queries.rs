@@ -49,6 +49,32 @@ pub async fn get_sessions_with_unaggregated_5min(pool: &PgPool) -> Result<Vec<Op
 }
 
 /// Get all unaggregated 5min summaries for a specific session.
+pub async fn release_summaries_5min(pool: &PgPool, ids: &[i64]) -> Result<()> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    sqlx::query(
+        "UPDATE summaries_5min SET processing_started_at = NULL, processing_instance_id = NULL WHERE id = ANY($1)",
+    )
+    .bind(ids)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn release_summaries_hour(pool: &PgPool, ids: &[i64]) -> Result<()> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    sqlx::query(
+        "UPDATE summaries_hour SET processing_started_at = NULL, processing_instance_id = NULL WHERE id = ANY($1)",
+    )
+    .bind(ids)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn get_unaggregated_5min_for_session(
     pool: &PgPool,
     session_id: Option<&str>,

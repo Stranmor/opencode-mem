@@ -240,6 +240,9 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
             create_hour_summary(pool, &session_summaries, &content, merged_entities.as_ref())
                 .await?;
             hours_created += 1;
+        } else if !session_summaries.is_empty() {
+            let ids: Vec<i64> = session_summaries.iter().map(|s| s.id).collect();
+            summary_queries::release_summaries_5min(pool, &ids).await?;
         }
     }
 
@@ -259,6 +262,9 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
             create_day_summary(pool, &session_summaries, &content, merged_entities.as_ref())
                 .await?;
             days_created += 1;
+        } else if !session_summaries.is_empty() {
+            let ids: Vec<i64> = session_summaries.iter().map(|s| s.id).collect();
+            summary_queries::release_summaries_hour(pool, &ids).await?;
         }
     }
 

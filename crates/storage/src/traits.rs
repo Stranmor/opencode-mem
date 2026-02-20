@@ -191,6 +191,9 @@ pub trait PendingQueueStore: Send + Sync {
         visibility_timeout_secs: i64,
     ) -> Result<usize, StorageError>;
 
+    /// Release specific messages back to pending immediately.
+    async fn release_messages(&self, ids: &[i64]) -> Result<usize, StorageError>;
+
     /// Get failed messages.
     async fn get_failed_messages(&self, limit: usize) -> Result<Vec<PendingMessage>, StorageError>;
 
