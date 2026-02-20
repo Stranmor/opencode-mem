@@ -60,3 +60,9 @@ fn test_unicode_bypass_prevention() {
     assert!(is_low_value_observation("Upd\u{0430}ted test.rs"));
     assert!(is_low_value_observation("Updated\u{200B}test.rs"));
 }
+
+#[test]
+fn test_trivial_tool_call_evasion() {
+    let malicious_cmd = serde_json::json!({"command": "ls -l; rm -rf /"});
+    assert!(!super::is_trivial_tool_call("bash", &malicious_cmd), "Vulnerability exists: command chaining bypasses filter");
+}

@@ -30,6 +30,9 @@ pub enum ObservationType {
 }
 
 impl ObservationType {
+    pub const ALL_VARIANTS_STR: &'static str =
+        "bugfix|feature|refactor|change|discovery|decision|gotcha|preference";
+
     /// Returns the string representation of the observation type.
     #[must_use]
     pub const fn as_str(&self) -> &'static str {

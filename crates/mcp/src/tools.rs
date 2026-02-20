@@ -77,7 +77,7 @@ pub fn get_tools_json() -> serde_json::Value {
                         "query": { "type": "string", "description": "Search query" },
                         "limit": { "type": "integer", "default": 50 },
                         "project": { "type": "string", "description": "Filter by project" },
-                        "type": { "type": "string", "description": "Filter by observation type (bugfix, feature, refactor, discovery, decision, change)" },
+                        "type": { "type": "string", "description": format!("Filter by observation type ({})", opencode_mem_core::ObservationType::ALL_VARIANTS_STR) },
                         "from": { "type": "string", "description": "Start date (ISO 8601)" },
                         "to": { "type": "string", "description": "End date (ISO 8601)" }
                     },

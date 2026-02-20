@@ -68,11 +68,12 @@ DECISION (MANDATORY — choose exactly one):
     };
 
     let json_schema = if candidates.is_empty() {
-        r#"Return JSON:
+        format!(
+            r#"Return JSON:
 - action: "create"
 - noise_level: one of "critical", "high", "medium", "low", "negligible"
 - noise_reason: why this is/isn't worth remembering (max 100 chars)
-- type: "gotcha", "bugfix", "decision", or "feature"
+- type: one of [{}]
 - title: the lesson learned (max 80 chars, must be a complete statement of fact)
 - subtitle: project/context this applies to
 - narrative: the full lesson — what happened, why, and what to do differently
@@ -80,15 +81,18 @@ DECISION (MANDATORY — choose exactly one):
 - concepts: from ["problem-solution", "gotcha", "pattern", "trade-off"]
 - files_read: file paths involved
 - files_modified: file paths changed
-- keywords: search terms"#
+- keywords: search terms"#,
+            opencode_mem_core::ObservationType::ALL_VARIANTS_STR
+        )
     } else {
-        r#"Return JSON:
+        format!(
+            r#"Return JSON:
 - action: one of "create", "update", "skip"
 - target_id: id of existing observation to update (required if action is "update")
 - skip_reason: why this should be skipped (required if action is "skip")
 - noise_level: one of "critical", "high", "medium", "low", "negligible"
 - noise_reason: why this is/isn't worth remembering (max 100 chars)
-- type: "gotcha", "bugfix", "decision", or "feature"
+- type: one of [{}]
 - title: the lesson learned (max 80 chars, must be a complete statement of fact)
 - subtitle: project/context this applies to
 - narrative: the full lesson — what happened, why, and what to do differently
@@ -96,7 +100,9 @@ DECISION (MANDATORY — choose exactly one):
 - concepts: from ["problem-solution", "gotcha", "pattern", "trade-off"]
 - files_read: file paths involved
 - files_modified: file paths changed
-- keywords: search terms"#
+- keywords: search terms"#,
+            opencode_mem_core::ObservationType::ALL_VARIANTS_STR
+        )
     };
 
     format!(
