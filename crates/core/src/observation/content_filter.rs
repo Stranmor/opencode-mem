@@ -19,20 +19,25 @@ static PRIVATE_UNCLOSED_REGEX: LazyLock<Regex> =
 static PRIVATE_ORPHAN_CLOSE_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)</private>").unwrap());
 
+fn strip_nested(text: &str, tag_regex: &Regex) -> String {
+    let mut current = text.to_owned();
+    loop {
+        // replace_all returns Cow::Borrowed if no replacements were made.
+        // We only convert into_owned() if a replacement actually happened, avoiding O(N) allocations.
+        let replaced = tag_regex.replace_all(&current, "");
+        match replaced {
+            std::borrow::Cow::Borrowed(_) => break, // No more matches found
+            std::borrow::Cow::Owned(new_string) => current = new_string,
+        }
+    }
+    current
+}
+
 /// Filters out content wrapped in `<private>...</private>` tags.
 /// Handles both well-formed tags and unclosed tags.
 pub fn filter_private_content(text: &str) -> String {
-    let mut result = text.to_owned();
-    // Use loop to correctly strip deeply nested tags from inside-out/outside-in
-    // instead of replacing all lazy matches which leaves un-stripped content
-    loop {
-        let new_result = PRIVATE_TAG_REGEX.replace_all(&result, "").into_owned();
-        if new_result == result {
-            break;
-        }
-        result = new_result;
-    }
-    let after_unclosed = PRIVATE_UNCLOSED_REGEX.replace_all(&result, "");
+    let stripped = strip_nested(text, &PRIVATE_TAG_REGEX);
+    let after_unclosed = PRIVATE_UNCLOSED_REGEX.replace_all(&stripped, "");
     PRIVATE_ORPHAN_CLOSE_REGEX.replace_all(&after_unclosed, "").into_owned()
 }
 
@@ -66,16 +71,8 @@ static MEMORY_ORPHAN_CLOSE_REGEX: LazyLock<Regex> =
 ///
 /// Handles both well-formed tags and unclosed tags (e.g. from truncation).
 pub fn filter_injected_memory(text: &str) -> String {
-    let mut result = text.to_owned();
-    // Loop to handle arbitrary nesting depth without leaking
-    loop {
-        let new_result = MEMORY_TAG_REGEX.replace_all(&result, "").into_owned();
-        if new_result == result {
-            break;
-        }
-        result = new_result;
-    }
-    let after_unclosed = MEMORY_UNCLOSED_REGEX.replace_all(&result, "");
+    let stripped = strip_nested(text, &MEMORY_TAG_REGEX);
+    let after_unclosed = MEMORY_UNCLOSED_REGEX.replace_all(&stripped, "");
     MEMORY_ORPHAN_CLOSE_REGEX.replace_all(&after_unclosed, "").into_owned()
 }
 
