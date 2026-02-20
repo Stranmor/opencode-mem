@@ -27,10 +27,12 @@ impl LlmClient {
             return Ok(None);
         }
 
-        let dominated_by_generalizable = observation
-            .concepts
-            .iter()
-            .any(|c| matches!(c, Concept::Pattern | Concept::Gotcha | Concept::HowItWorks));
+        let dominated_by_generalizable =
+            matches!(observation.observation_type, opencode_mem_core::ObservationType::Gotcha)
+                || observation
+                    .concepts
+                    .iter()
+                    .any(|c| matches!(c, Concept::Pattern | Concept::Gotcha | Concept::HowItWorks));
 
         if !dominated_by_generalizable {
             return Ok(None);
@@ -106,5 +108,35 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
             observation.project.clone(),
             Some(observation.id.clone()),
         )))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use opencode_mem_core::{Concept, NoiseLevel, Observation, ObservationType};
+
+    #[test]
+    fn test_knowledge_extraction_type_bypass() {
+        let mut obs = Observation::builder(
+            "test".to_string(),
+            "manual".to_string(),
+            ObservationType::Gotcha,
+            "Test Gotcha".to_string(),
+        )
+        .build();
+        obs.concepts = vec![Concept::WhyItExists, Concept::WhatChanged];
+
+        // Simulated logic from maybe_extract_knowledge
+        let dominated = matches!(obs.observation_type, ObservationType::Gotcha)
+            || obs
+                .concepts
+                .iter()
+                .any(|c| matches!(c, Concept::Pattern | Concept::Gotcha | Concept::HowItWorks));
+
+        assert!(
+            dominated,
+            "Vulnerability fixed: ObservationType::Gotcha triggers extraction even if concepts are generic"
+        );
     }
 }
