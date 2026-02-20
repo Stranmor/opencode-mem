@@ -1,3 +1,4 @@
+use crate::api_error::ApiError;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -16,9 +17,11 @@ use crate::AppState;
 pub async fn list_knowledge(
     State(state): State<Arc<AppState>>,
     Query(query): Query<KnowledgeQuery>,
-) -> Result<Json<Vec<GlobalKnowledge>>, StatusCode> {
+) -> Result<Json<Vec<GlobalKnowledge>>, ApiError> {
     let knowledge_type = match query.knowledge_type.as_ref() {
-        Some(s) => Some(s.parse::<KnowledgeType>().map_err(|_| StatusCode::BAD_REQUEST)?),
+        Some(s) => Some(
+            s.parse::<KnowledgeType>().map_err(|_| ApiError::BadRequest("Bad Request".into()))?,
+        ),
         None => None,
     };
     state
@@ -28,16 +31,16 @@ pub async fn list_knowledge(
         .map(Json)
         .map_err(|e| {
             tracing::error!("List knowledge error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         })
 }
 
 pub async fn search_knowledge(
     State(state): State<Arc<AppState>>,
     Query(query): Query<KnowledgeQuery>,
-) -> Result<Json<Vec<KnowledgeSearchResult>>, StatusCode> {
+) -> Result<Json<Vec<KnowledgeSearchResult>>, ApiError> {
     if query.q.trim().is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(ApiError::BadRequest("Bad Request".into()));
     }
     let results = state
         .knowledge_service
@@ -45,7 +48,7 @@ pub async fn search_knowledge(
         .await
         .map_err(|e| {
             tracing::error!("Search knowledge error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         })?;
     // Fire-and-forget usage tracking in background to avoid blocking response
     let service = state.knowledge_service.clone();
@@ -61,21 +64,21 @@ pub async fn search_knowledge(
 pub async fn get_knowledge_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<GlobalKnowledge>, StatusCode> {
+) -> Result<Json<GlobalKnowledge>, ApiError> {
     let knowledge = state.knowledge_service.get_knowledge(&id).await.map_err(|e| {
         tracing::error!("Get knowledge error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::Internal(anyhow::anyhow!("Internal Error"))
     })?;
-    knowledge.map(Json).ok_or(StatusCode::NOT_FOUND)
+    knowledge.map(Json).ok_or(ApiError::NotFound("Not Found".into()))
 }
 
 pub async fn delete_knowledge(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<Json<serde_json::Value>, ApiError> {
     let deleted = state.knowledge_service.delete_knowledge(&id).await.map_err(|e| {
         tracing::error!("Delete knowledge error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::Internal(anyhow::anyhow!("Internal Error"))
     })?;
     Ok(Json(json!({ "success": deleted, "id": id, "deleted": deleted })))
 }
@@ -83,11 +86,11 @@ pub async fn delete_knowledge(
 pub async fn save_knowledge(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SaveKnowledgeRequest>,
-) -> Result<Json<GlobalKnowledge>, StatusCode> {
+) -> Result<Json<GlobalKnowledge>, ApiError> {
     let knowledge_type = req
         .knowledge_type
         .parse::<KnowledgeType>()
-        .map_err(|_parse_err| StatusCode::BAD_REQUEST)?;
+        .map_err(|_parse_err| ApiError::BadRequest("Bad Request".into()))?;
 
     let input = KnowledgeInput::new(
         knowledge_type,
@@ -101,17 +104,17 @@ pub async fn save_knowledge(
 
     state.knowledge_service.save_knowledge(input).await.map(Json).map_err(|e| {
         tracing::error!("Save knowledge error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::Internal(anyhow::anyhow!("Internal Error"))
     })
 }
 
 pub async fn record_knowledge_usage(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<KnowledgeUsageResponse>, StatusCode> {
+) -> Result<Json<KnowledgeUsageResponse>, ApiError> {
     state.knowledge_service.update_knowledge_usage(&id).await.map_err(|e| {
         tracing::error!("Update knowledge usage error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::Internal(anyhow::anyhow!("Internal Error"))
     })?;
     Ok(Json(KnowledgeUsageResponse { success: true, id }))
 }

@@ -40,7 +40,6 @@ use axum::{
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock, Semaphore};
-use tower_http::cors::CorsLayer;
 
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_service::{

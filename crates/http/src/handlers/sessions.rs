@@ -1,3 +1,4 @@
+use crate::api_error::ApiError;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -18,13 +19,13 @@ use super::session_ops::{create_session, enqueue_session_observations};
 pub async fn generate_summary(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SessionSummaryRequest>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<Json<serde_json::Value>, ApiError> {
     // Legacy API: session_id serves as both UUID and content_session_id
     let summary =
         state.session_service.summarize_session(&req.session_id, &req.session_id).await.map_err(
             |e| {
                 tracing::error!("Generate summary failed: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
+                ApiError::Internal(anyhow::anyhow!("Internal Error"))
             },
         )?;
     Ok(Json(serde_json::json!({"session_id": req.session_id, "summary": summary})))
@@ -34,7 +35,7 @@ pub async fn session_init_legacy(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
     Json(req): Json<SessionInitRequest>,
-) -> Result<Json<SessionInitResponse>, StatusCode> {
+) -> Result<Json<SessionInitResponse>, ApiError> {
     let content_session_id = req.content_session_id.unwrap_or_else(|| session_db_id.clone());
     let resp =
         create_session(&state, session_db_id, content_session_id, req.project, req.user_prompt)
@@ -46,7 +47,7 @@ pub async fn session_observations_legacy(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
     Json(req): Json<SessionObservationsRequest>,
-) -> Result<Json<SessionObservationsResponse>, StatusCode> {
+) -> Result<Json<SessionObservationsResponse>, ApiError> {
     let resp = enqueue_session_observations(&state, session_db_id, req.observations).await?;
     Ok(Json(resp))
 }
@@ -54,13 +55,13 @@ pub async fn session_observations_legacy(
 pub async fn session_summarize_legacy(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
-) -> Result<Json<serde_json::Value>, StatusCode> {
+) -> Result<Json<serde_json::Value>, ApiError> {
     // Legacy API: session_db_id serves as both UUID and content_session_id
     let summary =
         state.session_service.summarize_session(&session_db_id, &session_db_id).await.map_err(
             |e| {
                 tracing::error!("Generate summary failed: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
+                ApiError::Internal(anyhow::anyhow!("Internal Error"))
             },
         )?;
     Ok(Json(serde_json::json!({"session_id": session_db_id, "summary": summary, "queued": true})))
@@ -69,10 +70,10 @@ pub async fn session_summarize_legacy(
 pub async fn session_status(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
-) -> Result<Json<SessionStatusResponse>, StatusCode> {
+) -> Result<Json<SessionStatusResponse>, ApiError> {
     let session = state.session_service.get_session(&session_db_id).await.map_err(|e| {
         tracing::error!("Get session error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::Internal(anyhow::anyhow!("Internal Error"))
     })?;
     match session {
         Some(s) => {
@@ -89,17 +90,17 @@ pub async fn session_status(
                 ended_at: s.ended_at.map(|d| d.to_rfc3339()),
             }))
         },
-        None => Err(StatusCode::NOT_FOUND),
+        None => Err(ApiError::NotFound("Not Found".into())),
     }
 }
 
 pub async fn session_delete(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
-) -> Result<Json<SessionDeleteResponse>, StatusCode> {
+) -> Result<Json<SessionDeleteResponse>, ApiError> {
     let deleted = state.session_service.delete_session(&session_db_id).await.map_err(|e| {
         tracing::error!("Delete session error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::Internal(anyhow::anyhow!("Internal Error"))
     })?;
     Ok(Json(SessionDeleteResponse { deleted, session_id: session_db_id }))
 }
@@ -107,10 +108,10 @@ pub async fn session_delete(
 pub async fn session_complete(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
-) -> Result<Json<SessionCompleteResponse>, StatusCode> {
+) -> Result<Json<SessionCompleteResponse>, ApiError> {
     let summary = state.session_service.complete_session(&session_db_id).await.map_err(|e| {
         tracing::error!("Complete session failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::Internal(anyhow::anyhow!("Internal Error"))
     })?;
     Ok(Json(SessionCompleteResponse {
         session_id: session_db_id,

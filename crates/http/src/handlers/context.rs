@@ -1,3 +1,4 @@
+use crate::api_error::ApiError;
 use axum::{
     extract::{Query, State},
     http::StatusCode,
@@ -24,12 +25,12 @@ use super::search::unified_timeline;
 pub async fn get_context_recent(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextQuery>,
-) -> Result<Json<Vec<Observation>>, StatusCode> {
+) -> Result<Json<Vec<Observation>>, ApiError> {
     let observations =
         state.search_service.get_context_for_project(&query.project, query.limit).await.map_err(
             |e| {
                 tracing::error!("Get context error: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
+                ApiError::Internal(anyhow::anyhow!("Internal Error"))
             },
         )?;
 
@@ -49,19 +50,17 @@ pub async fn get_context_recent(
 
 pub async fn get_projects(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<String>>, StatusCode> {
+) -> Result<Json<Vec<String>>, ApiError> {
     state.search_service.get_all_projects().await.map(Json).map_err(|e| {
         tracing::error!("Get projects error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::Internal(anyhow::anyhow!("Internal Error"))
     })
 }
 
-pub async fn get_stats(
-    State(state): State<Arc<AppState>>,
-) -> Result<Json<StorageStats>, StatusCode> {
+pub async fn get_stats(State(state): State<Arc<AppState>>) -> Result<Json<StorageStats>, ApiError> {
     state.search_service.get_stats().await.map(Json).map_err(|e| {
         tracing::error!("Get stats error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::Internal(anyhow::anyhow!("Internal Error"))
     })
 }
 
@@ -86,7 +85,7 @@ pub async fn sse_events(
 pub async fn get_decisions(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, StatusCode> {
+) -> Result<Json<Vec<SearchResult>>, ApiError> {
     let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
     state
         .search_service
@@ -102,14 +101,14 @@ pub async fn get_decisions(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get decisions error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         })
 }
 
 pub async fn get_changes(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, StatusCode> {
+) -> Result<Json<Vec<SearchResult>>, ApiError> {
     let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
     state
         .search_service
@@ -125,14 +124,14 @@ pub async fn get_changes(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get changes error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         })
 }
 
 pub async fn get_how_it_works(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, StatusCode> {
+) -> Result<Json<Vec<SearchResult>>, ApiError> {
     let search_query = if query.q.is_empty() {
         "how-it-works".to_owned()
     } else {
@@ -141,7 +140,7 @@ pub async fn get_how_it_works(
     state.search_service.hybrid_search(&search_query, query.capped_limit()).await.map(Json).map_err(
         |e| {
             tracing::error!("How it works search error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         },
     )
 }
@@ -149,19 +148,19 @@ pub async fn get_how_it_works(
 pub async fn context_timeline(
     State(state): State<Arc<AppState>>,
     Query(query): Query<UnifiedTimelineQuery>,
-) -> Result<Json<TimelineResult>, StatusCode> {
+) -> Result<Json<TimelineResult>, ApiError> {
     unified_timeline(State(state), Query(query)).await
 }
 
 pub async fn context_preview(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextPreviewQuery>,
-) -> Result<Json<ContextPreview>, StatusCode> {
+) -> Result<Json<ContextPreview>, ApiError> {
     let observations =
         state.search_service.get_context_for_project(&query.project, query.limit).await.map_err(
             |e| {
                 tracing::error!("Context preview error: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
+                ApiError::Internal(anyhow::anyhow!("Internal Error"))
             },
         )?;
     let preview = if query.format == "full" {

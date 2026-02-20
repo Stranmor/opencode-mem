@@ -87,6 +87,9 @@ impl SessionService {
     ) -> Result<String, ServiceError> {
         let observations = self.storage.get_session_observations(session_id).await?;
         if observations.is_empty() {
+            self.storage
+                .update_session_status_with_summary(session_id, SessionStatus::Completed, None)
+                .await?;
             return Ok("No observations in this session.".to_owned());
         }
         let summary = self.llm.generate_session_summary(&observations).await?;
@@ -104,11 +107,15 @@ impl SessionService {
         &self,
         content_session_id: &str,
     ) -> Result<Vec<Observation>, ServiceError> {
-        let output = Command::new("opencode").args(["export", content_session_id]).output().await?;
+        let opencode_bin = std::env::var("OPENCODE_BIN").unwrap_or_else(|_| "opencode".to_string());
+        let output =
+            Command::new(&opencode_bin).args(["export", content_session_id]).output().await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(ServiceError::ExternalCommand(format!("opencode export failed: {stderr}")));
+            return Err(ServiceError::ExternalCommand(format!(
+                "{opencode_bin} export failed: {stderr}"
+            )));
         }
 
         let session_json = String::from_utf8(output.stdout)?;

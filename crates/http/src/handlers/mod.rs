@@ -3,6 +3,8 @@
 #![allow(clippy::cognitive_complexity, reason = "Complex async handlers are inherent")]
 #![allow(clippy::single_call_fn, reason = "HTTP handlers are called once from router")]
 
+use crate::api_error::ApiError;
+
 pub mod admin;
 pub mod api_docs;
 pub mod context;

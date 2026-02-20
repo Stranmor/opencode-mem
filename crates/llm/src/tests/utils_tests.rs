@@ -1,6 +1,6 @@
-use opencode_mem_core::{Concept, strip_markdown_json};
-use crate::observation::parse_concept;
 use crate::client::truncate;
+use crate::observation::parse_concept;
+use opencode_mem_core::{strip_markdown_json, Concept};
 
 #[test]
 fn test_truncate_within_limit() {

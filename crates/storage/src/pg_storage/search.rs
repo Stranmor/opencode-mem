@@ -5,15 +5,14 @@ use super::*;
 use std::collections::HashMap;
 
 use crate::error::StorageError;
-use crate::traits::{ObservationStore, SearchStore};
+use crate::traits::SearchStore;
 use async_trait::async_trait;
 
 #[async_trait]
 impl SearchStore for PgStorage {
     async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>, StorageError> {
         let Some(tsquery) = build_tsquery(query) else {
-            let recent = self.get_recent(limit).await?;
-            return Ok(recent.into_iter().map(|o| SearchResult::from_observation(&o)).collect());
+            return Ok(Vec::new());
         };
         let rows = sqlx::query(
             "SELECT id, title, subtitle, observation_type, noise_level,
@@ -37,8 +36,7 @@ impl SearchStore for PgStorage {
     ) -> Result<Vec<SearchResult>, StorageError> {
         let keywords: HashSet<String> = query.split_whitespace().map(str::to_lowercase).collect();
         let Some(tsquery) = build_tsquery(query) else {
-            let recent = self.get_recent(limit).await?;
-            return Ok(recent.into_iter().map(|o| SearchResult::from_observation(&o)).collect());
+            return Ok(Vec::new());
         };
 
         let rows = sqlx::query(

@@ -1,3 +1,4 @@
+use crate::api_error::ApiError;
 use axum::{
     extract::{ConnectInfo, Query, State},
     http::StatusCode,
@@ -21,7 +22,7 @@ use crate::AppState;
 
 pub async fn get_settings(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<SettingsResponse>, StatusCode> {
+) -> Result<Json<SettingsResponse>, ApiError> {
     let settings = state.settings.read().await.clone();
     Ok(Json(SettingsResponse { settings }))
 }
@@ -29,7 +30,7 @@ pub async fn get_settings(
 pub async fn update_settings(
     State(state): State<Arc<AppState>>,
     Json(req): Json<UpdateSettingsRequest>,
-) -> Result<Json<SettingsResponse>, StatusCode> {
+) -> Result<Json<SettingsResponse>, ApiError> {
     let mut settings = state.settings.write().await;
     if let Some(env) = req.env {
         settings.env = env;
@@ -39,7 +40,7 @@ pub async fn update_settings(
 
 pub async fn get_mcp_status(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<McpStatusResponse>, StatusCode> {
+) -> Result<Json<McpStatusResponse>, ApiError> {
     let settings = state.settings.read().await;
     Ok(Json(McpStatusResponse { enabled: settings.mcp_enabled }))
 }
@@ -47,7 +48,7 @@ pub async fn get_mcp_status(
 pub async fn toggle_mcp(
     State(state): State<Arc<AppState>>,
     Json(req): Json<ToggleMcpRequest>,
-) -> Result<Json<McpStatusResponse>, StatusCode> {
+) -> Result<Json<McpStatusResponse>, ApiError> {
     let mut settings = state.settings.write().await;
     settings.mcp_enabled = req.enabled;
     Ok(Json(McpStatusResponse { enabled: settings.mcp_enabled }))
@@ -55,7 +56,7 @@ pub async fn toggle_mcp(
 
 pub async fn get_branch_status(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<BranchStatusResponse>, StatusCode> {
+) -> Result<Json<BranchStatusResponse>, ApiError> {
     let settings = state.settings.read().await;
     Ok(Json(BranchStatusResponse {
         current_branch: settings.current_branch.clone(),
@@ -85,7 +86,7 @@ fn validate_branch_name(branch: &str) -> Result<(), &'static str> {
 pub async fn switch_branch(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SwitchBranchRequest>,
-) -> Result<Json<SwitchBranchResponse>, StatusCode> {
+) -> Result<Json<SwitchBranchResponse>, ApiError> {
     if let Err(msg) = validate_branch_name(&req.branch) {
         return Ok(Json(SwitchBranchResponse {
             success: false,
@@ -97,8 +98,8 @@ pub async fn switch_branch(
     let branch = req.branch.clone();
     let result = spawn_blocking(move || Command::new("git").args(["checkout", &branch]).output())
         .await
-        .map_err(|_join_err| StatusCode::INTERNAL_SERVER_ERROR)?
-        .map_err(|_io_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(anyhow::Error::from)?
+        .map_err(anyhow::Error::from)?;
 
     if result.status.success() {
         state.settings.write().await.current_branch.clone_from(&req.branch);
@@ -119,11 +120,11 @@ pub async fn switch_branch(
 
 pub async fn update_branch(
     State(_state): State<Arc<AppState>>,
-) -> Result<Json<UpdateBranchResponse>, StatusCode> {
+) -> Result<Json<UpdateBranchResponse>, ApiError> {
     let result = spawn_blocking(|| Command::new("git").args(["pull", "--ff-only"]).output())
         .await
-        .map_err(|_join_err| StatusCode::INTERNAL_SERVER_ERROR)?
-        .map_err(|_io_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(anyhow::Error::from)?
+        .map_err(anyhow::Error::from)?;
 
     if result.status.success() {
         let stdout = String::from_utf8_lossy(&result.stdout);
@@ -142,7 +143,7 @@ pub async fn update_branch(
 
 pub async fn get_instructions(
     Query(query): Query<InstructionsQuery>,
-) -> Result<Json<InstructionsResponse>, StatusCode> {
+) -> Result<Json<InstructionsResponse>, ApiError> {
     let content = spawn_blocking(|| {
         let skill_path = Path::new("SKILL.md");
         if skill_path.exists() {
@@ -152,7 +153,7 @@ pub async fn get_instructions(
         }
     })
     .await
-    .map_err(|_join_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+    .map_err(anyhow::Error::from)?;
     let sections: Vec<String> = content
         .lines()
         .filter(|l| l.starts_with("## "))
@@ -191,12 +192,12 @@ const fn is_localhost(addr: &SocketAddr) -> bool {
 
 pub async fn admin_restart(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-) -> Result<Json<AdminResponse>, StatusCode> {
+) -> Result<Json<AdminResponse>, ApiError> {
     if !is_localhost(&addr) {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(ApiError::Forbidden("Forbidden".into()));
     }
     // Restart requires external process manager (systemd).
-    // Exit with code 0 - systemd with Restart=always will restart the service.
+    // Exit with code 1 - systemd with Restart=on-failure will restart the service.
     tokio::spawn(async {
         sleep(Duration::from_millis(100)).await;
         #[expect(clippy::exit, reason = "Intentional restart via systemd")]
@@ -210,12 +211,8 @@ pub async fn admin_restart(
 
 pub async fn rebuild_embeddings(
     State(state): State<Arc<AppState>>,
-) -> Result<Json<AdminResponse>, StatusCode> {
-    state
-        .search_service
-        .clear_embeddings()
-        .await
-        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+) -> Result<Json<AdminResponse>, ApiError> {
+    state.search_service.clear_embeddings().await.map_err(anyhow::Error::from)?;
     Ok(Json(AdminResponse {
         success: true,
         message: "Embeddings cleared. Run `opencode-mem backfill-embeddings` to regenerate."
@@ -225,9 +222,9 @@ pub async fn rebuild_embeddings(
 
 pub async fn admin_shutdown(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-) -> Result<Json<AdminResponse>, StatusCode> {
+) -> Result<Json<AdminResponse>, ApiError> {
     if !is_localhost(&addr) {
-        return Err(StatusCode::FORBIDDEN);
+        return Err(ApiError::Forbidden("Forbidden".into()));
     }
     // Graceful shutdown: exit with code 0 after short delay to send response
     tokio::spawn(async {

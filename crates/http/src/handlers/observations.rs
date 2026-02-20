@@ -1,3 +1,4 @@
+use crate::api_error::ApiError;
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
@@ -20,7 +21,7 @@ use crate::AppState;
 pub async fn observe(
     State(state): State<Arc<AppState>>,
     Json(tool_call): Json<ToolCall>,
-) -> Result<Json<ObserveResponse>, StatusCode> {
+) -> Result<Json<ObserveResponse>, ApiError> {
     if let Some(project) = tool_call.project.as_deref() {
         if ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project)) {
             return Ok(Json(ObserveResponse { id: String::new(), queued: false }));
@@ -47,7 +48,7 @@ pub async fn observe(
         .await
         .map_err(|e| {
             tracing::error!("Queue message error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         })?;
 
     Ok(Json(ObserveResponse { id: message_id.to_string(), queued: true }))
@@ -56,7 +57,7 @@ pub async fn observe(
 pub async fn observe_batch(
     State(state): State<Arc<AppState>>,
     Json(tool_calls): Json<Vec<ToolCall>>,
-) -> Result<Json<ObserveBatchResponse>, StatusCode> {
+) -> Result<Json<ObserveBatchResponse>, ApiError> {
     let total = tool_calls.len();
     let mut count = 0usize;
     for tool_call in &tool_calls {
@@ -91,10 +92,10 @@ pub async fn observe_batch(
 pub async fn save_memory(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SaveMemoryRequest>,
-) -> Result<(StatusCode, Json<Observation>), StatusCode> {
+) -> Result<(StatusCode, Json<Observation>), ApiError> {
     let text = req.text.trim();
     if text.is_empty() {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(ApiError::BadRequest("Bad Request".into()));
     }
 
     match state
@@ -109,11 +110,11 @@ pub async fn save_memory(
             Ok((StatusCode::OK, Json(obs)))
         },
         Ok(opencode_mem_service::SaveMemoryResult::Filtered) => {
-            Err(StatusCode::UNPROCESSABLE_ENTITY)
+            Err(ApiError::UnprocessableEntity("Unprocessable Entity".into()))
         },
         Err(e) => {
             tracing::error!("Save memory error: {}", e);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
+            Err(ApiError::Internal(anyhow::anyhow!("Internal Error")))
         },
     }
 }
@@ -121,21 +122,21 @@ pub async fn save_memory(
 pub async fn get_observation(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<Option<Observation>>, StatusCode> {
+) -> Result<Json<Option<Observation>>, ApiError> {
     state.search_service.get_observation_by_id(&id).await.map(Json).map_err(|e| {
         tracing::error!("Get observation error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::Internal(anyhow::anyhow!("Internal Error"))
     })
 }
 
 pub async fn get_recent(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<Observation>>, StatusCode> {
+) -> Result<Json<Vec<Observation>>, ApiError> {
     state.search_service.get_recent_observations(query.capped_limit()).await.map(Json).map_err(
         |e| {
             tracing::error!("Get recent error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         },
     )
 }
@@ -143,7 +144,7 @@ pub async fn get_recent(
 pub async fn get_timeline(
     State(state): State<Arc<AppState>>,
     Query(query): Query<TimelineQuery>,
-) -> Result<Json<Vec<SearchResult>>, StatusCode> {
+) -> Result<Json<Vec<SearchResult>>, ApiError> {
     state
         .search_service
         .get_timeline(query.from.as_deref(), query.to.as_deref(), query.capped_limit())
@@ -151,28 +152,28 @@ pub async fn get_timeline(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get timeline error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         })
 }
 
 pub async fn get_observations_batch(
     State(state): State<Arc<AppState>>,
     Json(req): Json<BatchRequest>,
-) -> Result<Json<Vec<Observation>>, StatusCode> {
+) -> Result<Json<Vec<Observation>>, ApiError> {
     if let Err(msg) = req.validate() {
         tracing::warn!("Batch request validation failed: {}", msg);
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(ApiError::BadRequest("Bad Request".into()));
     }
     state.search_service.get_observations_by_ids(&req.ids).await.map(Json).map_err(|e| {
         tracing::error!("Get observations batch error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::Internal(anyhow::anyhow!("Internal Error"))
     })
 }
 
 pub async fn get_observations_paginated(
     State(state): State<Arc<AppState>>,
     Query(query): Query<PaginationQuery>,
-) -> Result<Json<PaginatedResult<Observation>>, StatusCode> {
+) -> Result<Json<PaginatedResult<Observation>>, ApiError> {
     let limit = query.limit.min(opencode_mem_core::MAX_QUERY_LIMIT);
     state
         .search_service
@@ -181,14 +182,14 @@ pub async fn get_observations_paginated(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get observations paginated error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         })
 }
 
 pub async fn get_summaries_paginated(
     State(state): State<Arc<AppState>>,
     Query(query): Query<PaginationQuery>,
-) -> Result<Json<PaginatedResult<SessionSummary>>, StatusCode> {
+) -> Result<Json<PaginatedResult<SessionSummary>>, ApiError> {
     let limit = query.limit.min(opencode_mem_core::MAX_QUERY_LIMIT);
     state
         .search_service
@@ -197,14 +198,14 @@ pub async fn get_summaries_paginated(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get summaries paginated error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         })
 }
 
 pub async fn get_prompts_paginated(
     State(state): State<Arc<AppState>>,
     Query(query): Query<PaginationQuery>,
-) -> Result<Json<PaginatedResult<UserPrompt>>, StatusCode> {
+) -> Result<Json<PaginatedResult<UserPrompt>>, ApiError> {
     let limit = query.limit.min(opencode_mem_core::MAX_QUERY_LIMIT);
     state
         .search_service
@@ -213,26 +214,26 @@ pub async fn get_prompts_paginated(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get prompts paginated error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         })
 }
 
 pub async fn get_session_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<Option<SessionSummary>>, StatusCode> {
+) -> Result<Json<Option<SessionSummary>>, ApiError> {
     state.search_service.get_session_summary(&id).await.map(Json).map_err(|e| {
         tracing::error!("Get session summary error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::Internal(anyhow::anyhow!("Internal Error"))
     })
 }
 
 pub async fn get_prompt_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<Option<UserPrompt>>, StatusCode> {
+) -> Result<Json<Option<UserPrompt>>, ApiError> {
     state.search_service.get_prompt_by_id(&id).await.map(Json).map_err(|e| {
         tracing::error!("Get prompt error: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::Internal(anyhow::anyhow!("Internal Error"))
     })
 }

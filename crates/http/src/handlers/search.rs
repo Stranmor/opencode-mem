@@ -1,3 +1,4 @@
+use crate::api_error::ApiError;
 use axum::{
     extract::{Query, State},
     http::StatusCode,
@@ -18,7 +19,7 @@ use crate::AppState;
 pub async fn search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, StatusCode> {
+) -> Result<Json<Vec<SearchResult>>, ApiError> {
     let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
     state
         .search_service
@@ -34,18 +35,18 @@ pub async fn search(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Search error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         })
 }
 
 pub async fn hybrid_search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, StatusCode> {
+) -> Result<Json<Vec<SearchResult>>, ApiError> {
     state.search_service.hybrid_search(&query.q, query.capped_limit()).await.map(Json).map_err(
         |e| {
             tracing::error!("Hybrid search error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         },
     )
 }
@@ -53,7 +54,7 @@ pub async fn hybrid_search(
 pub async fn semantic_search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, StatusCode> {
+) -> Result<Json<Vec<SearchResult>>, ApiError> {
     if query.q.is_empty() {
         return Ok(Json(Vec::new()));
     }
@@ -65,21 +66,21 @@ pub async fn semantic_search(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Semantic search error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         })
 }
 
 pub async fn search_sessions(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SessionSummary>>, StatusCode> {
+) -> Result<Json<Vec<SessionSummary>>, ApiError> {
     if query.q.is_empty() {
         return Ok(Json(Vec::new()));
     }
     state.search_service.search_sessions(&query.q, query.capped_limit()).await.map(Json).map_err(
         |e| {
             tracing::error!("Search sessions error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         },
     )
 }
@@ -87,14 +88,14 @@ pub async fn search_sessions(
 pub async fn search_prompts(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<UserPrompt>>, StatusCode> {
+) -> Result<Json<Vec<UserPrompt>>, ApiError> {
     if query.q.is_empty() {
         return Ok(Json(Vec::new()));
     }
     state.search_service.search_prompts(&query.q, query.capped_limit()).await.map(Json).map_err(
         |e| {
             tracing::error!("Search prompts error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         },
     )
 }
@@ -102,7 +103,7 @@ pub async fn search_prompts(
 pub async fn search_by_file(
     State(state): State<Arc<AppState>>,
     Query(query): Query<FileSearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, StatusCode> {
+) -> Result<Json<Vec<SearchResult>>, ApiError> {
     state
         .search_service
         .search_by_file(&query.file_path, query.limit.min(MAX_QUERY_LIMIT))
@@ -110,7 +111,7 @@ pub async fn search_by_file(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Search by file error: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            ApiError::Internal(anyhow::anyhow!("Internal Error"))
         })
 }
 
@@ -121,7 +122,7 @@ pub async fn search_by_file(
 pub async fn unified_search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
-) -> Result<Json<UnifiedSearchResult>, StatusCode> {
+) -> Result<Json<UnifiedSearchResult>, ApiError> {
     if query.q.is_empty() {
         return Ok(Json(UnifiedSearchResult {
             observations: Vec::new(),
@@ -213,7 +214,7 @@ pub async fn unified_search(
 pub async fn unified_timeline(
     State(state): State<Arc<AppState>>,
     Query(query): Query<UnifiedTimelineQuery>,
-) -> Result<Json<TimelineResult>, StatusCode> {
+) -> Result<Json<TimelineResult>, ApiError> {
     let anchor_obs = if let Some(ref id) = query.anchor {
         state.search_service.get_observation_by_id(id).await.ok().flatten()
     } else if let Some(ref q) = query.q {

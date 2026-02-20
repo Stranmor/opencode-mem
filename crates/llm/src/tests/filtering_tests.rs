@@ -1,9 +1,7 @@
 use std::env;
 
 use crate::observation::CompressionResult;
-use opencode_mem_core::{
-    NoiseLevel, Observation, ObservationInput, ObservationType, ToolOutput,
-};
+use opencode_mem_core::{NoiseLevel, Observation, ObservationInput, ObservationType, ToolOutput};
 
 // Integration tests for observation filtering (require ANTIGRAVITY_API_KEY)
 #[cfg(test)]

@@ -1,5 +1,4 @@
-//! Static API documentation data.
-
+/// Static API documentation data.
 use crate::api_types::{EndpointDoc, ParamDoc, SearchHelpResponse};
 
 /// Returns API documentation for search-related endpoints.

@@ -1,3 +1,4 @@
+use crate::api_error::ApiError;
 use std::sync::Arc;
 
 use axum::http::StatusCode;
@@ -17,7 +18,7 @@ pub(crate) async fn create_session(
     content_session_id: String,
     project: Option<String>,
     user_prompt: Option<String>,
-) -> Result<SessionInitResponse, StatusCode> {
+) -> Result<SessionInitResponse, ApiError> {
     let session = Session::new(
         session_db_id.clone(),
         content_session_id,
@@ -31,7 +32,7 @@ pub(crate) async fn create_session(
     );
     state.session_service.init_session(session).await.map_err(|e| {
         tracing::error!("Session init failed: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
+        ApiError::Internal(anyhow::anyhow!("Internal Error"))
     })?;
     Ok(SessionInitResponse { session_id: session_db_id, status: "active".to_owned() })
 }
@@ -45,7 +46,7 @@ pub(crate) async fn enqueue_session_observations(
     state: &Arc<AppState>,
     session_id: String,
     observations: Vec<ToolCall>,
-) -> Result<SessionObservationsResponse, StatusCode> {
+) -> Result<SessionObservationsResponse, ApiError> {
     let mut queued = 0usize;
     for tool_call in &observations {
         let tool_input =
