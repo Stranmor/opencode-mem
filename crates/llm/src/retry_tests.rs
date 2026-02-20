@@ -16,6 +16,7 @@ mod tests {
             model: "test-model".to_owned(),
             messages: vec![Message { role: "user".to_owned(), content: "hello".to_owned() }],
             response_format: ResponseFormat { format_type: "text".to_owned() },
+            max_tokens: None,
         }
     }
 
