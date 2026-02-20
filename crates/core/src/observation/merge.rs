@@ -7,7 +7,7 @@
 use chrono::{DateTime, Utc};
 
 use super::dedup::{union_dedup, union_dedup_concepts};
-use super::{Concept, DiscoveryTokens, NoiseLevel, Observation, PromptNumber};
+use super::{Concept, DiscoveryTokens, NoiseLevel, Observation, ObservationType, PromptNumber};
 
 /// Result of merging two observations.
 ///
@@ -15,43 +15,24 @@ use super::{Concept, DiscoveryTokens, NoiseLevel, Observation, PromptNumber};
 /// these values to the existing row via UPDATE.
 #[derive(Debug, Clone)]
 pub struct MergeResult {
-    /// Union of facts from both observations, deduplicated.
     pub facts: Vec<String>,
-    /// Union of keywords from both observations, deduplicated.
     pub keywords: Vec<String>,
-    /// Union of files_read from both observations, deduplicated.
     pub files_read: Vec<String>,
-    /// Union of files_modified from both observations, deduplicated.
     pub files_modified: Vec<String>,
-    /// Union of concepts from both observations, deduplicated.
     pub concepts: Vec<Concept>,
-    /// The longer narrative wins; existing preferred when equal length.
     pub narrative: Option<String>,
-    /// The longer subtitle wins; existing preferred when equal length.
     pub subtitle: Option<String>,
-    /// Most important (lowest discriminant) noise level.
     pub noise_level: NoiseLevel,
-    /// Noise reason from the newer observation if present, else existing.
     pub noise_reason: Option<String>,
-    /// Prompt number from newer if present, else existing.
     pub prompt_number: Option<PromptNumber>,
-    /// Discovery tokens from newer if present, else existing.
     pub discovery_tokens: Option<DiscoveryTokens>,
-    /// The later of the two timestamps.
-    pub created_at: DateTime<Utc>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub title: String,
+    pub observation_type: ObservationType,
 }
 
-/// Pure computation: merge newer observation data into an existing observation.
-///
-/// Takes references to both observations and returns the merged field values.
-/// No I/O, no DB access — just deterministic field computation.
-///
-/// # Merge rules
-/// - **Lists** (facts, keywords, files_read, files_modified, concepts): union with dedup
-/// - **Narrative / subtitle**: pick the longer text; prefer existing when equal length
-/// - **Noise level**: pick the most important (lowest `Ord` discriminant)
-/// - **Timestamp**: pick the later of the two
-#[must_use]
+/// Compute merged fields for two observations.
+/// Does not mutate them directly; returns a `MergeResult` struct with the resolved fields.
 pub fn compute_merge(existing: &Observation, newer: &Observation) -> MergeResult {
     let facts = union_dedup(&existing.facts, &newer.facts);
     let keywords = union_dedup(&existing.keywords, &newer.keywords);
@@ -72,6 +53,10 @@ pub fn compute_merge(existing: &Observation, newer: &Observation) -> MergeResult
 
     let created_at = existing.created_at.max(newer.created_at);
 
+    // Context-aware compressions might refine the title or change type based on new context
+    let title = newer.title.clone();
+    let observation_type = newer.observation_type;
+
     MergeResult {
         facts,
         keywords,
@@ -85,6 +70,8 @@ pub fn compute_merge(existing: &Observation, newer: &Observation) -> MergeResult
         prompt_number,
         discovery_tokens,
         created_at,
+        title,
+        observation_type,
     }
 }
 

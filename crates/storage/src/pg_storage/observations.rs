@@ -156,15 +156,14 @@ impl ObservationStore for PgStorage {
         file_path: &str,
         limit: usize,
     ) -> Result<Vec<SearchResult>, StorageError> {
-        let pattern = format!("%{}%", escape_like(file_path));
+        let jsonb_str = serde_json::json!([file_path]).to_string();
         let rows = sqlx::query(
             r#"SELECT id, title, subtitle, observation_type, noise_level, 0.0::float8 as score
                FROM observations
-               WHERE EXISTS (SELECT 1 FROM jsonb_array_elements_text(files_read) AS f WHERE f LIKE $1)
-                  OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(files_modified) AS f WHERE f LIKE $1)
+               WHERE files_read @> $1::jsonb OR files_modified @> $1::jsonb
                ORDER BY created_at DESC LIMIT $2"#,
         )
-        .bind(&pattern)
+        .bind(&jsonb_str)
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;

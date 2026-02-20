@@ -170,52 +170,60 @@ pub async fn create_day_summary(
 const MAX_EVENTS_PER_BATCH: usize = 100;
 
 pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<u32> {
-    let events = event_queries::get_unsummarized_events(
-        pool,
-        i64::try_from(MAX_EVENTS_PER_BATCH).unwrap_or(i64::MAX),
-    )
-    .await?;
-    if events.is_empty() {
-        return Ok(0);
-    }
-
-    let mut seen_sessions: Vec<String> = Vec::new();
-    for event in &events {
-        if !seen_sessions.contains(&event.session_id) {
-            seen_sessions.push(event.session_id.clone());
-        }
-    }
-
     let mut total_processed = 0u32;
-    for session_id in seen_sessions {
-        let session_events: Vec<&StoredEvent> =
-            events.iter().filter(|e| e.session_id == session_id).collect();
+    loop {
+        let events = event_queries::get_unsummarized_events(
+            pool,
+            i64::try_from(MAX_EVENTS_PER_BATCH).unwrap_or(i64::MAX),
+        )
+        .await?;
 
-        if session_events.is_empty() {
-            continue;
+        if events.is_empty() {
+            break;
         }
 
-        tracing::info!("Compressing {} events for session {}", session_events.len(), session_id);
-
-        let owned_events: Vec<StoredEvent> = session_events.iter().map(|e| (*e).clone()).collect();
-
-        let result: Result<()> = async {
-            let (summary, entities) = compress_events(llm, &owned_events).await?;
-            create_5min_summary(pool, &owned_events, &summary, entities.as_ref()).await?;
-            Ok(())
+        let mut seen_sessions: Vec<String> = Vec::new();
+        for event in &events {
+            if !seen_sessions.contains(&event.session_id) {
+                seen_sessions.push(event.session_id.clone());
+            }
         }
-        .await;
 
-        if let Err(e) = result {
-            tracing::error!(
-                session_id = %session_id,
-                error = %e,
-                "Failed to compress session, skipping"
+        for session_id in seen_sessions {
+            let session_events: Vec<&StoredEvent> =
+                events.iter().filter(|e| e.session_id == session_id).collect();
+
+            if session_events.is_empty() {
+                continue;
+            }
+
+            tracing::info!(
+                "Compressing {} events for session {}",
+                session_events.len(),
+                session_id
             );
-            continue;
-        }
 
-        total_processed += u32::try_from(session_events.len()).unwrap_or(u32::MAX);
+            let owned_events: Vec<StoredEvent> =
+                session_events.iter().map(|e| (*e).clone()).collect();
+
+            let result: Result<()> = async {
+                let (summary, entities) = compress_events(llm, &owned_events).await?;
+                create_5min_summary(pool, &owned_events, &summary, entities.as_ref()).await?;
+                Ok(())
+            }
+            .await;
+
+            if let Err(e) = result {
+                tracing::error!(
+                    session_id = %session_id,
+                    error = %e,
+                    "Failed to compress session, skipping"
+                );
+                continue;
+            }
+
+            total_processed += u32::try_from(session_events.len()).unwrap_or(u32::MAX);
+        }
     }
 
     Ok(total_processed)

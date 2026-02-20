@@ -305,6 +305,19 @@ pub trait SearchStore: Send + Sync {
         query_vec: &[f32],
         limit: usize,
     ) -> Result<Vec<SearchResult>, StorageError>;
+
+    /// Hybrid search with optional filters.
+    #[allow(clippy::too_many_arguments)]
+    async fn hybrid_search_v2_with_filters(
+        &self,
+        query: &str,
+        query_vec: &[f32],
+        project: Option<&str>,
+        obs_type: Option<&str>,
+        from: Option<&str>,
+        to: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<SearchResult>, StorageError>;
 }
 
 /// Embedding storage operations.
