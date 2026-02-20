@@ -42,13 +42,13 @@ pub fn filter_private_content(text: &str) -> String {
 /// Also handles optional XML attributes on the opening tag.
 #[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
 static MEMORY_TAG_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<memory-[a-z]+(?:>|\s[^>]*>).*?</memory-[a-z]+>").unwrap());
+    LazyLock::new(|| Regex::new(r"(?is)<memory-[\w-]+(?:>|\s[^>]*>).*?</memory-[\w-]+>").unwrap());
 
 /// Regex for unclosed memory tags (truncation safety).
 /// Strips from opening tag to end-of-string when no closing tag exists.
 #[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
 static MEMORY_UNCLOSED_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<memory-[a-z]+(?:>|\s[^>]*>).*$").unwrap());
+    LazyLock::new(|| Regex::new(r"(?is)<memory-[\w-]+(?:>|\s[^>]*>).*$").unwrap());
 
 /// Regex for orphaned closing memory tags left after nested tag stripping.
 /// When nested tags like `<memory-global><memory-project>...</memory-project></memory-global>`
@@ -56,7 +56,7 @@ static MEMORY_UNCLOSED_REGEX: LazyLock<Regex> =
 /// `</memory-global>` as an orphan. This third pass catches those remnants.
 #[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
 static MEMORY_ORPHAN_CLOSE_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)</memory-[a-z]+>").unwrap());
+    LazyLock::new(|| Regex::new(r"(?i)</memory-[\w-]+>").unwrap());
 
 /// Strips injected memory blocks (`<memory-*>...</memory-*>`) from text.
 ///

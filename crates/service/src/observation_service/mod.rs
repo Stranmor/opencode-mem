@@ -109,14 +109,14 @@ impl ObservationService {
             return Ok(None);
         }
 
-        // Strip injected memory blocks to prevent recursion:
-        // IDE injects <memory-global>...</memory-global> into conversation →
-        // observe hook captures tool output containing these blocks →
-        // without filtering, they'd be re-processed and re-stored → infinite loop.
-        let filtered_output = filter_injected_memory(&tool_call.output);
+        // Apply centralized privacy and injection filtering exactly once here
+        // before LLM compression or long-term persistence.
+        let filtered_output =
+            opencode_mem_core::filter_private_content(&filter_injected_memory(&tool_call.output));
         let filtered_input = {
             let input_str = serde_json::to_string(&tool_call.input).unwrap_or_default();
-            let filtered = filter_injected_memory(&input_str);
+            let filtered =
+                opencode_mem_core::filter_private_content(&filter_injected_memory(&input_str));
             serde_json::from_str(&filtered).unwrap_or_else(|e| {
                 tracing::warn!(
                     error = %e,
@@ -309,12 +309,6 @@ impl ObservationService {
             _ => text.chars().take(50).collect(),
         };
 
-        let mut is_filtered = false;
-        if is_low_value_observation(&title_str) {
-            tracing::debug!("Filtered low-value save_memory: {}", title_str);
-            is_filtered = true;
-        }
-
         let project_str = project.map(str::trim).filter(|p| !p.is_empty()).map(ToOwned::to_owned);
 
         let obs = Observation::builder(
@@ -339,10 +333,6 @@ impl ObservationService {
             if let Err(e) = infinite_mem.store_event(event).await {
                 tracing::warn!(error = %e, "Failed to store manual save_memory event in infinite memory");
             }
-        }
-
-        if is_filtered {
-            return Ok(SaveMemoryResult::Filtered);
         }
 
         let result = self.persist_and_notify(&obs, None).await?;

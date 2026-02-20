@@ -28,23 +28,16 @@ pub async fn observe(
         }
     }
 
-    // Filter injected memory tags BEFORE queuing to prevent re-observation recursion
-    let tool_input = serde_json::to_string(&tool_call.input)
-        .ok()
-        .map(|s| filter_private_content(&filter_injected_memory(&s)));
-    let session_id = tool_call.session_id.clone();
-    let tool_name = tool_call.tool.clone();
-    let tool_response = filter_private_content(&filter_injected_memory(&tool_call.output));
-    let project = tool_call.project.clone();
+    let tool_input = serde_json::to_string(&tool_call.input).ok();
 
     let message_id = state
         .queue_service
         .queue_message(
-            &session_id,
-            Some(&tool_name),
+            &tool_call.session_id,
+            Some(&tool_call.tool),
             tool_input.as_deref(),
-            Some(&tool_response),
-            project.as_deref(),
+            Some(&tool_call.output),
+            tool_call.project.as_deref(),
         )
         .await
         .map_err(|e| {
@@ -67,17 +60,15 @@ pub async fn observe_batch(
                 continue;
             }
         }
-        let tool_input = serde_json::to_string(&tool_call.input)
-            .ok()
-            .map(|s| filter_private_content(&filter_injected_memory(&s)));
-        let filtered_output = filter_private_content(&filter_injected_memory(&tool_call.output));
+        let tool_input = serde_json::to_string(&tool_call.input).ok();
+
         match state
             .queue_service
             .queue_message(
                 &tool_call.session_id,
                 Some(&tool_call.tool),
                 tool_input.as_deref(),
-                Some(&filtered_output),
+                Some(&tool_call.output),
                 tool_call.project.as_deref(),
             )
             .await
@@ -85,6 +76,10 @@ pub async fn observe_batch(
             Ok(_id) => count = count.saturating_add(1),
             Err(e) => {
                 tracing::error!("Failed to queue tool call {}: {}", tool_call.tool, e);
+                return Err(ApiError::Internal(anyhow::anyhow!(
+                    "Failed to queue observation: {}",
+                    e
+                )));
             },
         }
     }

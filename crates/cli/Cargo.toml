@@ -33,3 +33,4 @@ reqwest = { workspace = true }
 serde = { workspace = true }
 regex = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
+sqlx = { workspace = true, features = ["postgres"] }

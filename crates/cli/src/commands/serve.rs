@@ -23,16 +23,24 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     // Initial receiver dropped - subscribers use event_tx.subscribe()
     let (event_tx, _initial_rx) = broadcast::channel(100);
 
-    let infinite_mem = if std::env::var("INFINITE_MEMORY_URL").is_ok()
-        || std::env::var("OPENCODE_MEM_INFINITE_MEMORY").is_ok()
+    let infinite_mem = if let Ok(url) = std::env::var("INFINITE_MEMORY_URL")
+        .or_else(|_| std::env::var("OPENCODE_MEM_INFINITE_MEMORY"))
     {
-        match InfiniteMemory::new(storage.pool(), llm.clone()).await {
-            Ok(mem) => {
-                tracing::info!("Connected to infinite memory");
-                Some(Arc::new(mem))
+        let pool = sqlx::postgres::PgPoolOptions::new().max_connections(5).connect(&url).await;
+
+        match pool {
+            Ok(p) => match InfiniteMemory::new(p, llm.clone()).await {
+                Ok(mem) => {
+                    tracing::info!("Connected to infinite memory");
+                    Some(Arc::new(mem))
+                },
+                Err(e) => {
+                    tracing::warn!("Failed to initialize infinite memory migrations: {}", e);
+                    None
+                },
             },
             Err(e) => {
-                tracing::warn!("Failed to connect to infinite memory: {}", e);
+                tracing::warn!("Failed to connect to infinite memory database: {}", e);
                 None
             },
         }

@@ -2,10 +2,12 @@ use crate::api_error::ApiError;
 use std::sync::Arc;
 
 use axum::http::StatusCode;
-use opencode_mem_core::{filter_injected_memory, Session, SessionStatus, ToolCall};
+use opencode_mem_core::{
+    Session, SessionStatus, ToolCall, filter_injected_memory, filter_private_content,
+};
 
-use crate::api_types::{SessionInitResponse, SessionObservationsResponse};
 use crate::AppState;
+use crate::api_types::{SessionInitResponse, SessionObservationsResponse};
 
 /// Create and persist a new session, returning the HTTP response.
 ///
@@ -49,9 +51,7 @@ pub(crate) async fn enqueue_session_observations(
 ) -> Result<SessionObservationsResponse, ApiError> {
     let mut queued = 0usize;
     for tool_call in &observations {
-        let tool_input =
-            serde_json::to_string(&tool_call.input).ok().map(|s| filter_injected_memory(&s));
-        let filtered_output = filter_injected_memory(&tool_call.output);
+        let tool_input = serde_json::to_string(&tool_call.input).ok();
 
         match state
             .queue_service
@@ -59,7 +59,7 @@ pub(crate) async fn enqueue_session_observations(
                 &session_id,
                 Some(&tool_call.tool),
                 tool_input.as_deref(),
-                Some(&filtered_output),
+                Some(&tool_call.output),
                 tool_call.project.as_deref(),
             )
             .await
@@ -67,6 +67,10 @@ pub(crate) async fn enqueue_session_observations(
             Ok(_id) => queued = queued.saturating_add(1),
             Err(e) => {
                 tracing::error!("Failed to queue session observation {}: {}", tool_call.tool, e);
+                return Err(ApiError::Internal(anyhow::anyhow!(
+                    "Failed to queue observation: {}",
+                    e
+                )));
             },
         }
     }
