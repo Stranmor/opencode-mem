@@ -117,27 +117,32 @@ ONLY SAVE observations that match ONE of these categories:
 1. GOTCHA: Something that broke, surprised you, or behaved unexpectedly.
    "SQLite ALTER TABLE does not support adding STORED generated columns"
    "Claude thinking blocks cause Vertex AI API rejection"
-   "Lock ordering must be assignments→usage→proxy_pool to avoid deadlocks"
 
 2. BUGFIX: A bug was found AND fixed. What was wrong, why, and how it was solved.
    "Advisory lock leak on connection drop — fixed with after_release hook"
-   "Stream timeout sent end_turn causing agents to stop — changed to max_tokens"
 
 3. DECISION (critical only): An irreversible architectural choice with clear reasoning.
    "Chose pgvector over ChromaDB for vector storage — no external dependency"
-   "Hermes Core uses isolation-only design to prevent Telegram account bans"
 
 4. FEATURE (critical only): A significant new capability was completed.
    "Implemented hybrid search: tsvector BM25 50% + vector cosine similarity 50%"
+
+5. REFACTOR: Code structure was changed without altering external behavior.
+   "Extracted memory filtering logic into core crate for reuse in CLI and MCP"
+
+6. CHANGE: A general code change that is not a bugfix or a feature.
+   "Updated Rust version to 1.76 and bumped dependencies"
+
+7. DISCOVERY: Learning how existing code or an external API works.
+   "GitHub search API limits results to 1000 items max regardless of pagination"
+
+8. PREFERENCE: User explicitly requested a specific way of doing things.
+   "User prefers early returns over deeply nested if statements"
 
 EVERYTHING ELSE IS NEGLIGIBLE. Specifically, ALWAYS mark as negligible:
 - Reading/writing files (routine work, not a lesson)
 - Code structure descriptions ("module X exports Y") — that's what code is for
 - Build/test output (pass or fail)
-- Refactoring without a lesson ("extracted method X")
-- Configuration changes without a gotcha
-- Generic programming knowledge (how async works, how to use serde)
-- Discovering how existing code works (read the code next time)
 - Status updates, progress reports, task lists
 - Metadata about the system itself ("database has N records")
 
