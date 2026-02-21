@@ -5,7 +5,7 @@ use opencode_mem_core::{NoiseLevel, Observation, ObservationInput, ObservationTy
 
 // Integration tests for observation filtering (require ANTIGRAVITY_API_KEY)
 #[cfg(test)]
-mod filtering_tests {
+mod tests {
     use super::*;
     use crate::client::LlmClient;
 

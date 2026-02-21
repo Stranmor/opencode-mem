@@ -181,7 +181,7 @@ impl LlmClient {
         let prompt = build_insights_prompt(formatted, project_path);
 
         let request = ChatRequest {
-            model: self.model.clone(),
+            model: self.model(),
             messages: vec![Message { role: "user".to_owned(), content: prompt }],
             response_format: ResponseFormat { format_type: "json_object".to_owned() },
             max_tokens: None,

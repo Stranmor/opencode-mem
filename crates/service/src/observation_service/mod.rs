@@ -33,6 +33,15 @@ pub struct ObservationService {
 }
 
 impl ObservationService {
+    pub fn update_llm_config(
+        &self,
+        api_key: Option<String>,
+        base_url: Option<String>,
+        model: Option<String>,
+    ) {
+        self.llm.update_config(api_key, base_url, model);
+    }
+
     #[must_use]
     pub fn new(
         storage: Arc<StorageBackend>,
@@ -309,7 +318,10 @@ impl ObservationService {
         }
 
         let title_str = match title {
-            Some(t) if !t.trim().is_empty() => t.trim().to_string(),
+            Some(t) if !t.trim().is_empty() => {
+                let filtered = opencode_mem_core::filter_private_content(t.trim());
+                filter_injected_memory(&filtered)
+            },
             _ => text.chars().take(50).collect(),
         };
 

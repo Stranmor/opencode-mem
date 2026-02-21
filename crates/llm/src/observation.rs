@@ -40,6 +40,20 @@ fn build_compression_prompt(
     output: &str,
     candidates: &[Observation],
 ) -> String {
+    let mut types_prompt = String::new();
+    for (i, variant) in opencode_mem_core::ObservationType::ALL_VARIANTS.iter().enumerate() {
+        types_prompt.push_str(&format!(
+            "{}. {}: {}\n",
+            i.saturating_add(1),
+            variant.as_str().to_uppercase(),
+            variant.description()
+        ));
+        for example in variant.examples() {
+            types_prompt.push_str(&format!("   {}\n", example));
+        }
+        types_prompt.push('\n');
+    }
+
     let existing_context = if candidates.is_empty() {
         "\n\nThere are no existing observations. You MUST use action: \"create\".".to_owned()
     } else {
@@ -114,31 +128,7 @@ Output Content: {}
 
 ONLY SAVE observations that match ONE of these categories:
 
-1. GOTCHA: Something that broke, surprised you, or behaved unexpectedly.
-   "SQLite ALTER TABLE does not support adding STORED generated columns"
-   "Claude thinking blocks cause Vertex AI API rejection"
-
-2. BUGFIX: A bug was found AND fixed. What was wrong, why, and how it was solved.
-   "Advisory lock leak on connection drop — fixed with after_release hook"
-
-3. DECISION (critical only): An irreversible architectural choice with clear reasoning.
-   "Chose pgvector over ChromaDB for vector storage — no external dependency"
-
-4. FEATURE (critical only): A significant new capability was completed.
-   "Implemented hybrid search: tsvector BM25 50% + vector cosine similarity 50%"
-
-5. REFACTOR: Code structure was changed without altering external behavior.
-   "Extracted memory filtering logic into core crate for reuse in CLI and MCP"
-
-6. CHANGE: A general code change that is not a bugfix or a feature.
-   "Updated Rust version to 1.76 and bumped dependencies"
-
-7. DISCOVERY: Learning how existing code or an external API works.
-   "GitHub search API limits results to 1000 items max regardless of pagination"
-
-8. PREFERENCE: User explicitly requested a specific way of doing things.
-   "User prefers early returns over deeply nested if statements"
-
+{}
 EVERYTHING ELSE IS NEGLIGIBLE. Specifically, ALWAYS mark as negligible:
 - Reading/writing files (routine work, not a lesson)
 - Code structure descriptions ("module X exports Y") — that's what code is for
@@ -159,6 +149,7 @@ NOISE LEVEL GUIDE (5 levels):
         tool,
         title,
         truncate(output, MAX_OUTPUT_LEN),
+        types_prompt,
         existing_context,
         json_schema,
     )
@@ -295,7 +286,7 @@ impl LlmClient {
             build_compression_prompt(&input.tool, &filtered_title, &filtered_output, candidates);
 
         let request = ChatRequest {
-            model: self.model.clone(),
+            model: self.model(),
             messages: vec![Message { role: "user".to_owned(), content: prompt }],
             response_format: ResponseFormat { format_type: "json_object".to_owned() },
             max_tokens: None,

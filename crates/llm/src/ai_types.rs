@@ -30,7 +30,7 @@ fn null_or_invalid_as_default_vec<'de, D: Deserializer<'de>>(
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct ChatRequest {
     pub model: String,
     pub messages: Vec<Message>,
@@ -39,13 +39,13 @@ pub struct ChatRequest {
     pub max_tokens: Option<u32>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct ResponseFormat {
     #[serde(rename = "type")]
     pub format_type: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct Message {
     pub role: String,
     pub content: String,

@@ -29,14 +29,16 @@ pub async fn observe(
     }
 
     let tool_input = serde_json::to_string(&tool_call.input).ok();
+    let filtered_input = tool_input.as_deref().map(|s| opencode_mem_core::filter_private_content(&opencode_mem_core::filter_injected_memory(s)));
+    let filtered_output = opencode_mem_core::filter_private_content(&opencode_mem_core::filter_injected_memory(&tool_call.output));
 
     let message_id = state
         .queue_service
         .queue_message(
             &tool_call.session_id,
             Some(&tool_call.tool),
-            tool_input.as_deref(),
-            Some(&tool_call.output),
+            filtered_input.as_deref(),
+            Some(&filtered_output),
             tool_call.project.as_deref(),
         )
         .await
@@ -61,14 +63,16 @@ pub async fn observe_batch(
             }
         }
         let tool_input = serde_json::to_string(&tool_call.input).ok();
+    let filtered_input = tool_input.as_deref().map(|s| opencode_mem_core::filter_private_content(&opencode_mem_core::filter_injected_memory(s)));
+    let filtered_output = opencode_mem_core::filter_private_content(&opencode_mem_core::filter_injected_memory(&tool_call.output));
 
         match state
             .queue_service
             .queue_message(
                 &tool_call.session_id,
                 Some(&tool_call.tool),
-                tool_input.as_deref(),
-                Some(&tool_call.output),
+                filtered_input.as_deref(),
+                Some(&filtered_output),
                 tool_call.project.as_deref(),
             )
             .await
