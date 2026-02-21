@@ -51,9 +51,19 @@ pub fn compute_merge(existing: &Observation, newer: &Observation) -> MergeResult
 
     let created_at = existing.created_at.max(newer.created_at);
 
-    // Context-aware compressions might refine the title or change type based on new context
-    let title = newer.title.clone();
-    let observation_type = newer.observation_type;
+    // Context-aware compressions might refine the title or change type based on new context.
+    // In background dedup, we might pass a low-priority observation as "newer" just because
+    // it was found later. We should prefer the title/type of the observation with the higher
+    // noise level (i.e. more important), or the newer one if equal.
+    let (title, observation_type) = if existing.noise_level < newer.noise_level {
+        (existing.title.clone(), existing.observation_type)
+    } else if newer.noise_level < existing.noise_level {
+        (newer.title.clone(), newer.observation_type)
+    } else if newer.created_at >= existing.created_at {
+        (newer.title.clone(), newer.observation_type)
+    } else {
+        (existing.title.clone(), existing.observation_type)
+    };
 
     MergeResult {
         facts,

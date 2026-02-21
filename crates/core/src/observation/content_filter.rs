@@ -1,101 +1,164 @@
 //! Content filtering for private tags and injected memory blocks.
 
+use regex::Regex;
+use std::sync::LazyLock;
+
 /// Safely removes XML-like blocks while properly handling nesting.
 /// Avoids O(N) allocations and regex limitations around nested structures.
 fn strip_nested_blocks(text: &str, tag_prefix: &str) -> String {
-    let lower_text = text.to_lowercase();
-    let open_prefix = format!("<{tag_prefix}");
-    let close_prefix = format!("</{tag_prefix}");
-
     let mut result = String::with_capacity(text.len());
     let mut depth: i32 = 0;
-    let mut i: usize = 0;
-    let chars: Vec<char> = text.chars().collect();
-    let lower_chars: Vec<char> = lower_text.chars().collect();
 
-    let open_chars: Vec<char> = open_prefix.chars().collect();
-    let close_chars: Vec<char> = close_prefix.chars().collect();
+    let mut chars = text.chars().peekable();
 
-    while i < chars.len() {
-        // Check for opening tag
-        if let Some(slice) = lower_chars.get(i..) {
-            if slice.starts_with(&open_chars) {
-                // Find end of the opening tag
-                let mut j = i.saturating_add(open_chars.len());
-                let mut valid_tag = false;
+    // We cannot use to_lowercase() up front because it breaks character count mapping
+    // when characters expand (e.g. 'ß' -> 'ss', 'İ' -> 'i' + dot).
+    // Instead we do a case-insensitive check on the fly.
+    let open_prefix: Vec<char> = format!("<{tag_prefix}").chars().collect();
+    let close_prefix: Vec<char> = format!("</{tag_prefix}").chars().collect();
 
-                // Allow attributes, look for closing bracket
-                while j < chars.len() {
-                    if let Some(&c) = chars.get(j) {
-                        if c == '>' {
-                            valid_tag = true;
-                            j = j.saturating_add(1);
-                            break;
-                        }
+    while let Some(&c) = chars.peek() {
+        if c == '<' || c == 'p' || c == 'P' || c == 'm' || c == 'M' || c == '/' {
+            // Check for opening tag
+            let mut is_open = true;
+            let mut peek_chars = chars.clone();
+            for &expected_c in &open_prefix {
+                if let Some(actual_c) = peek_chars.next() {
+                    if actual_c.to_ascii_lowercase() != expected_c {
+                        is_open = false;
+                        break;
                     }
-                    j = j.saturating_add(1);
+                } else {
+                    is_open = false;
+                    break;
+                }
+            }
+
+            if is_open {
+                let mut valid_tag = false;
+                let mut scan_limit: usize = 500;
+                let mut chars_to_consume = open_prefix.len();
+
+                // Allow attributes, look for closing bracket.
+                let scan_peek = peek_chars.clone();
+                for ch in scan_peek {
+                    if scan_limit == 0 {
+                        break;
+                    }
+                    chars_to_consume = chars_to_consume.saturating_add(1);
+                    if ch == '>' {
+                        valid_tag = true;
+                        break;
+                    }
+                    scan_limit = scan_limit.saturating_sub(1);
                 }
 
                 if valid_tag {
                     depth = depth.saturating_add(1);
-                    i = j;
+                    // Advance main iterator past the tag
+                    for _ in 0..chars_to_consume {
+                        chars.next();
+                    }
                     continue;
                 }
             }
-        }
 
-        // Check for closing tag
-        if let Some(slice) = lower_chars.get(i..) {
-            if slice.starts_with(&close_chars) {
-                let mut j = i.saturating_add(close_chars.len());
-                let mut valid_tag = false;
-
-                // Allow anything up to >, just to be safe
-                while j < chars.len() {
-                    if let Some(&c) = chars.get(j) {
-                        if c == '>' {
-                            valid_tag = true;
-                            j = j.saturating_add(1);
+            // Check for closing tag
+            if depth > 0 {
+                let mut is_close = true;
+                let mut peek_chars_close = chars.clone();
+                for &expected_c in &close_prefix {
+                    if let Some(actual_c) = peek_chars_close.next() {
+                        if actual_c.to_ascii_lowercase() != expected_c {
+                            is_close = false;
                             break;
                         }
+                    } else {
+                        is_close = false;
+                        break;
                     }
-                    j = j.saturating_add(1);
                 }
 
-                if valid_tag {
-                    if depth > 0 {
-                        depth = depth.saturating_sub(1);
+                if is_close {
+                    let mut valid_tag = false;
+                    let mut chars_to_consume = close_prefix.len();
+
+                    let mut scan_limit: usize = 100;
+                    let scan_peek = peek_chars_close.clone();
+                    for ch in scan_peek {
+                        if scan_limit == 0 {
+                            break;
+                        }
+                        chars_to_consume = chars_to_consume.saturating_add(1);
+                        if ch == '>' {
+                            valid_tag = true;
+                            break;
+                        }
+                        scan_limit = scan_limit.saturating_sub(1);
                     }
-                    i = j;
-                    continue;
+
+                    if valid_tag {
+                        depth = depth.saturating_sub(1);
+                        // Advance main iterator past the tag
+                        for _ in 0..chars_to_consume {
+                            chars.next();
+                        }
+                        continue;
+                    }
                 }
             }
         }
 
         // If not inside any block, keep the character
         if depth == 0 {
-            if let Some(&c) = chars.get(i) {
-                result.push(c);
-            }
+            result.push(c);
         }
 
-        i = i.saturating_add(1);
+        chars.next();
     }
 
     result
 }
 
+/// Regex for unclosed private tags (truncation safety).
+#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
+static PRIVATE_UNCLOSED_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?is)<private(?:>|\s[^>]*>).*$").unwrap());
+
+/// Regex for orphaned closing private tags left after nested tag stripping.
+#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
+static PRIVATE_ORPHAN_CLOSE_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)</private>").unwrap());
+
 /// Filters out content wrapped in `<private>...</private>` tags.
 /// Handles both well-formed tags and unclosed tags.
 pub fn filter_private_content(text: &str) -> String {
-    strip_nested_blocks(text, "private")
+    let stripped = strip_nested_blocks(text, "private");
+    let after_unclosed = PRIVATE_UNCLOSED_REGEX.replace_all(&stripped, "");
+    PRIVATE_ORPHAN_CLOSE_REGEX.replace_all(&after_unclosed, "").into_owned()
 }
+
+/// Regex for unclosed memory tags (truncation safety).
+/// Strips from opening tag to end-of-string when no closing tag exists.
+#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
+static MEMORY_UNCLOSED_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?is)<memory-[\w-]+(?:>|\s[^>]*>).*$").unwrap());
+
+/// Regex for orphaned closing memory tags left after nested tag stripping.
+/// When nested tags like `<memory-global><memory-project>...</memory-project></memory-global>`
+/// are processed, the lazy `.*?` in `MEMORY_TAG_REGEX` strips the inner pair, leaving
+/// `</memory-global>` as an orphan. This third pass catches those remnants.
+#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
+static MEMORY_ORPHAN_CLOSE_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?i)</memory-[\w-]+>").unwrap());
 
 /// Strips injected memory blocks (`<memory-*>...</memory-*>`) from text.
 ///
 /// Handles both well-formed tags and unclosed tags (e.g. from truncation).
 pub fn filter_injected_memory(text: &str) -> String {
-    strip_nested_blocks(text, "memory-")
+    let stripped = strip_nested_blocks(text, "memory-");
+    let after_unclosed = MEMORY_UNCLOSED_REGEX.replace_all(&stripped, "");
+    MEMORY_ORPHAN_CLOSE_REGEX.replace_all(&after_unclosed, "").into_owned()
 }
 
 #[cfg(test)]
