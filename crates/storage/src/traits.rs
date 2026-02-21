@@ -101,6 +101,7 @@ pub trait KnowledgeStore: Send + Sync {
 
     /// Delete knowledge entry by ID. Returns `true` if deleted.
     async fn delete_knowledge(&self, id: &str) -> Result<bool, StorageError>;
+    async fn has_knowledge_for_observation(&self, observation_id: &str) -> Result<bool, StorageError>;
 
     /// Full-text search over knowledge.
     async fn search_knowledge(

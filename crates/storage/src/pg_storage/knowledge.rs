@@ -259,4 +259,18 @@ impl KnowledgeStore for PgStorage {
         .await?;
         Ok(())
     }
+
+    async fn has_knowledge_for_observation(
+        &self,
+        observation_id: &str,
+    ) -> Result<bool, StorageError> {
+        let json_array = serde_json::json!([observation_id]);
+        let row: Option<(i32,)> = sqlx::query_as(
+            "SELECT 1 FROM global_knowledge WHERE source_observations @> $1::jsonb LIMIT 1",
+        )
+        .bind(&json_array)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.is_some())
+    }
 }

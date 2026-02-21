@@ -164,10 +164,16 @@ impl ObservationService {
                 tracing::debug!(reason = %reason, "Observation skipped by LLM");
                 Ok(None)
             },
-            CompressionResult::Create(observation) => {
+            CompressionResult::Create(mut observation) => {
+                observation.title = opencode_mem_core::filter_private_content(
+                    &filter_injected_memory(&observation.title),
+                );
                 self.persist_and_notify(&observation, Some(&tool_call.session_id)).await
             },
-            CompressionResult::Update { target_id, observation } => {
+            CompressionResult::Update { target_id, mut observation } => {
+                observation.title = opencode_mem_core::filter_private_content(
+                    &filter_injected_memory(&observation.title),
+                );
                 let candidate_ids: HashSet<&str> =
                     candidates.iter().map(|o| o.id.as_str()).collect();
                 if !candidate_ids.contains(target_id.as_str()) {
@@ -357,4 +363,6 @@ impl ObservationService {
         }
     }
 }
+
+#[cfg(test)]
 mod privacy_tests;

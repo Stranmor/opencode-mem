@@ -191,12 +191,14 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
 
         let mut processed_in_batch = 0;
         for session_id in seen_sessions {
-            let session_events: Vec<&StoredEvent> =
+            let mut session_events: Vec<&StoredEvent> =
                 events.iter().filter(|e| e.session_id == session_id).collect();
 
             if session_events.is_empty() {
                 continue;
             }
+
+            session_events.sort_by_key(|e| e.ts);
 
             let mut current_bucket: Vec<StoredEvent> = Vec::new();
             let mut bucket_start = session_events[0].ts;
@@ -204,7 +206,7 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
 
             for event in session_events {
                 // Group events into strict 5-minute temporal buckets
-                if (event.ts - bucket_start).num_seconds() > 300 {
+                if event.ts.timestamp() / 300 != bucket_start.timestamp() / 300 {
                     buckets.push(current_bucket.clone());
                     current_bucket.clear();
                     bucket_start = event.ts;
@@ -263,19 +265,21 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
 
     let mut hours_created = 0u32;
     for session_id in sessions_5min {
-        let session_summaries =
+        let mut session_summaries =
             summary_queries::get_unaggregated_5min_for_session(pool, session_id.as_deref()).await?;
 
         if session_summaries.is_empty() {
             continue;
         }
 
+        session_summaries.sort_by_key(|s| s.ts_start);
+
         let mut buckets = Vec::new();
         let mut current_bucket = Vec::new();
         let mut bucket_start = session_summaries[0].ts_start;
 
         for s in session_summaries {
-            if (s.ts_start - bucket_start).num_hours() >= 1 {
+            if s.ts_start.timestamp() / 3600 != bucket_start.timestamp() / 3600 {
                 buckets.push(current_bucket.clone());
                 current_bucket.clear();
                 bucket_start = s.ts_start;
@@ -329,19 +333,21 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
 
     let mut days_created = 0u32;
     for session_id in sessions_hour {
-        let session_summaries =
+        let mut session_summaries =
             summary_queries::get_unaggregated_hour_for_session(pool, session_id.as_deref()).await?;
 
         if session_summaries.is_empty() {
             continue;
         }
 
+        session_summaries.sort_by_key(|s| s.ts_start);
+
         let mut buckets = Vec::new();
         let mut current_bucket = Vec::new();
         let mut bucket_start = session_summaries[0].ts_start;
 
         for s in session_summaries {
-            if (s.ts_start - bucket_start).num_days() >= 1 {
+            if s.ts_start.timestamp() / 86400 != bucket_start.timestamp() / 86400 {
                 buckets.push(current_bucket.clone());
                 current_bucket.clear();
                 bucket_start = s.ts_start;
@@ -392,3 +398,8 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
 
     Ok((events_processed, hours_created, days_created))
 }
+
+
+#[cfg(test)]
+#[path = "pipeline_tests.rs"]
+mod pipeline_tests;
