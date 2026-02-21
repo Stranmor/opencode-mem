@@ -43,6 +43,10 @@ pub enum ServiceError {
     /// Search operation failed (wraps anyhow from search crate).
     #[error("search: {0}")]
     Search(#[source] anyhow::Error),
+
+    /// General system or unclassified errors.
+    #[error("system: {0}")]
+    System(#[from] anyhow::Error),
 }
 
 impl ServiceError {

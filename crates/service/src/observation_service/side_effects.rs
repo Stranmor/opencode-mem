@@ -5,7 +5,10 @@ use opencode_mem_storage::traits::KnowledgeStore;
 use super::ObservationService;
 
 impl ObservationService {
-    pub(crate) async fn extract_knowledge(&self, observation: &Observation) {
+    pub(crate) async fn extract_knowledge(
+        &self,
+        observation: &Observation,
+    ) -> Result<(), crate::ServiceError> {
         match self.llm.maybe_extract_knowledge(observation).await {
             Ok(Some(knowledge_input)) => match self.storage.save_knowledge(knowledge_input).await {
                 Ok(knowledge) => {
@@ -14,14 +17,17 @@ impl ObservationService {
                         knowledge.id,
                         knowledge.title
                     );
+                    Ok(())
                 },
                 Err(e) => {
                     tracing::warn!("Failed to save extracted knowledge: {}", e);
+                    Err(crate::ServiceError::Storage(e))
                 },
             },
-            Ok(None) => {},
+            Ok(None) => Ok(()),
             Err(e) => {
                 tracing::warn!(error = %e, observation_id = %observation.id, "Knowledge extraction failed — knowledge will be missing for this observation");
+                Err(crate::ServiceError::Llm(e))
             },
         }
     }
@@ -30,7 +36,7 @@ impl ObservationService {
         &self,
         tool_call: &ToolCall,
         observation: Option<&Observation>,
-    ) {
+    ) -> Result<(), crate::ServiceError> {
         if let Some(ref infinite_mem) = self.infinite_mem {
             let filtered_output =
                 filter_injected_memory(&filter_private_content(&tool_call.output));
@@ -60,7 +66,9 @@ impl ObservationService {
             );
             if let Err(e) = infinite_mem.store_event(event).await {
                 tracing::warn!(error = %e, observation_id = %obs_id_for_log, "Failed to store in infinite memory — event will be missing from long-term history");
+                return Err(crate::ServiceError::System(e));
             }
         }
+        Ok(())
     }
 }

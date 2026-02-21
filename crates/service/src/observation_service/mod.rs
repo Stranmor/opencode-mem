@@ -90,11 +90,15 @@ impl ObservationService {
 
         let extract_fut = async {
             if let Some((ref obs, _)) = save_result {
-                self.extract_knowledge(obs).await;
+                self.extract_knowledge(obs).await
+            } else {
+                Ok(())
             }
         };
 
-        tokio::join!(extract_fut, infinite_fut);
+        let (extract_res, infinite_res) = tokio::join!(extract_fut, infinite_fut);
+        extract_res?;
+        infinite_res?;
 
         Ok(save_result.map(|(o, _)| o))
     }
