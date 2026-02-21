@@ -43,6 +43,8 @@ impl ObservationService {
         }
 
         let dedup_threshold = self.dedup_threshold;
+        let combined_len = combined.len();
+        let start_time = std::time::Instant::now();
 
         // Perform O(N^2) comparison in a blocking thread to avoid starving the async executor
         let merge_pairs = tokio::task::spawn_blocking(move || {
@@ -82,6 +84,14 @@ impl ObservationService {
         })
         .await
         .map_err(|e| ServiceError::System(anyhow::anyhow!("spawn_blocking failed: {}", e)))?;
+
+        let elapsed = start_time.elapsed();
+        tracing::debug!(
+            items = combined_len,
+            elapsed_ms = elapsed.as_millis(),
+            pairs_found = merge_pairs.len(),
+            "Dedup sweep O(N^2) comparison phase completed"
+        );
 
         let mut merged_count: usize = 0;
         for (keeper_id, duplicate_id, sim) in merge_pairs {
