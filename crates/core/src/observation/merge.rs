@@ -87,6 +87,7 @@ fn pick_longer_optional(existing: &Option<String>, newer: &Option<String>) -> Op
 mod tests {
     use super::*;
     use crate::observation::{Observation, ObservationType};
+    use chrono::Utc;
 
     fn make_obs(title: &str) -> Observation {
         Observation::builder(

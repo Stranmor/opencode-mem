@@ -17,8 +17,8 @@ use std::sync::Arc;
 use anyhow::Result;
 use opencode_mem_core::{Observation, SearchResult};
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
-use opencode_mem_storage::traits::{ObservationStore, SearchStore};
 use opencode_mem_storage::StorageBackend;
+use opencode_mem_storage::traits::{ObservationStore, SearchStore};
 
 /// High-level search facade combining full-text search (tsvector) and vector similarity (pgvector).
 ///
@@ -52,14 +52,13 @@ impl HybridSearch {
     pub async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         match &self.embeddings {
             Some(emb) => {
-                // Generate query embedding for semantic search
-                let query_vec = emb.embed(query)?;
+                let emb_clone = emb.clone();
+                let query_str = query.to_owned();
+                let query_vec =
+                    tokio::task::spawn_blocking(move || emb_clone.embed(&query_str)).await??;
                 Ok(self.storage.hybrid_search_v2(query, &query_vec, limit).await?)
             },
-            None => {
-                // Fall back to text-only hybrid search
-                Ok(self.storage.hybrid_search(query, limit).await?)
-            },
+            None => Ok(self.storage.hybrid_search(query, limit).await?),
         }
     }
 
@@ -134,7 +133,10 @@ impl HybridSearch {
     ) -> Result<Option<Vec<SearchResult>>> {
         match &self.embeddings {
             Some(emb) => {
-                let query_vec = emb.embed(query)?;
+                let emb_clone = emb.clone();
+                let query_str = query.to_owned();
+                let query_vec =
+                    tokio::task::spawn_blocking(move || emb_clone.embed(&query_str)).await??;
                 let results = self.storage.semantic_search(&query_vec, limit).await?;
                 Ok(Some(results))
             },
@@ -156,7 +158,7 @@ impl HybridSearch {
         query: &str,
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
-        run_semantic_search_with_fallback(&self.storage, self.embeddings.as_deref(), query, limit)
+        run_semantic_search_with_fallback(&self.storage, self.embeddings.as_ref(), query, limit)
             .await
     }
 
@@ -185,24 +187,34 @@ impl HybridSearch {
 /// rather than `Arc<StorageBackend>`.
 pub async fn run_semantic_search_with_fallback(
     storage: &StorageBackend,
-    embeddings: Option<&EmbeddingService>,
+    embeddings: Option<&Arc<EmbeddingService>>,
     query: &str,
     limit: usize,
 ) -> Result<Vec<SearchResult>> {
     match embeddings {
-        Some(emb) => match emb.embed(query) {
-            Ok(query_vec) => match storage.semantic_search(&query_vec, limit).await {
-                Ok(results) if !results.is_empty() => Ok(results),
-                Ok(_) => storage.hybrid_search(query, limit).await.map_err(Into::into),
+        Some(emb) => {
+            let emb_clone = emb.clone();
+            let query_str = query.to_owned();
+            let embed_result =
+                tokio::task::spawn_blocking(move || emb_clone.embed(&query_str)).await?;
+
+            match embed_result {
+                Ok(query_vec) => match storage.semantic_search(&query_vec, limit).await {
+                    Ok(results) if !results.is_empty() => Ok(results),
+                    Ok(_) => storage.hybrid_search(query, limit).await.map_err(Into::into),
+                    Err(e) => {
+                        tracing::warn!(
+                            "Semantic search storage error, falling back to hybrid: {}",
+                            e
+                        );
+                        storage.hybrid_search(query, limit).await.map_err(Into::into)
+                    },
+                },
                 Err(e) => {
-                    tracing::warn!("Semantic search storage error, falling back to hybrid: {}", e);
+                    tracing::warn!("Failed to embed query, falling back to hybrid: {}", e);
                     storage.hybrid_search(query, limit).await.map_err(Into::into)
                 },
-            },
-            Err(e) => {
-                tracing::warn!("Failed to embed query, falling back to hybrid: {}", e);
-                storage.hybrid_search(query, limit).await.map_err(Into::into)
-            },
+            }
         },
         None => storage.hybrid_search(query, limit).await.map_err(Into::into),
     }

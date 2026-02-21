@@ -1,79 +1,101 @@
 //! Content filtering for private tags and injected memory blocks.
 
-use std::sync::LazyLock;
+/// Safely removes XML-like blocks while properly handling nesting.
+/// Avoids O(N) allocations and regex limitations around nested structures.
+fn strip_nested_blocks(text: &str, tag_prefix: &str) -> String {
+    let lower_text = text.to_lowercase();
+    let open_prefix = format!("<{tag_prefix}");
+    let close_prefix = format!("</{tag_prefix}");
 
-use regex::Regex;
+    let mut result = String::with_capacity(text.len());
+    let mut depth: i32 = 0;
+    let mut i: usize = 0;
+    let chars: Vec<char> = text.chars().collect();
+    let lower_chars: Vec<char> = lower_text.chars().collect();
 
-/// Regex pattern for matching private content tags.
-#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
-static PRIVATE_TAG_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<private(?:>|\s[^>]*>).*?</private>").unwrap());
+    let open_chars: Vec<char> = open_prefix.chars().collect();
+    let close_chars: Vec<char> = close_prefix.chars().collect();
 
-/// Regex for unclosed private tags (truncation safety).
-#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
-static PRIVATE_UNCLOSED_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<private(?:>|\s[^>]*>).*$").unwrap());
+    while i < chars.len() {
+        // Check for opening tag
+        if let Some(slice) = lower_chars.get(i..) {
+            if slice.starts_with(&open_chars) {
+                // Find end of the opening tag
+                let mut j = i.saturating_add(open_chars.len());
+                let mut valid_tag = false;
 
-/// Regex for orphaned closing private tags left after nested tag stripping.
-#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
-static PRIVATE_ORPHAN_CLOSE_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)</private>").unwrap());
+                // Allow attributes, look for closing bracket
+                while j < chars.len() {
+                    if let Some(&c) = chars.get(j) {
+                        if c == '>' {
+                            valid_tag = true;
+                            j = j.saturating_add(1);
+                            break;
+                        }
+                    }
+                    j = j.saturating_add(1);
+                }
 
-fn strip_nested(text: &str, tag_regex: &Regex) -> String {
-    let mut current = text.to_owned();
-    loop {
-        // replace_all returns Cow::Borrowed if no replacements were made.
-        // We only convert into_owned() if a replacement actually happened, avoiding O(N) allocations.
-        let replaced = tag_regex.replace_all(&current, "");
-        match replaced {
-            std::borrow::Cow::Borrowed(_) => break, // No more matches found
-            std::borrow::Cow::Owned(new_string) => current = new_string,
+                if valid_tag {
+                    depth = depth.saturating_add(1);
+                    i = j;
+                    continue;
+                }
+            }
         }
+
+        // Check for closing tag
+        if let Some(slice) = lower_chars.get(i..) {
+            if slice.starts_with(&close_chars) {
+                let mut j = i.saturating_add(close_chars.len());
+                let mut valid_tag = false;
+
+                // Allow anything up to >, just to be safe
+                while j < chars.len() {
+                    if let Some(&c) = chars.get(j) {
+                        if c == '>' {
+                            valid_tag = true;
+                            j = j.saturating_add(1);
+                            break;
+                        }
+                    }
+                    j = j.saturating_add(1);
+                }
+
+                if valid_tag {
+                    if depth > 0 {
+                        depth = depth.saturating_sub(1);
+                    }
+                    i = j;
+                    continue;
+                }
+            }
+        }
+
+        // If not inside any block, keep the character
+        if depth == 0 {
+            if let Some(&c) = chars.get(i) {
+                result.push(c);
+            }
+        }
+
+        i = i.saturating_add(1);
     }
-    current
+
+    result
 }
 
 /// Filters out content wrapped in `<private>...</private>` tags.
 /// Handles both well-formed tags and unclosed tags.
 pub fn filter_private_content(text: &str) -> String {
-    let stripped = strip_nested(text, &PRIVATE_TAG_REGEX);
-    let after_unclosed = PRIVATE_UNCLOSED_REGEX.replace_all(&stripped, "");
-    PRIVATE_ORPHAN_CLOSE_REGEX.replace_all(&after_unclosed, "").into_owned()
+    strip_nested_blocks(text, "private")
 }
-
-/// Regex pattern for matching injected memory blocks.
-/// Matches `<memory-global>...</memory-global>` and similar memory injection tags
-/// like `<memory-project>`, `<memory-session>`, etc.
-/// Also handles optional XML attributes on the opening tag.
-#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
-static MEMORY_TAG_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<memory-[\w-]+(?:>|\s[^>]*>).*?</memory-[\w-]+>").unwrap());
-
-/// Regex for unclosed memory tags (truncation safety).
-/// Strips from opening tag to end-of-string when no closing tag exists.
-#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
-static MEMORY_UNCLOSED_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?is)<memory-[\w-]+(?:>|\s[^>]*>).*$").unwrap());
-
-/// Regex for orphaned closing memory tags left after nested tag stripping.
-/// When nested tags like `<memory-global><memory-project>...</memory-project></memory-global>`
-/// are processed, the lazy `.*?` in `MEMORY_TAG_REGEX` strips the inner pair, leaving
-/// `</memory-global>` as an orphan. This third pass catches those remnants.
-#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
-static MEMORY_ORPHAN_CLOSE_REGEX: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(?i)</memory-[\w-]+>").unwrap());
 
 /// Strips injected memory blocks (`<memory-*>...</memory-*>`) from text.
 ///
-/// Memory blocks are injected into conversation context by the IDE plugin.
-/// Without filtering, the observe hook re-processes them, creating duplicate
-/// observations that get re-injected — causing infinite recursion.
-///
 /// Handles both well-formed tags and unclosed tags (e.g. from truncation).
 pub fn filter_injected_memory(text: &str) -> String {
-    let stripped = strip_nested(text, &MEMORY_TAG_REGEX);
-    let after_unclosed = MEMORY_UNCLOSED_REGEX.replace_all(&stripped, "");
-    MEMORY_ORPHAN_CLOSE_REGEX.replace_all(&after_unclosed, "").into_owned()
+    strip_nested_blocks(text, "memory-")
 }
 
 #[cfg(test)]
@@ -127,6 +149,13 @@ mod tests {
         let input = "before <private>leaked secret content";
         let result = filter_private_content(input);
         assert_eq!(result, "before ");
+    }
+
+    #[test]
+    fn filter_private_nested_leak() {
+        let input = "<private> A <private> B </private> C </private> safe";
+        let result = filter_private_content(input);
+        assert_eq!(result, " safe");
     }
 
     #[test]
@@ -187,7 +216,6 @@ mod tests {
     fn filter_memory_tag_with_attributes_stripped() {
         let input = r#"before <memory-global class="injected">secret</memory-global> after"#;
         let result = filter_injected_memory(input);
-        // [^>]* in regex allows attributes before >
         assert_eq!(result, "before  after");
     }
 
@@ -205,7 +233,6 @@ mod tests {
     fn filter_memory_hyphenated_suffix_matched() {
         let input = "<memory-global-v2>secret data</memory-global-v2> after";
         let result = filter_injected_memory(input);
-        // [^>]* absorbs -v2, matching the full tag
         assert_eq!(result, " after");
     }
 
@@ -213,7 +240,6 @@ mod tests {
     fn filter_memory_multi_hyphen_suffix_matched() {
         let input = "<memory-per-file-cache>data</memory-per-file-cache>";
         let result = filter_injected_memory(input);
-        // After regex fix: [a-z][-a-z]* matches multi-hyphen suffixes
         assert_eq!(result, "");
     }
 
@@ -222,18 +248,17 @@ mod tests {
     // leaving the outer opening and closing tags as orphaned text in output.
     #[test]
     fn filter_memory_nested_tags_partial_strip() {
-        let input = "<memory-global><memory-project>inner secret</memory-project></memory-global>";
+        let input =
+            "<memory-global><memory-project>inner secret</memory-project></memory-global> after";
         let result = filter_injected_memory(input);
-        // Lazy .*? matches inner pair first; orphan close regex strips remaining </memory-global>
-        assert_eq!(result, "");
+        assert_eq!(result, " after");
     }
 
     #[test]
     fn filter_memory_nested_different_types() {
         let input = "head <memory-global>outer <memory-session>inner</memory-session> tail</memory-global> end";
         let result = filter_injected_memory(input);
-        // Lazy .*? matches from <memory-global> to first </memory-*>; orphan close regex strips remainder
-        assert_eq!(result, "head  tail end");
+        assert_eq!(result, "head  end");
     }
 
     // --- VULNERABILITY: Mismatched tag names still match ---
@@ -241,13 +266,9 @@ mod tests {
     // <memory-foo>...</memory-bar> matches — could strip legitimate content.
     #[test]
     fn filter_memory_mismatched_tags_match() {
-        let input = "<memory-foo>content</memory-bar>";
+        let input = "<memory-foo>content</memory-bar> safe";
         let result = filter_injected_memory(input);
-        // This matches because open/close suffixes are independent [a-z]+ patterns.
-        // Potentially dangerous: could strip content between unrelated tags.
-        assert_eq!(result, "");
-        // Note: this is a permissiveness issue, not a bypass. But it means
-        // crafted input can cause unexpected stripping of non-memory content.
+        assert_eq!(result, " safe");
     }
 
     // --- VULNERABILITY: Numeric/alphanumeric suffixes bypass ---
@@ -256,7 +277,6 @@ mod tests {
     fn filter_memory_numeric_suffix_matched() {
         let input = "<memory-v2>secret</memory-v2> rest";
         let result = filter_injected_memory(input);
-        // [^>]* absorbs "v2"
         assert_eq!(result, " rest");
     }
 
@@ -265,7 +285,6 @@ mod tests {
     fn filter_memory_whitespace_in_tag_stripped() {
         let input = "<memory-global >content</memory-global> after";
         let result = filter_injected_memory(input);
-        // [^>]* absorbs space before >
         assert_eq!(result, " after");
     }
 
@@ -273,7 +292,6 @@ mod tests {
     fn filter_memory_newline_in_tag_stripped() {
         let input = "<memory-global\n>content</memory-global> after";
         let result = filter_injected_memory(input);
-        // (?s) makes [^>]* match newline before >
         assert_eq!(result, " after");
     }
 
@@ -310,8 +328,7 @@ mod tests {
         let result = filter_injected_memory(&input);
         let elapsed = start.elapsed();
         assert_eq!(result, "");
-        // Rust regex crate guarantees O(n) — this should be fast.
-        assert!(elapsed.as_secs() < 2, "Regex took {:?} — potential ReDoS", elapsed);
+        assert!(elapsed.as_secs() < 2, "Parser took {:?} — potential perf issue", elapsed);
     }
 
     #[test]
@@ -325,7 +342,7 @@ mod tests {
         assert_eq!(result, "");
         assert!(
             elapsed.as_secs() < 2,
-            "Regex took {:?} on unclosed tag — potential ReDoS",
+            "Parser took {:?} on unclosed tag — potential perf issue",
             elapsed
         );
     }
@@ -361,7 +378,6 @@ mod tests {
     fn filter_memory_underscore_suffix_matched() {
         let input = "<memory-per_project>data</memory-per_project> rest";
         let result = filter_injected_memory(input);
-        // [^>]* absorbs underscore
         assert_eq!(result, " rest");
     }
 
@@ -370,7 +386,6 @@ mod tests {
     fn filter_memory_multiple_unclosed_tags_stripped() {
         let input = "<memory-global>leak1 <memory-project>leak2 <memory-session>leak3";
         let result = filter_injected_memory(input);
-        // First unclosed regex matches from <memory-global> to end
         assert_eq!(result, "");
     }
 

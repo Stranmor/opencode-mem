@@ -69,7 +69,7 @@ impl SearchService {
     ) -> Result<Vec<SearchResult>, ServiceError> {
         opencode_mem_search::run_semantic_search_with_fallback(
             &self.storage,
-            self.embeddings.as_deref(),
+            self.embeddings.as_ref(),
             query,
             limit,
         )
