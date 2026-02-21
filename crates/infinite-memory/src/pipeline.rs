@@ -251,7 +251,15 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
         let session_summaries =
             summary_queries::get_unaggregated_5min_for_session(pool, session_id.as_deref()).await?;
 
-        if session_summaries.len() >= MIN_5MIN_SUMMARIES_FOR_HOUR {
+        let should_aggregate = if session_summaries.len() >= MIN_5MIN_SUMMARIES_FOR_HOUR {
+            true
+        } else if let Some(first) = session_summaries.first() {
+            (chrono::Utc::now() - first.ts_start).num_hours() >= 1
+        } else {
+            false
+        };
+
+        if should_aggregate {
             let result: Result<()> = async {
                 let content = compress_summaries(llm, &session_summaries).await?;
                 let merged_entities = SummaryEntities::merge(
@@ -288,7 +296,15 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
         let session_summaries =
             summary_queries::get_unaggregated_hour_for_session(pool, session_id.as_deref()).await?;
 
-        if session_summaries.len() >= MIN_HOUR_SUMMARIES_FOR_DAY {
+        let should_aggregate = if session_summaries.len() >= MIN_HOUR_SUMMARIES_FOR_DAY {
+            true
+        } else if let Some(first) = session_summaries.first() {
+            (chrono::Utc::now() - first.ts_start).num_days() >= 1
+        } else {
+            false
+        };
+
+        if should_aggregate {
             let result: Result<()> = async {
                 let content = compress_summaries(llm, &session_summaries).await?;
                 let merged_entities = SummaryEntities::merge(
