@@ -31,8 +31,18 @@ impl SummaryStore for PgStorage {
         .bind(&summary.notes)
         .bind(serde_json::to_value(&summary.files_read)?)
         .bind(serde_json::to_value(&summary.files_edited)?)
-        .bind(summary.prompt_number.map(|v| v.as_pg_i32()).transpose().map_err(|e| crate::StorageError::DataCorruption { context: e.into(), source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()) })?)
-        .bind(summary.discovery_tokens.map(|v| v.as_pg_i32()).transpose().map_err(|e| crate::StorageError::DataCorruption { context: e.into(), source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()) })?)
+        .bind(summary.prompt_number.map(|v| v.as_pg_i32()).transpose().map_err(|e| {
+            crate::StorageError::DataCorruption {
+                context: e.into(),
+                source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+            }
+        })?)
+        .bind(summary.discovery_tokens.map(|v| v.as_pg_i32()).transpose().map_err(|e| {
+            crate::StorageError::DataCorruption {
+                context: e.into(),
+                source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+            }
+        })?)
         .bind(summary.created_at)
         .execute(&self.pool)
         .await?;

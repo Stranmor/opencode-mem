@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    GlobalKnowledge, KnowledgeSearchResult, KnowledgeType, Observation, SearchResult,
-    SessionSummary, UserPrompt, cosine_similarity,
+    cosine_similarity, GlobalKnowledge, KnowledgeSearchResult, KnowledgeType, Observation,
+    SearchResult, SessionSummary, UserPrompt,
 };
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_storage::traits::{

@@ -399,7 +399,6 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
     Ok((events_processed, hours_created, days_created))
 }
 
-
 #[cfg(test)]
 #[path = "pipeline_tests.rs"]
 mod pipeline_tests;

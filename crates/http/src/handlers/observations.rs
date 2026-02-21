@@ -1,22 +1,21 @@
 use crate::api_error::ApiError;
 use axum::{
-    Json,
     extract::{Path, Query, State},
     http::StatusCode,
+    Json,
 };
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall, UserPrompt,
-    filter_injected_memory, filter_private_content,
+    sanitize_input, Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall, UserPrompt,
 };
 use opencode_mem_service::PaginatedResult;
 
-use crate::AppState;
 use crate::api_types::{
     BatchRequest, ObserveBatchResponse, ObserveResponse, PaginationQuery, SaveMemoryRequest,
     SearchQuery, TimelineQuery,
 };
+use crate::AppState;
 
 pub async fn observe(
     State(state): State<Arc<AppState>>,
@@ -29,8 +28,8 @@ pub async fn observe(
     }
 
     let tool_input = serde_json::to_string(&tool_call.input).ok();
-    let filtered_input = tool_input.as_deref().map(|s| opencode_mem_core::filter_private_content(&opencode_mem_core::filter_injected_memory(s)));
-    let filtered_output = opencode_mem_core::filter_private_content(&opencode_mem_core::filter_injected_memory(&tool_call.output));
+    let filtered_input = tool_input.as_deref().map(opencode_mem_core::sanitize_input);
+    let filtered_output = opencode_mem_core::sanitize_input(&tool_call.output);
 
     let message_id = state
         .queue_service
@@ -63,8 +62,8 @@ pub async fn observe_batch(
             }
         }
         let tool_input = serde_json::to_string(&tool_call.input).ok();
-    let filtered_input = tool_input.as_deref().map(|s| opencode_mem_core::filter_private_content(&opencode_mem_core::filter_injected_memory(s)));
-    let filtered_output = opencode_mem_core::filter_private_content(&opencode_mem_core::filter_injected_memory(&tool_call.output));
+        let filtered_input = tool_input.as_deref().map(opencode_mem_core::sanitize_input);
+        let filtered_output = opencode_mem_core::sanitize_input(&tool_call.output);
 
         match state
             .queue_service

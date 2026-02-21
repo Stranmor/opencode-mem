@@ -1,4 +1,4 @@
-use opencode_mem_core::{Observation, ToolCall, filter_injected_memory, filter_private_content};
+use opencode_mem_core::{sanitize_input, Observation, ToolCall};
 use opencode_mem_infinite::tool_event;
 use opencode_mem_storage::traits::KnowledgeStore;
 
@@ -57,11 +57,10 @@ impl ObservationService {
         observation: Option<&Observation>,
     ) -> Result<(), crate::ServiceError> {
         if let Some(ref infinite_mem) = self.infinite_mem {
-            let filtered_output =
-                filter_injected_memory(&filter_private_content(&tool_call.output));
+            let filtered_output = sanitize_input(&tool_call.output);
             let filtered_input = {
                 let input_str = serde_json::to_string(&tool_call.input).unwrap_or_default();
-                let filtered = filter_injected_memory(&filter_private_content(&input_str));
+                let filtered = sanitize_input(&input_str);
                 serde_json::from_str(&filtered).unwrap_or_else(|e| {
                     tracing::warn!(
                         error = %e,

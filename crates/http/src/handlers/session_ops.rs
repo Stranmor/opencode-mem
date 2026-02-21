@@ -2,12 +2,10 @@ use crate::api_error::ApiError;
 use std::sync::Arc;
 
 use axum::http::StatusCode;
-use opencode_mem_core::{
-    Session, SessionStatus, ToolCall, filter_injected_memory, filter_private_content,
-};
+use opencode_mem_core::{sanitize_input, Session, SessionStatus, ToolCall};
 
-use crate::AppState;
 use crate::api_types::{SessionInitResponse, SessionObservationsResponse};
+use crate::AppState;
 
 /// Create and persist a new session, returning the HTTP response.
 ///
@@ -52,8 +50,8 @@ pub(crate) async fn enqueue_session_observations(
     let mut queued = 0usize;
     for tool_call in &observations {
         let tool_input = serde_json::to_string(&tool_call.input).ok();
-        let filtered_input = tool_input.as_deref().map(|s| opencode_mem_core::filter_private_content(&opencode_mem_core::filter_injected_memory(s)));
-        let filtered_output = opencode_mem_core::filter_private_content(&opencode_mem_core::filter_injected_memory(&tool_call.output));
+        let filtered_input = tool_input.as_deref().map(opencode_mem_core::sanitize_input);
+        let filtered_output = opencode_mem_core::sanitize_input(&tool_call.output);
 
         match state
             .queue_service

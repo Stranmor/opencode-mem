@@ -1,20 +1,20 @@
 use crate::api_error::ApiError;
 use axum::{
-    Json,
     extract::{Query, State},
     http::StatusCode,
+    Json,
 };
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    MAX_QUERY_LIMIT, SearchResult, SessionSummary, UserPrompt, sort_by_score_descending,
+    sort_by_score_descending, SearchResult, SessionSummary, UserPrompt, MAX_QUERY_LIMIT,
 };
 
-use crate::AppState;
 use crate::api_types::{
     FileSearchQuery, RankedItem, SearchQuery, TimelineResult, UnifiedSearchResult,
     UnifiedTimelineQuery,
 };
+use crate::AppState;
 
 pub async fn search(
     State(state): State<Arc<AppState>>,

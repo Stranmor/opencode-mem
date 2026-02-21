@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use opencode_mem_core::{Observation, cosine_similarity, observation_embedding_text};
+use opencode_mem_core::{cosine_similarity, observation_embedding_text, Observation};
 use opencode_mem_embeddings::EmbeddingProvider;
 use opencode_mem_storage::traits::{EmbeddingStore, InjectionStore};
 

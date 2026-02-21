@@ -161,6 +161,16 @@ pub fn filter_injected_memory(text: &str) -> String {
     MEMORY_ORPHAN_CLOSE_REGEX.replace_all(&after_unclosed, "").into_owned()
 }
 
+/// Standardized sanitization pipeline. Applies all required filters in the correct order.
+///
+/// Current pipeline:
+/// 1. Remove injected memory tags (to prevent infinite context loops)
+/// 2. Remove private content (to prevent leaking sensitive data)
+pub fn sanitize_input(text: &str) -> String {
+    let no_injected = filter_injected_memory(text);
+    filter_private_content(&no_injected)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

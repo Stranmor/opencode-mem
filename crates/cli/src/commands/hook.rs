@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::Subcommand;
 use opencode_mem_core::{
-    filter_injected_memory, ObservationHookRequest, ProjectFilter, SessionInitHookRequest,
+    sanitize_input, ObservationHookRequest, ProjectFilter, SessionInitHookRequest,
     SummarizeHookRequest,
 };
 use std::io::{IsTerminal, Read};
@@ -85,11 +85,11 @@ fn build_observation_request(
     if !std::io::stdin().is_terminal() {
         std::io::stdin().read_to_string(&mut output_str)?;
     }
-    let output_str = filter_injected_memory(&output_str);
+    let output_str = sanitize_input(&output_str);
     let tool_name = tool.unwrap_or_else(|| "unknown".to_owned());
     let input: Option<serde_json::Value> = match input_json {
         Some(s) => {
-            let filtered = filter_injected_memory(&s);
+            let filtered = sanitize_input(&s);
             Some(
                 serde_json::from_str(&filtered)
                     .map_err(|e| anyhow::anyhow!("Failed to parse input_json: {}", e))?,

@@ -1,4 +1,4 @@
-use opencode_mem_core::{Observation, ObservationType, filter_private_content, filter_injected_memory};
+use opencode_mem_core::{sanitize_input, Observation, ObservationType};
 
 #[test]
 fn test_post_llm_title_filtering() {
@@ -7,8 +7,9 @@ fn test_post_llm_title_filtering() {
         "tool".into(),
         ObservationType::Discovery,
         "Found <private>secret123</private>".into(),
-    ).build();
+    )
+    .build();
 
-    obs.title = filter_private_content(&filter_injected_memory(&obs.title));
+    obs.title = sanitize_input(&obs.title);
     assert_eq!(obs.title.trim(), "Found");
 }

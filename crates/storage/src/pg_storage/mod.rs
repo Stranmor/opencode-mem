@@ -115,11 +115,25 @@ pub(crate) fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observat
     .keywords(parse_json_value(keywords))
     .maybe_prompt_number(
         row.try_get::<Option<i32>, _>("prompt_number")?
-            .map(|v| PromptNumber(u32::try_from(v).unwrap_or(0))),
+            .map(|v| {
+                u32::try_from(v).map_err(|e| StorageError::DataCorruption {
+                    context: "prompt_number negative in DB".into(),
+                    source: Box::new(e),
+                })
+            })
+            .transpose()?
+            .map(PromptNumber),
     )
     .maybe_discovery_tokens(
         row.try_get::<Option<i32>, _>("discovery_tokens")?
-            .map(|v| DiscoveryTokens(u32::try_from(v).unwrap_or(0))),
+            .map(|v| {
+                u32::try_from(v).map_err(|e| StorageError::DataCorruption {
+                    context: "discovery_tokens negative in DB".into(),
+                    source: Box::new(e),
+                })
+            })
+            .transpose()?
+            .map(DiscoveryTokens),
     )
     .noise_level(noise_level)
     .maybe_noise_reason(noise_reason)
@@ -191,7 +205,12 @@ pub(crate) fn row_to_session(row: &sqlx::postgres::PgRow) -> Result<Session, Sto
         started_at,
         ended_at,
         status,
-        u32::try_from(row.try_get::<i32, _>("prompt_counter")?).unwrap_or(0),
+        u32::try_from(row.try_get::<i32, _>("prompt_counter")?).map_err(|e| {
+            StorageError::DataCorruption {
+                context: "prompt_counter negative in DB".into(),
+                source: Box::new(e),
+            }
+        })?,
     ))
 }
 
@@ -211,9 +230,23 @@ pub(crate) fn row_to_summary(row: &sqlx::postgres::PgRow) -> Result<SessionSumma
         parse_json_value(files_read),
         parse_json_value(files_edited),
         row.try_get::<Option<i32>, _>("prompt_number")?
-            .map(|v| PromptNumber(u32::try_from(v).unwrap_or(0))),
+            .map(|v| {
+                u32::try_from(v).map_err(|e| StorageError::DataCorruption {
+                    context: "prompt_number negative in DB".into(),
+                    source: Box::new(e),
+                })
+            })
+            .transpose()?
+            .map(PromptNumber),
         row.try_get::<Option<i32>, _>("discovery_tokens")?
-            .map(|v| DiscoveryTokens(u32::try_from(v).unwrap_or(0))),
+            .map(|v| {
+                u32::try_from(v).map_err(|e| StorageError::DataCorruption {
+                    context: "discovery_tokens negative in DB".into(),
+                    source: Box::new(e),
+                })
+            })
+            .transpose()?
+            .map(DiscoveryTokens),
         created_at,
     ))
 }
@@ -254,7 +287,12 @@ pub(crate) fn row_to_prompt(row: &sqlx::postgres::PgRow) -> Result<UserPrompt, S
     Ok(UserPrompt::new(
         row.try_get("id")?,
         row.try_get("content_session_id")?,
-        PromptNumber(u32::try_from(row.try_get::<i32, _>("prompt_number")?).unwrap_or(0)),
+        PromptNumber(u32::try_from(row.try_get::<i32, _>("prompt_number")?).map_err(|e| {
+            StorageError::DataCorruption {
+                context: "prompt_number negative in DB".into(),
+                source: Box::new(e),
+            }
+        })?),
         row.try_get("prompt_text")?,
         row.try_get("project")?,
         created_at,

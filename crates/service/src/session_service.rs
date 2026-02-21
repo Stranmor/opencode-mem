@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use opencode_mem_core::{Observation, Session, SessionStatus};
 use opencode_mem_llm::LlmClient;
-use opencode_mem_storage::StorageBackend;
 use opencode_mem_storage::traits::{ObservationStore, SessionStore, SummaryStore};
+use opencode_mem_storage::StorageBackend;
 
 use crate::ServiceError;
 

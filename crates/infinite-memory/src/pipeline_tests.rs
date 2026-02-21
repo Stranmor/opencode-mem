@@ -1,7 +1,6 @@
 use crate::event_types::Summary;
 use chrono::{TimeZone, Utc};
 
-
 #[test]
 fn test_bucket_logic_unsorted() {
     let t1 = Utc.timestamp_opt(1700000000, 0).unwrap();

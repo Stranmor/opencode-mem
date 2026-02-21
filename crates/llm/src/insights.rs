@@ -4,7 +4,7 @@ use opencode_mem_core::{Concept, Observation, ObservationType};
 use serde::Deserialize;
 
 use crate::ai_types::{ChatRequest, Message, ResponseFormat};
-use crate::client::{LlmClient, truncate};
+use crate::client::{truncate, LlmClient};
 use crate::error::LlmError;
 
 /// Single insight extracted from session analysis
@@ -236,14 +236,15 @@ Return JSON:
       "title": "Short title (5-10 words)",
       "description": "Detailed explanation",
       "files": ["path/to/relevant/file.rs"],
-      "noise_level": "critical|high|medium|low|negligible"
+      "noise_level": "{noise_levels}"
     }}
   ]
 }}
 ```
 
 If no project-specific insights found, return: {{"insights": []}}"#,
-        types = opencode_mem_core::ObservationType::ALL_VARIANTS_STR
+        types = opencode_mem_core::ObservationType::ALL_VARIANTS_STR,
+        noise_levels = opencode_mem_core::NoiseLevel::ALL_VARIANTS_STR
     )
 }
 

@@ -7,14 +7,14 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    Observation, ObservationInput, ObservationType, ToolCall, ToolOutput, env_parse_with_default,
-    filter_injected_memory, is_trivial_tool_call,
+    env_parse_with_default, is_trivial_tool_call, sanitize_input, Observation, ObservationInput,
+    ObservationType, ToolCall, ToolOutput,
 };
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::{CompressionResult, LlmClient};
-use opencode_mem_storage::StorageBackend;
 use opencode_mem_storage::traits::{ObservationStore, SearchStore};
+use opencode_mem_storage::StorageBackend;
 use tokio::sync::broadcast;
 
 pub enum SaveMemoryResult {
@@ -124,12 +124,10 @@ impl ObservationService {
 
         // Apply centralized privacy and injection filtering exactly once here
         // before LLM compression or long-term persistence.
-        let filtered_output =
-            opencode_mem_core::filter_private_content(&filter_injected_memory(&tool_call.output));
+        let filtered_output = sanitize_input(&tool_call.output);
         let filtered_input = {
             let input_str = serde_json::to_string(&tool_call.input).unwrap_or_default();
-            let filtered =
-                opencode_mem_core::filter_private_content(&filter_injected_memory(&input_str));
+            let filtered = sanitize_input(&input_str);
             serde_json::from_str(&filtered).unwrap_or_else(|e| {
                 tracing::warn!(
                     error = %e,
@@ -165,15 +163,11 @@ impl ObservationService {
                 Ok(None)
             },
             CompressionResult::Create(mut observation) => {
-                observation.title = opencode_mem_core::filter_private_content(
-                    &filter_injected_memory(&observation.title),
-                );
+                observation.title = sanitize_input(&observation.title);
                 self.persist_and_notify(&observation, Some(&tool_call.session_id)).await
             },
             CompressionResult::Update { target_id, mut observation } => {
-                observation.title = opencode_mem_core::filter_private_content(
-                    &filter_injected_memory(&observation.title),
-                );
+                observation.title = sanitize_input(&observation.title);
                 let candidate_ids: HashSet<&str> =
                     candidates.iter().map(|o| o.id.as_str()).collect();
                 if !candidate_ids.contains(target_id.as_str()) {
@@ -313,9 +307,7 @@ impl ObservationService {
         title: Option<&str>,
         project: Option<&str>,
     ) -> Result<SaveMemoryResult, crate::ServiceError> {
-        let raw_text = text.trim();
-        let text = opencode_mem_core::filter_private_content(raw_text);
-        let text = filter_injected_memory(&text);
+        let text = sanitize_input(text.trim());
         if text.is_empty() {
             return Err(crate::ServiceError::InvalidInput(
                 "Text is required for save_memory".into(),
@@ -323,10 +315,7 @@ impl ObservationService {
         }
 
         let title_str = match title {
-            Some(t) if !t.trim().is_empty() => {
-                let filtered = opencode_mem_core::filter_private_content(t.trim());
-                filter_injected_memory(&filtered)
-            },
+            Some(t) if !t.trim().is_empty() => sanitize_input(t.trim()),
             _ => text.chars().take(50).collect(),
         };
 
