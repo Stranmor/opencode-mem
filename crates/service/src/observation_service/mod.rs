@@ -91,6 +91,16 @@ impl ObservationService {
         id: &str,
         tool_call: ToolCall,
     ) -> Result<Option<Observation>, crate::ServiceError> {
+        // Idempotency check: if the observation already exists, we skip LLM compression
+        // and infinite memory storage (assuming they already succeeded), but we re-run
+        // knowledge extraction, which has its own idempotency check.
+        let existing_obs = self.storage.get_by_id(id).await?;
+        if let Some(obs) = existing_obs {
+            tracing::info!(id = %id, "Observation already exists in primary storage, skipping compression and infinite memory storage for queue retry");
+            self.extract_knowledge(&obs).await?;
+            return Ok(Some(obs));
+        }
+
         let save_result = self.compress_and_save(id, &tool_call).await?;
 
         // ALWAYS store raw event to infinite memory immediately, regardless of LLM compression result

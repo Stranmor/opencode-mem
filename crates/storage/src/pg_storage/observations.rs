@@ -6,6 +6,8 @@ use crate::error::StorageError;
 use crate::traits::ObservationStore;
 use async_trait::async_trait;
 
+const OBSERVATION_COLUMNS: &str = "id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, files_read, files_modified, keywords, prompt_number, discovery_tokens, noise_level, noise_reason, created_at";
+
 #[async_trait]
 impl ObservationStore for PgStorage {
     async fn save_observation(&self, obs: &Observation) -> Result<bool, StorageError> {
@@ -61,12 +63,11 @@ impl ObservationStore for PgStorage {
     }
 
     async fn get_by_id(&self, id: &str) -> Result<Option<Observation>, StorageError> {
-        let row = sqlx::query(
-            "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
-                    facts, concepts, files_read, files_modified, keywords,
-                    prompt_number, discovery_tokens, noise_level, noise_reason, created_at
+        let row = sqlx::query(&format!(
+            "SELECT {}
              FROM observations WHERE id = $1",
-        )
+            OBSERVATION_COLUMNS
+        ))
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -74,12 +75,11 @@ impl ObservationStore for PgStorage {
     }
 
     async fn get_recent(&self, limit: usize) -> Result<Vec<Observation>, StorageError> {
-        let rows = sqlx::query(
-            "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
-                    facts, concepts, files_read, files_modified, keywords,
-                    prompt_number, discovery_tokens, noise_level, noise_reason, created_at
+        let rows = sqlx::query(&format!(
+            "SELECT {}
              FROM observations ORDER BY created_at DESC LIMIT $1",
-        )
+            OBSERVATION_COLUMNS
+        ))
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
@@ -90,12 +90,11 @@ impl ObservationStore for PgStorage {
         &self,
         session_id: &str,
     ) -> Result<Vec<Observation>, StorageError> {
-        let rows = sqlx::query(
-            "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
-                    facts, concepts, files_read, files_modified, keywords,
-                    prompt_number, discovery_tokens, noise_level, noise_reason, created_at
+        let rows = sqlx::query(&format!(
+            "SELECT {}
              FROM observations WHERE session_id = $1 ORDER BY created_at",
-        )
+            OBSERVATION_COLUMNS
+        ))
         .bind(session_id)
         .fetch_all(&self.pool)
         .await?;
@@ -109,12 +108,11 @@ impl ObservationStore for PgStorage {
         if ids.is_empty() {
             return Ok(Vec::new());
         }
-        let rows = sqlx::query(
-            "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
-                    facts, concepts, files_read, files_modified, keywords,
-                    prompt_number, discovery_tokens, noise_level, noise_reason, created_at
+        let rows = sqlx::query(&format!(
+            "SELECT {}
              FROM observations WHERE id = ANY($1) ORDER BY created_at DESC",
-        )
+            OBSERVATION_COLUMNS
+        ))
         .bind(ids)
         .fetch_all(&self.pool)
         .await?;
@@ -126,15 +124,14 @@ impl ObservationStore for PgStorage {
         project: &str,
         limit: usize,
     ) -> Result<Vec<Observation>, StorageError> {
-        let rows = sqlx::query(
-            "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
-                    facts, concepts, files_read, files_modified, keywords,
-                    prompt_number, discovery_tokens, noise_level, noise_reason, created_at
+        let rows = sqlx::query(&format!(
+            "SELECT {}
              FROM observations
              WHERE project = $1
                AND noise_level NOT IN ('low', 'negligible')
              ORDER BY created_at DESC LIMIT $2",
-        )
+            OBSERVATION_COLUMNS
+        ))
         .bind(project)
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
@@ -177,12 +174,11 @@ impl ObservationStore for PgStorage {
     ) -> Result<(), StorageError> {
         let mut tx = self.pool.begin().await?;
 
-        let row = sqlx::query(
-            "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
-                    facts, concepts, files_read, files_modified, keywords,
-                    prompt_number, discovery_tokens, noise_level, noise_reason, created_at
+        let row = sqlx::query(&format!(
+            "SELECT {}
              FROM observations WHERE id = $1 FOR UPDATE",
-        )
+            OBSERVATION_COLUMNS
+        ))
         .bind(existing_id)
         .fetch_optional(&mut *tx)
         .await?;

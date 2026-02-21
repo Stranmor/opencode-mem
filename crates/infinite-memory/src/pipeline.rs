@@ -317,13 +317,13 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
                         "Failed to create hour summary, releasing records"
                     );
                     let ids: Vec<i64> = bucket.iter().map(|s| s.id).collect();
-                    let _ = summary_queries::release_summaries_5min(pool, &ids).await;
+                    let _ = summary_queries::release_summaries_5min(pool, &ids, true).await;
                 } else {
                     hours_created += 1;
                 }
             } else if !bucket.is_empty() {
                 let ids: Vec<i64> = bucket.iter().map(|s| s.id).collect();
-                summary_queries::release_summaries_5min(pool, &ids).await?;
+                summary_queries::release_summaries_5min(pool, &ids, false).await?;
             }
         }
     }
@@ -385,13 +385,13 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
                         "Failed to create day summary, releasing records"
                     );
                     let ids: Vec<i64> = bucket.iter().map(|s| s.id).collect();
-                    let _ = summary_queries::release_summaries_hour(pool, &ids).await;
+                    let _ = summary_queries::release_summaries_hour(pool, &ids, true).await;
                 } else {
                     days_created += 1;
                 }
             } else if !bucket.is_empty() {
                 let ids: Vec<i64> = bucket.iter().map(|s| s.id).collect();
-                summary_queries::release_summaries_hour(pool, &ids).await?;
+                summary_queries::release_summaries_hour(pool, &ids, false).await?;
             }
         }
     }

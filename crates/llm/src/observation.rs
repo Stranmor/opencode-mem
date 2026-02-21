@@ -92,12 +92,13 @@ DECISION (MANDATORY — choose exactly one):
 - subtitle: project/context this applies to
 - narrative: the full lesson — what happened, why, and what to do differently
 - facts: specific actionable facts (file paths, commands, error messages)
-- concepts: from ["problem-solution", "gotcha", "pattern", "trade-off"]
+- concepts: from [{concepts}]
 - files_read: file paths involved
 - files_modified: file paths changed
 - keywords: search terms"#,
             obs_types = opencode_mem_core::ObservationType::ALL_VARIANTS_STR,
-            noise_levels = opencode_mem_core::NoiseLevel::ALL_VARIANTS_STR
+            noise_levels = opencode_mem_core::NoiseLevel::ALL_VARIANTS_STR,
+            concepts = opencode_mem_core::Concept::ALL_VARIANTS_STR
         )
     } else {
         format!(
@@ -112,12 +113,13 @@ DECISION (MANDATORY — choose exactly one):
 - subtitle: project/context this applies to
 - narrative: the full lesson — what happened, why, and what to do differently
 - facts: specific actionable facts (file paths, commands, error messages)
-- concepts: from ["problem-solution", "gotcha", "pattern", "trade-off"]
+- concepts: from [{concepts}]
 - files_read: file paths involved
 - files_modified: file paths changed
 - keywords: search terms"#,
             obs_types = opencode_mem_core::ObservationType::ALL_VARIANTS_STR,
-            noise_levels = opencode_mem_core::NoiseLevel::ALL_VARIANTS_STR
+            noise_levels = opencode_mem_core::NoiseLevel::ALL_VARIANTS_STR,
+            concepts = opencode_mem_core::Concept::ALL_VARIANTS_STR
         )
     };
 

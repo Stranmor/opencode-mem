@@ -49,29 +49,37 @@ pub async fn get_sessions_with_unaggregated_5min(pool: &PgPool) -> Result<Vec<Op
 }
 
 /// Get all unaggregated 5min summaries for a specific session.
-pub async fn release_summaries_5min(pool: &PgPool, ids: &[i64]) -> Result<()> {
+pub async fn release_summaries_5min(
+    pool: &PgPool,
+    ids: &[i64],
+    increment_retry: bool,
+) -> Result<()> {
     if ids.is_empty() {
         return Ok(());
     }
-    sqlx::query(
-        "UPDATE summaries_5min SET processing_started_at = NULL, processing_instance_id = NULL, retry_count = retry_count + 1 WHERE id = ANY($1)",
-    )
-    .bind(ids)
-    .execute(pool)
-    .await?;
+    let query = if increment_retry {
+        "UPDATE summaries_5min SET processing_started_at = NULL, processing_instance_id = NULL, retry_count = retry_count + 1 WHERE id = ANY($1)"
+    } else {
+        "UPDATE summaries_5min SET processing_started_at = NULL, processing_instance_id = NULL WHERE id = ANY($1)"
+    };
+    sqlx::query(query).bind(ids).execute(pool).await?;
     Ok(())
 }
 
-pub async fn release_summaries_hour(pool: &PgPool, ids: &[i64]) -> Result<()> {
+pub async fn release_summaries_hour(
+    pool: &PgPool,
+    ids: &[i64],
+    increment_retry: bool,
+) -> Result<()> {
     if ids.is_empty() {
         return Ok(());
     }
-    sqlx::query(
-        "UPDATE summaries_hour SET processing_started_at = NULL, processing_instance_id = NULL, retry_count = retry_count + 1 WHERE id = ANY($1)",
-    )
-    .bind(ids)
-    .execute(pool)
-    .await?;
+    let query = if increment_retry {
+        "UPDATE summaries_hour SET processing_started_at = NULL, processing_instance_id = NULL, retry_count = retry_count + 1 WHERE id = ANY($1)"
+    } else {
+        "UPDATE summaries_hour SET processing_started_at = NULL, processing_instance_id = NULL WHERE id = ANY($1)"
+    };
+    sqlx::query(query).bind(ids).execute(pool).await?;
     Ok(())
 }
 

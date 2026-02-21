@@ -149,6 +149,9 @@ pub enum Concept {
 }
 
 impl Concept {
+    pub const ALL_VARIANTS_STR: &'static str =
+        "how-it-works|why-it-exists|what-changed|problem-solution|gotcha|pattern|trade-off";
+
     #[must_use]
     pub const fn as_str(&self) -> &'static str {
         match *self {
@@ -159,6 +162,29 @@ impl Concept {
             Self::Gotcha => "gotcha",
             Self::Pattern => "pattern",
             Self::TradeOff => "trade-off",
+        }
+    }
+}
+
+impl std::fmt::Display for Concept {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl FromStr for Concept {
+    type Err = CoreError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "how-it-works" => Ok(Self::HowItWorks),
+            "why-it-exists" => Ok(Self::WhyItExists),
+            "what-changed" => Ok(Self::WhatChanged),
+            "problem-solution" => Ok(Self::ProblemSolution),
+            "gotcha" => Ok(Self::Gotcha),
+            "pattern" => Ok(Self::Pattern),
+            "trade-off" => Ok(Self::TradeOff),
+            other => Err(CoreError::InvalidObservationType(format!("Unknown concept: {}", other))),
         }
     }
 }
