@@ -41,19 +41,14 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
     // while observations persist — new messages reusing old row IDs won't collide.
     // If the same message is processed twice (race condition), same observation ID is generated.
     let id = {
-        use sha2::{Digest, Sha256};
-        let mut hasher = Sha256::new();
-        hasher.update(tool_name);
-        hasher.update(&msg.session_id);
-        hasher.update(tool_response);
-        hasher.update(msg.created_at_epoch.to_string());
-        let content_hash = hasher.finalize();
-        // Take the first 16 bytes of the SHA-256 hash to create a deterministic UUID
-        let mut bytes = [0u8; 16];
-        if let Some(slice) = content_hash.get(..16) {
-            bytes.copy_from_slice(slice);
-        }
-        uuid::Builder::from_bytes(bytes).into_uuid().to_string()
+        let mut data = String::with_capacity(
+            tool_name.len() + msg.session_id.len() + tool_response.len() + 20,
+        );
+        data.push_str(tool_name);
+        data.push_str(&msg.session_id);
+        data.push_str(tool_response);
+        data.push_str(&msg.created_at_epoch.to_string());
+        uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, data.as_bytes()).to_string()
     };
 
     let result = state.observation_service.process(&id, tool_call).await?;
@@ -99,6 +94,23 @@ pub fn start_background_processor(state: Arc<AppState>) {
                 }
             }
 
+            // Periodic DLQ garbage collection (~once per day at 5s interval: 17280 * 5s = 86400s)
+            // Failed messages older than 7 days (604800s) are deleted
+            if loop_count.is_multiple_of(17280) {
+                let ttl_secs =
+                    opencode_mem_core::env_parse_with_default("OPENCODE_MEM_DLQ_TTL_DAYS", 7_i64)
+                        * 86400;
+                match state.queue_service.clear_stale_failed_messages(ttl_secs).await {
+                    Ok(deleted) if deleted > 0 => {
+                        tracing::info!(deleted, "Periodic DLQ garbage collection completed");
+                    },
+                    Ok(_) => {},
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Periodic DLQ garbage collection failed");
+                    },
+                }
+            }
+
             tracing::debug!("Background processor: checking queue...");
 
             let max_workers = max_queue_workers();
@@ -125,15 +137,14 @@ pub fn start_background_processor(state: Arc<AppState>) {
             }
 
             let count = messages.len();
-            let mut handles = Vec::with_capacity(count);
-
             for msg in messages {
                 let permit = match Arc::clone(&state.semaphore).acquire_owned().await {
                     Ok(p) => p,
                     Err(_) => continue,
                 };
                 let state_clone = Arc::clone(&state);
-                let handle = tokio::spawn(async move {
+                // Fire and forget - do not join handles here to avoid head-of-line blocking
+                tokio::spawn(async move {
                     let _permit = permit;
                     let result = process_pending_message(&state_clone, &msg).await;
                     match result {
@@ -157,16 +168,9 @@ pub fn start_background_processor(state: Arc<AppState>) {
                         },
                     }
                 });
-                handles.push(handle);
             }
 
-            for handle in handles {
-                if let Err(e) = handle.await {
-                    tracing::error!("Background processor: task join error: {}", e);
-                }
-            }
-
-            tracing::info!("Background processor: processed {} messages", count);
+            tracing::info!("Background processor: spawned {} message tasks", count);
         }
     });
 }

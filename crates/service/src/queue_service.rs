@@ -60,6 +60,10 @@ impl QueueService {
         Ok(self.storage.clear_failed_messages().await?)
     }
 
+    pub async fn clear_stale_failed_messages(&self, ttl_secs: i64) -> Result<usize, ServiceError> {
+        Ok(self.storage.clear_stale_failed_messages(ttl_secs).await?)
+    }
+
     pub async fn retry_failed_messages(&self) -> Result<usize, ServiceError> {
         Ok(self.storage.retry_failed_messages().await?)
     }

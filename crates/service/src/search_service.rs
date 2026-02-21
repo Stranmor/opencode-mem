@@ -70,14 +70,10 @@ impl SearchService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
-        opencode_mem_search::run_semantic_search_with_fallback(
-            &self.storage,
-            self.embeddings.as_ref(),
-            query,
-            limit,
-        )
-        .await
-        .map_err(ServiceError::Search)
+        self.hybrid_search
+            .semantic_search_with_fallback(query, limit)
+            .await
+            .map_err(ServiceError::Search)
     }
 
     // ── ObservationStore read delegates ─────────────────────────────────

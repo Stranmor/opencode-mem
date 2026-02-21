@@ -195,6 +195,18 @@ impl PendingQueueStore for PgStorage {
         Ok(usize::try_from(result.rows_affected()).unwrap_or(usize::MAX))
     }
 
+    async fn clear_stale_failed_messages(&self, ttl_secs: i64) -> Result<usize, StorageError> {
+        let now = chrono::Utc::now().timestamp();
+        let stale_threshold = now - ttl_secs;
+        let result = sqlx::query(
+            "DELETE FROM pending_messages WHERE status = 'failed' AND created_at_epoch <= $1",
+        )
+        .bind(stale_threshold)
+        .execute(&self.pool)
+        .await?;
+        Ok(usize::try_from(result.rows_affected()).unwrap_or(usize::MAX))
+    }
+
     async fn retry_failed_messages(&self) -> Result<usize, StorageError> {
         let result = sqlx::query(
             "UPDATE pending_messages

@@ -209,6 +209,9 @@ pub trait PendingQueueStore: Send + Sync {
     /// Clear all failed messages.
     async fn clear_failed_messages(&self) -> Result<usize, StorageError>;
 
+    /// Delete failed messages older than TTL (dead letter queue garbage collection).
+    async fn clear_stale_failed_messages(&self, ttl_secs: i64) -> Result<usize, StorageError>;
+
     /// Reset failed messages back to pending for retry.
     async fn retry_failed_messages(&self) -> Result<usize, StorageError>;
 
