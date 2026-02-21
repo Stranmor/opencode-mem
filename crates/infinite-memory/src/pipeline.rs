@@ -198,35 +198,50 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
                 continue;
             }
 
-            tracing::info!(
-                "Compressing {} events for session {}",
-                session_events.len(),
-                session_id
-            );
+            let mut current_bucket: Vec<StoredEvent> = Vec::new();
+            let mut bucket_start = session_events[0].ts;
+            let mut buckets = Vec::new();
 
-            let owned_events: Vec<StoredEvent> =
-                session_events.iter().map(|e| (*e).clone()).collect();
-
-            let result: Result<()> = async {
-                let (summary, entities) = compress_events(llm, &owned_events).await?;
-                create_5min_summary(pool, &owned_events, &summary, entities.as_ref()).await?;
-                Ok(())
+            for event in session_events {
+                // Group events into strict 5-minute temporal buckets
+                if (event.ts - bucket_start).num_seconds() > 300 {
+                    buckets.push(current_bucket.clone());
+                    current_bucket.clear();
+                    bucket_start = event.ts;
+                }
+                current_bucket.push((*event).clone());
             }
-            .await;
+            if !current_bucket.is_empty() {
+                buckets.push(current_bucket);
+            }
 
-            if let Err(e) = result {
-                tracing::error!(
-                    session_id = %session_id,
-                    error = %e,
-                    "Failed to compress session, skipping"
+            for owned_events in buckets {
+                tracing::info!(
+                    "Compressing {} events for session {} (time window)",
+                    owned_events.len(),
+                    session_id
                 );
-                let ids: Vec<i64> = owned_events.iter().map(|e| e.id).collect();
-                let _ = event_queries::release_events(pool, &ids).await;
-                continue;
-            }
 
-            processed_in_batch += 1;
-            total_processed += u32::try_from(session_events.len()).unwrap_or(u32::MAX);
+                let result: Result<()> = async {
+                    let (summary, entities) = compress_events(llm, &owned_events).await?;
+                    create_5min_summary(pool, &owned_events, &summary, entities.as_ref()).await?;
+                    Ok(())
+                }
+                .await;
+
+                if let Err(e) = result {
+                    tracing::error!(
+                        session_id = %session_id,
+                        error = %e,
+                        "Failed to compress 5min bucket, skipping"
+                    );
+                    let ids: Vec<i64> = owned_events.iter().map(|e| e.id).collect();
+                    let _ = event_queries::release_events(pool, &ids).await;
+                } else {
+                    processed_in_batch += 1;
+                    total_processed += u32::try_from(owned_events.len()).unwrap_or(u32::MAX);
+                }
+            }
         }
 
         if processed_in_batch == 0 {

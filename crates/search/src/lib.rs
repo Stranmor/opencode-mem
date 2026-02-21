@@ -116,6 +116,23 @@ impl HybridSearch {
         to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
+        if let Some(q) = query {
+            if let Some(emb) = &self.embeddings {
+                let emb_clone = emb.clone();
+                let query_str = q.to_owned();
+                if let Ok(Ok(query_vec)) =
+                    tokio::task::spawn_blocking(move || emb_clone.embed(&query_str)).await
+                {
+                    return self
+                        .storage
+                        .hybrid_search_v2_with_filters(
+                            q, &query_vec, project, obs_type, from, to, limit,
+                        )
+                        .await
+                        .map_err(Into::into);
+                }
+            }
+        }
         self.storage
             .search_with_filters(query, project, obs_type, from, to, limit)
             .await

@@ -33,58 +33,68 @@ impl ObservationService {
             return Ok(0);
         }
 
-        let mut merged_count: usize = 0;
-        let mut deleted_ids: HashSet<String> = HashSet::new();
+        // Prepare combined data array for the blocking task
+        let mut combined: Vec<(String, Vec<f32>, NoiseLevel)> =
+            Vec::with_capacity(embeddings.len());
+        for (id, emb) in embeddings {
+            if let Some(summary) = summaries.iter().find(|s| s.id == id) {
+                combined.push((id, emb, summary.noise_level));
+            }
+        }
 
-        for (i, (id_a, emb_a)) in embeddings.iter().enumerate() {
-            if deleted_ids.contains(id_a) {
+        let dedup_threshold = self.dedup_threshold;
+
+        // Perform O(N^2) comparison in a blocking thread to avoid starving the async executor
+        let merge_pairs = tokio::task::spawn_blocking(move || {
+            let mut pairs = Vec::new();
+            let mut deleted_ids = HashSet::new();
+
+            for (i, (id_a, emb_a, noise_a)) in combined.iter().enumerate() {
+                if deleted_ids.contains(id_a) {
+                    continue;
+                }
+
+                let start = i.saturating_add(1);
+                for (id_b, emb_b, noise_b) in combined.iter().skip(start) {
+                    if deleted_ids.contains(id_b) {
+                        continue;
+                    }
+
+                    let sim = cosine_similarity(emb_a, emb_b);
+                    if sim < dedup_threshold {
+                        continue;
+                    }
+
+                    // Lower NoiseLevel ord value = more important (Critical < High < Medium < Low < Negligible).
+                    // Keep the more important observation (lower ord = keeper).
+                    let (keeper_id, duplicate_id) =
+                        if noise_a <= noise_b { (id_a, id_b) } else { (id_b, id_a) };
+
+                    pairs.push((keeper_id.to_string(), duplicate_id.to_string(), sim));
+                    deleted_ids.insert(duplicate_id.to_string());
+
+                    if duplicate_id == id_a {
+                        break;
+                    }
+                }
+            }
+            pairs
+        })
+        .await
+        .map_err(|e| ServiceError::System(anyhow::anyhow!("spawn_blocking failed: {}", e)))?;
+
+        let mut merged_count: usize = 0;
+        for (keeper_id, duplicate_id, sim) in merge_pairs {
+            if let Err(e) = self.merge_and_delete_duplicate(&keeper_id, &duplicate_id, sim).await {
+                tracing::warn!(
+                    keeper = %keeper_id,
+                    duplicate = %duplicate_id,
+                    error = %e,
+                    "Dedup sweep: merge failed, skipping pair"
+                );
                 continue;
             }
-
-            let start = i.saturating_add(1);
-            for (id_b, emb_b) in embeddings.iter().skip(start) {
-                if deleted_ids.contains(id_b) {
-                    continue;
-                }
-
-                let sim = cosine_similarity(emb_a, emb_b);
-                if sim < self.dedup_threshold {
-                    continue;
-                }
-
-                let summary_a = summaries.iter().find(|s| s.id == *id_a);
-                let summary_b = summaries.iter().find(|s| s.id == *id_b);
-
-                let (Some(sa), Some(sb)) = (summary_a, summary_b) else {
-                    continue;
-                };
-
-                // Lower NoiseLevel ord value = more important (Critical < High < Medium < Low < Negligible).
-                // Keep the more important observation (lower ord = keeper).
-                let (keeper_id, duplicate_id) = if sa.noise_level <= sb.noise_level {
-                    (&sa.id, &sb.id)
-                } else {
-                    (&sb.id, &sa.id)
-                };
-
-                if let Err(e) = self.merge_and_delete_duplicate(keeper_id, duplicate_id, sim).await
-                {
-                    tracing::warn!(
-                        keeper = %keeper_id,
-                        duplicate = %duplicate_id,
-                        error = %e,
-                        "Dedup sweep: merge failed, skipping pair"
-                    );
-                    continue;
-                }
-
-                deleted_ids.insert(duplicate_id.clone());
-                merged_count = merged_count.saturating_add(1);
-
-                if duplicate_id == id_a {
-                    break;
-                }
-            }
+            merged_count = merged_count.saturating_add(1);
         }
 
         if merged_count > 0 {

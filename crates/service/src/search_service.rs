@@ -42,7 +42,10 @@ impl SearchService {
         to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
-        Ok(self.storage.search_with_filters(query, project, obs_type, from, to, limit).await?)
+        self.hybrid_search
+            .search_with_filters(query, project, obs_type, from, to, limit)
+            .await
+            .map_err(ServiceError::Search)
     }
 
     pub async fn hybrid_search(
