@@ -183,6 +183,8 @@ pub enum NoiseLevel {
 }
 
 impl NoiseLevel {
+    pub const ALL_VARIANTS_STR: &'static str = "critical|high|medium|low|negligible";
+
     /// Returns the string representation of the noise level.
     #[must_use]
     pub const fn as_str(&self) -> &'static str {

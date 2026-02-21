@@ -1,0 +1,9 @@
+--- traits.rs
++++ traits.rs
+@@ -48,4 +48,6 @@
+         limit: usize,
+     ) -> Result<Vec<Knowledge>, StorageError>;
+     async fn delete_knowledge(&self, id: &str) -> Result<(), StorageError>;
++
++    async fn has_knowledge_for_observation(&self, observation_id: &str) -> Result<bool, StorageError>;
+ }

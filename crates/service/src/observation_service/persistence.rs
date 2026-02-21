@@ -125,7 +125,8 @@ impl ObservationService {
         let inserted = self.storage.save_observation(observation).await?;
         if !inserted {
             tracing::debug!("Skipping duplicate observation: {}", observation.title);
-            return Ok(None);
+            // Return existing observation (as not-new) instead of None so side-effects can still execute
+            return Ok(Some((observation.clone(), false)));
         }
 
         tracing::info!("Saved observation: {} - {}", observation.id, observation.title);

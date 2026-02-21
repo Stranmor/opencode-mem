@@ -1,6 +1,6 @@
-use crate::event_types::{Summary, SummaryEntities};
+use crate::event_types::Summary;
 use chrono::{TimeZone, Utc};
-use sqlx::PgPool;
+
 
 #[test]
 fn test_bucket_logic_unsorted() {

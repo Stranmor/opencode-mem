@@ -18,9 +18,9 @@ impl PromptStore for PgStorage {
         )
         .bind(&prompt.id)
         .bind(&prompt.content_session_id)
-        .bind(i32::try_from(prompt.prompt_number.0).map_err(|e| StorageError::DataCorruption {
+        .bind(prompt.prompt_number.as_pg_i32().map_err(|e| StorageError::DataCorruption {
             context: "prompt_number exceeds i32::MAX".into(),
-            source: Box::new(e),
+            source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
         })?)
         .bind(&prompt.prompt_text)
         .bind(&prompt.project)

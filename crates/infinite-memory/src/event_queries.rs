@@ -58,7 +58,7 @@ pub async fn release_events(pool: &PgPool, ids: &[i64]) -> Result<()> {
         return Ok(());
     }
     sqlx::query(
-        "UPDATE raw_events SET processing_started_at = NULL, processing_instance_id = NULL WHERE id = ANY($1)",
+        "UPDATE raw_events SET processing_started_at = NULL, processing_instance_id = NULL, retry_count = retry_count + 1 WHERE id = ANY($1)",
     )
     .bind(ids)
     .execute(pool)
@@ -78,6 +78,7 @@ pub async fn get_unsummarized_events(pool: &PgPool, limit: i64) -> Result<Vec<St
         WHERE id IN (
             SELECT id FROM raw_events
             WHERE summary_5min_id IS NULL
+              AND retry_count < 3
               AND (processing_started_at IS NULL OR processing_started_at < $2)
             ORDER BY ts ASC
             LIMIT $1

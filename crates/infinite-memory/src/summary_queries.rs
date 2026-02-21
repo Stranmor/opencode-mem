@@ -54,7 +54,7 @@ pub async fn release_summaries_5min(pool: &PgPool, ids: &[i64]) -> Result<()> {
         return Ok(());
     }
     sqlx::query(
-        "UPDATE summaries_5min SET processing_started_at = NULL, processing_instance_id = NULL WHERE id = ANY($1)",
+        "UPDATE summaries_5min SET processing_started_at = NULL, processing_instance_id = NULL, retry_count = retry_count + 1 WHERE id = ANY($1)",
     )
     .bind(ids)
     .execute(pool)
@@ -67,7 +67,7 @@ pub async fn release_summaries_hour(pool: &PgPool, ids: &[i64]) -> Result<()> {
         return Ok(());
     }
     sqlx::query(
-        "UPDATE summaries_hour SET processing_started_at = NULL, processing_instance_id = NULL WHERE id = ANY($1)",
+        "UPDATE summaries_hour SET processing_started_at = NULL, processing_instance_id = NULL, retry_count = retry_count + 1 WHERE id = ANY($1)",
     )
     .bind(ids)
     .execute(pool)
@@ -92,6 +92,7 @@ pub async fn get_unaggregated_5min_for_session(
                 SELECT id
                 FROM summaries_5min
                 WHERE summary_hour_id IS NULL AND session_id = $1
+                  AND retry_count < 3
                   AND (processing_started_at IS NULL OR processing_started_at < $2)
                 ORDER BY ts_start ASC
                 LIMIT 500
@@ -114,6 +115,7 @@ pub async fn get_unaggregated_5min_for_session(
                 SELECT id
                 FROM summaries_5min
                 WHERE summary_hour_id IS NULL AND session_id IS NULL
+                  AND retry_count < 3
                   AND (processing_started_at IS NULL OR processing_started_at < $1)
                 ORDER BY ts_start ASC
                 LIMIT 500
@@ -181,6 +183,7 @@ pub async fn get_unaggregated_hour_for_session(
                 SELECT id
                 FROM summaries_hour
                 WHERE summary_day_id IS NULL AND session_id = $1
+                  AND retry_count < 3
                   AND (processing_started_at IS NULL OR processing_started_at < $2)
                 ORDER BY ts_start ASC
                 LIMIT 500
@@ -203,6 +206,7 @@ pub async fn get_unaggregated_hour_for_session(
                 SELECT id
                 FROM summaries_hour
                 WHERE summary_day_id IS NULL AND session_id IS NULL
+                  AND retry_count < 3
                   AND (processing_started_at IS NULL OR processing_started_at < $1)
                 ORDER BY ts_start ASC
                 LIMIT 500

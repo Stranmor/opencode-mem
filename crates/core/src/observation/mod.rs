@@ -45,6 +45,13 @@ impl From<u32> for PromptNumber {
     }
 }
 
+impl PromptNumber {
+    /// Convert to PostgreSQL `i32` safely, rejecting overflows.
+    pub fn as_pg_i32(&self) -> Result<i32, &'static str> {
+        i32::try_from(self.0).map_err(|_| "PromptNumber exceeds PostgreSQL i32 capacity")
+    }
+}
+
 impl From<PromptNumber> for u32 {
     fn from(v: PromptNumber) -> Self {
         v.0
@@ -60,6 +67,13 @@ impl fmt::Display for PromptNumber {
 impl From<u32> for DiscoveryTokens {
     fn from(v: u32) -> Self {
         Self(v)
+    }
+}
+
+impl DiscoveryTokens {
+    /// Convert to PostgreSQL `i32` safely, rejecting overflows.
+    pub fn as_pg_i32(&self) -> Result<i32, &'static str> {
+        i32::try_from(self.0).map_err(|_| "DiscoveryTokens exceeds PostgreSQL i32 capacity")
     }
 }
 

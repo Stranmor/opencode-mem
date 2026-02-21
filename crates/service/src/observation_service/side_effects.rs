@@ -9,6 +9,25 @@ impl ObservationService {
         &self,
         observation: &Observation,
     ) -> Result<(), crate::ServiceError> {
+        // Prevent duplicate extraction if knowledge is already present.
+        match self.storage.has_knowledge_for_observation(&observation.id).await {
+            Ok(true) => {
+                tracing::debug!(
+                    "Knowledge already extracted for observation {}, skipping",
+                    observation.id
+                );
+                return Ok(());
+            },
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to check existing knowledge for observation {}: {}",
+                    observation.id,
+                    e
+                );
+            },
+            Ok(false) => {},
+        }
+
         match self.llm.maybe_extract_knowledge(observation).await {
             Ok(Some(knowledge_input)) => match self.storage.save_knowledge(knowledge_input).await {
                 Ok(knowledge) => {

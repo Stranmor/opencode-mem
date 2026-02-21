@@ -29,16 +29,16 @@ impl ObservationStore for PgStorage {
         .bind(serde_json::to_value(&obs.files_read)?)
         .bind(serde_json::to_value(&obs.files_modified)?)
         .bind(serde_json::to_value(&obs.keywords)?)
-        .bind(obs.prompt_number.map(|v| i32::try_from(v.0)).transpose().map_err(|e| {
+        .bind(obs.prompt_number.map(|v| v.as_pg_i32()).transpose().map_err(|e| {
             StorageError::DataCorruption {
                 context: "prompt_number exceeds i32::MAX".into(),
-                source: Box::new(e),
+                source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
             }
         })?)
-        .bind(obs.discovery_tokens.map(|v| i32::try_from(v.0)).transpose().map_err(|e| {
+        .bind(obs.discovery_tokens.map(|v| v.as_pg_i32()).transpose().map_err(|e| {
             StorageError::DataCorruption {
                 context: "discovery_tokens exceeds i32::MAX".into(),
-                source: Box::new(e),
+                source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
             }
         })?)
         .bind(obs.noise_level.as_str())
@@ -210,16 +210,16 @@ impl ObservationStore for PgStorage {
         .bind(merged.noise_level.as_str())
         .bind(&merged.subtitle)
         .bind(&merged.noise_reason)
-        .bind(merged.prompt_number.map(|v| i32::try_from(v.0)).transpose().map_err(|e| {
+        .bind(merged.prompt_number.map(|v| v.as_pg_i32()).transpose().map_err(|e| {
             StorageError::DataCorruption {
                 context: "prompt_number exceeds i32::MAX".into(),
-                source: Box::new(e),
+                source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
             }
         })?)
-        .bind(merged.discovery_tokens.map(|v| i32::try_from(v.0)).transpose().map_err(|e| {
+        .bind(merged.discovery_tokens.map(|v| v.as_pg_i32()).transpose().map_err(|e| {
             StorageError::DataCorruption {
                 context: "discovery_tokens exceeds i32::MAX".into(),
-                source: Box::new(e),
+                source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
             }
         })?)
         .bind(existing_id)

@@ -85,9 +85,9 @@ DECISION (MANDATORY — choose exactly one):
         format!(
             r#"Return JSON:
 - action: "create"
-- noise_level: one of "critical", "high", "medium", "low", "negligible"
+- noise_level: one of [{noise_levels}]
 - noise_reason: why this is/isn't worth remembering (max 100 chars)
-- type: one of [{}]
+- type: one of [{obs_types}]
 - title: the lesson learned (max 80 chars, must be a complete statement of fact)
 - subtitle: project/context this applies to
 - narrative: the full lesson — what happened, why, and what to do differently
@@ -96,7 +96,8 @@ DECISION (MANDATORY — choose exactly one):
 - files_read: file paths involved
 - files_modified: file paths changed
 - keywords: search terms"#,
-            opencode_mem_core::ObservationType::ALL_VARIANTS_STR
+            obs_types = opencode_mem_core::ObservationType::ALL_VARIANTS_STR,
+            noise_levels = opencode_mem_core::NoiseLevel::ALL_VARIANTS_STR
         )
     } else {
         format!(
@@ -104,9 +105,9 @@ DECISION (MANDATORY — choose exactly one):
 - action: one of "create", "update", "skip"
 - target_id: id of existing observation to update (required if action is "update")
 - skip_reason: why this should be skipped (required if action is "skip")
-- noise_level: one of "critical", "high", "medium", "low", "negligible"
+- noise_level: one of [{noise_levels}]
 - noise_reason: why this is/isn't worth remembering (max 100 chars)
-- type: one of [{}]
+- type: one of [{obs_types}]
 - title: the lesson learned (max 80 chars, must be a complete statement of fact)
 - subtitle: project/context this applies to
 - narrative: the full lesson — what happened, why, and what to do differently
@@ -115,7 +116,8 @@ DECISION (MANDATORY — choose exactly one):
 - files_read: file paths involved
 - files_modified: file paths changed
 - keywords: search terms"#,
-            opencode_mem_core::ObservationType::ALL_VARIANTS_STR
+            obs_types = opencode_mem_core::ObservationType::ALL_VARIANTS_STR,
+            noise_levels = opencode_mem_core::NoiseLevel::ALL_VARIANTS_STR
         )
     };
 
