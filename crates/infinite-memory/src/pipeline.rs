@@ -266,40 +266,61 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
         let session_summaries =
             summary_queries::get_unaggregated_5min_for_session(pool, session_id.as_deref()).await?;
 
-        let should_aggregate = if session_summaries.len() >= MIN_5MIN_SUMMARIES_FOR_HOUR {
-            true
-        } else if let Some(first) = session_summaries.first() {
-            (chrono::Utc::now() - first.ts_start).num_hours() >= 1
-        } else {
-            false
-        };
+        if session_summaries.is_empty() {
+            continue;
+        }
 
-        if should_aggregate {
-            let result: Result<()> = async {
-                let content = compress_summaries(llm, &session_summaries).await?;
-                let merged_entities = SummaryEntities::merge(
-                    &session_summaries.iter().map(|s| s.entities.clone()).collect::<Vec<_>>(),
-                );
-                create_hour_summary(pool, &session_summaries, &content, merged_entities.as_ref())
-                    .await?;
-                Ok(())
+        let mut buckets = Vec::new();
+        let mut current_bucket = Vec::new();
+        let mut bucket_start = session_summaries[0].ts_start;
+
+        for s in session_summaries {
+            if (s.ts_start - bucket_start).num_hours() >= 1 {
+                buckets.push(current_bucket.clone());
+                current_bucket.clear();
+                bucket_start = s.ts_start;
             }
-            .await;
+            current_bucket.push(s);
+        }
+        if !current_bucket.is_empty() {
+            buckets.push(current_bucket);
+        }
 
-            if let Err(e) = result {
-                tracing::error!(
-                    session_id = %session_id.unwrap_or_default(),
-                    error = %e,
-                    "Failed to create hour summary, releasing records"
-                );
-                let ids: Vec<i64> = session_summaries.iter().map(|s| s.id).collect();
-                let _ = summary_queries::release_summaries_5min(pool, &ids).await;
+        for bucket in buckets {
+            let should_aggregate = if bucket.len() >= MIN_5MIN_SUMMARIES_FOR_HOUR {
+                true
+            } else if let Some(first) = bucket.first() {
+                (chrono::Utc::now() - first.ts_start).num_hours() >= 1
             } else {
-                hours_created += 1;
+                false
+            };
+
+            if should_aggregate {
+                let result: Result<()> = async {
+                    let content = compress_summaries(llm, &bucket).await?;
+                    let merged_entities = SummaryEntities::merge(
+                        &bucket.iter().map(|s| s.entities.clone()).collect::<Vec<_>>(),
+                    );
+                    create_hour_summary(pool, &bucket, &content, merged_entities.as_ref()).await?;
+                    Ok(())
+                }
+                .await;
+
+                if let Err(e) = result {
+                    tracing::error!(
+                        session_id = %session_id.clone().unwrap_or_default(),
+                        error = %e,
+                        "Failed to create hour summary, releasing records"
+                    );
+                    let ids: Vec<i64> = bucket.iter().map(|s| s.id).collect();
+                    let _ = summary_queries::release_summaries_5min(pool, &ids).await;
+                } else {
+                    hours_created += 1;
+                }
+            } else if !bucket.is_empty() {
+                let ids: Vec<i64> = bucket.iter().map(|s| s.id).collect();
+                summary_queries::release_summaries_5min(pool, &ids).await?;
             }
-        } else if !session_summaries.is_empty() {
-            let ids: Vec<i64> = session_summaries.iter().map(|s| s.id).collect();
-            summary_queries::release_summaries_5min(pool, &ids).await?;
         }
     }
 
@@ -311,40 +332,61 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
         let session_summaries =
             summary_queries::get_unaggregated_hour_for_session(pool, session_id.as_deref()).await?;
 
-        let should_aggregate = if session_summaries.len() >= MIN_HOUR_SUMMARIES_FOR_DAY {
-            true
-        } else if let Some(first) = session_summaries.first() {
-            (chrono::Utc::now() - first.ts_start).num_days() >= 1
-        } else {
-            false
-        };
+        if session_summaries.is_empty() {
+            continue;
+        }
 
-        if should_aggregate {
-            let result: Result<()> = async {
-                let content = compress_summaries(llm, &session_summaries).await?;
-                let merged_entities = SummaryEntities::merge(
-                    &session_summaries.iter().map(|s| s.entities.clone()).collect::<Vec<_>>(),
-                );
-                create_day_summary(pool, &session_summaries, &content, merged_entities.as_ref())
-                    .await?;
-                Ok(())
+        let mut buckets = Vec::new();
+        let mut current_bucket = Vec::new();
+        let mut bucket_start = session_summaries[0].ts_start;
+
+        for s in session_summaries {
+            if (s.ts_start - bucket_start).num_days() >= 1 {
+                buckets.push(current_bucket.clone());
+                current_bucket.clear();
+                bucket_start = s.ts_start;
             }
-            .await;
+            current_bucket.push(s);
+        }
+        if !current_bucket.is_empty() {
+            buckets.push(current_bucket);
+        }
 
-            if let Err(e) = result {
-                tracing::error!(
-                    session_id = %session_id.unwrap_or_default(),
-                    error = %e,
-                    "Failed to create day summary, releasing records"
-                );
-                let ids: Vec<i64> = session_summaries.iter().map(|s| s.id).collect();
-                let _ = summary_queries::release_summaries_hour(pool, &ids).await;
+        for bucket in buckets {
+            let should_aggregate = if bucket.len() >= MIN_HOUR_SUMMARIES_FOR_DAY {
+                true
+            } else if let Some(first) = bucket.first() {
+                (chrono::Utc::now() - first.ts_start).num_days() >= 1
             } else {
-                days_created += 1;
+                false
+            };
+
+            if should_aggregate {
+                let result: Result<()> = async {
+                    let content = compress_summaries(llm, &bucket).await?;
+                    let merged_entities = SummaryEntities::merge(
+                        &bucket.iter().map(|s| s.entities.clone()).collect::<Vec<_>>(),
+                    );
+                    create_day_summary(pool, &bucket, &content, merged_entities.as_ref()).await?;
+                    Ok(())
+                }
+                .await;
+
+                if let Err(e) = result {
+                    tracing::error!(
+                        session_id = %session_id.clone().unwrap_or_default(),
+                        error = %e,
+                        "Failed to create day summary, releasing records"
+                    );
+                    let ids: Vec<i64> = bucket.iter().map(|s| s.id).collect();
+                    let _ = summary_queries::release_summaries_hour(pool, &ids).await;
+                } else {
+                    days_created += 1;
+                }
+            } else if !bucket.is_empty() {
+                let ids: Vec<i64> = bucket.iter().map(|s| s.id).collect();
+                summary_queries::release_summaries_hour(pool, &ids).await?;
             }
-        } else if !session_summaries.is_empty() {
-            let ids: Vec<i64> = session_summaries.iter().map(|s| s.id).collect();
-            summary_queries::release_summaries_hour(pool, &ids).await?;
         }
     }
 

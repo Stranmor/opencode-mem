@@ -5,14 +5,14 @@
 
 use chrono::Utc;
 use opencode_mem_core::{
-    KnowledgeInput, KnowledgeType, NoiseLevel, Observation, ObservationType, Session,
-    SessionStatus, EMBEDDING_DIMENSION,
+    EMBEDDING_DIMENSION, KnowledgeInput, KnowledgeType, NoiseLevel, Observation, ObservationType,
+    Session, SessionStatus,
 };
+use opencode_mem_storage::PgStorage;
 use opencode_mem_storage::traits::{
     EmbeddingStore, KnowledgeStore, ObservationStore, PendingQueueStore, SearchStore, SessionStore,
     StatsStore,
 };
-use opencode_mem_storage::PgStorage;
 use uuid::Uuid;
 
 async fn create_pg_storage() -> PgStorage {
@@ -333,9 +333,15 @@ async fn pg_store_and_search_embedding() {
     storage.save_observation(&obs).await.unwrap();
 
     let mut embedding = vec![0.0_f32; EMBEDDING_DIMENSION];
-    embedding[0] = 1.0;
-    embedding[1] = 0.5;
-    embedding[2] = 0.25;
+    if let Some(e) = embedding.get_mut(0) {
+        *e = 1.0;
+    }
+    if let Some(e) = embedding.get_mut(1) {
+        *e = 0.5;
+    }
+    if let Some(e) = embedding.get_mut(2) {
+        *e = 0.25;
+    }
 
     storage.store_embedding(&id, &embedding).await.unwrap();
 

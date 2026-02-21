@@ -77,7 +77,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         embeddings.clone(),
     ));
     let session_service =
-        Arc::new(SessionService::new(storage.clone(), llm.clone(), observation_service.clone()));
+        Arc::new(SessionService::new(storage.clone(), llm.clone()));
     let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));
     let search_service = Arc::new(SearchService::new(storage.clone(), embeddings.clone()));
     let queue_service = Arc::new(QueueService::new(storage.clone()));

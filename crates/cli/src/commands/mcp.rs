@@ -68,8 +68,7 @@ pub(crate) async fn run() -> Result<()> {
         event_tx,
         embeddings.clone(),
     ));
-    let session_service =
-        Arc::new(SessionService::new(storage.clone(), llm, observation_service.clone()));
+    let session_service = Arc::new(SessionService::new(storage.clone(), llm.clone()));
     let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));
     let search_service = Arc::new(SearchService::new(storage, embeddings));
 

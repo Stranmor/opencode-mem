@@ -94,13 +94,10 @@ fn format_part(output: &mut String, part: &serde_json::Value) {
     }
 }
 
+use std::str::FromStr;
+
 fn map_insight_type(insight_type: &str) -> ObservationType {
-    match insight_type.to_lowercase().as_str() {
-        "decision" => ObservationType::Decision,
-        "gotcha" => ObservationType::Gotcha,
-        "preference" => ObservationType::Preference,
-        _ => ObservationType::Discovery,
-    }
+    ObservationType::from_str(insight_type).unwrap_or(ObservationType::Discovery)
 }
 
 fn map_insight_concepts(insight_type: &str) -> Vec<Concept> {
@@ -235,7 +232,7 @@ Return JSON:
 {{
   "insights": [
     {{
-      "type": "decision|gotcha|preference|discovery",
+      "type": "{types}",
       "title": "Short title (5-10 words)",
       "description": "Detailed explanation",
       "files": ["path/to/relevant/file.rs"],
@@ -245,7 +242,8 @@ Return JSON:
 }}
 ```
 
-If no project-specific insights found, return: {{"insights": []}}"#
+If no project-specific insights found, return: {{"insights": []}}"#,
+        types = opencode_mem_core::ObservationType::ALL_VARIANTS_STR
     )
 }
 
