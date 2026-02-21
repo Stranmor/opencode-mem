@@ -45,7 +45,6 @@ pub fn compute_merge(existing: &Observation, newer: &Observation) -> MergeResult
     // min picks the most important (lowest discriminant = highest importance)
     let noise_level = std::cmp::min(existing.noise_level, newer.noise_level);
 
-    let noise_reason = newer.noise_reason.clone().or_else(|| existing.noise_reason.clone());
     let prompt_number = newer.prompt_number.or(existing.prompt_number);
     let discovery_tokens = newer.discovery_tokens.or(existing.discovery_tokens);
 
@@ -53,16 +52,24 @@ pub fn compute_merge(existing: &Observation, newer: &Observation) -> MergeResult
 
     // Context-aware compressions might refine the title or change type based on new context.
     // In background dedup, we might pass a low-priority observation as "newer" just because
-    // it was found later. We should prefer the title/type of the observation with the higher
+    // it was found later. We should prefer the title/type/reason of the observation with the higher
     // noise level (i.e. more important), or the newer one if equal.
-    let (title, observation_type) = if existing.noise_level < newer.noise_level {
-        (existing.title.clone(), existing.observation_type)
+    let (title, observation_type, noise_reason) = if existing.noise_level < newer.noise_level {
+        (existing.title.clone(), existing.observation_type, existing.noise_reason.clone())
     } else if newer.noise_level < existing.noise_level {
-        (newer.title.clone(), newer.observation_type)
+        (newer.title.clone(), newer.observation_type, newer.noise_reason.clone())
     } else if newer.created_at >= existing.created_at {
-        (newer.title.clone(), newer.observation_type)
+        (
+            newer.title.clone(),
+            newer.observation_type,
+            newer.noise_reason.clone().or_else(|| existing.noise_reason.clone()),
+        )
     } else {
-        (existing.title.clone(), existing.observation_type)
+        (
+            existing.title.clone(),
+            existing.observation_type,
+            existing.noise_reason.clone().or_else(|| newer.noise_reason.clone()),
+        )
     };
 
     MergeResult {

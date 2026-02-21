@@ -197,7 +197,7 @@ impl ObservationStore for PgStorage {
             "UPDATE observations SET facts = $1, keywords = $2, files_read = $3,
                     files_modified = $4, narrative = $5, created_at = $6, concepts = $7,
                     noise_level = $8, subtitle = $9, noise_reason = $10,
-                    prompt_number = $11, discovery_tokens = $12
+                    prompt_number = $11, discovery_tokens = $12, title = $14, observation_type = $15
                WHERE id = $13",
         )
         .bind(serde_json::to_value(&merged.facts)?)
@@ -223,6 +223,8 @@ impl ObservationStore for PgStorage {
             }
         })?)
         .bind(existing_id)
+        .bind(&merged.title)
+        .bind(merged.observation_type.as_str())
         .execute(&mut *tx)
         .await?;
 
