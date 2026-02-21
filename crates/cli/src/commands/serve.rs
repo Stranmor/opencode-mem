@@ -20,8 +20,8 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
 
     let api_key = get_api_key()?;
     let llm = Arc::new(LlmClient::new(api_key.clone(), get_base_url())?);
-    // Initial receiver dropped - subscribers use event_tx.subscribe()
-    let (event_tx, _initial_rx) = broadcast::channel(100);
+    // Initial receiver dropped immediately - subscribers use event_tx.subscribe()
+    let (event_tx, _) = broadcast::channel(100);
 
     let infinite_mem = if let Ok(url) = std::env::var("INFINITE_MEMORY_URL")
         .or_else(|_| std::env::var("OPENCODE_MEM_INFINITE_MEMORY"))
@@ -76,8 +76,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         event_tx.clone(),
         embeddings.clone(),
     ));
-    let session_service =
-        Arc::new(SessionService::new(storage.clone(), llm.clone()));
+    let session_service = Arc::new(SessionService::new(storage.clone(), llm.clone()));
     let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));
     let search_service = Arc::new(SearchService::new(storage.clone(), embeddings.clone()));
     let queue_service = Arc::new(QueueService::new(storage.clone()));
@@ -110,9 +109,9 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     }
 
     let router = create_router(state);
-    let addr = format!("{host}:{port}");
-    tracing::info!("Starting HTTP server on {}", addr);
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    let addr_str = format!("{host}:{port}");
+    tracing::info!("Starting HTTP server on {}", addr_str);
+    let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
     axum::serve(listener, router.into_make_service_with_connect_info::<std::net::SocketAddr>())
         .await?;
 

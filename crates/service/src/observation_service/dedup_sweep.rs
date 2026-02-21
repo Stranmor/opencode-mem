@@ -9,6 +9,7 @@ use crate::ServiceError;
 struct ObservationSummary {
     id: String,
     noise_level: NoiseLevel,
+    project: Option<String>,
 }
 
 impl ObservationService {
@@ -34,11 +35,11 @@ impl ObservationService {
         }
 
         // Prepare combined data array for the blocking task
-        let mut combined: Vec<(String, Vec<f32>, NoiseLevel)> =
+        let mut combined: Vec<(String, Vec<f32>, NoiseLevel, Option<String>)> =
             Vec::with_capacity(embeddings.len());
         for (id, emb) in embeddings {
             if let Some(summary) = summaries.iter().find(|s| s.id == id) {
-                combined.push((id, emb, summary.noise_level));
+                combined.push((id, emb, summary.noise_level, summary.project.clone()));
             }
         }
 
@@ -51,14 +52,19 @@ impl ObservationService {
             let mut pairs = Vec::new();
             let mut deleted_ids = HashSet::new();
 
-            for (i, (id_a, emb_a, noise_a)) in combined.iter().enumerate() {
+            for (i, (id_a, emb_a, noise_a, proj_a)) in combined.iter().enumerate() {
                 if deleted_ids.contains(id_a) {
                     continue;
                 }
 
                 let start = i.saturating_add(1);
-                for (id_b, emb_b, noise_b) in combined.iter().skip(start) {
+                for (id_b, emb_b, noise_b, proj_b) in combined.iter().skip(start) {
                     if deleted_ids.contains(id_b) {
+                        continue;
+                    }
+
+                    // Critical: Prevent context starvation by only merging within the same project
+                    if proj_a != proj_b {
                         continue;
                     }
 
@@ -123,7 +129,11 @@ impl ObservationService {
         let observations = self.storage.get_recent(MAX_BATCH_IDS).await?;
         Ok(observations
             .into_iter()
-            .map(|obs| ObservationSummary { id: obs.id, noise_level: obs.noise_level })
+            .map(|obs| ObservationSummary {
+                id: obs.id,
+                noise_level: obs.noise_level,
+                project: obs.project,
+            })
             .collect())
     }
 

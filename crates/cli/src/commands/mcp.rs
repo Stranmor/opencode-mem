@@ -59,7 +59,7 @@ pub(crate) async fn run() -> Result<()> {
     };
 
     // Event channel for SSE (MCP doesn't serve SSE, but services require it)
-    let (event_tx, _initial_rx) = broadcast::channel(100);
+    let (event_tx, _) = broadcast::channel(100);
 
     let observation_service = Arc::new(ObservationService::new(
         storage.clone(),

@@ -150,18 +150,14 @@ impl ObservationService {
             ),
         );
 
-        let candidates =
-            self.find_candidate_observations(&filtered_output, &tool_call.session_id).await;
+        let parsed_project =
+            tool_call.project.as_deref().filter(|p| !p.is_empty() && *p != "unknown");
+        let candidates = self
+            .find_candidate_observations(&filtered_output, &tool_call.session_id, parsed_project)
+            .await;
 
-        let compression_result = self
-            .llm
-            .compress_to_observation(
-                id,
-                &input,
-                tool_call.project.as_deref().filter(|p| !p.is_empty() && *p != "unknown"),
-                &candidates,
-            )
-            .await?;
+        let compression_result =
+            self.llm.compress_to_observation(id, &input, parsed_project, &candidates).await?;
 
         match compression_result {
             CompressionResult::Skip { reason } => {
@@ -222,9 +218,10 @@ impl ObservationService {
         &self,
         raw_text: &str,
         session_id: &str,
+        project: Option<&str>,
     ) -> Vec<Observation> {
-        // Phase 1: FTS search for top 5 candidates matching raw input
-        let fts_candidates = self.find_fts_candidates(raw_text).await;
+        // Phase 1: FTS search for top 5 candidates matching raw input within project
+        let fts_candidates = self.find_fts_candidates(raw_text, project).await;
 
         // Phase 2: Get 3 most recent observations from same session
         let session_candidates = match self.storage.get_session_observations(session_id).await {
@@ -258,7 +255,7 @@ impl ObservationService {
         result
     }
 
-    async fn find_fts_candidates(&self, raw_text: &str) -> Vec<Observation> {
+    async fn find_fts_candidates(&self, raw_text: &str, project: Option<&str>) -> Vec<Observation> {
         let max_query_len = 500;
         let end = if raw_text.len() <= max_query_len {
             raw_text.len()
@@ -274,13 +271,15 @@ impl ObservationService {
             return Vec::new();
         }
 
-        let search_results = match self.storage.search(query, 5).await {
-            Ok(results) => results,
-            Err(e) => {
-                tracing::warn!(error = %e, "FTS search for candidates failed");
-                return Vec::new();
-            },
-        };
+        let search_results =
+            match self.storage.search_with_filters(Some(query), project, None, None, None, 5).await
+            {
+                Ok(results) => results,
+                Err(e) => {
+                    tracing::warn!(error = %e, "FTS search for candidates failed");
+                    return Vec::new();
+                },
+            };
 
         if search_results.is_empty() {
             return Vec::new();
@@ -358,3 +357,4 @@ impl ObservationService {
         }
     }
 }
+mod privacy_tests;

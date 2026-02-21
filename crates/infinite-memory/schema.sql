@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS raw_events (
     files TEXT[] NOT NULL DEFAULT '{}',
     tools TEXT[] NOT NULL DEFAULT '{}',
     summary_5min_id BIGINT,
+    retry_count INTEGER NOT NULL DEFAULT 0,
     -- For concurrent worker processing (visibility timeout pattern)
     processing_started_at TIMESTAMPTZ,
     processing_instance_id TEXT
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS summaries_5min (
     event_count INTEGER NOT NULL,
     entities JSONB,
     summary_hour_id BIGINT,
+    retry_count INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -58,6 +60,7 @@ CREATE TABLE IF NOT EXISTS summaries_hour (
     event_count INTEGER NOT NULL,
     entities JSONB,
     summary_day_id BIGINT,
+    retry_count INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
