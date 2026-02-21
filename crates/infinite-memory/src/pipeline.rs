@@ -189,6 +189,7 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
             }
         }
 
+        let mut processed_in_batch = 0;
         for session_id in seen_sessions {
             let session_events: Vec<&StoredEvent> =
                 events.iter().filter(|e| e.session_id == session_id).collect();
@@ -219,10 +220,20 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
                     error = %e,
                     "Failed to compress session, skipping"
                 );
+                let ids: Vec<i64> = owned_events.iter().map(|e| e.id).collect();
+                let _ = event_queries::release_events(pool, &ids).await;
                 continue;
             }
 
+            processed_in_batch += 1;
             total_processed += u32::try_from(session_events.len()).unwrap_or(u32::MAX);
+        }
+
+        if processed_in_batch == 0 {
+            tracing::warn!(
+                "Failed to process any events in batch, breaking to prevent infinite loop"
+            );
+            break;
         }
     }
 

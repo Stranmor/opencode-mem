@@ -1,8 +1,8 @@
 use crate::api_error::ApiError;
 use axum::{
+    Json,
     extract::{ConnectInfo, Query, State},
     http::StatusCode,
-    Json,
 };
 use std::fs;
 use std::net::SocketAddr;
@@ -13,12 +13,12 @@ use std::time::Duration;
 use tokio::task::spawn_blocking;
 use tokio::time::sleep;
 
+use crate::AppState;
 use crate::api_types::{
     AdminResponse, BranchStatusResponse, InstructionsQuery, InstructionsResponse,
     McpStatusResponse, SettingsResponse, SwitchBranchRequest, SwitchBranchResponse,
     ToggleMcpRequest, UpdateBranchResponse, UpdateSettingsRequest,
 };
-use crate::AppState;
 
 pub async fn get_settings(
     State(state): State<Arc<AppState>>,
@@ -28,9 +28,13 @@ pub async fn get_settings(
 }
 
 pub async fn update_settings(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
     Json(req): Json<UpdateSettingsRequest>,
 ) -> Result<Json<SettingsResponse>, ApiError> {
+    if !is_localhost(&addr) {
+        return Err(ApiError::Forbidden("Forbidden".into()));
+    }
     let mut settings = state.settings.write().await;
     if let Some(env) = req.env {
         settings.env = env;
@@ -84,9 +88,13 @@ fn validate_branch_name(branch: &str) -> Result<(), &'static str> {
 }
 
 pub async fn switch_branch(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
     Json(req): Json<SwitchBranchRequest>,
 ) -> Result<Json<SwitchBranchResponse>, ApiError> {
+    if !is_localhost(&addr) {
+        return Err(ApiError::Forbidden("Forbidden".into()));
+    }
     if let Err(msg) = validate_branch_name(&req.branch) {
         return Ok(Json(SwitchBranchResponse {
             success: false,
@@ -119,8 +127,12 @@ pub async fn switch_branch(
 }
 
 pub async fn update_branch(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(_state): State<Arc<AppState>>,
 ) -> Result<Json<UpdateBranchResponse>, ApiError> {
+    if !is_localhost(&addr) {
+        return Err(ApiError::Forbidden("Forbidden".into()));
+    }
     let result = spawn_blocking(|| Command::new("git").args(["pull", "--ff-only"]).output())
         .await
         .map_err(anyhow::Error::from)?

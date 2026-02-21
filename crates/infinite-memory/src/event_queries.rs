@@ -53,6 +53,19 @@ pub async fn get_recent(pool: &PgPool, limit: i64) -> Result<Vec<StoredEvent>> {
     Ok(rows.into_iter().filter_map(row_to_stored_event).collect())
 }
 
+pub async fn release_events(pool: &PgPool, ids: &[i64]) -> Result<()> {
+    if ids.is_empty() {
+        return Ok(());
+    }
+    sqlx::query(
+        "UPDATE raw_events SET processing_started_at = NULL, processing_instance_id = NULL WHERE id = ANY($1)",
+    )
+    .bind(ids)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn get_unsummarized_events(pool: &PgPool, limit: i64) -> Result<Vec<StoredEvent>> {
     let instance_id = uuid::Uuid::new_v4().to_string();
     let visibility_timeout = chrono::Duration::minutes(5);
