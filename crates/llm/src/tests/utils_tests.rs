@@ -1,6 +1,6 @@
 use crate::client::truncate;
-use crate::observation::parse_concept;
 use opencode_mem_core::{strip_markdown_json, Concept};
+use std::str::FromStr;
 
 #[test]
 fn test_truncate_within_limit() {
@@ -55,21 +55,21 @@ fn test_strip_markdown_json_with_whitespace() {
 
 #[test]
 fn test_parse_concept_valid() {
-    assert_eq!(parse_concept("how-it-works"), Some(Concept::HowItWorks));
-    assert_eq!(parse_concept("pattern"), Some(Concept::Pattern));
-    assert_eq!(parse_concept("gotcha"), Some(Concept::Gotcha));
-    assert_eq!(parse_concept("trade-off"), Some(Concept::TradeOff));
+    assert_eq!(Concept::from_str("how-it-works").ok(), Some(Concept::HowItWorks));
+    assert_eq!(Concept::from_str("pattern").ok(), Some(Concept::Pattern));
+    assert_eq!(Concept::from_str("gotcha").ok(), Some(Concept::Gotcha));
+    assert_eq!(Concept::from_str("trade-off").ok(), Some(Concept::TradeOff));
 }
 
 #[test]
 fn test_parse_concept_case_insensitive() {
-    assert_eq!(parse_concept("HOW-IT-WORKS"), Some(Concept::HowItWorks));
-    assert_eq!(parse_concept("Pattern"), Some(Concept::Pattern));
+    assert_eq!(Concept::from_str("HOW-IT-WORKS").ok(), Some(Concept::HowItWorks));
+    assert_eq!(Concept::from_str("Pattern").ok(), Some(Concept::Pattern));
 }
 
 #[test]
 fn test_parse_concept_invalid() {
-    assert_eq!(parse_concept("unknown"), None);
-    assert_eq!(parse_concept(""), None);
-    assert_eq!(parse_concept("random-string"), None);
+    assert_eq!(Concept::from_str("unknown").ok(), None);
+    assert_eq!(Concept::from_str("").ok(), None);
+    assert_eq!(Concept::from_str("random-string").ok(), None);
 }

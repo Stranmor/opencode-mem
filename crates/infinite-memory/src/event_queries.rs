@@ -15,13 +15,14 @@ type StoredEventRow = (
     serde_json::Value,
     Vec<String>,
     Vec<String>,
+    Option<String>,
 );
 
 pub async fn store_event(pool: &PgPool, event: RawEvent) -> Result<i64> {
     let row: (i64,) = sqlx::query_as(
         r#"
-        INSERT INTO raw_events (session_id, project, event_type, content, files, tools)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO raw_events (session_id, project, event_type, content, files, tools, call_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING id
         "#,
     )
@@ -31,6 +32,7 @@ pub async fn store_event(pool: &PgPool, event: RawEvent) -> Result<i64> {
     .bind(&event.content)
     .bind(&event.files)
     .bind(&event.tools)
+    .bind(&event.call_id)
     .fetch_one(pool)
     .await?;
 
@@ -40,7 +42,7 @@ pub async fn store_event(pool: &PgPool, event: RawEvent) -> Result<i64> {
 pub async fn get_recent(pool: &PgPool, limit: i64) -> Result<Vec<StoredEvent>> {
     let rows = sqlx::query_as::<_, StoredEventRow>(
         r#"
-        SELECT id, ts, session_id, project, event_type, content, files, tools
+        SELECT id, ts, session_id, project, event_type, content, files, tools, call_id
         FROM raw_events
         ORDER BY ts DESC
         LIMIT $1
@@ -58,7 +60,7 @@ pub async fn release_events(pool: &PgPool, ids: &[i64]) -> Result<()> {
         return Ok(());
     }
     sqlx::query(
-        "UPDATE raw_events SET processing_started_at = NULL, processing_instance_id = NULL, retry_count = retry_count + 1 WHERE id = ANY($1)",
+        "UPDATE raw_events SET processing_instance_id = NULL, retry_count = retry_count + 1 WHERE id = ANY($1)",
     )
     .bind(ids)
     .execute(pool)
@@ -84,7 +86,7 @@ pub async fn get_unsummarized_events(pool: &PgPool, limit: i64) -> Result<Vec<St
             LIMIT $1
             FOR UPDATE SKIP LOCKED
         )
-        RETURNING id, ts, session_id, project, event_type, content, files, tools
+        RETURNING id, ts, session_id, project, event_type, content, files, tools, call_id
         "#,
     )
     .bind(limit)
@@ -103,7 +105,7 @@ pub async fn get_events_by_summary_id(
 ) -> Result<Vec<StoredEvent>> {
     let rows = sqlx::query_as::<_, StoredEventRow>(
         r#"
-        SELECT id, ts, session_id, project, event_type, content, files, tools
+        SELECT id, ts, session_id, project, event_type, content, files, tools, call_id
         FROM raw_events
         WHERE summary_5min_id = $1
         ORDER BY ts ASC
@@ -128,7 +130,7 @@ pub async fn get_events_by_time_range(
     let rows = if let Some(sid) = session_id {
         sqlx::query_as::<_, StoredEventRow>(
             r#"
-            SELECT id, ts, session_id, project, event_type, content, files, tools
+            SELECT id, ts, session_id, project, event_type, content, files, tools, call_id
             FROM raw_events
             WHERE ts >= $1 AND ts <= $2 AND session_id = $3
             ORDER BY ts ASC
@@ -144,11 +146,11 @@ pub async fn get_events_by_time_range(
     } else {
         sqlx::query_as::<_, StoredEventRow>(
             r#"
-            SELECT id, ts, session_id, project, event_type, content, files, tools
+            SELECT id, ts, session_id, project, event_type, content, files, tools, call_id
             FROM raw_events
-            WHERE ts >= $1 AND ts <= $2
-            ORDER BY ts ASC
-            LIMIT $3
+            WHERE content::text ILIKE '%' || $1 || '%'
+            ORDER BY ts DESC
+            LIMIT $2
             "#,
         )
         .bind(start)
@@ -201,11 +203,19 @@ pub async fn stats(pool: &PgPool) -> Result<serde_json::Value> {
 }
 
 fn row_to_stored_event(row: StoredEventRow) -> Option<StoredEvent> {
-    let (id, ts, session_id, project, event_type_str, content, files, tools) = row;
+    let (id, ts, session_id, project, event_type_str, content, files, tools, call_id) = row;
     match EventType::from_str(&event_type_str) {
-        Ok(event_type) => {
-            Some(StoredEvent { id, ts, session_id, project, event_type, content, files, tools })
-        },
+        Ok(event_type) => Some(StoredEvent {
+            id,
+            ts,
+            session_id,
+            project,
+            event_type,
+            content,
+            files,
+            tools,
+            call_id,
+        }),
         Err(_) => {
             tracing::warn!("Unknown event type in DB row {}: '{}'", id, event_type_str);
             None

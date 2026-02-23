@@ -81,6 +81,7 @@ impl ObservationService {
                 filtered_input,
                 serde_json::json!({"output": filtered_output}),
                 files_modified,
+                Some(tool_call.call_id.clone()),
             );
             if let Err(e) = infinite_mem.store_event(event).await {
                 tracing::warn!(error = %e, observation_id = %obs_id_for_log, "Failed to store in infinite memory — event will be missing from long-term history");

@@ -67,6 +67,7 @@ pub struct RawEvent {
     pub content: serde_json::Value,
     pub files: Vec<String>,
     pub tools: Vec<String>,
+    pub call_id: Option<String>,
 }
 
 /// Stored event with ID and timestamp
@@ -80,6 +81,7 @@ pub struct StoredEvent {
     pub content: serde_json::Value,
     pub files: Vec<String>,
     pub tools: Vec<String>,
+    pub call_id: Option<String>,
 }
 
 /// Structured entities extracted from summaries
@@ -146,6 +148,7 @@ pub fn tool_event(
     input: serde_json::Value,
     output: serde_json::Value,
     files: Vec<String>,
+    call_id: Option<String>,
 ) -> RawEvent {
     RawEvent {
         session_id: session_id.to_string(),
@@ -158,6 +161,7 @@ pub fn tool_event(
         }),
         files,
         tools: vec![tool.to_string()],
+        call_id,
     }
 }
 
@@ -172,6 +176,7 @@ pub fn user_event(session_id: &str, project: Option<&str>, message: &str) -> Raw
         }),
         files: vec![],
         tools: vec![],
+        call_id: None,
     }
 }
 
@@ -192,5 +197,6 @@ pub fn assistant_event(
         }),
         files: vec![],
         tools: vec![],
+        call_id: None,
     }
 }

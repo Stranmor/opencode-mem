@@ -21,8 +21,6 @@ mod sessions;
 mod stats;
 mod summaries;
 
-use std::collections::HashSet;
-
 use crate::error::StorageError;
 use chrono::{DateTime, Utc};
 use opencode_mem_core::{
@@ -68,29 +66,33 @@ pub(crate) fn parse_json_value<T: serde::de::DeserializeOwned>(val: serde_json::
 
 /// Parse `ObservationType` from a PostgreSQL text column.
 /// Tries JSON deserialization first (handles quoted values), then `FromStr`.
-pub(crate) fn parse_pg_observation_type(s: &str) -> ObservationType {
-    serde_json::from_str(s)
-        .unwrap_or_else(|_| s.parse().unwrap_or_else(|_| {
-            tracing::warn!(invalid_type = %s, "corrupt observation_type in DB, defaulting to Change");
-            ObservationType::Change
-        }))
+pub(crate) fn parse_pg_observation_type(s: &str) -> Result<ObservationType, StorageError> {
+    serde_json::from_str(s).or_else(|_| s.parse::<ObservationType>()).map_err(|e| {
+        StorageError::DataCorruption {
+            context: format!("invalid observation_type in DB: {}", s),
+            source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+        }
+    })
 }
 
 /// Parse `NoiseLevel` from an optional PostgreSQL text column.
-pub(crate) fn parse_pg_noise_level(s: Option<&str>) -> NoiseLevel {
+pub(crate) fn parse_pg_noise_level(s: Option<&str>) -> Result<NoiseLevel, StorageError> {
     match s {
-        Some(s) => s.parse::<NoiseLevel>().unwrap_or_else(|_| {
-            tracing::warn!(invalid_level = %s, "corrupt noise_level in DB, defaulting");
-            NoiseLevel::default()
+        Some(s) => s.parse::<NoiseLevel>().map_err(|e| StorageError::DataCorruption {
+            context: format!("invalid noise_level in DB: {}", s),
+            source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
         }),
-        None => NoiseLevel::default(),
+        None => Err(StorageError::DataCorruption {
+            context: "missing noise_level in DB".into(),
+            source: Box::<dyn std::error::Error + Send + Sync>::from("null value"),
+        }),
     }
 }
 
 pub(crate) fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observation, StorageError> {
-    let obs_type = parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?);
+    let obs_type = parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?)?;
     let noise_level =
-        parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref());
+        parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref())?;
     let noise_reason: Option<String> = row.try_get("noise_reason")?;
     let created_at: DateTime<Utc> = row.try_get("created_at")?;
     let facts: serde_json::Value = row.try_get("facts")?;
@@ -154,9 +156,9 @@ pub(crate) fn usize_to_i64(val: usize) -> i64 {
 pub(crate) fn row_to_search_result(
     row: &sqlx::postgres::PgRow,
 ) -> Result<SearchResult, StorageError> {
-    let obs_type = parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?);
+    let obs_type = parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?)?;
     let noise_level =
-        parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref());
+        parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref())?;
     let score: f64 = row.try_get("score").unwrap_or(0.0);
     Ok(SearchResult::new(
         row.try_get("id")?,
@@ -172,9 +174,9 @@ pub(crate) fn row_to_search_result_with_score(
     row: &sqlx::postgres::PgRow,
     score: f64,
 ) -> Result<SearchResult, StorageError> {
-    let obs_type = parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?);
+    let obs_type = parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?)?;
     let noise_level =
-        parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref());
+        parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref())?;
     Ok(SearchResult::new(
         row.try_get("id")?,
         row.try_get("title")?,
@@ -192,10 +194,10 @@ pub(crate) fn row_to_session(row: &sqlx::postgres::PgRow) -> Result<Session, Sto
     let status: SessionStatus = status_str
         .parse()
         .or_else(|_| serde_json::from_str::<SessionStatus>(&status_str))
-        .unwrap_or_else(|_| {
-            tracing::warn!(invalid_status = %status_str, "corrupt session status in DB, defaulting to Active");
-            SessionStatus::Active
-        });
+        .map_err(|e| StorageError::DataCorruption {
+            context: format!("invalid session status in DB: {}", status_str),
+            source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+        })?;
     Ok(Session::new(
         row.try_get("id")?,
         row.try_get("content_session_id")?,
@@ -255,10 +257,11 @@ pub(crate) fn row_to_knowledge(
     row: &sqlx::postgres::PgRow,
 ) -> Result<GlobalKnowledge, StorageError> {
     let kt_str: String = row.try_get("knowledge_type")?;
-    let knowledge_type: KnowledgeType = kt_str.parse().unwrap_or_else(|_| {
-        tracing::warn!(invalid_type = %kt_str, "corrupt knowledge_type in DB, defaulting to Pattern");
-        KnowledgeType::Pattern
-    });
+    let knowledge_type: KnowledgeType =
+        kt_str.parse::<KnowledgeType>().map_err(|e| StorageError::DataCorruption {
+            context: format!("invalid knowledge_type in DB: {}", kt_str),
+            source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+        })?;
     let triggers: serde_json::Value = row.try_get("triggers")?;
     let source_projects: serde_json::Value = row.try_get("source_projects")?;
     let source_observations: serde_json::Value = row.try_get("source_observations")?;
@@ -304,10 +307,10 @@ pub(crate) fn row_to_pending_message(
 ) -> Result<PendingMessage, StorageError> {
     let status_str: String = row.try_get("status")?;
     let status =
-        status_str.parse::<PendingMessageStatus>().unwrap_or_else(|_| {
-            tracing::warn!(invalid_status = %status_str, "corrupt pending message status in DB, defaulting to Pending");
-            PendingMessageStatus::Pending
-        });
+        status_str.parse::<PendingMessageStatus>().map_err(|e| StorageError::DataCorruption {
+            context: format!("invalid pending message status in DB: {}", status_str),
+            source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+        })?;
     Ok(PendingMessage {
         id: row.try_get("id")?,
         session_id: row.try_get("session_id")?,
@@ -323,27 +326,7 @@ pub(crate) fn row_to_pending_message(
     })
 }
 
-pub(crate) fn build_tsquery(query: &str) -> Option<String> {
-    let result = query
-        .split_whitespace()
-        .filter_map(|w| {
-            // Strip tsquery operators and special characters, keep only alphanumeric
-            let sanitized: String =
-                w.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect();
-            if sanitized.is_empty() {
-                None
-            } else {
-                Some(format!("{}:*", sanitized))
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" & ");
-    if result.is_empty() {
-        None
-    } else {
-        Some(result)
-    }
-}
+pub(crate) use search::utils::build_tsquery;
 
 pub(crate) const SESSION_COLUMNS: &str =
     "id, content_session_id, memory_session_id, project, user_prompt,

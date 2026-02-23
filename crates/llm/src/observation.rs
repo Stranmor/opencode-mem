@@ -16,20 +16,6 @@ pub enum CompressionResult {
     Skip { reason: String },
 }
 
-#[must_use]
-pub fn parse_concept(s: &str) -> Option<Concept> {
-    match s.to_lowercase().as_str() {
-        "how-it-works" => Some(Concept::HowItWorks),
-        "why-it-exists" => Some(Concept::WhyItExists),
-        "what-changed" => Some(Concept::WhatChanged),
-        "problem-solution" => Some(Concept::ProblemSolution),
-        "gotcha" => Some(Concept::Gotcha),
-        "pattern" => Some(Concept::Pattern),
-        "trade-off" => Some(Concept::TradeOff),
-        _ => None,
-    }
-}
-
 /// Build the LLM prompt for compressing tool output into an observation.
 ///
 /// Returns the complete user-message prompt string including tool context,
@@ -198,13 +184,13 @@ fn parse_observation_response(
         return Ok(CompressionResult::Skip { reason });
     }
 
-    let noise_level = NoiseLevel::from_str(&obs_json.noise_level).unwrap_or_else(|_| {
+    let noise_level = NoiseLevel::from_str(&obs_json.noise_level).map_err(|_| {
         tracing::warn!(
             invalid_level = %obs_json.noise_level,
-            "LLM returned unknown noise level, defaulting to Normal"
+            "LLM returned unknown noise level"
         );
-        NoiseLevel::default()
-    });
+        LlmError::MissingField(format!("unknown noise level: {}", obs_json.noise_level))
+    })?;
     if noise_level == NoiseLevel::Negligible {
         let reason = obs_json.noise_reason.unwrap_or_else(|| "negligible noise level".to_owned());
         tracing::debug!(title = %obs_json.title, "Negligible noise → skip");
@@ -218,7 +204,7 @@ fn parse_observation_response(
     );
 
     let concepts: Vec<Concept> =
-        obs_json.concepts.iter().filter_map(|s| parse_concept(s)).collect();
+        obs_json.concepts.iter().filter_map(|s| Concept::from_str(s).ok()).collect();
 
     let observation_type = ObservationType::from_str(&obs_json.observation_type).map_err(|e| {
         LlmError::MissingField(format!(

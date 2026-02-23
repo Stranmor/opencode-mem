@@ -88,14 +88,12 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
             return Ok(None);
         }
 
-        let knowledge_type_str = extraction.knowledge_type.unwrap_or_else(|| "skill".to_owned());
-        let knowledge_type = knowledge_type_str.parse::<KnowledgeType>().unwrap_or_else(|_| {
-            tracing::warn!(
-                invalid_type = %knowledge_type_str,
-                "LLM returned unknown knowledge type, defaulting to Skill"
-            );
-            KnowledgeType::Skill
-        });
+        let knowledge_type_str = extraction
+            .knowledge_type
+            .ok_or_else(|| LlmError::MissingField("knowledge_type".to_owned()))?;
+        let knowledge_type = knowledge_type_str.parse::<KnowledgeType>().map_err(|_| {
+            LlmError::MissingField(format!("unknown knowledge_type: {}", knowledge_type_str))
+        })?;
 
         Ok(Some(KnowledgeInput::new(
             knowledge_type,

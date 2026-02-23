@@ -122,29 +122,44 @@ impl ObservationService {
         observation: &Observation,
         embedding_vec: Option<Vec<f32>>,
     ) -> Result<Option<(Observation, bool)>, ServiceError> {
-        let inserted = self.storage.save_observation(observation).await?;
-        if !inserted {
-            tracing::debug!("Skipping duplicate observation: {}", observation.title);
-            // Return existing observation (as not-new) instead of None so side-effects can still execute
-            return Ok(Some((observation.clone(), false)));
+        let mut obs = observation.clone();
+        let mut inserted = false;
+
+        for i in 0_u32..5_u32 {
+            match self.storage.save_observation(&obs).await {
+                Ok(is_new) => {
+                    inserted = is_new;
+                    break;
+                },
+                Err(opencode_mem_storage::StorageError::Duplicate(msg)) => {
+                    tracing::warn!("Title collision (23505): {}, mutating title and retrying", msg);
+                    obs.title = format!("{} ({})", observation.title, i.saturating_add(1));
+                },
+                Err(e) => return Err(e.into()),
+            }
         }
 
-        tracing::info!("Saved observation: {} - {}", observation.id, observation.title);
-        if self.event_tx.send(serde_json::to_string(observation)?).is_err() {
+        if !inserted {
+            tracing::debug!("Skipping duplicate observation: {}", obs.title);
+            return Ok(Some((obs, false)));
+        }
+
+        tracing::info!("Saved observation: {} - {}", obs.id, obs.title);
+        if self.event_tx.send(serde_json::to_string(&obs)?).is_err() {
             tracing::debug!("No SSE subscribers for observation event (this is normal at startup)");
         }
 
         if let Some(vec) = embedding_vec {
-            match self.storage.store_embedding(&observation.id, &vec).await {
+            match self.storage.store_embedding(&obs.id, &vec).await {
                 Ok(()) => {
-                    tracing::info!("Stored embedding for {}", observation.id);
+                    tracing::info!("Stored embedding for {}", obs.id);
                 },
                 Err(e) => {
-                    tracing::warn!("Failed to store embedding for {}: {}", observation.id, e);
+                    tracing::warn!("Failed to store embedding for {}: {}", obs.id, e);
                 },
             }
         }
 
-        Ok(Some((observation.clone(), true)))
+        Ok(Some((obs, true)))
     }
 }

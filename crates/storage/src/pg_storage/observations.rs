@@ -51,12 +51,10 @@ impl ObservationStore for PgStorage {
         match result {
             Ok(r) => Ok(r.rows_affected() > 0),
             Err(sqlx::Error::Database(db_err)) if db_err.code().as_deref() == Some("23505") => {
-                tracing::debug!(
-                    id = %obs.id,
-                    title = %obs.title,
-                    "Observation already exists (duplicate id or title), skipping"
-                );
-                Ok(false)
+                Err(StorageError::Duplicate(format!(
+                    "Observation title '{}' already exists",
+                    obs.title
+                )))
             },
             Err(e) => Err(e.into()),
         }

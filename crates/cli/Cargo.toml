@@ -34,3 +34,4 @@ serde = { workspace = true }
 regex = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
 sqlx = { workspace = true, features = ["postgres"] }
+socket2 = "0.6.2"

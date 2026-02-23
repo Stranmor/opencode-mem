@@ -1,3 +1,0 @@
-cargo clippy --workspace -- -D warnings
-cargo check
-Tests passed and components compile successfully. All architectural issues fixed.

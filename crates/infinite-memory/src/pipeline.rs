@@ -36,6 +36,9 @@ pub async fn create_5min_summary(
 
     let mut tx = pool.begin().await?;
 
+    let total_events = i32::try_from(events.len())
+        .map_err(|e| anyhow::anyhow!("events.len() {} exceeds i32::MAX: {}", events.len(), e))?;
+
     let row: (i64,) = sqlx::query_as(
         r#"
         INSERT INTO summaries_5min (ts_start, ts_end, session_id, project, content, event_count, entities)
@@ -48,7 +51,7 @@ pub async fn create_5min_summary(
     .bind(&session_id)
     .bind(&project)
     .bind(summary)
-    .bind(i32::try_from(events.len()).unwrap_or(i32::MAX))
+    .bind(total_events)
     .bind(&entities_json)
     .fetch_one(&mut *tx)
     .await?;
@@ -172,11 +175,8 @@ const MAX_EVENTS_PER_BATCH: usize = 100;
 pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<u32> {
     let mut total_processed = 0u32;
     loop {
-        let events = event_queries::get_unsummarized_events(
-            pool,
-            i64::try_from(MAX_EVENTS_PER_BATCH).unwrap_or(i64::MAX),
-        )
-        .await?;
+        let events =
+            event_queries::get_unsummarized_events(pool, MAX_EVENTS_PER_BATCH as i64).await?;
 
         if events.is_empty() {
             break;
@@ -189,7 +189,6 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
             }
         }
 
-        let mut processed_in_batch = 0;
         for session_id in seen_sessions {
             let mut session_events: Vec<&StoredEvent> =
                 events.iter().filter(|e| e.session_id == session_id).collect();
@@ -240,16 +239,12 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
                     let ids: Vec<i64> = owned_events.iter().map(|e| e.id).collect();
                     let _ = event_queries::release_events(pool, &ids).await;
                 } else {
-                    processed_in_batch += 1;
-                    total_processed += u32::try_from(owned_events.len()).unwrap_or(u32::MAX);
+                    total_processed += owned_events.len() as u32;
                 }
             }
         }
 
-        if processed_in_batch == 0 {
-            tracing::warn!(
-                "Failed to process any events in batch, breaking to prevent infinite loop"
-            );
+        if events.len() < MAX_EVENTS_PER_BATCH {
             break;
         }
     }

@@ -110,8 +110,32 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
 
     let router = create_router(state);
     let addr_str = format!("{host}:{port}");
+    let addr: std::net::SocketAddr = addr_str.parse()?;
+
+    let domain = if addr.is_ipv6() { socket2::Domain::IPV6 } else { socket2::Domain::IPV4 };
+
+    let socket = socket2::Socket::new(domain, socket2::Type::STREAM, None)?;
+
+    if let Err(e) = socket.set_reuse_address(true) {
+        tracing::warn!("Failed to set SO_REUSEADDR: {}", e);
+    }
+
+    #[cfg(target_family = "unix")]
+    {
+        if let Err(e) = socket.set_reuse_port(true) {
+            tracing::warn!("Failed to set SO_REUSEPORT: {}", e);
+        }
+    }
+
+    socket.bind(&addr.into())?;
+    socket.listen(1024)?;
+
+    let std_listener: std::net::TcpListener = socket.into();
+    std_listener.set_nonblocking(true)?;
+
+    let listener = tokio::net::TcpListener::from_std(std_listener)?;
+
     tracing::info!("Starting HTTP server on {}", addr_str);
-    let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
     axum::serve(listener, router.into_make_service_with_connect_info::<std::net::SocketAddr>())
         .await?;
 
