@@ -134,15 +134,13 @@ LLM always creates NEW observations even when near-identical ones exist. The `ex
 
 ## Tech Debt & Known Issues
 
-- Local HTTP server fails to start if port 37777 is already in use; stop the existing process before starting a new server.
 - Gate MCP review tooling intermittently returns 429/502 or "Max retries exceeded", blocking automated code review.
 - Test coverage: ~40% of critical paths. Service layer, HTTP handlers, infinite-memory, CLI still have zero tests.
-- ~~Typed error enums partial~~ — All crates now use typed errors: `CoreError`, `EmbeddingError`, `LlmError`, `StorageError` (5 variants), `ServiceError` (8 variants). `From<ServiceError> for ApiError` maps errors to proper HTTP status codes (404, 422, 400, 503). CLI uses `anyhow` at binary boundary (idiomatic).
 - **CUDA GPU acceleration blocked on Pascal** — ort-sys 2.0.0-rc.11 pre-built CUDA provider includes only SM 7.0+ (Volta+). GTX 1060 (SM 6.1 Pascal) gets `cudaErrorSymbolNotFound` at inference. CUDA EP registers successfully but all inference ops fail. CUDA 12 compat libs cleaned up from home-server. Workaround: CPU-only embeddings with `OPENCODE_MEM_DISABLE_EMBEDDINGS=1` for throttling. To resolve: either build ONNX Runtime from source with `CMAKE_CUDA_ARCHITECTURES=61`, or upgrade to Volta+ GPU.
-- **`std::env::set_var` will become unsafe in edition 2024** — `EmbeddingService::new()` calls `set_var("OMP_NUM_THREADS")` inside `Once::call_once`. Safe in edition 2021, but requires `unsafe {}` block when migrating to edition 2024. Alternative: move env var setting to CLI `main()` before tokio runtime init.
-
 ### Resolved
 - ~~Permissive CORS on HTTP server~~ — fixed by removing CorsLayer
+- ~~Local HTTP server fails to start if port 37777 is already in use~~ — fixed by returning a clear error message with a shutdown command, and removing SO_REUSEPORT to prevent load balancing with zombie instances.
+- ~~`std::env::set_var` will become unsafe in edition 2024~~ — fixed by moving env var setting to CLI `main()` before tokio runtime init and wrapping in unsafe.
 - ~~Infinite Memory drops filtered observations~~ — fixed by calling `store_infinite_memory` concurrently with `compress_and_save`
 - ~~pg_migrations non-transactional~~ — fixed
 - ~~pg_migrations .ok() swallows index errors~~ — fixed

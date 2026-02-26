@@ -120,14 +120,20 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         tracing::warn!("Failed to set SO_REUSEADDR: {}", e);
     }
 
-    #[cfg(target_family = "unix")]
-    {
-        if let Err(e) = socket.set_reuse_port(true) {
-            tracing::warn!("Failed to set SO_REUSEPORT: {}", e);
+    socket.bind(&addr.into()).map_err(|e| {
+        if e.kind() == std::io::ErrorKind::AddrInUse {
+            anyhow::anyhow!(
+                "Port {} is already in use.\n\n\
+Another instance of opencode-mem is likely running.\n\
+To stop it, run:\n  curl -X POST http://127.0.0.1:{}/api/admin/shutdown\n\n\
+Or kill the process manually before starting a new server.",
+                port,
+                port
+            )
+        } else {
+            anyhow::anyhow!("Failed to bind to {}: {}", addr_str, e)
         }
-    }
-
-    socket.bind(&addr.into())?;
+    })?;
     socket.listen(1024)?;
 
     let std_listener: std::net::TcpListener = socket.into();
