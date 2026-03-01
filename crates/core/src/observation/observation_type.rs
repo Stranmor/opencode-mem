@@ -113,7 +113,9 @@ impl FromStr for ObservationType {
     type Err = CoreError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+        // Defense-in-depth: strip surrounding quotes left by JSON double-encoding.
+        let normalized = s.trim().trim_matches('"').to_lowercase();
+        match normalized.as_str() {
             "bugfix" => Ok(Self::Bugfix),
             "feature" => Ok(Self::Feature),
             "refactor" => Ok(Self::Refactor),
@@ -122,7 +124,7 @@ impl FromStr for ObservationType {
             "decision" => Ok(Self::Decision),
             "gotcha" => Ok(Self::Gotcha),
             "preference" => Ok(Self::Preference),
-            other => Err(CoreError::InvalidObservationType(other.to_owned())),
+            _ => Err(CoreError::InvalidObservationType(s.to_owned())),
         }
     }
 }
@@ -176,7 +178,9 @@ impl FromStr for Concept {
     type Err = CoreError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+        // Defense-in-depth: strip surrounding quotes left by JSON double-encoding.
+        let normalized = s.trim().trim_matches('"').to_lowercase();
+        match normalized.as_str() {
             "how-it-works" => Ok(Self::HowItWorks),
             "why-it-exists" => Ok(Self::WhyItExists),
             "what-changed" => Ok(Self::WhatChanged),
@@ -184,7 +188,7 @@ impl FromStr for Concept {
             "gotcha" => Ok(Self::Gotcha),
             "pattern" => Ok(Self::Pattern),
             "trade-off" => Ok(Self::TradeOff),
-            other => Err(CoreError::InvalidObservationType(format!("Unknown concept: {}", other))),
+            _ => Err(CoreError::InvalidObservationType(format!("Unknown concept: {}", s))),
         }
     }
 }
@@ -228,13 +232,15 @@ impl FromStr for NoiseLevel {
     type Err = CoreError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+        // Defense-in-depth: strip surrounding quotes left by JSON double-encoding.
+        let normalized = s.trim().trim_matches('"').to_lowercase();
+        match normalized.as_str() {
             "critical" => Ok(Self::Critical),
             "high" => Ok(Self::High),
             "medium" => Ok(Self::Medium),
             "low" => Ok(Self::Low),
             "negligible" => Ok(Self::Negligible),
-            other => Err(CoreError::InvalidNoiseLevel(other.to_owned())),
+            _ => Err(CoreError::InvalidNoiseLevel(s.to_owned())),
         }
     }
 }
