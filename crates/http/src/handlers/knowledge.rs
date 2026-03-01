@@ -50,6 +50,10 @@ pub async fn search_knowledge(
             tracing::error!("Search knowledge error: {}", e);
             ApiError::Internal(anyhow::anyhow!("Internal Error"))
         })?;
+    // Fire-and-forget: update usage_count for all returned results.
+    for result in &results {
+        let _ = state.knowledge_service.update_knowledge_usage(&result.knowledge.id).await;
+    }
     Ok(Json(results))
 }
 
