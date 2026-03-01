@@ -282,3 +282,4 @@ LLM always creates NEW observations even when near-identical ones exist. The `ex
 - ~~Knowledge extraction skips updated observations~~ — already fixed (extracts from `save_result` regardless of is_new flag)
 - ~~Dedup sweep overwrite bug~~ — already fixed (compute_merge resolves by noise_level importance)
 - ~~Infinite memory time hierarchy violation~~ — already fixed (pipeline buckets strictly by 300s window)
+- ~~Double-quoted observation_type/noise_level corruption (733/904 records)~~ — fixed by DB migration (`TRIM(BOTH '"')`) + `FromStr` defense-in-depth normalization (`trim().trim_matches('"')`) in `ObservationType`, `NoiseLevel`, `Concept`
