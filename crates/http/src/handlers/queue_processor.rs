@@ -27,29 +27,29 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
         .unwrap_or(serde_json::Value::Null);
     let tool_response = msg.tool_response.as_deref().unwrap_or("");
 
-    let tool_call = ToolCall::new(
-        tool_name.to_owned(),
-        msg.session_id.clone(),
-        String::new(),
-        msg.project.clone(),
-        tool_input,
-        tool_response.to_owned(),
-    );
-
     // Deterministic UUID v5 based on message CONTENT (not row ID) to prevent duplicates.
-    // Using content-based hash avoids UUID collisions when the queue table is truncated
-    // while observations persist — new messages reusing old row IDs won't collide.
-    // If the same message is processed twice (race condition), same observation ID is generated.
+    // Used both as observation ID and as call_id for infinite memory UNIQUE constraint.
     let id = {
+        let input_str = msg.tool_input.as_deref().unwrap_or("");
         let mut data = String::with_capacity(
-            tool_name.len() + msg.session_id.len() + tool_response.len() + 20,
+            tool_name.len() + msg.session_id.len() + input_str.len() + tool_response.len() + 20,
         );
         data.push_str(tool_name);
         data.push_str(&msg.session_id);
+        data.push_str(input_str);
         data.push_str(tool_response);
         data.push_str(&msg.created_at_epoch.to_string());
         uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, data.as_bytes()).to_string()
     };
+
+    let tool_call = ToolCall::new(
+        tool_name.to_owned(),
+        msg.session_id.clone(),
+        id.clone(),
+        msg.project.clone(),
+        tool_input,
+        tool_response.to_owned(),
+    );
 
     let result = state.observation_service.process(&id, tool_call).await?;
 

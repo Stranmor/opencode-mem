@@ -124,23 +124,40 @@ impl ObservationService {
     ) -> Result<Option<(Observation, bool)>, ServiceError> {
         let mut obs = observation.clone();
         let mut inserted = false;
+        let mut last_was_title_collision = false;
 
         for i in 0_u32..5_u32 {
             match self.storage.save_observation(&obs).await {
                 Ok(is_new) => {
                     inserted = is_new;
+                    last_was_title_collision = false;
                     break;
                 },
                 Err(opencode_mem_storage::StorageError::Duplicate(msg)) => {
                     tracing::warn!("Title collision (23505): {}, mutating title and retrying", msg);
                     obs.title = format!("{} ({})", observation.title, i.saturating_add(1));
+                    last_was_title_collision = true;
                 },
                 Err(e) => return Err(e.into()),
             }
         }
 
+        if !inserted && last_was_title_collision {
+            // All 5 title-mutation retries exhausted — this is genuine data loss.
+            // Return error so the queue message goes to DLQ instead of being silently dropped.
+            tracing::error!(
+                "Title collision retries exhausted for observation {}: '{}' — sending to DLQ",
+                obs.id,
+                obs.title
+            );
+            return Err(ServiceError::Storage(opencode_mem_storage::StorageError::Duplicate(
+                format!("Title collision retries exhausted: '{}'", obs.title),
+            )));
+        }
+
         if !inserted {
-            tracing::debug!("Skipping duplicate observation: {}", obs.title);
+            // ID already exists (idempotent save) — this is normal behavior.
+            tracing::debug!("Skipping duplicate observation (ID exists): {}", obs.title);
             return Ok(Some((obs, false)));
         }
 
