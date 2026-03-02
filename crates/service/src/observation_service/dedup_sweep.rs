@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
-use opencode_mem_core::{cosine_similarity, NoiseLevel, MAX_BATCH_IDS};
+use opencode_mem_core::{
+    cosine_similarity, NoiseLevel, DEDUP_SWEEP_MAX_OBSERVATIONS, MAX_BATCH_IDS,
+};
 use opencode_mem_storage::traits::{EmbeddingStore, ObservationStore};
 
 use super::ObservationService;
@@ -126,7 +128,7 @@ impl ObservationService {
     }
 
     async fn load_observation_summaries(&self) -> Result<Vec<ObservationSummary>, ServiceError> {
-        let observations = self.storage.get_recent(MAX_BATCH_IDS).await?;
+        let observations = self.storage.get_recent(DEDUP_SWEEP_MAX_OBSERVATIONS).await?;
         Ok(observations
             .into_iter()
             .map(|obs| ObservationSummary {

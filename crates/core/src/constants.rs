@@ -29,3 +29,9 @@ pub const INFINITE_MEMORY_NOT_CONFIGURED: &str =
 
 /// Embedding vector dimension (BGE-M3 model: 1024d, 100+ languages).
 pub const EMBEDDING_DIMENSION: usize = 1024;
+
+/// Maximum observations to load for background dedup sweep.
+/// Internal use only (not exposed to API). O(N²) comparison is bounded
+/// by this limit — at 5000 observations, sweep processes ~12.5M pairs
+/// in a spawn_blocking thread (~2-3 seconds on modern CPU).
+pub const DEDUP_SWEEP_MAX_OBSERVATIONS: usize = 5000;
