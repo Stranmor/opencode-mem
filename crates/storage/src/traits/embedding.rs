@@ -27,6 +27,7 @@ pub trait EmbeddingStore: Send + Sync {
         &self,
         embedding: &[f32],
         threshold: f32,
+        project: Option<&str>,
     ) -> Result<Option<SimilarMatch>, StorageError>;
 
     /// Find top-N similar observations above a similarity threshold.
@@ -38,6 +39,7 @@ pub trait EmbeddingStore: Send + Sync {
         embedding: &[f32],
         threshold: f32,
         limit: usize,
+        project: Option<&str>,
     ) -> Result<Vec<SimilarMatch>, StorageError>;
 
     /// Get embeddings for specific observation IDs.

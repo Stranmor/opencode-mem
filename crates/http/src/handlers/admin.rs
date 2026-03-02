@@ -1,5 +1,5 @@
-use crate::api_error::ApiError;
 use super::is_localhost;
+use crate::api_error::ApiError;
 use axum::{
     extract::{ConnectInfo, Query, State},
     http::StatusCode,
@@ -57,9 +57,13 @@ pub async fn get_mcp_status(
 }
 
 pub async fn toggle_mcp(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
     Json(req): Json<ToggleMcpRequest>,
 ) -> Result<Json<McpStatusResponse>, ApiError> {
+    if !is_localhost(&addr) {
+        return Err(ApiError::Forbidden("Forbidden".into()));
+    }
     let mut settings = state.settings.write().await;
     settings.mcp_enabled = req.enabled;
     Ok(Json(McpStatusResponse { enabled: settings.mcp_enabled }))
@@ -205,7 +209,6 @@ fn extract_section(content: &str, section: &str) -> String {
     result.join("\n")
 }
 
-
 pub async fn admin_restart(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
 ) -> Result<Json<AdminResponse>, ApiError> {
@@ -226,8 +229,12 @@ pub async fn admin_restart(
 }
 
 pub async fn rebuild_embeddings(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<AdminResponse>, ApiError> {
+    if !is_localhost(&addr) {
+        return Err(ApiError::Forbidden("Forbidden".into()));
+    }
     state.search_service.clear_embeddings().await.map_err(anyhow::Error::from)?;
     Ok(Json(AdminResponse {
         success: true,

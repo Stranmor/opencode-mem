@@ -1,12 +1,12 @@
+use super::is_localhost;
 use crate::api_error::ApiError;
 use axum::{
     extract::{ConnectInfo, Query, State},
     http::StatusCode,
     Json,
 };
-use std::sync::atomic::Ordering;
 use std::net::SocketAddr;
-use super::is_localhost;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use opencode_mem_service::default_visibility_timeout_secs;
@@ -37,8 +37,15 @@ pub async fn get_pending_queue(
 }
 
 pub async fn process_pending_queue(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ProcessQueueResponse>, crate::api_error::ApiError> {
+    if !is_localhost(&addr) {
+        return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
+    }
+    if !state.processing_active.load(Ordering::SeqCst) {
+        return Ok(Json(ProcessQueueResponse { processed: 0, failed: 0 }));
+    }
     let max_workers = max_queue_workers();
     let available_permits = state.semaphore.available_permits().min(max_workers);
 
@@ -127,8 +134,12 @@ pub async fn clear_failed_queue(
 }
 
 pub async fn retry_failed_queue(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<RetryQueueResponse>, crate::api_error::ApiError> {
+    if !is_localhost(&addr) {
+        return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
+    }
     let retried = state
         .queue_service
         .retry_failed_messages()
@@ -165,9 +176,13 @@ pub async fn get_processing_status(
 }
 
 pub async fn set_processing_status(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
     Json(req): Json<SetProcessingRequest>,
 ) -> Result<Json<SetProcessingResponse>, crate::api_error::ApiError> {
+    if !is_localhost(&addr) {
+        return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
+    }
     state.processing_active.store(req.active, Ordering::SeqCst);
     Ok(Json(SetProcessingResponse { active: req.active }))
 }

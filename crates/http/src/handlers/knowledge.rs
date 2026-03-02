@@ -1,3 +1,4 @@
+use super::is_localhost;
 use crate::api_error::ApiError;
 use axum::{
     extract::{ConnectInfo, Path, Query, State},
@@ -6,7 +7,6 @@ use axum::{
 };
 use serde_json::json;
 use std::net::SocketAddr;
-use super::is_localhost;
 use std::sync::Arc;
 
 use opencode_mem_core::{
@@ -53,9 +53,13 @@ pub async fn search_knowledge(
             ApiError::Internal(anyhow::anyhow!("Internal Error"))
         })?;
     // Fire-and-forget: update usage_count for all returned results.
-    for result in &results {
-        let _ = state.knowledge_service.update_knowledge_usage(&result.knowledge.id).await;
-    }
+    let knowledge_service = state.knowledge_service.clone();
+    let result_ids: Vec<String> = results.iter().map(|r| r.knowledge.id.clone()).collect();
+    tokio::spawn(async move {
+        for id in result_ids {
+            let _ = knowledge_service.update_knowledge_usage(&id).await;
+        }
+    });
     Ok(Json(results))
 }
 

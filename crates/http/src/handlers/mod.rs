@@ -3,8 +3,6 @@
 #![allow(clippy::cognitive_complexity, reason = "Complex async handlers are inherent")]
 #![allow(clippy::single_call_fn, reason = "HTTP handlers are called once from router")]
 
-use crate::api_error::ApiError;
-
 pub(crate) const fn is_localhost(addr: &std::net::SocketAddr) -> bool {
     addr.ip().is_loopback()
 }

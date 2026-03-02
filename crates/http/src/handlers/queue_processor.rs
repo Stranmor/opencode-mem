@@ -23,7 +23,17 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
     let tool_input: serde_json::Value = msg
         .tool_input
         .as_ref()
-        .and_then(|s| serde_json::from_str(s).ok())
+        .and_then(|s| {
+            serde_json::from_str(s)
+                .map_err(|e| {
+                    tracing::warn!(
+                        error = %e,
+                        "Failed to parse tool_input for pending message {}",
+                        msg.id
+                    );
+                })
+                .ok()
+        })
         .unwrap_or(serde_json::Value::Null);
     let tool_response = msg.tool_response.as_deref().unwrap_or("");
 

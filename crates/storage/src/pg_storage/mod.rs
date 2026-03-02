@@ -82,10 +82,7 @@ pub(crate) fn parse_pg_noise_level(s: Option<&str>) -> Result<NoiseLevel, Storag
             context: format!("invalid noise_level in DB: {}", s),
             source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
         }),
-        None => Err(StorageError::DataCorruption {
-            context: "missing noise_level in DB".into(),
-            source: Box::<dyn std::error::Error + Send + Sync>::from("null value"),
-        }),
+        None => Ok(NoiseLevel::Medium),
     }
 }
 

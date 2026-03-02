@@ -71,7 +71,7 @@ impl ObservationService {
             return Ok(None);
         }
 
-        let existing = match self.storage.find_similar(embedding, self.dedup_threshold).await {
+        let existing = match self.storage.find_similar(embedding, self.dedup_threshold, observation.project.as_deref()).await {
             Ok(Some(m)) => m,
             Ok(None) => return Ok(None),
             Err(e) => {

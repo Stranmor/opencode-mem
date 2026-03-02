@@ -167,6 +167,7 @@ pub async fn unified_search(
         state.search_service.search_prompts(q, limit),
     );
 
+    // Partial failures are acceptable in unified search; one failed source should not block the others.
     let observations = obs_result.unwrap_or_else(|e| {
         tracing::error!("Unified search observation query failed: {e}");
         Vec::new()
@@ -236,12 +237,35 @@ pub async fn unified_timeline(
     Query(query): Query<UnifiedTimelineQuery>,
 ) -> Result<Json<TimelineResult>, ApiError> {
     let anchor_obs = if let Some(ref id) = query.anchor {
-        state.search_service.get_observation_by_id(id).await.ok().flatten()
+        state
+            .search_service
+            .get_observation_by_id(id)
+            .await
+            .map_err(|e| {
+                tracing::warn!(error = %e, "Failed to fetch anchor observation");
+            })
+            .ok()
+            .flatten()
     } else if let Some(ref q) = query.q {
-        let search_result =
-            state.search_service.hybrid_search(q, 1).await.ok().and_then(|r| r.into_iter().next());
+        let search_result = state
+            .search_service
+            .hybrid_search(q, 1)
+            .await
+            .map_err(|e| {
+                tracing::warn!(error = %e, "Failed to perform hybrid search for anchor");
+            })
+            .ok()
+            .and_then(|r| r.into_iter().next());
         if let Some(sr) = search_result {
-            state.search_service.get_observation_by_id(&sr.id).await.ok().flatten()
+            state
+                .search_service
+                .get_observation_by_id(&sr.id)
+                .await
+                .map_err(|e| {
+                    tracing::warn!(error = %e, "Failed to fetch observation from hybrid search result");
+                })
+                .ok()
+                .flatten()
         } else {
             None
         }

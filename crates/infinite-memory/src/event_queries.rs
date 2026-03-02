@@ -23,6 +23,7 @@ pub async fn store_event(pool: &PgPool, event: RawEvent) -> Result<i64> {
         r#"
         INSERT INTO raw_events (session_id, project, event_type, content, files, tools, call_id)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (call_id) DO UPDATE SET call_id = EXCLUDED.call_id
         RETURNING id
         "#,
     )

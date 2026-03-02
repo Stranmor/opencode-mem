@@ -77,6 +77,7 @@ impl EmbeddingStore for PgStorage {
         &self,
         embedding: &[f32],
         threshold: f32,
+        project: Option<&str>,
     ) -> Result<Option<SimilarMatch>, StorageError> {
         if embedding.is_empty() || is_zero_vector(embedding) || contains_non_finite(embedding) {
             return Ok(None);
@@ -88,10 +89,12 @@ impl EmbeddingStore for PgStorage {
             "SELECT id, title, 1.0 - (embedding <=> $1) AS similarity
                FROM observations
               WHERE embedding IS NOT NULL
+                AND (project = $2 OR $2 IS NULL)
               ORDER BY embedding <=> $1
               LIMIT 1",
         )
         .bind(vector)
+        .bind(project)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -122,6 +125,7 @@ impl EmbeddingStore for PgStorage {
         embedding: &[f32],
         threshold: f32,
         limit: usize,
+        project: Option<&str>,
     ) -> Result<Vec<SimilarMatch>, StorageError> {
         if embedding.is_empty() || is_zero_vector(embedding) || contains_non_finite(embedding) {
             return Ok(Vec::new());
@@ -133,10 +137,13 @@ impl EmbeddingStore for PgStorage {
             "SELECT id, title, 1.0 - (embedding <=> $1) AS similarity
                FROM observations
               WHERE embedding IS NOT NULL
+                AND (project = $3 OR $3 IS NULL)
               ORDER BY embedding <=> $1
               LIMIT $2",
         )
         .bind(vector)
+        .bind(usize_to_i64(limit))
+        .bind(project)
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
