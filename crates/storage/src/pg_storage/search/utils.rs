@@ -4,7 +4,7 @@ pub(crate) fn build_tsquery(query: &str) -> Option<String> {
         .filter_map(|w| {
             // Strip tsquery operators and special characters, keep only alphanumeric
             let sanitized: String =
-                w.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect();
+                w.chars().filter(|c| c.is_alphanumeric() || *c == '_').collect();
             if sanitized.is_empty() || !sanitized.chars().any(char::is_alphanumeric) {
                 None
             } else {
@@ -25,7 +25,7 @@ pub(crate) fn build_or_tsquery(query: &str, max_terms: usize) -> Option<String> 
         .split_whitespace()
         .filter_map(|w| {
             let sanitized: String =
-                w.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect();
+                w.chars().filter(|c| c.is_alphanumeric() || *c == '_').collect();
             // Must have at least 2 chars AND contain at least one alphanumeric
             // (rejects "---", "___" which cause tsquery syntax errors)
             if sanitized.chars().count() < 2 || !sanitized.chars().any(char::is_alphanumeric) {
