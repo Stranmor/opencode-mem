@@ -39,6 +39,7 @@ pub async fn get_pending_queue(
 pub async fn process_pending_queue(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
+    Json(()): Json<()>,
 ) -> Result<Json<ProcessQueueResponse>, crate::api_error::ApiError> {
     if !is_localhost(&addr) {
         return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
@@ -121,6 +122,7 @@ pub async fn process_pending_queue(
 pub async fn clear_failed_queue(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
+    Json(()): Json<()>,
 ) -> Result<Json<ClearQueueResponse>, crate::api_error::ApiError> {
     if !is_localhost(&addr) {
         return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
@@ -136,6 +138,7 @@ pub async fn clear_failed_queue(
 pub async fn retry_failed_queue(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
+    Json(()): Json<()>,
 ) -> Result<Json<RetryQueueResponse>, crate::api_error::ApiError> {
     if !is_localhost(&addr) {
         return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
@@ -151,6 +154,7 @@ pub async fn retry_failed_queue(
 pub async fn clear_all_queue(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
+    Json(()): Json<()>,
 ) -> Result<Json<ClearQueueResponse>, crate::api_error::ApiError> {
     if !is_localhost(&addr) {
         return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));

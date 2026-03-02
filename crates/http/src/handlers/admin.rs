@@ -22,9 +22,22 @@ use crate::api_types::{
 use crate::AppState;
 
 pub async fn get_settings(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<SettingsResponse>, ApiError> {
-    let settings = state.settings.read().await.clone();
+    if !is_localhost(&addr) {
+        return Err(ApiError::Forbidden("Forbidden".into()));
+    }
+    let mut settings = state.settings.read().await.clone();
+    
+    // Redact sensitive keys
+    for (key, value) in settings.env.iter_mut() {
+        let k = key.to_uppercase();
+        if k.contains("KEY") || k.contains("SECRET") || k.contains("PASSWORD") || k.contains("TOKEN") {
+            *value = "***REDACTED***".to_owned();
+        }
+    }
+    
     Ok(Json(SettingsResponse { settings }))
 }
 
@@ -211,6 +224,7 @@ fn extract_section(content: &str, section: &str) -> String {
 
 pub async fn admin_restart(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Json(()): Json<()>,
 ) -> Result<Json<AdminResponse>, ApiError> {
     if !is_localhost(&addr) {
         return Err(ApiError::Forbidden("Forbidden".into()));
@@ -245,6 +259,7 @@ pub async fn rebuild_embeddings(
 
 pub async fn admin_shutdown(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    Json(()): Json<()>,
 ) -> Result<Json<AdminResponse>, ApiError> {
     if !is_localhost(&addr) {
         return Err(ApiError::Forbidden("Forbidden".into()));
