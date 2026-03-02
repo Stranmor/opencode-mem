@@ -37,24 +37,24 @@ impl PromptStore for PgStorage {
         project: Option<&str>,
     ) -> Result<PaginatedResult<UserPrompt>, StorageError> {
         let total: i64 = if let Some(p) = project {
-            sqlx::query_scalar("SELECT COUNT(*) FROM user_prompts WHERE project = $1")
+            sqlx::query_scalar("SELECT COUNT(*) FROM user_prompts WHERE project = $1 OR project IS NULL")
                 .bind(p)
-                .fetch_one(&self.pool)
-                .await?
+.fetch_one(&self.pool)
+.await?
         } else {
             sqlx::query_scalar("SELECT COUNT(*) FROM user_prompts").fetch_one(&self.pool).await?
         };
 
         let rows = if let Some(p) = project {
             sqlx::query(
-                "SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
-                   FROM user_prompts WHERE project = $1 ORDER BY created_at DESC, id ASC LIMIT $2 OFFSET $3",
+"SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
+                   FROM user_prompts WHERE project = $1 OR project IS NULL ORDER BY created_at DESC, id ASC LIMIT $2 OFFSET $3",
             )
-            .bind(p)
-            .bind(usize_to_i64(limit))
-            .bind(usize_to_i64(offset))
-            .fetch_all(&self.pool)
-            .await?
+.bind(p)
+.bind(usize_to_i64(limit))
+.bind(usize_to_i64(offset))
+.fetch_all(&self.pool)
+.await?
         } else {
             sqlx::query(
                 "SELECT id, content_session_id, prompt_number, prompt_text, project, created_at

@@ -89,8 +89,7 @@ impl EmbeddingStore for PgStorage {
             "SELECT id, title, 1.0 - (embedding <=> $1) AS similarity
                FROM observations
               WHERE embedding IS NOT NULL
-                AND (project = $2 OR $2 IS NULL)
-              ORDER BY embedding <=> $1
+                AND (project = $2 OR project IS NULL OR $2 IS NULL)
               LIMIT 1",
         )
         .bind(vector)
@@ -137,8 +136,7 @@ impl EmbeddingStore for PgStorage {
             "SELECT id, title, 1.0 - (embedding <=> $1) AS similarity
                FROM observations
               WHERE embedding IS NOT NULL
-                AND (project = $3 OR $3 IS NULL)
-              ORDER BY embedding <=> $1
+                AND (project = $3 OR project IS NULL OR $3 IS NULL)
               LIMIT $2",
         )
         .bind(vector)

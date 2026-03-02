@@ -41,8 +41,7 @@ pub(crate) async fn search_with_filters(
     let mut bind_strings: Vec<String> = Vec::new();
 
     if let Some(p) = project {
-        conditions.push(format!("project = ${param_idx}"));
-        param_idx += 1;
+        conditions.push(format!("(project = ${param_idx} OR project IS NULL)"));
         bind_strings.push(p.to_owned());
     }
     if let Some(t) = obs_type {

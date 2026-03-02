@@ -120,8 +120,7 @@ pub(crate) async fn hybrid_search_v2_with_filters(
     let mut bind_values: Vec<String> = Vec::new();
 
     if let Some(p) = project {
-        where_parts.push(format!("project = ${param_idx}"));
-        param_idx += 1;
+        where_parts.push(format!("(project = ${param_idx} OR project IS NULL)"));
         bind_values.push(p.to_owned());
     }
     if let Some(t) = obs_type {

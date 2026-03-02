@@ -142,8 +142,7 @@ impl ObservationStore for PgStorage {
         let rows = sqlx::query(&format!(
             "SELECT {}
              FROM observations
-             WHERE project = $1
-               AND noise_level NOT IN ('low', 'negligible')
+             WHERE (project = $1 OR project IS NULL)
              ORDER BY created_at DESC LIMIT $2",
             OBSERVATION_COLUMNS
         ))
