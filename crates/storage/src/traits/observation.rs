@@ -27,7 +27,6 @@ pub trait ObservationStore: Send + Sync {
         limit: usize,
     ) -> Result<Vec<Observation>, StorageError>;
 
-
     /// Get observations by a list of IDs.
     async fn get_observations_by_ids(
         &self,

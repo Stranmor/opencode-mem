@@ -90,8 +90,9 @@ impl EmbeddingStore for PgStorage {
                FROM observations
               WHERE embedding IS NOT NULL
                 AND (project = $2 OR project IS NULL OR $2 IS NULL)
-              ORDER BY embedding <=> $1
+ORDER BY embedding <=> $1
               LIMIT 1",
+        )
         .bind(vector)
         .bind(project)
         .fetch_optional(&self.pool)
@@ -137,8 +138,9 @@ impl EmbeddingStore for PgStorage {
                FROM observations
               WHERE embedding IS NOT NULL
                 AND (project = $3 OR project IS NULL OR $3 IS NULL)
-              ORDER BY embedding <=> $1
+ORDER BY embedding <=> $1
               LIMIT $2",
+        )
         .bind(vector)
         .bind(usize_to_i64(limit))
         .bind(project)

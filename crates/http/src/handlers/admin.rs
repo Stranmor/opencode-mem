@@ -29,9 +29,9 @@ pub async fn get_settings(
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
     let mut settings = state.settings.read().await.clone();
-    
+
     redact_sensitive_env(&mut settings.env);
-    
+
     Ok(Json(SettingsResponse { settings }))
 }
 
@@ -178,7 +178,6 @@ pub async fn switch_branch(
 pub async fn update_branch(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(_state): State<Arc<AppState>>,
-    Json(()): Json<()>,
 ) -> Result<Json<UpdateBranchResponse>, ApiError> {
     if !is_localhost(&addr) {
         return Err(ApiError::Forbidden("Forbidden".into()));
@@ -250,28 +249,26 @@ fn extract_section(content: &str, section: &str) -> String {
 
 pub async fn admin_restart(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Json(()): Json<()>,
+    State(state): State<Arc<AppState>>,
 ) -> Result<Json<AdminResponse>, ApiError> {
     if !is_localhost(&addr) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
-    // Restart requires external process manager (systemd).
-    // Exit with code 1 - systemd with Restart=on-failure will restart the service.
-    tokio::spawn(async {
-        sleep(Duration::from_millis(100)).await;
-        #[expect(clippy::exit, reason = "Intentional restart via systemd")]
-        std::process::exit(1);
+
+    let tx = state.shutdown_tx.clone();
+    tokio::spawn(async move {
+        let _ = tx.send(true).await;
     });
+
     Ok(Json(AdminResponse {
         success: true,
-        message: "Restart initiated (process will exit, systemd will restart)".to_owned(),
+        message: "Restart initiated (graceful shutdown, then systemd restart)".to_owned(),
     }))
 }
 
 pub async fn rebuild_embeddings(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
-    Json(()): Json<()>,
 ) -> Result<Json<AdminResponse>, ApiError> {
     if !is_localhost(&addr) {
         return Err(ApiError::Forbidden("Forbidden".into()));
@@ -286,16 +283,16 @@ pub async fn rebuild_embeddings(
 
 pub async fn admin_shutdown(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Json(()): Json<()>,
+    State(state): State<Arc<AppState>>,
 ) -> Result<Json<AdminResponse>, ApiError> {
     if !is_localhost(&addr) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
-    // Graceful shutdown: exit with code 0 after short delay to send response
-    tokio::spawn(async {
-        sleep(Duration::from_millis(100)).await;
-        #[expect(clippy::exit, reason = "Intentional shutdown requested by admin")]
-        std::process::exit(0);
+
+    let tx = state.shutdown_tx.clone();
+    tokio::spawn(async move {
+        let _ = tx.send(false).await;
     });
+
     Ok(Json(AdminResponse { success: true, message: "Shutdown initiated".to_owned() }))
 }

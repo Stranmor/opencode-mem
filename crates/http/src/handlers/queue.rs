@@ -85,7 +85,11 @@ pub async fn process_pending_queue(
         let state_clone = Arc::clone(&state);
         let handle = tokio::spawn(async move {
             let _permit = permit;
-            let result = process_pending_message(&state_clone, &msg).await;
+            use futures_util::FutureExt;
+            let result = std::panic::AssertUnwindSafe(process_pending_message(&state_clone, &msg))
+                .catch_unwind()
+                .await
+                .unwrap_or_else(|_| Err(anyhow::anyhow!("Panic during message processing")));
             match result {
                 Ok(()) => {
                     if let Err(e) = state_clone.queue_service.complete_message(msg.id).await {

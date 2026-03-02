@@ -262,36 +262,46 @@ impl ObservationService {
 
             if !query_str.is_empty() {
                 let embeddings_clone = Arc::clone(embeddings);
-                let vector_res = tokio::task::spawn_blocking(move || {
-                    embeddings_clone.embed(&query_str)
-                })
-                .await;
+                let vector_res =
+                    tokio::task::spawn_blocking(move || embeddings_clone.embed(&query_str)).await;
 
                 match vector_res {
                     Ok(Ok(query_vec)) => {
-                        match self.storage.hybrid_search_v2_with_filters(
-                            raw_text.get(..end).unwrap_or(""),
-                            &query_vec,
-                            project,
-                            None,
-                            None,
-                            None,
-                            5,
-                        ).await {
+                        match self
+                            .storage
+                            .hybrid_search_v2_with_filters(
+                                raw_text.get(..end).unwrap_or(""),
+                                &query_vec,
+                                project,
+                                None,
+                                None,
+                                None,
+                                5,
+                            )
+                            .await
+                        {
                             Ok(results) => {
                                 let ids: Vec<String> = results.into_iter().map(|r| r.id).collect();
                                 if !ids.is_empty() {
                                     match self.storage.get_observations_by_ids(&ids).await {
                                         Ok(obs) => hybrid_candidates = obs,
-                                        Err(e) => tracing::warn!(error = %e, "Failed to fetch hybrid candidate observations by ids"),
+                                        Err(e) => {
+                                            tracing::warn!(error = %e, "Failed to fetch hybrid candidate observations by ids")
+                                        },
                                     }
                                 }
-                            }
-                            Err(e) => tracing::warn!(error = %e, "Hybrid search for candidates failed"),
+                            },
+                            Err(e) => {
+                                tracing::warn!(error = %e, "Hybrid search for candidates failed")
+                            },
                         }
-                    }
-                    Ok(Err(e)) => tracing::warn!(error = %e, "Failed to generate embedding for candidates"),
-                    Err(e) => tracing::warn!(error = %e, "Spawn blocking failed for candidate embedding generation"),
+                    },
+                    Ok(Err(e)) => {
+                        tracing::warn!(error = %e, "Failed to generate embedding for candidates")
+                    },
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Spawn blocking failed for candidate embedding generation")
+                    },
                 }
             }
         }
@@ -300,23 +310,20 @@ impl ObservationService {
         let fts_candidates = self.find_fts_candidates(raw_text, project).await;
 
         // Phase 3: Get 3 most recent observations from same session
-        let session_candidates = match self.storage.get_recent_session_observations(session_id, 3).await {
-            Ok(obs) => obs,
-            Err(e) => {
-                tracing::warn!(error = %e, "Failed to get session observations for candidates");
-                Vec::new()
-            },
-        };
+        let session_candidates =
+            match self.storage.get_recent_session_observations(session_id, 3).await {
+                Ok(obs) => obs,
+                Err(e) => {
+                    tracing::warn!(error = %e, "Failed to get session observations for candidates");
+                    Vec::new()
+                },
+            };
 
         // Phase 4: Union by id (deduplicate)
         let mut seen_ids: HashSet<String> = HashSet::new();
         let mut result: Vec<Observation> = Vec::new();
-        
-        for obs in hybrid_candidates
-            .into_iter()
-            .chain(fts_candidates)
-            .chain(session_candidates)
-        {
+
+        for obs in hybrid_candidates.into_iter().chain(fts_candidates).chain(session_candidates) {
             if seen_ids.insert(obs.id.clone()) {
                 result.push(obs);
             }

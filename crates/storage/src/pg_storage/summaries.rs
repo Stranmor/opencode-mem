@@ -133,10 +133,12 @@ impl SummaryStore for PgStorage {
         project: Option<&str>,
     ) -> Result<PaginatedResult<SessionSummary>, StorageError> {
         let total: i64 = if let Some(p) = project {
-            sqlx::query_scalar("SELECT COUNT(*) FROM session_summaries WHERE project = $1 OR project IS NULL")
-                .bind(p)
-.fetch_one(&self.pool)
-.await?
+            sqlx::query_scalar(
+                "SELECT COUNT(*) FROM session_summaries WHERE project = $1 OR project IS NULL",
+            )
+            .bind(p)
+            .fetch_one(&self.pool)
+            .await?
         } else {
             sqlx::query_scalar("SELECT COUNT(*) FROM session_summaries")
                 .fetch_one(&self.pool)
@@ -147,7 +149,7 @@ impl SummaryStore for PgStorage {
             sqlx::query(&format!(
                 "SELECT {SUMMARY_COLUMNS} FROM session_summaries
 WHERE project = $1 OR project IS NULL ORDER BY created_at DESC, session_id ASC LIMIT $2 OFFSET $3"
-))
+            ))
             .bind(p)
             .bind(usize_to_i64(limit))
             .bind(usize_to_i64(offset))

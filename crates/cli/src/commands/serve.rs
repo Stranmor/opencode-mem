@@ -80,6 +80,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));
     let search_service = Arc::new(SearchService::new(storage.clone(), embeddings.clone()));
     let queue_service = Arc::new(QueueService::new(storage.clone()));
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
 
     let state = Arc::new(AppState {
         semaphore: Arc::new(Semaphore::new(opencode_mem_core::env_parse_with_default(
@@ -95,6 +96,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         knowledge_service,
         search_service,
         queue_service,
+        shutdown_tx,
     });
 
     if let Err(e) = run_startup_recovery(&state).await {
@@ -142,8 +144,20 @@ Or kill the process manually before starting a new server.",
     let listener = tokio::net::TcpListener::from_std(std_listener)?;
 
     tracing::info!("Starting HTTP server on {}", addr_str);
+    let is_restart = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let is_restart_clone = is_restart.clone();
     axum::serve(listener, router.into_make_service_with_connect_info::<std::net::SocketAddr>())
+        .with_graceful_shutdown(async move {
+            is_restart_clone.store(
+                shutdown_rx.recv().await.unwrap_or(false),
+                std::sync::atomic::Ordering::Relaxed,
+            );
+        })
         .await?;
+
+    if is_restart.load(std::sync::atomic::Ordering::Relaxed) {
+        std::process::exit(1);
+    }
 
     Ok(())
 }

@@ -115,7 +115,6 @@ impl ObservationStore for PgStorage {
         rows.iter().map(row_to_observation).collect()
     }
 
-
     async fn get_observations_by_ids(
         &self,
         ids: &[String],
