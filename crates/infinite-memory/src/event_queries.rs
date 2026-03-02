@@ -148,9 +148,9 @@ pub async fn get_events_by_time_range(
             r#"
             SELECT id, ts, session_id, project, event_type, content, files, tools, call_id
             FROM raw_events
-            WHERE content::text ILIKE '%' || $1 || '%'
-            ORDER BY ts DESC
-            LIMIT $2
+            WHERE ts >= $1 AND ts <= $2
+            ORDER BY ts ASC
+            LIMIT $3
             "#,
         )
         .bind(start)
@@ -166,7 +166,7 @@ pub async fn get_events_by_time_range(
 pub async fn search(pool: &PgPool, query: &str, limit: i64) -> Result<Vec<StoredEvent>> {
     let rows = sqlx::query_as::<_, StoredEventRow>(
         r#"
-        SELECT id, ts, session_id, project, event_type, content, files, tools
+        SELECT id, ts, session_id, project, event_type, content, files, tools, call_id
         FROM raw_events
         WHERE content::text ILIKE '%' || $1 || '%'
         ORDER BY ts DESC
