@@ -52,7 +52,7 @@ impl SessionStore for PgStorage {
         content_session_id: &str,
     ) -> Result<Option<Session>, StorageError> {
         let row = sqlx::query(&format!(
-            "SELECT {SESSION_COLUMNS} FROM sessions WHERE content_session_id = $1"
+            "SELECT {SESSION_COLUMNS} FROM sessions WHERE content_session_id = $1 ORDER BY started_at DESC LIMIT 1"
         ))
         .bind(content_session_id)
         .fetch_optional(&self.pool)

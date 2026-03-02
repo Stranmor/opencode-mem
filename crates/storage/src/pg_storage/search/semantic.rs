@@ -12,17 +12,16 @@ pub(crate) async fn semantic_search(
         return Ok(Vec::new());
     }
 
-    let vec_str =
-        format!("[{}]", query_vec.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(","));
+    let query_vector = pgvector::Vector::from(query_vec.to_vec());
     let rows = sqlx::query(
         "SELECT id, title, subtitle, observation_type, noise_level,
-                1.0 - (embedding <=> $1::vector) as score
+                1.0 - (embedding <=> $1) as score
            FROM observations
            WHERE embedding IS NOT NULL
-           ORDER BY embedding <=> $1::vector
+           ORDER BY embedding <=> $1
            LIMIT $2",
     )
-    .bind(&vec_str)
+    .bind(&query_vector)
     .bind(usize_to_i64(limit))
     .fetch_all(&storage.pool)
     .await?;
