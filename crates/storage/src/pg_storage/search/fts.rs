@@ -42,6 +42,7 @@ pub(crate) async fn search_with_filters(
 
     if let Some(p) = project {
         conditions.push(format!("(project = ${param_idx} OR project IS NULL)"));
+        param_idx += 1;
         bind_strings.push(p.to_owned());
     }
     if let Some(t) = obs_type {

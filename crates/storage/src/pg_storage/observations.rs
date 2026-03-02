@@ -143,6 +143,7 @@ impl ObservationStore for PgStorage {
             "SELECT {}
              FROM observations
              WHERE (project = $1 OR project IS NULL)
+               AND noise_level NOT IN ('low', 'negligible')
              ORDER BY created_at DESC LIMIT $2",
             OBSERVATION_COLUMNS
         ))
