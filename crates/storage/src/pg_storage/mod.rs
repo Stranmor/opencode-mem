@@ -167,6 +167,7 @@ pub(crate) fn row_to_search_result(
     ))
 }
 
+#[allow(dead_code)]
 pub(crate) fn row_to_search_result_with_score(
     row: &sqlx::postgres::PgRow,
     score: f64,
