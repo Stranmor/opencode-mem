@@ -2,7 +2,7 @@
 -- Follows SPOT axiom: ts_date is strictly derived from ts_start
 
 ALTER TABLE summaries_day
-DROP COLUMN IF EXISTS ts_date;
+DROP COLUMN IF EXISTS ts_date CASCADE;
 
 ALTER TABLE summaries_day
 ADD COLUMN IF NOT EXISTS ts_date DATE GENERATED ALWAYS AS ((ts_start AT TIME ZONE 'UTC')::date) STORED;
