@@ -348,15 +348,19 @@ impl ObservationService {
             return Vec::new();
         }
 
-        let search_results =
-            match self.storage.search_with_filters(Some(query), project, None, None, None, 5).await
-            {
-                Ok(results) => results,
-                Err(e) => {
-                    tracing::warn!(error = %e, "FTS search for candidates failed");
-                    return Vec::new();
-                },
-            };
+        // Use hybrid_search_v2_with_filters with empty query_vec — gives FTS-only
+        // with OR semantics (build_or_tsquery), avoiding AND death on long text.
+        let search_results = match self
+            .storage
+            .hybrid_search_v2_with_filters(query, &[], project, None, None, None, 5)
+            .await
+        {
+            Ok(results) => results,
+            Err(e) => {
+                tracing::warn!(error = %e, "FTS search for candidates failed");
+                return Vec::new();
+            },
+        };
 
         if search_results.is_empty() {
             return Vec::new();

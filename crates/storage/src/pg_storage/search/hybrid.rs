@@ -8,7 +8,7 @@ use super::super::{
     parse_pg_noise_level, parse_pg_observation_type, row_to_search_result,
     sort_by_score_descending, usize_to_i64, PgStorage,
 };
-use super::utils::build_tsquery;
+use super::utils::{build_tsquery, build_or_tsquery};
 
 pub(crate) async fn hybrid_search(
     storage: &PgStorage,
@@ -146,7 +146,7 @@ pub(crate) async fn hybrid_search_v2_with_filters(
         format!("AND {}", where_parts.join(" AND "))
     };
 
-    let fts_results = match build_tsquery(query) {
+    let fts_results = match build_or_tsquery(query, 15) {
         Some(tsquery) => {
             let fts_sql = format!(
                 "SELECT id, title, subtitle, observation_type, noise_level,
