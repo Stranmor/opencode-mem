@@ -90,7 +90,7 @@ impl EmbeddingStore for PgStorage {
                FROM observations
               WHERE embedding IS NOT NULL
                 AND (project = $2 OR project IS NULL OR $2 IS NULL)
-ORDER BY embedding <=> $1
+              ORDER BY embedding <=> $1
               LIMIT 1",
         )
         .bind(vector)
@@ -138,7 +138,7 @@ ORDER BY embedding <=> $1
                FROM observations
               WHERE embedding IS NOT NULL
                 AND (project = $3 OR project IS NULL OR $3 IS NULL)
-ORDER BY embedding <=> $1
+              ORDER BY embedding <=> $1
               LIMIT $2",
         )
         .bind(vector)

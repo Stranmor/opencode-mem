@@ -63,7 +63,7 @@ impl StatsStore for PgStorage {
             sqlx::query(
                 "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
                         facts, concepts, files_read, files_modified, keywords, prompt_number,
-discovery_tokens, noise_level, noise_reason, created_at
+                        discovery_tokens, noise_level, noise_reason, created_at
                    FROM observations WHERE project = $1 OR project IS NULL ORDER BY created_at DESC LIMIT $2 OFFSET $3",
             )
             .bind(p)

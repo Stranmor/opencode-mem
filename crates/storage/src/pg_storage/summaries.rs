@@ -148,7 +148,7 @@ impl SummaryStore for PgStorage {
         let rows = if let Some(p) = project {
             sqlx::query(&format!(
                 "SELECT {SUMMARY_COLUMNS} FROM session_summaries
-WHERE project = $1 OR project IS NULL ORDER BY created_at DESC, session_id ASC LIMIT $2 OFFSET $3"
+                 WHERE project = $1 OR project IS NULL ORDER BY created_at DESC, session_id ASC LIMIT $2 OFFSET $3"
             ))
             .bind(p)
             .bind(usize_to_i64(limit))

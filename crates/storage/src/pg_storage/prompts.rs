@@ -49,14 +49,14 @@ impl PromptStore for PgStorage {
 
         let rows = if let Some(p) = project {
             sqlx::query(
-"SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
+                "SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
                    FROM user_prompts WHERE project = $1 OR project IS NULL ORDER BY created_at DESC, id ASC LIMIT $2 OFFSET $3",
             )
-.bind(p)
-.bind(usize_to_i64(limit))
-.bind(usize_to_i64(offset))
-.fetch_all(&self.pool)
-.await?
+            .bind(p)
+            .bind(usize_to_i64(limit))
+            .bind(usize_to_i64(offset))
+            .fetch_all(&self.pool)
+            .await?
         } else {
             sqlx::query(
                 "SELECT id, content_session_id, prompt_number, prompt_text, project, created_at
