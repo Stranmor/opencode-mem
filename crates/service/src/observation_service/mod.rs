@@ -300,12 +300,8 @@ impl ObservationService {
         let fts_candidates = self.find_fts_candidates(raw_text, project).await;
 
         // Phase 3: Get 3 most recent observations from same session
-        let session_candidates = match self.storage.get_session_observations(session_id).await {
-            Ok(obs) => {
-                let len = obs.len();
-                let start = len.saturating_sub(3);
-                obs.into_iter().skip(start).collect()
-            },
+        let session_candidates = match self.storage.get_recent_session_observations(session_id, 3).await {
+            Ok(obs) => obs,
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to get session observations for candidates");
                 Vec::new()

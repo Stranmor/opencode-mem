@@ -98,6 +98,23 @@ impl ObservationStore for PgStorage {
         .await?;
         rows.iter().map(row_to_observation).collect()
     }
+    async fn get_recent_session_observations(
+        &self,
+        session_id: &str,
+        limit: usize,
+    ) -> Result<Vec<Observation>, StorageError> {
+        let rows = sqlx::query(&format!(
+            "SELECT {}
+             FROM observations WHERE session_id = $1 ORDER BY created_at DESC LIMIT $2",
+            OBSERVATION_COLUMNS
+        ))
+        .bind(session_id)
+        .bind(usize_to_i64(limit))
+        .fetch_all(&self.pool)
+        .await?;
+        rows.iter().map(row_to_observation).collect()
+    }
+
 
     async fn get_observations_by_ids(
         &self,

@@ -20,6 +20,13 @@ pub trait ObservationStore: Send + Sync {
         &self,
         session_id: &str,
     ) -> Result<Vec<Observation>, StorageError>;
+    /// Get the N most recent observations for a session (by created_at DESC).
+    async fn get_recent_session_observations(
+        &self,
+        session_id: &str,
+        limit: usize,
+    ) -> Result<Vec<Observation>, StorageError>;
+
 
     /// Get observations by a list of IDs.
     async fn get_observations_by_ids(
