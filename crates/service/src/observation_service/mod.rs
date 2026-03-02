@@ -10,7 +10,7 @@ use opencode_mem_core::{
     env_parse_with_default, is_trivial_tool_call, sanitize_input, Observation, ObservationInput,
     ObservationType, ToolCall, ToolOutput,
 };
-use opencode_mem_embeddings::EmbeddingService;
+use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::{CompressionResult, LlmClient};
 use opencode_mem_storage::traits::{ObservationStore, SearchStore};
@@ -245,10 +245,61 @@ impl ObservationService {
         session_id: &str,
         project: Option<&str>,
     ) -> Vec<Observation> {
-        // Phase 1: FTS search for top 5 candidates matching raw input within project
+        // Phase 1: Semantic/Hybrid candidates (if embeddings available)
+        let mut hybrid_candidates = Vec::new();
+        if let Some(ref embeddings) = self.embeddings {
+            let max_query_len = 500;
+            let end = if raw_text.len() <= max_query_len {
+                raw_text.len()
+            } else {
+                let mut boundary = max_query_len;
+                while boundary > 0 && !raw_text.is_char_boundary(boundary) {
+                    boundary = boundary.saturating_sub(1);
+                }
+                boundary
+            };
+            let query_str = raw_text.get(..end).unwrap_or("").to_owned();
+
+            if !query_str.is_empty() {
+                let embeddings_clone = Arc::clone(embeddings);
+                let vector_res = tokio::task::spawn_blocking(move || {
+                    embeddings_clone.embed(&query_str)
+                })
+                .await;
+
+                match vector_res {
+                    Ok(Ok(query_vec)) => {
+                        match self.storage.hybrid_search_v2_with_filters(
+                            raw_text.get(..end).unwrap_or(""),
+                            &query_vec,
+                            project,
+                            None,
+                            None,
+                            None,
+                            5,
+                        ).await {
+                            Ok(results) => {
+                                let ids: Vec<String> = results.into_iter().map(|r| r.id).collect();
+                                if !ids.is_empty() {
+                                    match self.storage.get_observations_by_ids(&ids).await {
+                                        Ok(obs) => hybrid_candidates = obs,
+                                        Err(e) => tracing::warn!(error = %e, "Failed to fetch hybrid candidate observations by ids"),
+                                    }
+                                }
+                            }
+                            Err(e) => tracing::warn!(error = %e, "Hybrid search for candidates failed"),
+                        }
+                    }
+                    Ok(Err(e)) => tracing::warn!(error = %e, "Failed to generate embedding for candidates"),
+                    Err(e) => tracing::warn!(error = %e, "Spawn blocking failed for candidate embedding generation"),
+                }
+            }
+        }
+
+        // Phase 2: FTS search for top 5 candidates matching raw input within project
         let fts_candidates = self.find_fts_candidates(raw_text, project).await;
 
-        // Phase 2: Get 3 most recent observations from same session
+        // Phase 3: Get 3 most recent observations from same session
         let session_candidates = match self.storage.get_session_observations(session_id).await {
             Ok(obs) => {
                 let len = obs.len();
@@ -261,10 +312,15 @@ impl ObservationService {
             },
         };
 
-        // Phase 3: Union by id (deduplicate)
+        // Phase 4: Union by id (deduplicate)
         let mut seen_ids: HashSet<String> = HashSet::new();
         let mut result: Vec<Observation> = Vec::new();
-        for obs in fts_candidates.into_iter().chain(session_candidates) {
+        
+        for obs in hybrid_candidates
+            .into_iter()
+            .chain(fts_candidates)
+            .chain(session_candidates)
+        {
             if seen_ids.insert(obs.id.clone()) {
                 result.push(obs);
             }
