@@ -1,10 +1,12 @@
 use crate::api_error::ApiError;
 use axum::{
-    extract::{Path, Query, State},
+    extract::{ConnectInfo, Path, Query, State},
     http::StatusCode,
     Json,
 };
 use serde_json::json;
+use std::net::SocketAddr;
+use super::is_localhost;
 use std::sync::Arc;
 
 use opencode_mem_core::{
@@ -69,9 +71,13 @@ pub async fn get_knowledge_by_id(
 }
 
 pub async fn delete_knowledge(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    if !is_localhost(&addr) {
+        return Err(ApiError::Forbidden("Forbidden".into()));
+    }
     let deleted = state.knowledge_service.delete_knowledge(&id).await.map_err(|e| {
         tracing::error!("Delete knowledge error: {}", e);
         ApiError::Internal(anyhow::anyhow!("Internal Error"))

@@ -1,4 +1,5 @@
 use crate::api_error::ApiError;
+use super::is_localhost;
 use axum::{
     extract::{ConnectInfo, Query, State},
     http::StatusCode,
@@ -204,9 +205,6 @@ fn extract_section(content: &str, section: &str) -> String {
     result.join("\n")
 }
 
-const fn is_localhost(addr: &SocketAddr) -> bool {
-    addr.ip().is_loopback()
-}
 
 pub async fn admin_restart(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,

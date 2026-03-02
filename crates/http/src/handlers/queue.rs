@@ -1,10 +1,12 @@
 use crate::api_error::ApiError;
 use axum::{
-    extract::{Query, State},
+    extract::{ConnectInfo, Query, State},
     http::StatusCode,
     Json,
 };
 use std::sync::atomic::Ordering;
+use std::net::SocketAddr;
+use super::is_localhost;
 use std::sync::Arc;
 
 use opencode_mem_service::default_visibility_timeout_secs;
@@ -110,8 +112,12 @@ pub async fn process_pending_queue(
 }
 
 pub async fn clear_failed_queue(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ClearQueueResponse>, crate::api_error::ApiError> {
+    if !is_localhost(&addr) {
+        return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
+    }
     let cleared = state
         .queue_service
         .clear_failed_messages()
@@ -132,8 +138,12 @@ pub async fn retry_failed_queue(
 }
 
 pub async fn clear_all_queue(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ClearQueueResponse>, crate::api_error::ApiError> {
+    if !is_localhost(&addr) {
+        return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
+    }
     let cleared = state
         .queue_service
         .clear_all_pending_messages()

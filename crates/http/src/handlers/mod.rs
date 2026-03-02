@@ -5,6 +5,10 @@
 
 use crate::api_error::ApiError;
 
+pub(crate) const fn is_localhost(addr: &std::net::SocketAddr) -> bool {
+    addr.ip().is_loopback()
+}
+
 pub mod admin;
 pub mod api_docs;
 pub mod context;
