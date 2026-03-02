@@ -97,7 +97,25 @@ impl ObservationService {
             tracing::info!(id = %id, "Observation already exists in primary storage, skipping LLM compression for queue retry");
             Some((obs, false))
         } else {
-            self.compress_and_save(id, &tool_call).await?
+            let result = self.compress_and_save(id, &tool_call).await?;
+            // If LLM chose Update (merge), the deterministic UUID was not saved as an observation.
+            // Save a tombstone so retry idempotency check (get_by_id) finds it.
+            if let Some((ref obs, false)) = result {
+                if obs.id != id {
+                    let tombstone = Observation::builder(
+                        id.to_owned(),
+                        obs.session_id.clone(),
+                        obs.observation_type,
+                        format!("[merged into {}]", obs.id),
+                    )
+                    .noise_level(opencode_mem_core::NoiseLevel::Negligible)
+                    .noise_reason(format!("Tombstone: merged into {}", obs.id))
+                    .build();
+                    // ON CONFLICT (id) DO NOTHING — safe to call unconditionally
+                    let _ = self.storage.save_observation(&tombstone).await;
+                }
+            }
+            result
         };
 
         // ALWAYS store raw event to infinite memory immediately, regardless of LLM compression result
