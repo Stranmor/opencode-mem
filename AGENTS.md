@@ -283,3 +283,6 @@ LLM always creates NEW observations even when near-identical ones exist. The `ex
 - ~~Dedup sweep overwrite bug~~ — already fixed (compute_merge resolves by noise_level importance)
 - ~~Infinite memory time hierarchy violation~~ — already fixed (pipeline buckets strictly by 300s window)
 - ~~Double-quoted observation_type/noise_level corruption (733/904 records)~~ — fixed by DB migration (`TRIM(BOTH '"')`) + `FromStr` defense-in-depth normalization (`trim().trim_matches('"')`) in `ObservationType`, `NoiseLevel`, `Concept`
+- ~~Infinite Memory call_id UNIQUE constraint breaks pipeline on 2nd event~~ — fixed by using deterministic UUID (observation ID) as call_id instead of `String::new()`
+- ~~Queue UUID hash omits tool_input — silent data loss on same-second calls~~ — fixed by including `tool_input` in UUIDv5 hash
+- ~~save_and_notify title collision retry exhaustion silently drops data~~ — fixed: returns `Err` (goes to DLQ) instead of `Ok` when all 5 retries fail
