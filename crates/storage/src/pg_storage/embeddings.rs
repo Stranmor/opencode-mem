@@ -144,7 +144,6 @@ impl EmbeddingStore for PgStorage {
         .bind(vector)
         .bind(usize_to_i64(limit))
         .bind(project)
-        .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
 
