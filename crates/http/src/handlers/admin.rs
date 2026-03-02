@@ -38,7 +38,17 @@ pub async fn get_settings(
 fn redact_sensitive_env(env: &mut std::collections::HashMap<String, String>) {
     for (key, value) in env.iter_mut() {
         let k = key.to_uppercase();
-        if k.contains("KEY") || k.contains("SECRET") || k.contains("PASSWORD") || k.contains("TOKEN") {
+        if k.contains("KEY")
+            || k.contains("SECRET")
+            || k.contains("PASSWORD")
+            || k.contains("TOKEN")
+            || k.contains("AUTH")
+            || k.contains("CREDENTIAL")
+            || k.contains("PRIVATE")
+            || k.contains("PASS")
+            || k.contains("JWT")
+            || (k.ends_with("_URL") && value.contains('@'))
+        {
             *value = "***REDACTED***".to_owned();
         }
     }
@@ -62,6 +72,7 @@ pub async fn update_settings(
                 }
             }
         }
+        env.retain(|_, v| v != "***REDACTED***");
 
         let api_key = env.get("ANTIGRAVITY_API_KEY").cloned();
         let base_url = env.get("ANTIGRAVITY_BASE_URL").cloned();
@@ -167,6 +178,7 @@ pub async fn switch_branch(
 pub async fn update_branch(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(_state): State<Arc<AppState>>,
+    Json(()): Json<()>,
 ) -> Result<Json<UpdateBranchResponse>, ApiError> {
     if !is_localhost(&addr) {
         return Err(ApiError::Forbidden("Forbidden".into()));
@@ -259,6 +271,7 @@ pub async fn admin_restart(
 pub async fn rebuild_embeddings(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
+    Json(()): Json<()>,
 ) -> Result<Json<AdminResponse>, ApiError> {
     if !is_localhost(&addr) {
         return Err(ApiError::Forbidden("Forbidden".into()));
