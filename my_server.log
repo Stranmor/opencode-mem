@@ -1,9 +1,0 @@
-   Compiling opencode-mem-storage v0.1.0 (/home/stranmor/projects/opencode-mem/crates/storage)
-   Compiling opencode-mem-search v0.1.0 (/home/stranmor/projects/opencode-mem/crates/search)
-   Compiling opencode-mem-service v0.1.0 (/home/stranmor/projects/opencode-mem/crates/service)
-   Compiling opencode-mem-mcp v0.1.0 (/home/stranmor/projects/opencode-mem/crates/mcp)
-   Compiling opencode-mem-http v0.1.0 (/home/stranmor/projects/opencode-mem/crates/http)
-   Compiling opencode-mem-cli v0.1.0 (/home/stranmor/projects/opencode-mem/crates/cli)
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 12.64s
-     Running `target/debug/opencode-mem serve --port 37778`
-Error: DATABASE_URL environment variable must be set
