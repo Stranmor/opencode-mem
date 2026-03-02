@@ -98,47 +98,7 @@ pub(crate) async fn hybrid_search_v2(
     query_vec: &[f32],
     limit: usize,
 ) -> Result<Vec<SearchResult>, StorageError> {
-    let fetch_limit = usize_to_i64(limit.saturating_mul(3));
-
-    let fts_results = match build_tsquery(query) {
-        Some(tsquery) => {
-            let rows = sqlx::query(
-                "SELECT id, title, subtitle, observation_type, noise_level,
-                        ts_rank_cd(search_vec, to_tsquery('english', $1))::float8 as score
-                   FROM observations
-                   WHERE search_vec @@ to_tsquery('english', $1)
-                   ORDER BY score DESC
-                   LIMIT $2",
-            )
-            .bind(&tsquery)
-            .bind(fetch_limit)
-            .fetch_all(&storage.pool)
-            .await?;
-            rows.iter().map(row_to_search_result).collect::<Result<Vec<_>, StorageError>>()?
-        },
-        None => Vec::new(),
-    };
-
-    let vector_results = if query_vec.is_empty() {
-        Vec::new()
-    } else {
-        let query_vector = pgvector::Vector::from(query_vec.to_vec());
-        let rows = sqlx::query(
-            "SELECT id, title, subtitle, observation_type, noise_level,
-                    (1.0 - (embedding <=> $1))::float8 as score
-               FROM observations
-               WHERE embedding IS NOT NULL
-               ORDER BY embedding <=> $1
-               LIMIT $2",
-        )
-        .bind(&query_vector)
-        .bind(fetch_limit)
-        .fetch_all(&storage.pool)
-        .await?;
-        rows.iter().map(row_to_search_result).collect::<Result<Vec<_>, StorageError>>()?
-    };
-
-    Ok(merge_and_rank(fts_results, vector_results, limit))
+    hybrid_search_v2_with_filters(storage, query, query_vec, None, None, None, None, limit).await
 }
 
 /// Hybrid search v2 with optional filters for project, type, and date range.
