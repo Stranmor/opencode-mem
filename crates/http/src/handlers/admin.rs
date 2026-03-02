@@ -30,15 +30,18 @@ pub async fn get_settings(
     }
     let mut settings = state.settings.read().await.clone();
     
-    // Redact sensitive keys
-    for (key, value) in settings.env.iter_mut() {
+    redact_sensitive_env(&mut settings.env);
+    
+    Ok(Json(SettingsResponse { settings }))
+}
+
+fn redact_sensitive_env(env: &mut std::collections::HashMap<String, String>) {
+    for (key, value) in env.iter_mut() {
         let k = key.to_uppercase();
         if k.contains("KEY") || k.contains("SECRET") || k.contains("PASSWORD") || k.contains("TOKEN") {
             *value = "***REDACTED***".to_owned();
         }
     }
-    
-    Ok(Json(SettingsResponse { settings }))
 }
 
 pub async fn update_settings(
@@ -50,7 +53,16 @@ pub async fn update_settings(
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
     let mut settings = state.settings.write().await;
-    if let Some(env) = req.env {
+    if let Some(mut env) = req.env {
+        // Build merged env: start from incoming, restore redacted from existing
+        for (key, value) in env.iter_mut() {
+            if *value == "***REDACTED***" {
+                if let Some(existing) = settings.env.get(key) {
+                    *value = existing.clone();
+                }
+            }
+        }
+
         let api_key = env.get("ANTIGRAVITY_API_KEY").cloned();
         let base_url = env.get("ANTIGRAVITY_BASE_URL").cloned();
         let model = env.get("OPENCODE_MEM_MODEL").cloned();
@@ -59,7 +71,9 @@ pub async fn update_settings(
 
         settings.env = env;
     }
-    Ok(Json(SettingsResponse { settings: settings.clone() }))
+    let mut response_settings = settings.clone();
+    redact_sensitive_env(&mut response_settings.env);
+    Ok(Json(SettingsResponse { settings: response_settings }))
 }
 
 pub async fn get_mcp_status(
