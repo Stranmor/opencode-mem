@@ -28,7 +28,7 @@ pub(crate) fn build_or_tsquery(query: &str, max_terms: usize) -> Option<String> 
                 w.chars().filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_').collect();
             // Must have at least 2 chars AND contain at least one alphanumeric
             // (rejects "---", "___" which cause tsquery syntax errors)
-            if sanitized.len() < 2 || !sanitized.chars().any(char::is_alphanumeric) {
+            if sanitized.chars().count() < 2 || !sanitized.chars().any(char::is_alphanumeric) {
                 None
             } else {
                 Some(sanitized)
@@ -36,7 +36,7 @@ pub(crate) fn build_or_tsquery(query: &str, max_terms: usize) -> Option<String> 
         })
         .collect();
     
-    words.sort_by_key(|b| std::cmp::Reverse(b.len()));
+    words.sort_by_key(|w| std::cmp::Reverse(w.chars().count()));
     words.truncate(max_terms);
     
     let result = words
