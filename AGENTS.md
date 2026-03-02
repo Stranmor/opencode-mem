@@ -234,3 +234,7 @@ LLM always creates NEW observations even when near-identical ones exist. The `ex
 - ~~Infinite Memory call_id UNIQUE constraint breaks pipeline on 2nd event~~ — fixed by using deterministic UUID (observation ID) as call_id instead of `String::new()`
 - ~~Queue UUID hash omits tool_input — silent data loss on same-second calls~~ — fixed by including `tool_input` in UUIDv5 hash
 - ~~save_and_notify title collision retry exhaustion silently drops data~~ — fixed: returns `Err` (goes to DLQ) instead of `Ok` when all 5 retries fail
+- ~~Knowledge extraction noise level inversion (skipped Critical/High instead of Low/Negligible)~~ — fixed: now skips `Low | Negligible`, extracts knowledge from high-value observations
+- ~~get_events_by_time_range broken fallback query (ILIKE instead of time range)~~ — fixed: correct `WHERE ts >= $1 AND ts <= $2` with proper parameter binding
+- ~~get_session_by_content_id non-deterministic on duplicate content_session_id~~ — fixed: added `ORDER BY started_at DESC LIMIT 1`
+- ~~Vector search string serialization overhead (10KB string per query)~~ — fixed: uses `pgvector::Vector` binary protocol in semantic and hybrid search
