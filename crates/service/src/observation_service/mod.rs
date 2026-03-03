@@ -93,10 +93,21 @@ impl ObservationService {
     ) -> Result<Option<Observation>, crate::ServiceError> {
         let existing_obs = self.storage.get_by_id(id).await?;
 
-        let save_result = if let Some(obs) = existing_obs {
+        if let Some(obs) = existing_obs {
             tracing::info!(id = %id, "Observation already exists in primary storage, skipping LLM compression for queue retry");
-            Some((obs, false))
-        } else {
+            
+            let infinite_fut = self.store_infinite_memory(&tool_call, Some(&obs));
+            let extract_fut = self.extract_knowledge(&obs);
+            
+            let (extract_res, infinite_res) = tokio::join!(extract_fut, infinite_fut);
+            extract_res?;
+            infinite_res?;
+            
+            return Ok(Some(obs));
+        }
+
+        let infinite_fut = self.store_infinite_memory(&tool_call, None);
+        let compress_fut = async {
             let result = self.compress_and_save(id, &tool_call).await?;
             // If LLM chose Update (merge), the deterministic UUID was not saved as an observation.
             // Save a tombstone so retry idempotency check (get_by_id) finds it.
@@ -115,24 +126,21 @@ impl ObservationService {
                     let _ = self.storage.save_observation(&tombstone).await;
                 }
             }
-            result
+            Ok::<_, crate::ServiceError>(result)
         };
 
-        // ALWAYS store raw event to infinite memory immediately, regardless of LLM compression result
-        let observation_ref = save_result.as_ref().map(|(o, _)| o);
-        let infinite_fut = self.store_infinite_memory(&tool_call, observation_ref);
+        let (infinite_res, compress_res) = tokio::join!(infinite_fut, compress_fut);
+        
+        // Log infinite memory errors but DO NOT prevent returning the compressed observation
+        if let Err(e) = infinite_res {
+            tracing::warn!(error = %e, id = %id, "store_infinite_memory failed during concurrent execution");
+        }
 
-        let extract_fut = async {
-            if let Some((ref obs, _)) = save_result {
-                self.extract_knowledge(obs).await
-            } else {
-                Ok(())
-            }
-        };
+        let save_result = compress_res?;
 
-        let (extract_res, infinite_res) = tokio::join!(extract_fut, infinite_fut);
-        extract_res?;
-        infinite_res?;
+        if let Some((ref obs, _)) = save_result {
+            self.extract_knowledge(obs).await?;
+        }
 
         Ok(save_result.map(|(o, _)| o))
     }
