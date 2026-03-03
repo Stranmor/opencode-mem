@@ -2,6 +2,13 @@
 name = "opencode-mem-embeddings"
 version.workspace = true
 edition.workspace = true
+description = "Vector embeddings via fastembed BGE-M3 for semantic search"
+keywords = ["embeddings", "vector", "semantic-search", "ai"]
+categories = ["text-processing"]
+homepage = "https://github.com/Stranmor/opencode-mem"
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
 
 [lints]
 workspace = true

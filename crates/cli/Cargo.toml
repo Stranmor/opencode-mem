@@ -2,6 +2,13 @@
 name = "opencode-mem-cli"
 version.workspace = true
 edition.workspace = true
+description = "CLI binary for opencode-mem server and tools"
+keywords = ["cli", "memory", "opencode", "mcp", "ai"]
+categories = ["command-line-utilities"]
+homepage = "https://github.com/Stranmor/opencode-mem"
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
 
 [lints]
 workspace = true

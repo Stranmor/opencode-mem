@@ -2,6 +2,13 @@
 name = "opencode-mem-http"
 version.workspace = true
 edition.workspace = true
+description = "Axum HTTP API server with SSE real-time updates"
+keywords = ["http", "memory", "opencode", "mcp"]
+categories = ["web-programming"]
+homepage = "https://github.com/Stranmor/opencode-mem"
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
 
 [lints]
 workspace = true

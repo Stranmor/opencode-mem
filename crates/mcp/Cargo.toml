@@ -2,6 +2,13 @@
 name = "opencode-mem-mcp"
 version.workspace = true
 edition.workspace = true
+description = "MCP (Model Context Protocol) stdio server"
+keywords = ["mcp", "memory", "opencode", "ai"]
+categories = ["development-tools"]
+homepage = "https://github.com/Stranmor/opencode-mem"
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
 
 [lints]
 workspace = true

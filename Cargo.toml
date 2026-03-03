@@ -18,7 +18,7 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-authors = ["Stranmor <stranmor@gmail.com>"]
+authors = ["Stranmor"]
 repository = "https://github.com/Stranmor/opencode-mem"
 
 [workspace.dependencies]

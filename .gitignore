@@ -4,3 +4,9 @@ target/
 .DS_Store
 .fastembed_cache/
 .sisyphus/
+
+# Environment files
+.env
+.env.*
+.env.local
+*.env

@@ -2,6 +2,13 @@
 name = "opencode-mem-infinite"
 version = "0.1.0"
 edition = "2021"
+description = "Hierarchical infinite memory with time-based summarization"
+keywords = ["memory", "ai", "postgresql", "llm"]
+categories = ["database"]
+homepage = "https://github.com/Stranmor/opencode-mem"
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
 
 [lints]
 workspace = true

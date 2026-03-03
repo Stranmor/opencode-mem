@@ -2,6 +2,13 @@
 name = "opencode-mem-service"
 version.workspace = true
 edition.workspace = true
+description = "Business logic layer for observations, sessions, and queues"
+keywords = ["memory", "opencode", "mcp"]
+categories = ["development-tools"]
+homepage = "https://github.com/Stranmor/opencode-mem"
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
 
 [lints]
 workspace = true

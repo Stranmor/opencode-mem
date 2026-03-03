@@ -3,6 +3,12 @@ name = "opencode-mem-storage"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "PostgreSQL storage backend with pgvector and FTS5 support"
+keywords = ["postgresql", "vector", "fts", "memory"]
+categories = ["database"]
+homepage = "https://github.com/Stranmor/opencode-mem"
+authors.workspace = true
+repository.workspace = true
 
 [lints]
 workspace = true

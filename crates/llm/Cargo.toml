@@ -2,6 +2,13 @@
 name = "opencode-mem-llm"
 version.workspace = true
 edition.workspace = true
+description = "LLM integration for observation compression and knowledge extraction"
+keywords = ["llm", "ai", "memory", "opencode"]
+categories = ["development-tools"]
+homepage = "https://github.com/Stranmor/opencode-mem"
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
 
 [lints]
 workspace = true

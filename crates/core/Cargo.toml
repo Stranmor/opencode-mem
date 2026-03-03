@@ -3,6 +3,12 @@ name = "opencode-mem-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "Core domain types and constants for opencode-mem"
+keywords = ["memory", "opencode", "mcp"]
+categories = ["development-tools"]
+homepage = "https://github.com/Stranmor/opencode-mem"
+authors.workspace = true
+repository.workspace = true
 
 [lints]
 workspace = true
