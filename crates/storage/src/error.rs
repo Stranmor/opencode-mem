@@ -32,6 +32,11 @@ pub enum StorageError {
     /// Migration failure.
     #[error("migration error: {0}")]
     Migration(String),
+
+    /// Database is unavailable (circuit breaker open).
+    /// Callers should return empty results for reads, skip for writes.
+    #[error("database unavailable (circuit breaker open, next probe in {seconds_until_probe}s)")]
+    Unavailable { seconds_until_probe: u64 },
 }
 
 impl StorageError {
@@ -43,6 +48,11 @@ impl StorageError {
     /// Whether this error is a unique-constraint violation.
     pub fn is_duplicate(&self) -> bool {
         matches!(self, Self::Duplicate(_))
+    }
+
+    /// Whether this error indicates the database is completely unavailable.
+    pub fn is_unavailable(&self) -> bool {
+        matches!(self, Self::Unavailable { .. })
     }
 }
 
