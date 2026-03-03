@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use opencode_mem_core::{GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType};
-use opencode_mem_storage::traits::KnowledgeStore;
 use opencode_mem_storage::StorageBackend;
+use opencode_mem_storage::traits::KnowledgeStore;
 
 use crate::ServiceError;
 
@@ -15,6 +15,10 @@ impl KnowledgeService {
     #[must_use]
     pub fn new(storage: Arc<StorageBackend>) -> Self {
         Self { storage }
+    }
+
+    pub fn circuit_breaker(&self) -> &opencode_mem_storage::CircuitBreaker {
+        self.storage.circuit_breaker()
     }
 
     pub async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, ServiceError> {

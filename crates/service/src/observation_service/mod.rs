@@ -7,14 +7,14 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    env_parse_with_default, is_trivial_tool_call, sanitize_input, Observation, ObservationInput,
-    ObservationType, ToolCall, ToolOutput,
+    Observation, ObservationInput, ObservationType, ToolCall, ToolOutput, env_parse_with_default,
+    is_trivial_tool_call, sanitize_input,
 };
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::{CompressionResult, LlmClient};
-use opencode_mem_storage::traits::{ObservationStore, SearchStore};
 use opencode_mem_storage::StorageBackend;
+use opencode_mem_storage::traits::{ObservationStore, SearchStore};
 use tokio::sync::broadcast;
 
 pub enum SaveMemoryResult {
@@ -33,6 +33,10 @@ pub struct ObservationService {
 }
 
 impl ObservationService {
+    pub fn circuit_breaker(&self) -> &opencode_mem_storage::CircuitBreaker {
+        self.storage.circuit_breaker()
+    }
+
     pub fn update_llm_config(
         &self,
         api_key: Option<String>,
@@ -132,7 +136,7 @@ impl ObservationService {
         let (infinite_res, compress_res) = tokio::join!(infinite_fut, compress_fut);
 
         let save_result = compress_res?;
-        
+
         // Propagate infinite memory errors so the queue processor retries
         infinite_res?;
 

@@ -2,15 +2,15 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    cosine_similarity, GlobalKnowledge, KnowledgeSearchResult, KnowledgeType, Observation,
-    SearchResult, SessionSummary, UserPrompt,
+    GlobalKnowledge, KnowledgeSearchResult, KnowledgeType, Observation, SearchResult,
+    SessionSummary, UserPrompt, cosine_similarity,
 };
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
 use opencode_mem_storage::traits::{
     EmbeddingStore, KnowledgeStore, ObservationStore, PromptStore, SearchStore, StatsStore,
     SummaryStore,
 };
-use opencode_mem_storage::{PaginatedResult, StorageBackend, StorageStats};
+use opencode_mem_storage::{CircuitBreaker, PaginatedResult, StorageBackend, StorageStats};
 
 use crate::ServiceError;
 
@@ -29,6 +29,10 @@ impl SearchService {
         let hybrid_search =
             opencode_mem_search::HybridSearch::new(storage.clone(), embeddings.clone());
         Self { storage, embeddings, hybrid_search }
+    }
+
+    pub fn circuit_breaker(&self) -> &CircuitBreaker {
+        self.storage.circuit_breaker()
     }
 
     // ── SearchStore delegates ──────────────────────────────────────────

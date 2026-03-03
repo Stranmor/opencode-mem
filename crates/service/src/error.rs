@@ -68,6 +68,17 @@ impl ServiceError {
     pub fn is_duplicate(&self) -> bool {
         matches!(self, Self::Storage(e) if e.is_duplicate())
     }
+
+    /// Whether the database is completely unavailable (circuit breaker open).
+    pub fn is_db_unavailable(&self) -> bool {
+        match self {
+            Self::Storage(e) => e.is_unavailable(),
+            Self::Search(e) => {
+                e.downcast_ref::<StorageError>().is_some_and(StorageError::is_unavailable)
+            },
+            _ => false,
+        }
+    }
 }
 
 impl From<std::io::Error> for ServiceError {
