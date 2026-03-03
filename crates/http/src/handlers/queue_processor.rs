@@ -73,13 +73,16 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
 }
 
 /// Spawns background tasks for queue polling and periodic maintenance.
-pub fn start_background_processor(state: Arc<AppState>) {
+pub fn start_background_processor(state: Arc<AppState>) -> (tokio::task::JoinHandle<()>, tokio::task::JoinHandle<()>) {
     // Task 1: Queue Poller (latency-sensitive, checks queue every 5 seconds)
     let state_poller = Arc::clone(&state);
-    tokio::spawn(async move {
+    let mut poller_shutdown_rx = state.shutdown_tx.subscribe();
+    
+    let poller_handle = tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
         loop {
-            interval.tick().await;
+            tokio::select! {
+                _ = interval.tick() => {
             if !state_poller.processing_active.load(Ordering::SeqCst) {
                 continue;
             }
@@ -144,16 +147,25 @@ pub fn start_background_processor(state: Arc<AppState>) {
             }
 
             tracing::info!("Background processor: spawned {} message tasks", count);
+                }
+                _ = poller_shutdown_rx.recv() => {
+                    tracing::info!("Queue poller received shutdown signal");
+                    break;
+                }
+            }
         }
     });
 
     // Task 2: Cron Scheduler (batch operations, longer running)
     let state_cron = Arc::clone(&state);
-    tokio::spawn(async move {
+    let mut cron_shutdown_rx = state.shutdown_tx.subscribe();
+    
+    let cron_handle = tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
         let mut loop_count: u64 = 0;
         loop {
-            interval.tick().await;
+            tokio::select! {
+                _ = interval.tick() => {
             if !state_cron.processing_active.load(Ordering::SeqCst) {
                 continue;
             }
@@ -225,8 +237,16 @@ pub fn start_background_processor(state: Arc<AppState>) {
                     Err(e) => tracing::warn!(error = %e, "Cron: DLQ garbage collection failed"),
                 }
             }
+                }
+                _ = cron_shutdown_rx.recv() => {
+                    tracing::info!("Cron scheduler received shutdown signal");
+                    break;
+                }
+            }
         }
     });
+
+    (poller_handle, cron_handle)
 }
 
 /// Releases stale messages back to pending queue on startup.

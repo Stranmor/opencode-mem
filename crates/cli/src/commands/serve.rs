@@ -79,7 +79,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));
     let search_service = Arc::new(SearchService::new(storage.clone(), embeddings.clone()));
     let queue_service = Arc::new(QueueService::new(storage.clone()));
-    let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel(1);
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::broadcast::channel(1);
 
     let state = Arc::new(AppState {
         semaphore: Arc::new(Semaphore::new(opencode_mem_core::env_parse_with_default(
@@ -102,7 +102,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         tracing::warn!("Startup recovery failed: {}", e);
     }
 
-    start_background_processor(state.clone());
+    let (poller_handle, cron_handle) = start_background_processor(state.clone());
 
     let router = create_router(state);
     let addr_str = format!("{host}:{port}");
@@ -149,6 +149,10 @@ Or kill the process manually before starting a new server.",
             );
         })
         .await?;
+
+    tracing::info!("Waiting for background tasks to finish...");
+    let _ = tokio::join!(poller_handle, cron_handle);
+    tracing::info!("Background tasks finished.");
 
     if is_restart.load(std::sync::atomic::Ordering::Relaxed) {
         std::process::exit(1);

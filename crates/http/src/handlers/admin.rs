@@ -257,7 +257,7 @@ pub async fn admin_restart(
 
     let tx = state.shutdown_tx.clone();
     tokio::spawn(async move {
-        let _ = tx.send(true).await;
+        let _ = tx.send(true);
     });
 
     Ok(Json(AdminResponse {
@@ -291,7 +291,7 @@ pub async fn admin_shutdown(
 
     let tx = state.shutdown_tx.clone();
     tokio::spawn(async move {
-        let _ = tx.send(false).await;
+        let _ = tx.send(false);
     });
 
     Ok(Json(AdminResponse { success: true, message: "Shutdown initiated".to_owned() }))

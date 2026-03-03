@@ -74,7 +74,7 @@ pub struct AppState {
     pub search_service: Arc<SearchService>,
     /// Service for pending message queue operations
     pub queue_service: Arc<QueueService>,
-    pub shutdown_tx: tokio::sync::mpsc::Sender<bool>,
+    pub shutdown_tx: tokio::sync::broadcast::Sender<bool>,
 }
 
 pub fn create_router(state: Arc<AppState>) -> Router {
