@@ -21,7 +21,7 @@ Unlike traditional TS/SQLite memory servers, `opencode-mem` is designed for
 unbounded scale and operational safety in autonomous AI coding environments.
 
 | Feature | opencode-mem | Typical TS/SQLite |
-|---------|--------------|-------------------|
+|---|---|---|
 | **Runtime** | Native binary (Rust) | Node.js/Bun |
 | **Database** | PostgreSQL + pgvector | SQLite + ChromaDB |
 | **Search** | Hybrid FTS BM25 + Vector | Separate engines |
@@ -39,7 +39,7 @@ unbounded scale and operational safety in autonomous AI coding environments.
 - 🔌 **18 MCP Tools** for seamless AI agent integration.
 - 🌐 **65+ HTTP API endpoints** for external integrations and dashboards.
 - ⚡ **CLI with full hook system** for context injection and summarization.
-- 🔒 **Privacy tags:** Built-in `<private>` content filtering.
+- 🔒 **Privacy tags:** Built-in `<private>` filtering.
 - 📦 **Single binary:** Zero runtime dependencies beyond PostgreSQL.
 
 ## Architecture
@@ -49,14 +49,14 @@ enforce modularity and prevent cyclic dependencies.
 
 ```mermaid
 graph TD
-    A[OpenCode IDE] --> B[opencode-mem]
-    B --> C[Queue Processor]
-    C --> D[LLM Compression]
-    D --> E[PostgreSQL]
-    E --> F[Semantic Search]
-    E --> G[Full Text Search]
-    F --> H[Hybrid Results]
-    G --> H[Hybrid Results]
+  IDE[OpenCode IDE] --> Mem[opencode-mem]
+  Mem --> Queue[Queue Processor]
+  Queue --> LLM[LLM Compression]
+  LLM --> DB[PostgreSQL]
+  DB --> SemSearch[Semantic Search]
+  DB --> FTS[Full Text Search]
+  SemSearch --> Results[Hybrid Results]
+  FTS --> Results
 ```
 
 ### Crate Structure
@@ -86,7 +86,7 @@ source.
 git clone https://github.com/Stranmor/opencode-mem.git
 cd opencode-mem
 cargo build --release
-# The binary will be available at target/release/opencode-mem-cli
+# Binary available at target/release/opencode-mem-cli
 ```
 
 ## Quick Start
@@ -100,7 +100,7 @@ cargo build --release
 
 ```bash
 # Set your PostgreSQL URL and API key
-export DATABASE_URL="postgres://user:pass@host:5432/db"
+export DATABASE_URL="postgres://user:pass@localhost:5432/db"
 export OPENCODE_MEM_API_KEY="your-llm-api-key"
 export OPENAI_API_KEY="your-api-key"
 ```
@@ -127,7 +127,7 @@ Add the following snippet to your `opencode.json` configuration file:
       "command": "./target/release/opencode-mem-cli",
       "args": ["mcp"],
       "env": {
-        "DATABASE_URL": "postgres://user:pass@host:5432/db",
+        "DATABASE_URL": "postgres://user:pass@localhost:5432/db",
         "OPENCODE_MEM_API_KEY": "your-key",
         "OPENAI_API_KEY": "your-api-key"
       }
@@ -141,7 +141,7 @@ Add the following snippet to your `opencode.json` configuration file:
 The server exposes 18 powerful MCP tools.
 
 | Tool | Description |
-|------|-------------|
+|---|---|
 | `search` | Semantic search with FTS fallback. |
 | `timeline` | Get chronological context (from, to, limit). |
 | `get_observations` | Fetch full details for filtered IDs. |
@@ -170,15 +170,15 @@ The single binary `opencode-mem-cli` provides 10 powerful subcommands.
 
 ```bash
 # Server Operations
-./target/release/opencode-mem-cli serve                 # Start the HTTP API server
-./target/release/opencode-mem-cli mcp                   # Start the MCP stdio server
+./target/release/opencode-mem-cli serve          # Start the HTTP API server
+./target/release/opencode-mem-cli mcp            # Start the MCP stdio server
 
 # Data Access & Search
-./target/release/opencode-mem-cli search <query>        # Search observations
-./target/release/opencode-mem-cli get <id>              # Retrieve a specific observation
-./target/release/opencode-mem-cli recent                # Show the most recent memory events
-./target/release/opencode-mem-cli projects              # List all tracked projects
-./target/release/opencode-mem-cli stats                 # Show database statistics
+./target/release/opencode-mem-cli search <query> # Search observations
+./target/release/opencode-mem-cli get <id>       # Get specific observation
+./target/release/opencode-mem-cli recent         # Show recent memory events
+./target/release/opencode-mem-cli projects       # List all tracked projects
+./target/release/opencode-mem-cli stats          # Show database statistics
 ```
 
 ## Configuration
@@ -186,25 +186,25 @@ The single binary `opencode-mem-cli` provides 10 powerful subcommands.
 Configure the server via environment variables.
 
 | Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `DATABASE_URL` | **Yes** | - | Postgres connection string |
-| `OPENCODE_MEM_API_KEY` | **Yes** | - | API key for LLM compression |
-| `OPENCODE_MEM_API_URL` | No | `https://antigr...` | API base URL |
+|---|---|---|---|
+| `DATABASE_URL` | Yes | - | Postgres connection string |
+| `OPENCODE_MEM_API_KEY` | Yes | - | API key for LLM compression |
+| `OPENCODE_MEM_API_URL` | No | `https://antig...`| API base URL |
 | `OPENCODE_MEM_MODEL` | No | - | Model for compression |
 | `OPENCODE_MEM_DISABLE_EMBEDDINGS` | No | `false` | Disable embeddings |
 | `INFINITE_MEMORY_URL` | No | `DATABASE_URL` | DB connection for infinite memory |
-| `OPENCODE_MEM_EXCLUDED_PROJECTS` | No | - | Glob patterns for project exclusions |
+| `OPENCODE_MEM_EXCLUDED_PROJECTS` | No | - | Glob patterns for exclusions |
 | `OPENCODE_MEM_FILTER_PATTERNS` | No | - | Custom noise filter regex patterns |
 | `OPENCODE_MEM_DEDUP_THRESHOLD` | No | `0.85` | Cosine similarity threshold |
 | `OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD`| No | `0.80` | Plugin loop prevention threshold |
-| `OPENCODE_MEM_EMBEDDING_THREADS` | No | `cores - 1` | ONNX generation worker threads |
-| `OPENCODE_MEM_MAX_RETRY` | No | `3` | Max LLM compression retry attempts |
-| `OPENCODE_MEM_VISIBILITY_TIMEOUT` | No | `300s` | Pending message visibility timeout |
+| `OPENCODE_MEM_EMBEDDING_THREADS` | No | `cores - 1` | ONNX worker threads |
+| `OPENCODE_MEM_MAX_RETRY` | No | `3` | Max LLM compression retries |
+| `OPENCODE_MEM_VISIBILITY_TIMEOUT` | No | `300s` | Pending message timeout |
 | `OPENCODE_MEM_QUEUE_WORKERS` | No | `10` | Concurrent queue background workers |
-| `OPENCODE_MEM_DLQ_TTL_DAYS` | No | `7` | Days to retain items in dead letter queue |
-| `OPENCODE_MEM_MAX_CONTENT_CHARS` | No | `500` | Max chars per extracted content field |
-| `OPENCODE_MEM_MAX_TOTAL_CHARS` | No | `8000` | Max characters for LLM prompt payload |
-| `OPENCODE_MEM_MAX_EVENTS` | No | `200` | Max raw events per infinite memory chunk |
+| `OPENCODE_MEM_DLQ_TTL_DAYS` | No | `7` | Days to retain items in DLQ |
+| `OPENCODE_MEM_MAX_CONTENT_CHARS` | No | `500` | Max chars per content field |
+| `OPENCODE_MEM_MAX_TOTAL_CHARS` | No | `8000` | Max characters for LLM prompt |
+| `OPENCODE_MEM_MAX_EVENTS` | No | `200` | Max raw events per chunk |
 
 ## Development
 
