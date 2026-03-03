@@ -54,9 +54,9 @@ graph TD
     C --> D[LLM Compression]
     D --> E[PostgreSQL]
     E --> F[Semantic Search]
-    E --> G[Full-Text Search]
+    E --> G[Full Text Search]
     F --> H[Hybrid Results]
-    G --> H
+    G --> H[Hybrid Results]
 ```
 
 ### Crate Structure
