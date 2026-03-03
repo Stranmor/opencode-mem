@@ -102,16 +102,17 @@ cargo build --release
 # Set your PostgreSQL URL and API key
 export DATABASE_URL="postgres://user:pass@host:5432/db"
 export OPENCODE_MEM_API_KEY="your-llm-api-key"
+export OPENAI_API_KEY="your-api-key"
 ```
 
 ### 2. Run the Server
 
 ```bash
 # To run as an MCP server:
-opencode-mem-cli mcp
+./target/release/opencode-mem-cli mcp
 
 # To run as an HTTP server:
-opencode-mem-cli serve
+./target/release/opencode-mem-cli serve
 ```
 
 ### 3. OpenCode Integration
@@ -123,11 +124,12 @@ Add the following snippet to your `opencode.json` configuration file:
   "mcpServers": {
     "memory": {
       "type": "stdio",
-      "command": "opencode-mem-cli",
+      "command": "./target/release/opencode-mem-cli",
       "args": ["mcp"],
       "env": {
         "DATABASE_URL": "postgres://user:pass@host:5432/db",
-        "OPENCODE_MEM_API_KEY": "your-key"
+        "OPENCODE_MEM_API_KEY": "your-key",
+        "OPENAI_API_KEY": "your-api-key"
       }
     }
   }
@@ -168,15 +170,15 @@ The single binary `opencode-mem-cli` provides 10 powerful subcommands.
 
 ```bash
 # Server Operations
-opencode-mem-cli serve                 # Start the HTTP API server
-opencode-mem-cli mcp                   # Start the MCP stdio server
+./target/release/opencode-mem-cli serve                 # Start the HTTP API server
+./target/release/opencode-mem-cli mcp                   # Start the MCP stdio server
 
 # Data Access & Search
-opencode-mem-cli search <query>        # Search observations
-opencode-mem-cli get <id>              # Retrieve a specific observation
-opencode-mem-cli recent                # Show the most recent memory events
-opencode-mem-cli projects              # List all tracked projects
-opencode-mem-cli stats                 # Show database statistics
+./target/release/opencode-mem-cli search <query>        # Search observations
+./target/release/opencode-mem-cli get <id>              # Retrieve a specific observation
+./target/release/opencode-mem-cli recent                # Show the most recent memory events
+./target/release/opencode-mem-cli projects              # List all tracked projects
+./target/release/opencode-mem-cli stats                 # Show database statistics
 ```
 
 ## Configuration
