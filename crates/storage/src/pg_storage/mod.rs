@@ -21,16 +21,17 @@ mod sessions;
 mod stats;
 mod summaries;
 
+use crate::circuit_breaker::CircuitBreaker;
 use crate::error::StorageError;
 use chrono::{DateTime, Utc};
 use opencode_mem_core::{
-    sort_by_score_descending, DiscoveryTokens, GlobalKnowledge, KnowledgeType, NoiseLevel,
-    Observation, ObservationType, PromptNumber, SearchResult, Session, SessionStatus,
-    SessionSummary, UserPrompt, PG_POOL_ACQUIRE_TIMEOUT_SECS, PG_POOL_IDLE_TIMEOUT_SECS,
-    PG_POOL_MAX_CONNECTIONS,
+    DiscoveryTokens, GlobalKnowledge, KnowledgeType, NoiseLevel, Observation, ObservationType,
+    PG_POOL_ACQUIRE_TIMEOUT_SECS, PG_POOL_IDLE_TIMEOUT_SECS, PG_POOL_MAX_CONNECTIONS, PromptNumber,
+    SearchResult, Session, SessionStatus, SessionSummary, UserPrompt, sort_by_score_descending,
 };
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
+use std::sync::Arc;
 
 use crate::pending_queue::{PendingMessage, PendingMessageStatus};
 
@@ -39,11 +40,16 @@ use super::pg_migrations::run_pg_migrations;
 #[derive(Clone, Debug)]
 pub struct PgStorage {
     pool: PgPool,
+    circuit_breaker: Arc<CircuitBreaker>,
 }
 
 impl PgStorage {
     pub fn pool(&self) -> PgPool {
         self.pool.clone()
+    }
+
+    pub fn circuit_breaker(&self) -> &CircuitBreaker {
+        &self.circuit_breaker
     }
 
     pub async fn new(database_url: &str) -> Result<Self, StorageError> {
@@ -56,7 +62,48 @@ impl PgStorage {
             .await?;
         run_pg_migrations(&pool).await.map_err(|e| StorageError::Migration(e.to_string()))?;
         tracing::info!("PgStorage initialized");
-        Ok(Self { pool })
+        Ok(Self { pool, circuit_breaker: Arc::new(CircuitBreaker::new()) })
+    }
+
+    pub(crate) fn check_availability(&self) -> Result<(), StorageError> {
+        if self.circuit_breaker.should_allow() {
+            Ok(())
+        } else {
+            Err(StorageError::Unavailable {
+                seconds_until_probe: self.circuit_breaker.seconds_until_probe(),
+            })
+        }
+    }
+
+    pub(crate) fn record_success(&self) {
+        self.circuit_breaker.record_success();
+    }
+
+    pub(crate) fn record_failure_if_connection_error(&self, err: &StorageError) {
+        if err.is_transient() || matches!(err, StorageError::Database(_)) {
+            self.circuit_breaker.record_failure();
+        }
+    }
+
+    #[expect(
+        dead_code,
+        reason = "circuit breaker guard for wrapping individual storage trait methods — ready for incremental adoption"
+    )]
+    pub(crate) async fn guarded<F, T>(&self, op: F) -> Result<T, StorageError>
+    where
+        F: std::future::Future<Output = Result<T, StorageError>>,
+    {
+        self.check_availability()?;
+        match op.await {
+            Ok(val) => {
+                self.record_success();
+                Ok(val)
+            },
+            Err(e) => {
+                self.record_failure_if_connection_error(&e);
+                Err(e)
+            },
+        }
     }
 }
 
@@ -68,7 +115,11 @@ pub(crate) fn parse_json_value<T: serde::de::DeserializeOwned>(val: serde_json::
 /// Tries JSON deserialization first (handles quoted values), then `FromStr`.
 pub(crate) fn parse_pg_observation_type(s: &str) -> Result<ObservationType, StorageError> {
     serde_json::from_str(s).or_else(|_| s.parse::<ObservationType>()).or_else(|e| {
-        tracing::warn!("Invalid observation_type '{}' in DB, defaulting to Discovery. Error: {}", s, e);
+        tracing::warn!(
+            "Invalid observation_type '{}' in DB, defaulting to Discovery. Error: {}",
+            s,
+            e
+        );
         Ok(ObservationType::Discovery)
     })
 }
