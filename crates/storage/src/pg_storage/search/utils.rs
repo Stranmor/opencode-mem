@@ -1,15 +1,19 @@
 pub(crate) fn build_tsquery(query: &str) -> Option<String> {
-    let result = query
+    let mut words: Vec<String> = query
         .split(|c: char| !c.is_alphanumeric() && c != '_')
         .filter_map(|w| {
             if !w.chars().any(char::is_alphanumeric) {
                 None
             } else {
-                Some(format!("{}:*", w))
+                Some(w.to_string())
             }
         })
-        .collect::<Vec<_>>()
-        .join(" & ");
+        .collect();
+
+    words.truncate(100); // Prevent DoS from massive input
+
+    let result = words.into_iter().map(|w| format!("{}:*", w)).collect::<Vec<_>>().join(" & ");
+
     if result.is_empty() {
         None
     } else {

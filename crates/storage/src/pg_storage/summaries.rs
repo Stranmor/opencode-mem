@@ -93,9 +93,7 @@ impl SummaryStore for PgStorage {
 
             // project is Some(Some(proj)) if row found with non-null project,
             // Some(None) if row found with null project, None if no row.
-            // Flatten: use empty string for null project since session_summaries.project is nullable.
-            if let Some(maybe_proj) = project {
-                let proj = maybe_proj.unwrap_or_default();
+            if let Some(proj) = project {
                 let now = Utc::now();
                 let empty_json = serde_json::json!([]);
                 sqlx::query(&format!(
