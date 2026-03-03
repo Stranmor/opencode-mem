@@ -195,7 +195,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
 
         loop_count = loop_count.wrapping_add(1);
 
-        if loop_count % 60 == 0 {
+        if loop_count.is_multiple_of(60) {
             if let Some(ref infinite_mem) = state.infinite_mem {
                 tracing::debug!("Cron: running infinite memory compression...");
                 let mem = Arc::clone(infinite_mem);
@@ -215,7 +215,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
             }
         }
 
-        if loop_count % 180 == 0 {
+        if loop_count.is_multiple_of(180) {
             tracing::debug!("Cron: running embedding backfill...");
             let state_clone = Arc::clone(&state);
             tokio::spawn(async move {
@@ -229,7 +229,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
             });
         }
 
-        if loop_count % 360 == 0 {
+        if loop_count.is_multiple_of(360) {
             let state_clone = Arc::clone(&state);
             tokio::spawn(async move {
                 match state_clone.observation_service.run_dedup_sweep().await {
@@ -242,7 +242,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
             });
         }
 
-        if loop_count % 720 == 0 {
+        if loop_count.is_multiple_of(720) {
             let state_clone = Arc::clone(&state);
             tokio::spawn(async move {
                 if let Err(e) = state_clone.observation_service.cleanup_old_injections().await {
@@ -251,7 +251,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
             });
         }
 
-        if loop_count % 17280 == 0 {
+        if loop_count.is_multiple_of(17280) {
             let ttl_secs =
                 opencode_mem_core::env_parse_with_default("OPENCODE_MEM_DLQ_TTL_DAYS", 7_i64)
                     * 86400;

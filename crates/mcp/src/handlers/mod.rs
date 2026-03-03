@@ -92,22 +92,22 @@ pub async fn handle_tool_call(
         McpTool::Important => {
             json!({ "content": [{ "type": "text", "text": WORKFLOW_DOCS }] })
         },
-        McpTool::Search => memory::handle_search(search_service, &args).await,
-        McpTool::Timeline => memory::handle_timeline(search_service, &args).await,
+        McpTool::Search => memory::handle_search(search_service, &args, parse_limit(&args, 50)).await,
+        McpTool::Timeline => memory::handle_timeline(search_service, &args, parse_limit(&args, 50)).await,
         McpTool::GetObservations => memory::handle_get_observations(search_service, &args).await,
         McpTool::MemoryGet => memory::handle_memory_get(search_service, &args).await,
-        McpTool::MemoryRecent => memory::handle_memory_recent(search_service, &args).await,
-        McpTool::MemoryHybridSearch => memory::handle_hybrid_search(search_service, &args).await,
+        McpTool::MemoryRecent => memory::handle_memory_recent(search_service, &args, parse_limit(&args, 10)).await,
+        McpTool::MemoryHybridSearch => memory::handle_hybrid_search(search_service, &args, parse_limit(&args, 50)).await,
         McpTool::MemorySemanticSearch => {
-            memory::handle_semantic_search(search_service, &args).await
+            memory::handle_semantic_search(search_service, &args, parse_limit(&args, 50)).await
         },
         McpTool::SaveMemory => memory::handle_save_memory(observation_service, &args).await,
         McpTool::KnowledgeSearch => {
-            knowledge::handle_knowledge_search(knowledge_service, &args).await
+            knowledge::handle_knowledge_search(knowledge_service, &args, parse_limit(&args, 10)).await
         },
         McpTool::KnowledgeSave => knowledge::handle_knowledge_save(knowledge_service, &args).await,
         McpTool::KnowledgeGet => knowledge::handle_knowledge_get(knowledge_service, &args).await,
-        McpTool::KnowledgeList => knowledge::handle_knowledge_list(knowledge_service, &args).await,
+        McpTool::KnowledgeList => knowledge::handle_knowledge_list(knowledge_service, &args, parse_limit(&args, 10)).await,
         McpTool::KnowledgeDelete => {
             knowledge::handle_knowledge_delete(knowledge_service, &args).await
         },
