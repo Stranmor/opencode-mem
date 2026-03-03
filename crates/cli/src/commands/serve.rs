@@ -102,7 +102,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         tracing::warn!("Startup recovery failed: {}", e);
     }
 
-    let (poller_handle, cron_handle) = start_background_processor(state.clone());
+    start_background_processor(state.clone());
 
     let router = create_router(state);
     let addr_str = format!("{host}:{port}");
@@ -151,7 +151,7 @@ Or kill the process manually before starting a new server.",
         .await?;
 
     tracing::info!("Waiting for background tasks to finish...");
-    let _ = tokio::join!(poller_handle, cron_handle);
+    // let _ = tokio::join!(poller_handle, cron_handle);
     tracing::info!("Background tasks finished.");
 
     if is_restart.load(std::sync::atomic::Ordering::Relaxed) {

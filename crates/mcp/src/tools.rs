@@ -28,7 +28,6 @@ impl McpTool {
     /// Parse tool name from JSON-RPC request.
     /// Returns None for unknown tools (caller must handle error).
     #[must_use]
-    
     pub fn all_tool_names() -> &'static [&'static str] {
         &[
             "__IMPORTANT", "search", "timeline", "get_observations", "memory_get",

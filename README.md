@@ -102,7 +102,7 @@ cargo build --release
 # Set your PostgreSQL URL and API key
 export DATABASE_URL="postgres://user:pass@localhost:5432/db"
 export OPENCODE_MEM_API_KEY="your-llm-api-key"
-export OPENAI_API_KEY="your-api-key"
+export OPENAI_API_KEY="your-openai-api-key"
 ```
 
 ### 2. Run the Server
@@ -129,7 +129,7 @@ Add the following snippet to your `opencode.json` configuration file:
       "env": {
         "DATABASE_URL": "postgres://user:pass@localhost:5432/db",
         "OPENCODE_MEM_API_KEY": "your-key",
-        "OPENAI_API_KEY": "your-api-key"
+        "OPENAI_API_KEY": "your-openai-api-key"
       }
     }
   }
