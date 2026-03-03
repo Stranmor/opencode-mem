@@ -28,7 +28,15 @@ jobs:
           components: rustfmt
           
       - name: Check code formatting
-        run: cargo fmt --all -- --check
+        run: |
+          # Format all Rust files in the project
+          find . -name "*.rs" -exec rustfmt --edition 2021 {} \;
+          # Check if any files were changed
+          if [ -n "$(git diff --stat)" ]; then
+            echo "Formatting differences found:"
+            git diff --stat
+            exit 1
+          fi
 
   clippy:
     name: Clippy
