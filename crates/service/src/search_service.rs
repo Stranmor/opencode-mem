@@ -212,8 +212,53 @@ impl SearchService {
         Ok(self.storage.clear_embeddings().await?)
     }
 
-    // ── Semantic dedup ──────────────────────────────────────────────────
+    /// Runs embedding backfill for a batch of observations
+    pub async fn run_embedding_backfill(&self, batch_size: usize) -> Result<usize, ServiceError> {
+        let Some(ref embeddings) = self.embeddings else {
+            return Ok(0);
+        };
+        let mut total = 0;
+        let mut failed_ids = std::collections::HashSet::new();
+        loop {
+            let all_obs = self.storage.get_observations_without_embeddings(batch_size).await?;
+            if all_obs.is_empty() {
+                break;
+            }
+            let obs: Vec<_> = all_obs.into_iter().filter(|o| !failed_ids.contains(&o.id)).collect();
+            if obs.is_empty() {
+                break;
+            }
+            for o in obs {
+                let text = format!(
+                    "{} {} {}",
+                    o.title,
+                    o.narrative.as_deref().unwrap_or(""),
+                    o.facts.join(" ")
+                );
+                let emb = Arc::clone(embeddings);
+                let embed_result = tokio::task::spawn_blocking(move || emb.embed(&text))
+                    .await
+                    .unwrap_or_else(|e| Err(anyhow::anyhow!("spawn_blocking failed: {}", e).into()));
 
+                match embed_result {
+                    Ok(vec) => {
+                        if self.storage.store_embedding(&o.id, &vec).await.is_ok() {
+                            total += 1;
+                        } else {
+                            failed_ids.insert(o.id.clone());
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to generate embedding for {}: {}", o.id, e);
+                        failed_ids.insert(o.id.clone());
+                    }
+                }
+            }
+        }
+        Ok(total)
+    }
+
+    // ── Semantic dedup ──────────────────────────────────────────────────
     async fn deduplicate_by_embedding(
         &self,
         observations: Vec<Observation>,

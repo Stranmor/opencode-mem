@@ -49,41 +49,6 @@ use opencode_mem_service::{
 pub use api_types::{ReadinessResponse, Settings, VersionResponse};
 pub use handlers::queue_processor::{run_startup_recovery, start_background_processor};
 
-/// Spawns background task that runs infinite memory compression every 5 minutes.
-///
-/// Generates hierarchical summaries (5min → hour → day) from raw events.
-/// Errors are logged but do not stop the loop — retries on next interval.
-pub fn start_compression_pipeline(infinite_mem: Arc<InfiniteMemory>) {
-    tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
-        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        loop {
-            interval.tick().await;
-            tracing::debug!("Compression pipeline: running full compression...");
-            let mem = Arc::clone(&infinite_mem);
-            let result = tokio::spawn(async move { mem.run_full_compression().await }).await;
-            match result {
-                Ok(Ok((five_min, hour, day))) => {
-                    if five_min > 0 || hour > 0 || day > 0 {
-                        tracing::info!(
-                            "Compression pipeline: created {} 5min, {} hour, {} day summaries",
-                            five_min,
-                            hour,
-                            day,
-                        );
-                    }
-                },
-                Ok(Err(e)) => {
-                    tracing::warn!("Compression pipeline error: {e:?}");
-                },
-                Err(e) => {
-                    tracing::warn!("Compression pipeline panic: {e:?}");
-                },
-            }
-        }
-    });
-}
-
 /// Shared application state for all HTTP handlers.
 ///
 /// Contains service instances and infrastructure (SSE, semaphore, settings).

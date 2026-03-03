@@ -25,6 +25,7 @@ impl PgStorage {
             i64,
             Option<DateTime<Utc>>,
         );
+        let trimmed_title = input.title.trim();
         let existing: Option<ExistingRow> = sqlx::query_as(
             "SELECT id, created_at, triggers, source_projects, source_observations,
                         confidence, usage_count, last_used_at
@@ -32,7 +33,7 @@ impl PgStorage {
                  WHERE LOWER(title) = LOWER($1)
                  FOR UPDATE",
         )
-        .bind(input.title.trim())
+        .bind(trimmed_title)
         .fetch_optional(&mut *tx)
         .await?;
 
@@ -90,7 +91,7 @@ impl PgStorage {
             Ok(GlobalKnowledge::new(
                 id,
                 input.knowledge_type,
-                input.title.clone(),
+                trimmed_title.to_owned(),
                 input.description.clone(),
                 input.instructions.clone(),
                 triggers,
@@ -115,7 +116,7 @@ impl PgStorage {
             ))
             .bind(&id)
             .bind(input.knowledge_type.as_str())
-            .bind(&input.title)
+            .bind(trimmed_title)
             .bind(&input.description)
             .bind(&input.instructions)
             .bind(serde_json::to_value(&input.triggers)?)
@@ -134,7 +135,7 @@ impl PgStorage {
             Ok(GlobalKnowledge::new(
                 id,
                 input.knowledge_type,
-                input.title.clone(),
+                trimmed_title.to_owned(),
                 input.description.clone(),
                 input.instructions.clone(),
                 input.triggers.clone(),

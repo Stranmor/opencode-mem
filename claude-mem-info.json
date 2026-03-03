@@ -1,1 +1,0 @@
-{"description":"A Claude Code plugin that automatically captures everything Claude does during your coding sessions, compresses it with AI (using Claude's agent-sdk), and injects relevant context back into future sessions.","forkCount":2195,"licenseInfo":{"key":"other","name":"Other","nickname":""},"stargazerCount":32330}

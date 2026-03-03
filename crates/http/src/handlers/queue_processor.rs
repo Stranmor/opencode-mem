@@ -72,65 +72,28 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
     Ok(())
 }
 
-/// Spawns background task that polls pending queue every 5 seconds.
+/// Spawns background tasks for queue polling and periodic maintenance.
 pub fn start_background_processor(state: Arc<AppState>) {
+    // Task 1: Queue Poller (latency-sensitive, checks queue every 5 seconds)
+    let state_poller = Arc::clone(&state);
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
-        let mut loop_count: u64 = 0;
         loop {
             interval.tick().await;
-            if !state.processing_active.load(Ordering::SeqCst) {
+            if !state_poller.processing_active.load(Ordering::SeqCst) {
                 continue;
-            }
-
-            // Periodic injection cleanup (~once per hour at 5s interval: 720 * 5s = 3600s)
-            loop_count = loop_count.wrapping_add(1);
-            if loop_count.is_multiple_of(720) {
-                if let Err(e) = state.observation_service.cleanup_old_injections().await {
-                    tracing::warn!(error = %e, "Periodic injection cleanup failed");
-                }
-            }
-
-            // Periodic dedup sweep (~every 30 min at 5s interval: 360 * 5s = 1800s)
-            if loop_count.is_multiple_of(360) {
-                match state.observation_service.run_dedup_sweep().await {
-                    Ok(merged) if merged > 0 => {
-                        tracing::info!(merged, "Periodic dedup sweep completed");
-                    },
-                    Ok(_) => {},
-                    Err(e) => {
-                        tracing::warn!(error = %e, "Periodic dedup sweep failed");
-                    },
-                }
-            }
-
-            // Periodic DLQ garbage collection (~once per day at 5s interval: 17280 * 5s = 86400s)
-            // Failed messages older than 7 days (604800s) are deleted
-            if loop_count.is_multiple_of(17280) {
-                let ttl_secs =
-                    opencode_mem_core::env_parse_with_default("OPENCODE_MEM_DLQ_TTL_DAYS", 7_i64)
-                        * 86400;
-                match state.queue_service.clear_stale_failed_messages(ttl_secs).await {
-                    Ok(deleted) if deleted > 0 => {
-                        tracing::info!(deleted, "Periodic DLQ garbage collection completed");
-                    },
-                    Ok(_) => {},
-                    Err(e) => {
-                        tracing::warn!(error = %e, "Periodic DLQ garbage collection failed");
-                    },
-                }
             }
 
             tracing::debug!("Background processor: checking queue...");
 
             let max_workers = max_queue_workers();
-            let available_permits = state.semaphore.available_permits().min(max_workers);
+            let available_permits = state_poller.semaphore.available_permits().min(max_workers);
 
             if available_permits == 0 {
                 continue;
             }
 
-            let messages = match state
+            let messages = match state_poller
                 .queue_service
                 .claim_pending_messages(available_permits, default_visibility_timeout_secs())
                 .await
@@ -148,11 +111,11 @@ pub fn start_background_processor(state: Arc<AppState>) {
 
             let count = messages.len();
             for msg in messages {
-                let permit = match Arc::clone(&state.semaphore).acquire_owned().await {
+                let permit = match Arc::clone(&state_poller.semaphore).acquire_owned().await {
                     Ok(p) => p,
                     Err(_) => continue,
                 };
-                let state_clone = Arc::clone(&state);
+                let state_clone = Arc::clone(&state_poller);
                 // Fire and forget - do not join handles here to avoid head-of-line blocking
                 tokio::spawn(async move {
                     let _permit = permit;
@@ -181,6 +144,85 @@ pub fn start_background_processor(state: Arc<AppState>) {
             }
 
             tracing::info!("Background processor: spawned {} message tasks", count);
+        }
+    });
+
+    // Task 2: Cron Scheduler (batch operations, longer running)
+    let state_cron = Arc::clone(&state);
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+        let mut loop_count: u64 = 0;
+        loop {
+            interval.tick().await;
+            if !state_cron.processing_active.load(Ordering::SeqCst) {
+                continue;
+            }
+
+            loop_count = loop_count.wrapping_add(1);
+
+            // Infinite memory compression (~every 5 min at 5s interval: 60 * 5s = 300s)
+            if loop_count.is_multiple_of(60) {
+                if let Some(ref infinite_mem) = state_cron.infinite_mem {
+                    tracing::debug!("Cron: running infinite memory compression...");
+                    let mem = Arc::clone(infinite_mem);
+                    match tokio::spawn(async move { mem.run_full_compression().await }).await {
+                        Ok(Ok((five_min, hour, day))) => {
+                            if five_min > 0 || hour > 0 || day > 0 {
+                                tracing::info!(
+                                    "Cron: created {} 5min, {} hour, {} day summaries",
+                                    five_min, hour, day,
+                                );
+                            }
+                        },
+                        Ok(Err(e)) => tracing::warn!("Cron: infinite memory error: {e:?}"),
+                        Err(e) => tracing::warn!("Cron: infinite memory panic: {e:?}"),
+                    }
+                }
+            }
+
+            // Embedding backfill (~every 15 min at 5s interval: 180 * 5s = 900s)
+            if loop_count.is_multiple_of(180) {
+                tracing::debug!("Cron: running embedding backfill...");
+                match state_cron.search_service.run_embedding_backfill(100).await {
+                    Ok(generated) if generated > 0 => {
+                        tracing::info!("Cron: generated {} embeddings", generated);
+                    },
+                    Ok(_) => {},
+                    Err(e) => tracing::warn!("Cron: embedding backfill failed: {}", e),
+                }
+            }
+
+            // Periodic dedup sweep (~every 30 min at 5s interval: 360 * 5s = 1800s)
+            if loop_count.is_multiple_of(360) {
+                match state_cron.observation_service.run_dedup_sweep().await {
+                    Ok(merged) if merged > 0 => {
+                        tracing::info!(merged, "Cron: dedup sweep completed");
+                    },
+                    Ok(_) => {},
+                    Err(e) => tracing::warn!(error = %e, "Cron: dedup sweep failed"),
+                }
+            }
+
+            // Periodic injection cleanup (~once per hour at 5s interval: 720 * 5s = 3600s)
+            if loop_count.is_multiple_of(720) {
+                if let Err(e) = state_cron.observation_service.cleanup_old_injections().await {
+                    tracing::warn!(error = %e, "Cron: injection cleanup failed");
+                }
+            }
+
+            // Periodic DLQ garbage collection (~once per day at 5s interval: 17280 * 5s = 86400s)
+            if loop_count.is_multiple_of(17280) {
+                let ttl_secs =
+                    opencode_mem_core::env_parse_with_default("OPENCODE_MEM_DLQ_TTL_DAYS", 7_i64)
+                        * 86400;
+                match state_cron.queue_service.clear_stale_failed_messages(ttl_secs).await {
+                    Ok(deleted) if deleted > 0 => {
+                        tracing::info!(deleted, "Cron: DLQ garbage collection completed");
+                    },
+                    Ok(_) => {},
+                    Err(e) => tracing::warn!(error = %e, "Cron: DLQ garbage collection failed"),
+                }
+            }
         }
     });
 }

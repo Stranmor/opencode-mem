@@ -99,7 +99,7 @@ pub(crate) async fn search_with_filters(
         format!("WHERE {}", conditions.join(" AND "))
     };
     let sql = format!(
-        "SELECT id, title, subtitle, observation_type, noise_level
+        "SELECT id, title, subtitle, observation_type, noise_level, 0.0::float8 as score
            FROM observations {where_clause}
            ORDER BY created_at DESC
            LIMIT ${param_idx}"
