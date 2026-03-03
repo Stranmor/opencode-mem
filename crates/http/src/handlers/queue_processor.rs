@@ -170,7 +170,9 @@ pub fn start_background_processor(state: Arc<AppState>) {
                             if five_min > 0 || hour > 0 || day > 0 {
                                 tracing::info!(
                                     "Cron: created {} 5min, {} hour, {} day summaries",
-                                    five_min, hour, day,
+                                    five_min,
+                                    hour,
+                                    day,
                                 );
                             }
                         },

@@ -5,7 +5,7 @@ use opencode_mem_core::{
     cosine_similarity, GlobalKnowledge, KnowledgeSearchResult, KnowledgeType, Observation,
     SearchResult, SessionSummary, UserPrompt,
 };
-use opencode_mem_embeddings::EmbeddingService;
+use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
 use opencode_mem_storage::traits::{
     EmbeddingStore, KnowledgeStore, ObservationStore, PromptStore, SearchStore, StatsStore,
     SummaryStore,
@@ -236,9 +236,10 @@ impl SearchService {
                     o.facts.join(" ")
                 );
                 let emb = Arc::clone(embeddings);
-                let embed_result = tokio::task::spawn_blocking(move || emb.embed(&text))
-                    .await
-                    .unwrap_or_else(|e| Err(anyhow::anyhow!("spawn_blocking failed: {}", e).into()));
+                let embed_result =
+                    tokio::task::spawn_blocking(move || emb.embed(&text)).await.unwrap_or_else(
+                        |e| Err(anyhow::anyhow!("spawn_blocking failed: {}", e).into()),
+                    );
 
                 match embed_result {
                     Ok(vec) => {
@@ -247,11 +248,11 @@ impl SearchService {
                         } else {
                             failed_ids.insert(o.id.clone());
                         }
-                    }
+                    },
                     Err(e) => {
                         tracing::warn!("Failed to generate embedding for {}: {}", o.id, e);
                         failed_ids.insert(o.id.clone());
-                    }
+                    },
                 }
             }
         }

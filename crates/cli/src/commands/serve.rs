@@ -1,8 +1,8 @@
 use anyhow::Result;
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_http::{
-    create_router, run_startup_recovery, start_background_processor, AppState, Settings,
-    AppState, Settings,
+    create_router, run_startup_recovery, start_background_processor, AppState, AppState, Settings,
+    Settings,
 };
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
