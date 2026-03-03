@@ -131,12 +131,10 @@ impl ObservationService {
 
         let (infinite_res, compress_res) = tokio::join!(infinite_fut, compress_fut);
 
-        // Log infinite memory errors but DO NOT prevent returning the compressed observation
-        if let Err(e) = infinite_res {
-            tracing::warn!(error = %e, id = %id, "store_infinite_memory failed during concurrent execution");
-        }
-
         let save_result = compress_res?;
+        
+        // Propagate infinite memory errors so the queue processor retries
+        infinite_res?;
 
         if let Some((ref obs, _)) = save_result {
             self.extract_knowledge(obs).await?;
