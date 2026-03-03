@@ -95,14 +95,14 @@ impl ObservationService {
 
         if let Some(obs) = existing_obs {
             tracing::info!(id = %id, "Observation already exists in primary storage, skipping LLM compression for queue retry");
-            
+
             let infinite_fut = self.store_infinite_memory(&tool_call, Some(&obs));
             let extract_fut = self.extract_knowledge(&obs);
-            
+
             let (extract_res, infinite_res) = tokio::join!(extract_fut, infinite_fut);
             extract_res?;
             infinite_res?;
-            
+
             return Ok(Some(obs));
         }
 
@@ -130,7 +130,7 @@ impl ObservationService {
         };
 
         let (infinite_res, compress_res) = tokio::join!(infinite_fut, compress_fut);
-        
+
         // Log infinite memory errors but DO NOT prevent returning the compressed observation
         if let Err(e) = infinite_res {
             tracing::warn!(error = %e, id = %id, "store_infinite_memory failed during concurrent execution");
