@@ -42,12 +42,16 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
     let id = {
         let input_str = msg.tool_input.as_deref().unwrap_or("");
         let mut data = String::with_capacity(
-            tool_name.len() + msg.session_id.len() + input_str.len() + tool_response.len() + 20,
+            tool_name.len() + msg.session_id.len() + input_str.len() + tool_response.len() + 25,
         );
         data.push_str(tool_name);
+        data.push('|');
         data.push_str(&msg.session_id);
+        data.push('|');
         data.push_str(input_str);
+        data.push('|');
         data.push_str(tool_response);
+        data.push('|');
         data.push_str(&msg.created_at_epoch.to_string());
         uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, data.as_bytes()).to_string()
     };
