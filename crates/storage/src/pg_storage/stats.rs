@@ -50,7 +50,7 @@ impl StatsStore for PgStorage {
     ) -> Result<PaginatedResult<Observation>, StorageError> {
         let total: i64 = if let Some(p) = project {
             sqlx::query_scalar(
-                "SELECT COUNT(*) FROM observations WHERE project = $1 OR project IS NULL",
+                "SELECT COUNT(*) FROM observations WHERE (project = $1 OR project IS NULL)",
             )
             .bind(p)
             .fetch_one(&self.pool)
@@ -64,7 +64,7 @@ impl StatsStore for PgStorage {
                 "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
                         facts, concepts, files_read, files_modified, keywords, prompt_number,
                         discovery_tokens, noise_level, noise_reason, created_at
-                   FROM observations WHERE project = $1 OR project IS NULL ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+                   FROM observations WHERE (project = $1 OR project IS NULL) ORDER BY created_at DESC LIMIT $2 OFFSET $3",
             )
             .bind(p)
             .bind(usize_to_i64(limit))

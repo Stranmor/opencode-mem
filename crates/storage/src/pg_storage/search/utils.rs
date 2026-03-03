@@ -2,7 +2,7 @@ pub(crate) fn build_tsquery(query: &str) -> Option<String> {
     let result = query
         .split(|c: char| !c.is_alphanumeric() && c != '_')
         .filter_map(|w| {
-            if w.chars().count() < 2 || !w.chars().any(char::is_alphanumeric) {
+            if !w.chars().any(char::is_alphanumeric) {
                 None
             } else {
                 Some(format!("{}:*", w))
@@ -21,9 +21,9 @@ pub(crate) fn build_or_tsquery(query: &str, max_terms: usize) -> Option<String> 
     let mut words: Vec<String> = query
         .split(|c: char| !c.is_alphanumeric() && c != '_')
         .filter_map(|w| {
-            // Must have at least 2 chars AND contain at least one alphanumeric
+            // Must contain at least one alphanumeric
             // (rejects "---", "___" which cause tsquery syntax errors)
-            if w.chars().count() < 2 || !w.chars().any(char::is_alphanumeric) {
+            if !w.chars().any(char::is_alphanumeric) {
                 None
             } else {
                 Some(w.to_string())
