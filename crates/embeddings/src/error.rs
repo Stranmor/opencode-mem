@@ -14,3 +14,9 @@ pub enum EmbeddingError {
     #[error("embedding generation failed: {0}")]
     Generation(String),
 }
+
+impl From<anyhow::Error> for EmbeddingError {
+    fn from(err: anyhow::Error) -> Self {
+        EmbeddingError::Generation(err.to_string())
+    }
+}

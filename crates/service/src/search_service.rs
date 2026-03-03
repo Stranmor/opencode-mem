@@ -212,6 +212,10 @@ impl SearchService {
         Ok(self.storage.clear_embeddings().await?)
     }
 
+    #[allow(
+        clippy::arithmetic_side_effects,
+        reason = "total counter increment is safe - max value is batch_size iterations"
+    )]
     /// Runs embedding backfill for a batch of observations
     pub async fn run_embedding_backfill(&self, batch_size: usize) -> Result<usize, ServiceError> {
         let Some(ref embeddings) = self.embeddings else {

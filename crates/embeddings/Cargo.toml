@@ -19,6 +19,7 @@ cuda = ["ort/cuda"]
 
 [dependencies]
 opencode-mem-core = { workspace = true }
+anyhow = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 fastembed = "5"

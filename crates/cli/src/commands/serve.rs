@@ -1,8 +1,7 @@
 use anyhow::Result;
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_http::{
-    create_router, run_startup_recovery, start_background_processor, AppState, AppState, Settings,
-    Settings,
+    create_router, run_startup_recovery, start_background_processor, AppState, Settings,
 };
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
@@ -122,7 +121,8 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
             anyhow::anyhow!(
                 "Port {} is already in use.\n\n\
 Another instance of opencode-mem is likely running.\n\
-To stop it, run:\n  curl -X POST http://127.0.0.1:{}/api/admin/shutdown\n\n\
+To stop it, run:
+  curl -X POST http://127.0.0.1:{}/api/admin/shutdown\n\
 Or kill the process manually before starting a new server.",
                 port,
                 port
