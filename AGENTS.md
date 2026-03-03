@@ -15,7 +15,7 @@ Last reviewed commit: `eea4f599c0c54eb8d7dcc0d81a9364f2302fd1e6`
 
 | Component | Status | Details |
 |-----------|--------|---------|
-| MCP Tools | ✅ 17 tools | search, timeline, get_observations, memory_*, knowledge_*, infinite_*, save_memory |
+| MCP Tools | ✅ 18 tools | search, timeline, get_observations, memory_*, knowledge_*, infinite_*, save_memory |
 | Database | ✅ | PostgreSQL only (pgvector + tsvector/GIN), direct PgStorage (no dispatch enum) |
 | CLI | ✅ 100% | serve, mcp, search, stats, projects, recent, get, hook (context, session-init, observe, summarize) |
 | HTTP API | ✅ 100% | 65 endpoints (upstream has 56) |
