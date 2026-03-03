@@ -22,7 +22,13 @@ fn test_knowledge_extraction_gotcha_type_bypass() {
         updated_at: chrono::Utc::now(),
     };
 
-    let dominated = obs.concepts.iter().any(|c| matches!(c, Concept::Pattern | Concept::Gotcha | Concept::HowItWorks));
-    
-    assert!(dominated || matches!(obs.observation_type, ObservationType::Gotcha), "Vulnerability exists: ObservationType::Gotcha is ignored for knowledge extraction");
+    let dominated = obs
+        .concepts
+        .iter()
+        .any(|c| matches!(c, Concept::Pattern | Concept::Gotcha | Concept::HowItWorks));
+
+    assert!(
+        dominated || matches!(obs.observation_type, ObservationType::Gotcha),
+        "Vulnerability exists: ObservationType::Gotcha is ignored for knowledge extraction"
+    );
 }
