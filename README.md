@@ -22,16 +22,17 @@ Unlike traditional TS/SQLite memory servers, `opencode-mem` is designed for unbo
 | **Privacy** | Built-in `<private>` filtering | None |
 | **Multilingual** | 100+ languages (BGE-M3) | English-centric |
 
-## Features
+## Advanced Capabilities
 
-- 🧠 **Infinite Memory** with hierarchical summarization (5min → hour → day)
-- 🔍 **Hybrid Search:** FTS BM25 + semantic vector similarity (fastembed BGE-M3, 1024d, 100+ languages)
-- 🔌 **17 MCP Tools** for seamless AI agent integration
-- 🌐 **65+ HTTP API endpoints**
-- ⚡ **CLI with full hook system** (context injection, session init, observation, summarization)
-- 🔒 **Privacy tags** (`<private>` content filtering applied in all paths)
-- 📦 **Single binary**, zero runtime dependencies
-- 🗄️ **PostgreSQL + pgvector backend**
+- 🧠 **Infinite Memory & Deep Zoom:** Solves the "static summaries" problem. Raw events are NEVER deleted. A hierarchical summarization pipeline (5min → hour → day) creates readable overviews, while the "Deep Zoom" drill-down API allows zooming from any high-level summary straight back to the original raw events.
+- 🔍 **Semantic & Hybrid Search:** Powered by `fastembed-rs` using BGE-M3 (1024d, 100+ languages). Hybrid search combines FTS BM25 (50% weight) and vector similarity (50% weight) directly within PostgreSQL to yield unmatched precision without multiple network hops.
+- 🧱 **Structured Metadata Extraction:** Summaries aren't just text. The LLM extracts specific `SummaryEntities` (files, functions, libraries, errors, decisions) via strict JSON schema enforcement, enabling fact-based search even when the human-readable summary is vague.
+- 🛡️ **Context-Aware Compression:** The built-in AI agent analyzes the queue before creating new observations. It decides to either **CREATE**, **UPDATE**, or **SKIP**, effectively eliminating duplicate entries and deduplication overhead before they hit the database.
+- 🔌 **17 MCP Tools** for seamless AI agent integration (search, fetch, analyze, drill-down).
+- 🌐 **65+ HTTP API endpoints** for external integrations and dashboards.
+- ⚡ **CLI with full hook system** (context injection, session init, observation, summarization).
+- 🔒 **Privacy tags:** Built-in `<private>` content filtering applied across all ingest paths.
+- 📦 **Single binary:** Zero runtime dependencies beyond PostgreSQL.
 
 ## Architecture
 
@@ -63,27 +64,37 @@ crates/
 └── cli/             # CLI binary
 ```
 
+## Installation
+
+You can install `opencode-mem-cli` globally using Cargo, or build it from source.
+
+**Option 1: Install from crates.io**
+```bash
+cargo install opencode-mem-cli
+```
+
+**Option 2: Build from source**
+```bash
+git clone https://github.com/Stranmor/opencode-mem.git
+cd opencode-mem
+cargo build --release
+# The binary will be available at target/release/opencode-mem-cli
+```
+
 ## Quick Start
 
 **Prerequisites:**
 - Rust 1.75+
 - PostgreSQL with `pgvector` extension
 
-**1. Clone and Build**
-```bash
-git clone https://github.com/Stranmor/opencode-mem.git
-cd opencode-mem
-cargo build --release
-```
-
-**2. Configure Database**
+**1. Configure Database & LLM**
 ```bash
 export DATABASE_URL="postgres://user:pass@host/dbname"
 export OPENCODE_MEM_API_KEY="your-llm-api-key"
 # Migrations will run automatically on the first start
 ```
 
-**3. Run the Server**
+**2. Run the Server**
 ```bash
 # To run as an MCP server:
 opencode-mem-cli mcp
@@ -92,7 +103,7 @@ opencode-mem-cli mcp
 opencode-mem-cli serve
 ```
 
-**4. OpenCode Integration**
+**3. OpenCode Integration**
 Add the following snippet to your `opencode.json` configuration file:
 
 ```json
@@ -226,6 +237,7 @@ cargo test -- --ignored
 - **SPOT Axiom:** Single Point Of Truth. Data duplication is strictly forbidden.
 - **Zero Fallback:** Missing data yields explicit `Error` or `None`, never fallback dummy data.
 - **SQLx Compile-Time Checks:** All queries are validated against the live DB schema at compile time to prevent structural drift.
+- **Modular Monolith:** Workspace segregation ensures clear domains between storage, logic, HTTP, and MCP interfaces.
 
 ## Project Status
 
@@ -233,7 +245,7 @@ This project maintains full feature parity with the upstream `claude-mem` (TypeS
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request or open an issue on GitHub to discuss planned changes or improvements.
+Contributions are welcome! Please feel free to submit a Pull Request or open an issue on GitHub to discuss planned changes or improvements. When contributing, please ensure that all new features comply with the project's strict [SPOT Axiom] architectural guidelines.
 
 ## License
 
