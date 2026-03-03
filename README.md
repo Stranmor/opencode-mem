@@ -48,14 +48,14 @@ unbounded scale and operational safety in autonomous AI coding environments.
 enforce modularity and prevent cyclic dependencies.
 
 ```mermaid
-graph LR
-    A["OpenCode IDE"] -->|"MCP/HTTP"| B["opencode-mem"]
-    B --> C["Queue Processor"]
-    C --> D["LLM Compression"]
-    D --> E["PostgreSQL"]
-    E -->|"pgvector"| F["Semantic Search"]
-    E -->|"tsvector/GIN"| G["Full-Text Search"]
-    F --> H["Hybrid Results"]
+graph TD
+    A[OpenCode IDE] --> B[opencode-mem]
+    B --> C[Queue Processor]
+    C --> D[LLM Compression]
+    D --> E[PostgreSQL]
+    E --> F[Semantic Search]
+    E --> G[Full-Text Search]
+    F --> H[Hybrid Results]
     G --> H
 ```
 
@@ -100,7 +100,7 @@ cargo build --release
 
 ```bash
 # Set your PostgreSQL URL and API key
-export DATABASE_URL="postgres://user:pass@host/db"
+export DATABASE_URL="postgres://user:pass@host:5432/db"
 export OPENCODE_MEM_API_KEY="your-llm-api-key"
 ```
 
@@ -126,7 +126,7 @@ Add the following snippet to your `opencode.json` configuration file:
       "command": "opencode-mem-cli",
       "args": ["mcp"],
       "env": {
-        "DATABASE_URL": "postgres://user:pass@host/db",
+        "DATABASE_URL": "postgres://user:pass@host:5432/db",
         "OPENCODE_MEM_API_KEY": "your-key"
       }
     }
@@ -134,18 +134,14 @@ Add the following snippet to your `opencode.json` configuration file:
 }
 ```
 
-### 4. OpenCode Integration
-
-Ensure you have a proper setup and understand the tooling boundaries.
-
 ## MCP Tools Reference
 
 The server exposes 18 powerful MCP tools.
 
 | Tool | Description |
 |------|-------------|
-| `search` | Search memory. Semantic search with FTS fallback. |
-| `timeline` | Get chronological context. Params: from, to, limit. |
+| `search` | Semantic search with FTS fallback. |
+| `timeline` | Get chronological context (from, to, limit). |
 | `get_observations` | Fetch full details for filtered IDs. |
 | `memory_get` | Get full observation details by ID. |
 | `memory_recent` | Get recent observations. |
@@ -194,19 +190,19 @@ Configure the server via environment variables.
 | `OPENCODE_MEM_API_URL` | No | `https://antigr...` | API base URL |
 | `OPENCODE_MEM_MODEL` | No | - | Model for compression |
 | `OPENCODE_MEM_DISABLE_EMBEDDINGS` | No | `false` | Disable embeddings |
-| `INFINITE_MEMORY_URL` | No | `DATABASE_URL` | DB string for infinite memory |
-| `OPENCODE_MEM_EXCLUDED_PROJECTS` | No | - | Glob patterns for exclusions |
-| `OPENCODE_MEM_FILTER_PATTERNS` | No | - | Custom noise filter regex |
+| `INFINITE_MEMORY_URL` | No | `DATABASE_URL` | DB connection for infinite memory |
+| `OPENCODE_MEM_EXCLUDED_PROJECTS` | No | - | Glob patterns for project exclusions |
+| `OPENCODE_MEM_FILTER_PATTERNS` | No | - | Custom noise filter regex patterns |
 | `OPENCODE_MEM_DEDUP_THRESHOLD` | No | `0.85` | Cosine similarity threshold |
-| `OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD`| No | `0.80` | Plugin loop threshold |
-| `OPENCODE_MEM_EMBEDDING_THREADS` | No | `cores - 1` | ONNX generation threads |
-| `OPENCODE_MEM_MAX_RETRY` | No | `3` | Max LLM compression retries |
-| `OPENCODE_MEM_VISIBILITY_TIMEOUT` | No | `300s` | Pending visibility timeout |
-| `OPENCODE_MEM_QUEUE_WORKERS` | No | `10` | Concurrent queue workers |
-| `OPENCODE_MEM_DLQ_TTL_DAYS` | No | `7` | Days to keep DLQ items |
-| `OPENCODE_MEM_MAX_CONTENT_CHARS` | No | `500` | Max chars per field |
-| `OPENCODE_MEM_MAX_TOTAL_CHARS` | No | `8000` | Max chars for LLM prompt |
-| `OPENCODE_MEM_MAX_EVENTS` | No | `200` | Max raw events per chunk |
+| `OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD`| No | `0.80` | Plugin loop prevention threshold |
+| `OPENCODE_MEM_EMBEDDING_THREADS` | No | `cores - 1` | ONNX generation worker threads |
+| `OPENCODE_MEM_MAX_RETRY` | No | `3` | Max LLM compression retry attempts |
+| `OPENCODE_MEM_VISIBILITY_TIMEOUT` | No | `300s` | Pending message visibility timeout |
+| `OPENCODE_MEM_QUEUE_WORKERS` | No | `10` | Concurrent queue background workers |
+| `OPENCODE_MEM_DLQ_TTL_DAYS` | No | `7` | Days to retain items in dead letter queue |
+| `OPENCODE_MEM_MAX_CONTENT_CHARS` | No | `500` | Max chars per extracted content field |
+| `OPENCODE_MEM_MAX_TOTAL_CHARS` | No | `8000` | Max characters for LLM prompt payload |
+| `OPENCODE_MEM_MAX_EVENTS` | No | `200` | Max raw events per infinite memory chunk |
 
 ## Development
 
