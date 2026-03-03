@@ -6,7 +6,6 @@ use crate::error::StorageError;
 use crate::traits::ObservationStore;
 use async_trait::async_trait;
 
-const OBSERVATION_COLUMNS: &str = "id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, files_read, files_modified, keywords, prompt_number, discovery_tokens, noise_level, noise_reason, created_at";
 
 #[async_trait]
 impl ObservationStore for PgStorage {
@@ -64,7 +63,7 @@ impl ObservationStore for PgStorage {
         let row = sqlx::query(&format!(
             "SELECT {}
              FROM observations WHERE id = $1",
-            OBSERVATION_COLUMNS
+            super::OBSERVATION_COLUMNS
         ))
         .bind(id)
         .fetch_optional(&self.pool)
@@ -76,7 +75,7 @@ impl ObservationStore for PgStorage {
         let rows = sqlx::query(&format!(
             "SELECT {}
              FROM observations ORDER BY created_at DESC LIMIT $1",
-            OBSERVATION_COLUMNS
+            super::OBSERVATION_COLUMNS
         ))
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
@@ -91,7 +90,7 @@ impl ObservationStore for PgStorage {
         let rows = sqlx::query(&format!(
             "SELECT {}
              FROM observations WHERE session_id = $1 ORDER BY created_at",
-            OBSERVATION_COLUMNS
+            super::OBSERVATION_COLUMNS
         ))
         .bind(session_id)
         .fetch_all(&self.pool)
@@ -106,7 +105,7 @@ impl ObservationStore for PgStorage {
         let rows = sqlx::query(&format!(
             "SELECT {}
              FROM observations WHERE session_id = $1 ORDER BY created_at DESC LIMIT $2",
-            OBSERVATION_COLUMNS
+            super::OBSERVATION_COLUMNS
         ))
         .bind(session_id)
         .bind(usize_to_i64(limit))
@@ -125,7 +124,7 @@ impl ObservationStore for PgStorage {
         let rows = sqlx::query(&format!(
             "SELECT {}
              FROM observations WHERE id = ANY($1) ORDER BY created_at DESC",
-            OBSERVATION_COLUMNS
+            super::OBSERVATION_COLUMNS
         ))
         .bind(ids)
         .fetch_all(&self.pool)
@@ -144,7 +143,7 @@ impl ObservationStore for PgStorage {
              WHERE (project = $1 OR project IS NULL)
                AND noise_level NOT IN ('low', 'negligible')
              ORDER BY created_at DESC LIMIT $2",
-            OBSERVATION_COLUMNS
+            super::OBSERVATION_COLUMNS
         ))
         .bind(project)
         .bind(usize_to_i64(limit))
@@ -191,7 +190,7 @@ impl ObservationStore for PgStorage {
         let row = sqlx::query(&format!(
             "SELECT {}
              FROM observations WHERE id = $1 FOR UPDATE",
-            OBSERVATION_COLUMNS
+            super::OBSERVATION_COLUMNS
         ))
         .bind(existing_id)
         .fetch_optional(&mut *tx)

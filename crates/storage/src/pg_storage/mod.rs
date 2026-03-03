@@ -338,3 +338,5 @@ pub(crate) const KNOWLEDGE_COLUMNS: &str =
 pub(crate) const SUMMARY_COLUMNS: &str =
     "session_id, project, request, investigated, learned, completed, next_steps, notes,
      files_read, files_edited, prompt_number, discovery_tokens, created_at";
+
+pub(crate) const OBSERVATION_COLUMNS: &str = "id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, files_read, files_modified, keywords, prompt_number, discovery_tokens, noise_level, noise_reason, created_at";
