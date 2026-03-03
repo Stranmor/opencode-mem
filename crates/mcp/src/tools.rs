@@ -28,6 +28,17 @@ impl McpTool {
     /// Parse tool name from JSON-RPC request.
     /// Returns None for unknown tools (caller must handle error).
     #[must_use]
+    
+    pub fn all_tool_names() -> &'static [&'static str] {
+        &[
+            "__IMPORTANT", "search", "timeline", "get_observations", "memory_get",
+            "memory_recent", "memory_hybrid_search", "memory_semantic_search", "save_memory",
+            "knowledge_search", "knowledge_save", "knowledge_get", "knowledge_list",
+            "knowledge_delete", "infinite_expand", "infinite_time_range", "infinite_drill_hour",
+            "infinite_drill_minute"
+        ]
+    }
+
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "__IMPORTANT" => Some(Self::Important),
