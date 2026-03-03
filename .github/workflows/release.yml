@@ -45,10 +45,9 @@ jobs:
       - name: Setup Rust caching
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cross compiler tool
+      - name: Install cross
         if: matrix.use_cross == true
-        # Install the latest `cross` from git as requested
-        run: cargo install cross --git https://github.com/cross-rs/cross
+        uses: taiki-e/install-action@cross
 
       - name: Build binary (cargo)
         if: matrix.use_cross == false
