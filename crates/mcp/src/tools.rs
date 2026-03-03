@@ -65,9 +65,9 @@ impl McpTool {
 }
 
 pub const WORKFLOW_DOCS: &str = r"3-LAYER WORKFLOW (ALWAYS FOLLOW):
-1. search(query) \u{2192} Get index with IDs (~50-100 tokens/result)
-2. timeline(from/to) \u{2192} Get context around interesting results  
-3. get_observations([IDs]) \u{2192} Fetch full details ONLY for filtered IDs
+1. search(query) → Get index with IDs (~50-100 tokens/result)
+2. timeline(from/to) → Get context around interesting results  
+3. get_observations([IDs]) → Fetch full details ONLY for filtered IDs
 NEVER fetch full details without filtering first. 10x token savings.";
 
 /// Returns the JSON schema for all MCP tools.

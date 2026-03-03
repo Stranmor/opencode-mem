@@ -67,20 +67,18 @@ pub(crate) fn parse_json_value<T: serde::de::DeserializeOwned>(val: serde_json::
 /// Parse `ObservationType` from a PostgreSQL text column.
 /// Tries JSON deserialization first (handles quoted values), then `FromStr`.
 pub(crate) fn parse_pg_observation_type(s: &str) -> Result<ObservationType, StorageError> {
-    serde_json::from_str(s).or_else(|_| s.parse::<ObservationType>()).map_err(|e| {
-        StorageError::DataCorruption {
-            context: format!("invalid observation_type in DB: {}", s),
-            source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
-        }
+    serde_json::from_str(s).or_else(|_| s.parse::<ObservationType>()).or_else(|e| {
+        tracing::warn!("Invalid observation_type '{}' in DB, defaulting to Discovery. Error: {}", s, e);
+        Ok(ObservationType::Discovery)
     })
 }
 
 /// Parse `NoiseLevel` from an optional PostgreSQL text column.
 pub(crate) fn parse_pg_noise_level(s: Option<&str>) -> Result<NoiseLevel, StorageError> {
     match s {
-        Some(s) => s.parse::<NoiseLevel>().map_err(|e| StorageError::DataCorruption {
-            context: format!("invalid noise_level in DB: {}", s),
-            source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+        Some(s) => s.parse::<NoiseLevel>().or_else(|e| {
+            tracing::warn!("Invalid noise_level '{}' in DB, defaulting to Medium. Error: {}", s, e);
+            Ok(NoiseLevel::Medium)
         }),
         None => Ok(NoiseLevel::Medium),
     }

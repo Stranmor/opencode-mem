@@ -74,8 +74,14 @@ pub async fn update_settings(
         }
         env.retain(|_, v| v != "***REDACTED***");
 
-        let api_key = env.get("ANTIGRAVITY_API_KEY").cloned();
-        let base_url = env.get("ANTIGRAVITY_BASE_URL").cloned();
+        let api_key = env.get("OPENCODE_MEM_API_KEY")
+            .or_else(|| env.get("ANTIGRAVITY_API_KEY"))
+            .or_else(|| env.get("OPENAI_API_KEY"))
+            .cloned();
+        let base_url = env.get("OPENCODE_MEM_API_URL")
+            .or_else(|| env.get("ANTIGRAVITY_BASE_URL"))
+            .or_else(|| env.get("OPENAI_BASE_URL"))
+            .cloned();
         let model = env.get("OPENCODE_MEM_MODEL").cloned();
 
         state.observation_service.update_llm_config(api_key, base_url, model);
