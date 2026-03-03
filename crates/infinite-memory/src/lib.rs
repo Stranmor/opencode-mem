@@ -41,14 +41,15 @@ mod pipeline;
 mod summary_queries;
 
 pub use event_types::{
-    assistant_event, tool_event, user_event, EventType, RawEvent, StoredEvent, Summary,
-    SummaryEntities,
+    EventType, RawEvent, StoredEvent, Summary, SummaryEntities, assistant_event, tool_event,
+    user_event,
 };
 
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 
 use opencode_mem_llm::LlmClient;
+use opencode_mem_storage::CircuitBreaker;
 
 use sqlx::PgPool;
 use std::sync::Arc;
@@ -56,25 +57,52 @@ use std::sync::Arc;
 pub struct InfiniteMemory {
     pool: PgPool,
     llm: Arc<LlmClient>,
+    circuit_breaker: Arc<CircuitBreaker>,
 }
 
 impl InfiniteMemory {
     pub async fn new(pool: sqlx::PgPool, llm: Arc<LlmClient>) -> Result<Self> {
-        migrations::run_migrations(&pool).await?;
+        // Try migrations — if DB is unavailable (lazy pool), log warning and continue
+        match migrations::run_migrations(&pool).await {
+            Ok(()) => tracing::info!("Infinite Memory migrations completed"),
+            Err(e) => tracing::warn!(
+                "Infinite Memory started without migrations (DB may be unavailable): {e}"
+            ),
+        }
 
-        Ok(Self { pool, llm })
+        Ok(Self { pool, llm, circuit_breaker: Arc::new(CircuitBreaker::new()) })
+    }
+
+    /// Access the circuit breaker for health monitoring.
+    #[must_use]
+    pub fn circuit_breaker(&self) -> &CircuitBreaker {
+        &self.circuit_breaker
+    }
+
+    fn record_result<T>(&self, result: &Result<T>) {
+        if result.is_ok() {
+            self.circuit_breaker.record_success();
+        } else {
+            self.circuit_breaker.record_failure();
+        }
     }
 
     pub async fn store_event(&self, event: RawEvent) -> Result<i64> {
-        event_queries::store_event(&self.pool, event).await
+        let result = event_queries::store_event(&self.pool, event).await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn get_recent(&self, limit: i64) -> Result<Vec<StoredEvent>> {
-        event_queries::get_recent(&self.pool, limit).await
+        let result = event_queries::get_recent(&self.pool, limit).await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn get_unsummarized_events(&self, limit: i64) -> Result<Vec<StoredEvent>> {
-        event_queries::get_unsummarized_events(&self.pool, limit).await
+        let result = event_queries::get_unsummarized_events(&self.pool, limit).await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn compress_events(
@@ -90,7 +118,9 @@ impl InfiniteMemory {
         summary: &str,
         entities: Option<&SummaryEntities>,
     ) -> Result<i64> {
-        pipeline::create_5min_summary(&self.pool, events, summary, entities).await
+        let result = pipeline::create_5min_summary(&self.pool, events, summary, entities).await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn run_compression_pipeline(&self) -> Result<u32> {
@@ -98,7 +128,9 @@ impl InfiniteMemory {
     }
 
     pub async fn get_unaggregated_5min_summaries(&self, limit: i64) -> Result<Vec<Summary>> {
-        summary_queries::get_unaggregated_5min_summaries(&self.pool, limit).await
+        let result = summary_queries::get_unaggregated_5min_summaries(&self.pool, limit).await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn create_hour_summary(
@@ -107,11 +139,15 @@ impl InfiniteMemory {
         content: &str,
         entities: Option<&SummaryEntities>,
     ) -> Result<i64> {
-        pipeline::create_hour_summary(&self.pool, summaries, content, entities).await
+        let result = pipeline::create_hour_summary(&self.pool, summaries, content, entities).await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn get_unaggregated_hour_summaries(&self, limit: i64) -> Result<Vec<Summary>> {
-        summary_queries::get_unaggregated_hour_summaries(&self.pool, limit).await
+        let result = summary_queries::get_unaggregated_hour_summaries(&self.pool, limit).await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn create_day_summary(
@@ -120,7 +156,9 @@ impl InfiniteMemory {
         content: &str,
         entities: Option<&SummaryEntities>,
     ) -> Result<i64> {
-        pipeline::create_day_summary(&self.pool, summaries, content, entities).await
+        let result = pipeline::create_day_summary(&self.pool, summaries, content, entities).await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn compress_summaries(&self, summaries: &[Summary]) -> Result<String> {
@@ -132,11 +170,15 @@ impl InfiniteMemory {
     }
 
     pub async fn search(&self, query: &str, limit: i64) -> Result<Vec<StoredEvent>> {
-        event_queries::search(&self.pool, query, limit).await
+        let result = event_queries::search(&self.pool, query, limit).await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn stats(&self) -> Result<serde_json::Value> {
-        event_queries::stats(&self.pool).await
+        let result = event_queries::stats(&self.pool).await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn get_events_by_summary_id(
@@ -144,7 +186,10 @@ impl InfiniteMemory {
         summary_5min_id: i64,
         limit: i64,
     ) -> Result<Vec<StoredEvent>> {
-        event_queries::get_events_by_summary_id(&self.pool, summary_5min_id, limit).await
+        let result =
+            event_queries::get_events_by_summary_id(&self.pool, summary_5min_id, limit).await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn get_events_by_time_range(
@@ -154,19 +199,29 @@ impl InfiniteMemory {
         session_id: Option<&str>,
         limit: i64,
     ) -> Result<Vec<StoredEvent>> {
-        event_queries::get_events_by_time_range(&self.pool, start, end, session_id, limit).await
+        let result =
+            event_queries::get_events_by_time_range(&self.pool, start, end, session_id, limit)
+                .await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn get_summary_5min(&self, id: i64) -> Result<Option<Summary>> {
-        summary_queries::get_summary_5min(&self.pool, id).await
+        let result = summary_queries::get_summary_5min(&self.pool, id).await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn get_summary_hour(&self, id: i64) -> Result<Option<Summary>> {
-        summary_queries::get_summary_hour(&self.pool, id).await
+        let result = summary_queries::get_summary_hour(&self.pool, id).await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn get_summary_day(&self, id: i64) -> Result<Option<Summary>> {
-        summary_queries::get_summary_day(&self.pool, id).await
+        let result = summary_queries::get_summary_day(&self.pool, id).await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn get_5min_summaries_by_hour_id(
@@ -174,7 +229,10 @@ impl InfiniteMemory {
         hour_id: i64,
         limit: i64,
     ) -> Result<Vec<Summary>> {
-        summary_queries::get_5min_summaries_by_hour_id(&self.pool, hour_id, limit).await
+        let result =
+            summary_queries::get_5min_summaries_by_hour_id(&self.pool, hour_id, limit).await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn search_by_entity(
@@ -183,7 +241,9 @@ impl InfiniteMemory {
         value: &str,
         limit: i64,
     ) -> Result<Vec<Summary>> {
-        summary_queries::search_by_entity(&self.pool, entity_type, value, limit).await
+        let result = summary_queries::search_by_entity(&self.pool, entity_type, value, limit).await;
+        self.record_result(&result);
+        result
     }
 
     pub async fn get_hour_summaries_by_day_id(
@@ -191,6 +251,8 @@ impl InfiniteMemory {
         day_id: i64,
         limit: i64,
     ) -> Result<Vec<Summary>> {
-        summary_queries::get_hour_summaries_by_day_id(&self.pool, day_id, limit).await
+        let result = summary_queries::get_hour_summaries_by_day_id(&self.pool, day_id, limit).await;
+        self.record_result(&result);
+        result
     }
 }

@@ -55,6 +55,9 @@ impl ServiceError {
         match self {
             Self::Storage(e) => e.is_transient(),
             Self::Llm(e) => e.is_transient(),
+            Self::Search(e) => {
+                e.downcast_ref::<StorageError>().is_some_and(StorageError::is_transient)
+            },
             _ => false,
         }
     }
@@ -64,7 +67,7 @@ impl ServiceError {
         matches!(self, Self::Storage(StorageError::NotFound { .. }))
     }
 
-    /// Whether this error represents a duplicate/conflict.
+    /// Whether this error is a unique-constraint violation.
     pub fn is_duplicate(&self) -> bool {
         matches!(self, Self::Storage(e) if e.is_duplicate())
     }
@@ -72,10 +75,10 @@ impl ServiceError {
     /// Whether the database is completely unavailable (circuit breaker open).
     pub fn is_db_unavailable(&self) -> bool {
         match self {
-            Self::Storage(e) => e.is_unavailable(),
-            Self::Search(e) => {
-                e.downcast_ref::<StorageError>().is_some_and(StorageError::is_unavailable)
-            },
+            Self::Storage(e) => e.is_unavailable() || e.is_transient(),
+            Self::Search(e) => e
+                .downcast_ref::<StorageError>()
+                .is_some_and(|se| se.is_unavailable() || se.is_transient()),
             _ => false,
         }
     }

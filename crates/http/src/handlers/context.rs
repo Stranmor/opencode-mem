@@ -1,9 +1,9 @@
 use crate::api_error::ApiError;
 use axum::{
+    Json,
     extract::{Query, State},
     http::StatusCode,
     response::sse::{Event, Sse},
-    Json,
 };
 use futures_util::stream::Stream;
 use std::convert::Infallible;
@@ -13,11 +13,11 @@ use tokio::sync::broadcast::error::RecvError;
 use opencode_mem_core::{Observation, SearchResult};
 use opencode_mem_service::StorageStats;
 
+use crate::AppState;
 use crate::api_types::{
     ContextPreview, ContextPreviewQuery, ContextQuery, SearchHelpResponse, SearchQuery,
     TimelineResult, UnifiedTimelineQuery,
 };
-use crate::AppState;
 
 use super::api_docs::get_search_help;
 use super::search::unified_timeline;

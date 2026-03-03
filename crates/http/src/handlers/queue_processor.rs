@@ -1,9 +1,9 @@
 use crate::api_error::ApiError;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use opencode_mem_core::{ProjectFilter, ToolCall};
-use opencode_mem_service::{default_visibility_timeout_secs, PendingMessage};
+use opencode_mem_service::{PendingMessage, default_visibility_timeout_secs};
 
 use crate::AppState;
 
@@ -117,16 +117,16 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
 
         let mut spawned = 0;
         let mut unspawned = Vec::new();
-        
+
         for msg in messages {
             let permit = match Arc::clone(&state.semaphore).try_acquire_owned() {
                 Ok(p) => p,
                 Err(_) => {
                     unspawned.push(msg);
                     continue;
-                }
+                },
             };
-            
+
             spawned += 1;
             let state_clone = Arc::clone(&state);
             tokio::spawn(async move {
@@ -135,36 +135,32 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
                 match result {
                     Ok(()) => {
                         if let Err(e) = state_clone.queue_service.complete_message(msg.id).await {
-                            tracing::error!(
-                                "Background: complete message {} error: {}",
-                                msg.id,
-                                e
-                            );
+                            tracing::error!("Background: complete message {} error: {}", msg.id, e);
                         }
                     },
                     Err(e) => {
                         tracing::error!("Background: process message {} failed: {}", msg.id, e);
-                        if let Err(e) = state_clone.queue_service.fail_message(msg.id, true).await
-                        {
+                        if let Err(e) = state_clone.queue_service.fail_message(msg.id, true).await {
                             tracing::error!("Background: fail message {} error: {}", msg.id, e);
                         }
                     },
                 }
             });
         }
-        
+
         if !unspawned.is_empty() {
             let unspawned_ids: Vec<i64> = unspawned.iter().map(|m| m.id).collect();
             if let Err(e) = state.queue_service.release_messages(&unspawned_ids).await {
-                tracing::error!("Background processor: failed to release unspawned messages: {}", e);
+                tracing::error!(
+                    "Background processor: failed to release unspawned messages: {}",
+                    e
+                );
             }
         }
-        
+
         if spawned > 0 {
             tracing::info!("Background processor: spawned {} message tasks", spawned);
         }
-
-        
     }
 }
 
@@ -205,7 +201,9 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
                             if five_min > 0 || hour > 0 || day > 0 {
                                 tracing::info!(
                                     "Cron: created {} 5min, {} hour, {} day summaries",
-                                    five_min, hour, day,
+                                    five_min,
+                                    hour,
+                                    day,
                                 );
                             }
                         },

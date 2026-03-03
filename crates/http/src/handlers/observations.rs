@@ -1,21 +1,21 @@
 use crate::api_error::ApiError;
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    sanitize_input, Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall, UserPrompt,
+    Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall, UserPrompt, sanitize_input,
 };
 use opencode_mem_service::PaginatedResult;
 
+use crate::AppState;
 use crate::api_types::{
     BatchRequest, ObserveBatchResponse, ObserveResponse, PaginationQuery, SaveMemoryRequest,
     SearchQuery, TimelineQuery,
 };
-use crate::AppState;
 
 pub async fn observe(
     State(state): State<Arc<AppState>>,

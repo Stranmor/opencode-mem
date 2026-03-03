@@ -1,16 +1,17 @@
 use anyhow::Result;
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_http::{
-    create_router, run_startup_recovery, start_background_processor, AppState, Settings,
+    AppState, Settings, create_router, run_startup_recovery, start_background_processor,
 };
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_service::{
     KnowledgeService, ObservationService, QueueService, SearchService, SessionService,
 };
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock, Semaphore};
+use std::sync::atomic::AtomicBool;
+use std::time::Instant;
+use tokio::sync::{RwLock, Semaphore, broadcast};
 
 use crate::{get_api_key, get_base_url};
 
@@ -25,7 +26,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     let infinite_mem = if let Ok(url) = std::env::var("INFINITE_MEMORY_URL")
         .or_else(|_| std::env::var("OPENCODE_MEM_INFINITE_MEMORY"))
     {
-        let pool = sqlx::postgres::PgPoolOptions::new().max_connections(5).connect(&url).await;
+        let pool = sqlx::postgres::PgPoolOptions::new().max_connections(5).connect_lazy(&url);
 
         match pool {
             Ok(p) => match InfiniteMemory::new(p, llm.clone()).await {
@@ -34,12 +35,12 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
                     Some(Arc::new(mem))
                 },
                 Err(e) => {
-                    tracing::warn!("Failed to initialize infinite memory migrations: {}", e);
+                    tracing::warn!("Failed to initialize infinite memory: {}", e);
                     None
                 },
             },
             Err(e) => {
-                tracing::warn!("Failed to connect to infinite memory database: {}", e);
+                tracing::warn!("Failed to create infinite memory pool: {}", e);
                 None
             },
         }
@@ -96,6 +97,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         search_service,
         queue_service,
         shutdown_tx,
+        started_at: Instant::now(),
     });
 
     if let Err(e) = run_startup_recovery(&state).await {

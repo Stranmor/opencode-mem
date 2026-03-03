@@ -1,9 +1,9 @@
 use super::is_localhost;
 use crate::api_error::ApiError;
 use axum::{
+    Json,
     extract::{ConnectInfo, Query, State},
     http::StatusCode,
-    Json,
 };
 use std::fs;
 use std::net::SocketAddr;
@@ -14,12 +14,12 @@ use std::time::Duration;
 use tokio::task::spawn_blocking;
 use tokio::time::sleep;
 
+use crate::AppState;
 use crate::api_types::{
     AdminResponse, BranchStatusResponse, InstructionsQuery, InstructionsResponse,
     McpStatusResponse, SettingsResponse, SwitchBranchRequest, SwitchBranchResponse,
     ToggleMcpRequest, UpdateBranchResponse, UpdateSettingsRequest,
 };
-use crate::AppState;
 
 pub async fn get_settings(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
@@ -74,11 +74,13 @@ pub async fn update_settings(
         }
         env.retain(|_, v| v != "***REDACTED***");
 
-        let api_key = env.get("OPENCODE_MEM_API_KEY")
+        let api_key = env
+            .get("OPENCODE_MEM_API_KEY")
             .or_else(|| env.get("ANTIGRAVITY_API_KEY"))
             .or_else(|| env.get("OPENAI_API_KEY"))
             .cloned();
-        let base_url = env.get("OPENCODE_MEM_API_URL")
+        let base_url = env
+            .get("OPENCODE_MEM_API_URL")
             .or_else(|| env.get("ANTIGRAVITY_BASE_URL"))
             .or_else(|| env.get("OPENAI_BASE_URL"))
             .cloned();

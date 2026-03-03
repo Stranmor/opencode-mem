@@ -58,11 +58,54 @@ impl PgStorage {
             .acquire_timeout(std::time::Duration::from_secs(PG_POOL_ACQUIRE_TIMEOUT_SECS))
             .idle_timeout(std::time::Duration::from_secs(PG_POOL_IDLE_TIMEOUT_SECS))
             .test_before_acquire(true)
-            .connect(database_url)
-            .await?;
-        run_pg_migrations(&pool).await.map_err(|e| StorageError::Migration(e.to_string()))?;
-        tracing::info!("PgStorage initialized");
+            .connect_lazy(database_url)?;
+
+        // Try to run migrations — if DB is unavailable, log warning and continue.
+        // Migrations will run on next successful connection via try_run_migrations().
+        match run_pg_migrations(&pool).await {
+            Ok(()) => tracing::info!("PgStorage initialized with migrations"),
+            Err(e) => tracing::warn!(
+                "PgStorage initialized without migrations (DB may be unavailable): {e}"
+            ),
+        }
+
         Ok(Self { pool, circuit_breaker: Arc::new(CircuitBreaker::new()) })
+    }
+
+    /// Attempt to run pending migrations. Safe to call repeatedly — idempotent.
+    /// Returns `Ok(true)` if migrations ran, `Ok(false)` if DB unavailable.
+    pub async fn try_run_migrations(&self) -> Result<bool, StorageError> {
+        match run_pg_migrations(&self.pool).await {
+            Ok(()) => {
+                tracing::info!("Deferred migrations completed successfully");
+                Ok(true)
+            },
+            Err(e) => {
+                tracing::debug!("Deferred migration attempt failed (DB may still be down): {e}");
+                Ok(false)
+            },
+        }
+    }
+
+    #[must_use]
+    pub fn new_degraded(database_url: &str) -> Self {
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(std::time::Duration::from_millis(1))
+            .connect_lazy(database_url)
+            .unwrap_or_else(|_| {
+                PgPoolOptions::new()
+                    .max_connections(1)
+                    .acquire_timeout(std::time::Duration::from_millis(1))
+                    .connect_lazy("postgres://localhost/nonexistent")
+                    .expect("lazy pool creation should not fail")
+            });
+        let cb = CircuitBreaker::new();
+        // Trip the circuit breaker so all operations return Unavailable
+        cb.record_failure();
+        cb.record_failure();
+        cb.record_failure();
+        Self { pool, circuit_breaker: Arc::new(cb) }
     }
 
     pub(crate) fn check_availability(&self) -> Result<(), StorageError> {

@@ -35,7 +35,7 @@ pub(crate) async fn run() -> Result<()> {
     let infinite_mem = if let Ok(url) = std::env::var("INFINITE_MEMORY_URL")
         .or_else(|_| std::env::var("OPENCODE_MEM_INFINITE_MEMORY"))
     {
-        let pool = sqlx::postgres::PgPoolOptions::new().max_connections(5).connect(&url).await;
+        let pool = sqlx::postgres::PgPoolOptions::new().max_connections(5).connect_lazy(&url);
 
         match pool {
             Ok(p) => match InfiniteMemory::new(p, llm.clone()).await {
@@ -44,12 +44,12 @@ pub(crate) async fn run() -> Result<()> {
                     Some(Arc::new(mem))
                 },
                 Err(e) => {
-                    eprintln!("Warning: Failed to connect to infinite memory: {e}");
+                    eprintln!("Warning: Failed to initialize infinite memory: {e}");
                     None
                 },
             },
             Err(e) => {
-                eprintln!("Warning: Failed to connect to infinite memory database: {}", e);
+                eprintln!("Warning: Failed to create infinite memory pool: {e}");
                 None
             },
         }

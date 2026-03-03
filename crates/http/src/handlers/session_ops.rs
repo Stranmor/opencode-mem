@@ -2,10 +2,10 @@ use crate::api_error::ApiError;
 use std::sync::Arc;
 
 use axum::http::StatusCode;
-use opencode_mem_core::{sanitize_input, Session, SessionStatus, ToolCall};
+use opencode_mem_core::{Session, SessionStatus, ToolCall, sanitize_input};
 
-use crate::api_types::{SessionInitResponse, SessionObservationsResponse};
 use crate::AppState;
+use crate::api_types::{SessionInitResponse, SessionObservationsResponse};
 
 /// Create and persist a new session, returning the HTTP response.
 ///

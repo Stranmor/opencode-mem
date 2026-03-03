@@ -28,7 +28,7 @@
 #![allow(clippy::exhaustive_structs, reason = "MCP types are stable")]
 #![allow(clippy::single_call_fn, reason = "Handler functions improve readability")]
 
-mod handlers;
+pub mod handlers;
 mod tools;
 
 use opencode_mem_infinite::InfiniteMemory;
@@ -41,7 +41,7 @@ use tokio::runtime::Handle;
 
 pub use tools::McpTool;
 
-use handlers::handle_tool_call;
+pub use handlers::handle_tool_call;
 use tools::get_tools_json;
 
 #[derive(Deserialize)]
@@ -64,7 +64,7 @@ pub struct McpResponse {
     pub error: Option<McpError>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct McpError {
     pub code: i32,
     pub message: String,

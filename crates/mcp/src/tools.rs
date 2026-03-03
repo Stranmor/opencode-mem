@@ -30,11 +30,24 @@ impl McpTool {
     #[must_use]
     pub fn all_tool_names() -> &'static [&'static str] {
         &[
-            "__IMPORTANT", "search", "timeline", "get_observations", "memory_get",
-            "memory_recent", "memory_hybrid_search", "memory_semantic_search", "save_memory",
-            "knowledge_search", "knowledge_save", "knowledge_get", "knowledge_list",
-            "knowledge_delete", "infinite_expand", "infinite_time_range", "infinite_drill_hour",
-            "infinite_drill_minute"
+            "__IMPORTANT",
+            "search",
+            "timeline",
+            "get_observations",
+            "memory_get",
+            "memory_recent",
+            "memory_hybrid_search",
+            "memory_semantic_search",
+            "save_memory",
+            "knowledge_search",
+            "knowledge_save",
+            "knowledge_get",
+            "knowledge_list",
+            "knowledge_delete",
+            "infinite_expand",
+            "infinite_time_range",
+            "infinite_drill_hour",
+            "infinite_drill_minute",
         ]
     }
 

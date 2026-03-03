@@ -33,20 +33,22 @@ mod response_types;
 mod viewer;
 
 use axum::{
+    Json, Router,
+    extract::State,
     http::StatusCode,
     routing::{delete, get, post, put},
-    Json, Router,
 };
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use tokio::sync::{broadcast, RwLock, Semaphore};
+use std::sync::atomic::AtomicBool;
+use std::time::Instant;
+use tokio::sync::{RwLock, Semaphore, broadcast};
 
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_service::{
     KnowledgeService, ObservationService, QueueService, SearchService, SessionService,
 };
 
-pub use api_types::{ReadinessResponse, Settings, VersionResponse};
+pub use api_types::{HealthResponse, ReadinessResponse, Settings, VersionResponse};
 pub use handlers::queue_processor::{run_startup_recovery, start_background_processor};
 
 /// Shared application state for all HTTP handlers.
@@ -75,6 +77,8 @@ pub struct AppState {
     /// Service for pending message queue operations
     pub queue_service: Arc<QueueService>,
     pub shutdown_tx: tokio::sync::broadcast::Sender<bool>,
+    /// Timestamp when the server started (for uptime calculation)
+    pub started_at: Instant,
 }
 
 pub fn create_router(state: Arc<AppState>) -> Router {
@@ -172,8 +176,19 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .with_state(state)
 }
 
-async fn health() -> &'static str {
-    "ok"
+async fn health(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
+    let cb = state.search_service.circuit_breaker();
+    let cb_state = cb.state_name();
+    let is_open = cb.is_open();
+    let seconds_until_probe = if is_open { Some(cb.seconds_until_probe()) } else { None };
+    let uptime_seconds = state.started_at.elapsed().as_secs();
+
+    Json(HealthResponse {
+        status: if is_open { "degraded" } else { "ok" },
+        circuit_breaker: cb_state,
+        seconds_until_probe,
+        uptime_seconds,
+    })
 }
 
 async fn readiness() -> (StatusCode, Json<ReadinessResponse>) {

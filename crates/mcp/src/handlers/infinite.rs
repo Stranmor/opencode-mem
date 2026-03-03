@@ -5,18 +5,14 @@ use tokio::runtime::Handle;
 use super::{mcp_err, mcp_ok};
 use crate::McpResponse;
 
-fn is_connection_error(err: &dyn std::fmt::Display) -> bool {
-    let msg = err.to_string();
-    msg.contains("connection")
-        || msg.contains("timed out")
-        || msg.contains("Connection refused")
-        || msg.contains("pool timed out")
-        || msg.contains("Io(")
-        || msg.contains("UnexpectedEof")
-}
-
-fn degrade_infinite_read(err: impl std::fmt::Display, id: serde_json::Value) -> McpResponse {
-    if is_connection_error(&err) {
+fn degrade_infinite_read(
+    err: impl std::fmt::Display,
+    mem: &InfiniteMemory,
+    id: serde_json::Value,
+) -> McpResponse {
+    let cb = mem.circuit_breaker();
+    cb.record_failure();
+    if cb.is_open() {
         tracing::warn!(error = %err, "Infinite memory: database unavailable, returning empty results");
         McpResponse {
             jsonrpc: "2.0".to_owned(),
@@ -57,7 +53,7 @@ pub(super) async fn handle_infinite_expand(
                     result: Some(mcp_ok(&events)),
                     error: None,
                 },
-                Err(e) => degrade_infinite_read(e, id),
+                Err(e) => degrade_infinite_read(e, mem, id),
             }
         },
         None => McpResponse {
@@ -114,7 +110,7 @@ pub(super) async fn handle_infinite_time_range(
                     result: Some(mcp_ok(&events)),
                     error: None,
                 },
-                Err(e) => degrade_infinite_read(e, id),
+                Err(e) => degrade_infinite_read(e, mem, id),
             }
         },
         None => McpResponse {
@@ -154,7 +150,7 @@ pub(super) async fn handle_infinite_drill_hour(
                     result: Some(mcp_ok(&summaries)),
                     error: None,
                 },
-                Err(e) => degrade_infinite_read(e, id),
+                Err(e) => degrade_infinite_read(e, mem, id),
             }
         },
         None => McpResponse {
@@ -194,7 +190,7 @@ pub(super) async fn handle_infinite_drill_minute(
                     result: Some(mcp_ok(&summaries)),
                     error: None,
                 },
-                Err(e) => degrade_infinite_read(e, id),
+                Err(e) => degrade_infinite_read(e, mem, id),
             }
         },
         None => McpResponse {
