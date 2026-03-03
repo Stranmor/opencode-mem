@@ -78,7 +78,7 @@ crates/
 ## Installation
 
 You can install `opencode-mem-cli` globally using Cargo, or build it from
-source.
+source. To install via cargo globally run `cargo install --path crates/cli`
 
 **Build from source**
 
@@ -138,7 +138,7 @@ Add the following snippet to your `opencode.json` configuration file:
 
 ## MCP Tools Reference
 
-The server exposes 18 powerful MCP tools.
+The server exposes 17 powerful MCP tools.
 
 | Tool | Description |
 |---|---|
@@ -209,6 +209,9 @@ Configure the server via environment variables.
 ## Development
 
 ```bash
+# Install sqlx-cli
+cargo install sqlx-cli --no-default-features --features rustls,postgres
+
 # Test DB setup
 export DATABASE_URL="postgres://user:pass@localhost:5432/test"
 sqlx database create
