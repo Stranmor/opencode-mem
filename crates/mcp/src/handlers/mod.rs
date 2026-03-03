@@ -3,7 +3,9 @@ mod knowledge;
 mod memory;
 
 use opencode_mem_infinite::InfiniteMemory;
-use opencode_mem_service::{KnowledgeService, ObservationService, SearchService, SessionService};
+use opencode_mem_service::{
+    KnowledgeService, ObservationService, SearchService, ServiceError, SessionService,
+};
 use serde::Serialize;
 use serde_json::json;
 use std::fmt::Display;
@@ -41,6 +43,40 @@ pub(crate) fn mcp_text(text: &str) -> serde_json::Value {
 
 pub(crate) fn mcp_err(msg: impl Display) -> serde_json::Value {
     json!({ "content": [{ "type": "text", "text": format!("Error: {}", msg) }], "isError": true })
+}
+
+/// Handle a service error for **read** operations with graceful degradation.
+///
+/// When the database is unavailable (circuit breaker open or connection failure),
+/// returns an empty result set instead of an error — preventing IDE injection errors.
+pub(crate) fn degrade_read_err<T: Serialize + Default>(
+    err: ServiceError,
+    cb: &opencode_mem_storage::CircuitBreaker,
+) -> serde_json::Value {
+    if err.is_db_unavailable() || err.is_transient() {
+        cb.record_failure();
+        tracing::warn!(error = %err, "MCP read: database unavailable, returning empty results");
+        mcp_ok(&T::default())
+    } else {
+        mcp_err(err)
+    }
+}
+
+/// Handle a service error for **write** operations with graceful degradation.
+///
+/// When the database is unavailable, silently skips the write and returns
+/// a non-error text response instead of failing.
+pub(crate) fn degrade_write_err(
+    err: ServiceError,
+    cb: &opencode_mem_storage::CircuitBreaker,
+) -> serde_json::Value {
+    if err.is_db_unavailable() || err.is_transient() {
+        cb.record_failure();
+        tracing::warn!(error = %err, "MCP write: database unavailable, skipping write");
+        mcp_text("Memory server is in degraded mode (database unavailable). Write skipped.")
+    } else {
+        mcp_err(err)
+    }
 }
 
 #[expect(clippy::too_many_arguments, reason = "MCP handler needs all service references")]
@@ -92,22 +128,30 @@ pub async fn handle_tool_call(
         McpTool::Important => {
             json!({ "content": [{ "type": "text", "text": WORKFLOW_DOCS }] })
         },
-        McpTool::Search => memory::handle_search(search_service, &args, parse_limit(&args, 50)).await,
-        McpTool::Timeline => memory::handle_timeline(search_service, &args, parse_limit(&args, 50)).await,
+        McpTool::Search => memory::handle_search(search_service, &args, parse_limit(&args)).await,
+        McpTool::Timeline => {
+            memory::handle_timeline(search_service, &args, parse_limit(&args)).await
+        },
         McpTool::GetObservations => memory::handle_get_observations(search_service, &args).await,
         McpTool::MemoryGet => memory::handle_memory_get(search_service, &args).await,
-        McpTool::MemoryRecent => memory::handle_memory_recent(search_service, &args, parse_limit(&args, 10)).await,
-        McpTool::MemoryHybridSearch => memory::handle_hybrid_search(search_service, &args, parse_limit(&args, 50)).await,
+        McpTool::MemoryRecent => {
+            memory::handle_memory_recent(search_service, &args, parse_limit(&args)).await
+        },
+        McpTool::MemoryHybridSearch => {
+            memory::handle_hybrid_search(search_service, &args, parse_limit(&args)).await
+        },
         McpTool::MemorySemanticSearch => {
-            memory::handle_semantic_search(search_service, &args, parse_limit(&args, 50)).await
+            memory::handle_semantic_search(search_service, &args, parse_limit(&args)).await
         },
         McpTool::SaveMemory => memory::handle_save_memory(observation_service, &args).await,
         McpTool::KnowledgeSearch => {
-            knowledge::handle_knowledge_search(knowledge_service, &args, parse_limit(&args, 10)).await
+            knowledge::handle_knowledge_search(knowledge_service, &args, parse_limit(&args)).await
         },
         McpTool::KnowledgeSave => knowledge::handle_knowledge_save(knowledge_service, &args).await,
         McpTool::KnowledgeGet => knowledge::handle_knowledge_get(knowledge_service, &args).await,
-        McpTool::KnowledgeList => knowledge::handle_knowledge_list(knowledge_service, &args, parse_limit(&args, 10)).await,
+        McpTool::KnowledgeList => {
+            knowledge::handle_knowledge_list(knowledge_service, &args, parse_limit(&args)).await
+        },
         McpTool::KnowledgeDelete => {
             knowledge::handle_knowledge_delete(knowledge_service, &args).await
         },

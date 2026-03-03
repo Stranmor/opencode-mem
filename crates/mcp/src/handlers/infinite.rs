@@ -5,6 +5,30 @@ use tokio::runtime::Handle;
 use super::{mcp_err, mcp_ok};
 use crate::McpResponse;
 
+fn is_connection_error(err: &dyn std::fmt::Display) -> bool {
+    let msg = err.to_string();
+    msg.contains("connection")
+        || msg.contains("timed out")
+        || msg.contains("Connection refused")
+        || msg.contains("pool timed out")
+        || msg.contains("Io(")
+        || msg.contains("UnexpectedEof")
+}
+
+fn degrade_infinite_read(err: impl std::fmt::Display, id: serde_json::Value) -> McpResponse {
+    if is_connection_error(&err) {
+        tracing::warn!(error = %err, "Infinite memory: database unavailable, returning empty results");
+        McpResponse {
+            jsonrpc: "2.0".to_owned(),
+            id,
+            result: Some(mcp_ok(&Vec::<serde_json::Value>::new())),
+            error: None,
+        }
+    } else {
+        McpResponse { jsonrpc: "2.0".to_owned(), id, result: Some(mcp_err(err)), error: None }
+    }
+}
+
 pub(super) async fn handle_infinite_expand(
     infinite_mem: Option<&InfiniteMemory>,
     _handle: &Handle,
@@ -33,12 +57,7 @@ pub(super) async fn handle_infinite_expand(
                     result: Some(mcp_ok(&events)),
                     error: None,
                 },
-                Err(e) => McpResponse {
-                    jsonrpc: "2.0".to_owned(),
-                    id,
-                    result: Some(mcp_err(e)),
-                    error: None,
-                },
+                Err(e) => degrade_infinite_read(e, id),
             }
         },
         None => McpResponse {
@@ -95,12 +114,7 @@ pub(super) async fn handle_infinite_time_range(
                     result: Some(mcp_ok(&events)),
                     error: None,
                 },
-                Err(e) => McpResponse {
-                    jsonrpc: "2.0".to_owned(),
-                    id,
-                    result: Some(mcp_err(e)),
-                    error: None,
-                },
+                Err(e) => degrade_infinite_read(e, id),
             }
         },
         None => McpResponse {
@@ -140,12 +154,7 @@ pub(super) async fn handle_infinite_drill_hour(
                     result: Some(mcp_ok(&summaries)),
                     error: None,
                 },
-                Err(e) => McpResponse {
-                    jsonrpc: "2.0".to_owned(),
-                    id,
-                    result: Some(mcp_err(e)),
-                    error: None,
-                },
+                Err(e) => degrade_infinite_read(e, id),
             }
         },
         None => McpResponse {
@@ -185,12 +194,7 @@ pub(super) async fn handle_infinite_drill_minute(
                     result: Some(mcp_ok(&summaries)),
                     error: None,
                 },
-                Err(e) => McpResponse {
-                    jsonrpc: "2.0".to_owned(),
-                    id,
-                    result: Some(mcp_err(e)),
-                    error: None,
-                },
+                Err(e) => degrade_infinite_read(e, id),
             }
         },
         None => McpResponse {

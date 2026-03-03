@@ -1,45 +1,59 @@
 use opencode_mem_core::MAX_BATCH_IDS;
 use opencode_mem_service::SearchService;
 
-use super::{mcp_err, mcp_ok, mcp_text, parse_limit};
+use super::{degrade_read_err, degrade_write_err, mcp_err, mcp_ok, mcp_text};
 
 pub(super) async fn handle_search(
     search_service: &SearchService,
     args: &serde_json::Value,
+    limit: usize,
 ) -> serde_json::Value {
     let query = args.get("query").and_then(|q| q.as_str()).filter(|s| !s.is_empty());
-    let limit = parse_limit(args);
+
     let project = args.get("project").and_then(|p| p.as_str());
     let obs_type = args.get("type").and_then(|t| t.as_str());
     let from = args.get("from").and_then(|f| f.as_str());
     let to = args.get("to").and_then(|t| t.as_str());
 
+    let cb = search_service.circuit_breaker();
+
     // Use semantic search when no filters are active and query is present
     if project.is_none() && obs_type.is_none() && from.is_none() && to.is_none() {
         if let Some(q) = query {
             return match search_service.hybrid_search(q, limit).await {
-                Ok(results) => mcp_ok(&results),
-                Err(e) => mcp_err(e),
+                Ok(results) => {
+                    cb.record_success();
+                    mcp_ok(&results)
+                },
+                Err(e) => degrade_read_err::<Vec<opencode_mem_core::SearchResult>>(e, cb),
             };
         }
     }
 
     match search_service.search_with_filters(query, project, obs_type, from, to, limit).await {
-        Ok(results) => mcp_ok(&results),
-        Err(e) => mcp_err(e),
+        Ok(results) => {
+            cb.record_success();
+            mcp_ok(&results)
+        },
+        Err(e) => degrade_read_err::<Vec<opencode_mem_core::SearchResult>>(e, cb),
     }
 }
 
 pub(super) async fn handle_timeline(
     search_service: &SearchService,
     args: &serde_json::Value,
+    limit: usize,
 ) -> serde_json::Value {
     let from = args.get("from").and_then(|f| f.as_str());
     let to = args.get("to").and_then(|t| t.as_str());
-    let limit = parse_limit(args);
+    let cb = search_service.circuit_breaker();
+
     match search_service.get_timeline(from, to, limit).await {
-        Ok(results) => mcp_ok(&results),
-        Err(e) => mcp_err(e),
+        Ok(results) => {
+            cb.record_success();
+            mcp_ok(&results)
+        },
+        Err(e) => degrade_read_err::<Vec<opencode_mem_core::SearchResult>>(e, cb),
     }
 }
 
@@ -53,14 +67,18 @@ pub(super) async fn handle_get_observations(
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(ToOwned::to_owned)).collect())
         .unwrap_or_default();
     if ids.is_empty() {
-        mcp_err("ids array is required and must not be empty")
-    } else if ids.len() > MAX_BATCH_IDS {
-        mcp_err(format!("ids array exceeds maximum of {MAX_BATCH_IDS} items"))
-    } else {
-        match search_service.get_observations_by_ids(&ids).await {
-            Ok(results) => mcp_ok(&results),
-            Err(e) => mcp_err(e),
-        }
+        return mcp_err("ids array is required and must not be empty");
+    }
+    if ids.len() > MAX_BATCH_IDS {
+        return mcp_err(format!("ids array exceeds maximum of {MAX_BATCH_IDS} items"));
+    }
+    let cb = search_service.circuit_breaker();
+    match search_service.get_observations_by_ids(&ids).await {
+        Ok(results) => {
+            cb.record_success();
+            mcp_ok(&results)
+        },
+        Err(e) => degrade_read_err::<Vec<opencode_mem_core::Observation>>(e, cb),
     }
 }
 
@@ -71,50 +89,73 @@ pub(super) async fn handle_memory_get(
     let Some(id_str) = args.get("id").and_then(|i| i.as_str()).filter(|s| !s.is_empty()) else {
         return mcp_err("'id' parameter is required and must not be empty");
     };
+    let cb = search_service.circuit_breaker();
     match search_service.get_observation_by_id(id_str).await {
-        Ok(Some(obs)) => mcp_ok(&obs),
-        Ok(None) => mcp_text(&format!("Observation not found: {id_str}")),
+        Ok(Some(obs)) => {
+            cb.record_success();
+            mcp_ok(&obs)
+        },
+        Ok(None) => {
+            cb.record_success();
+            mcp_text(&format!("Observation not found: {id_str}"))
+        },
+        Err(e) if e.is_db_unavailable() || e.is_transient() => {
+            cb.record_failure();
+            tracing::warn!(error = %e, "MCP read: database unavailable, returning not found");
+            mcp_text(&format!("Observation not found: {id_str}"))
+        },
         Err(e) => mcp_err(e),
     }
 }
 
 pub(super) async fn handle_memory_recent(
     search_service: &SearchService,
-    args: &serde_json::Value,
+    _args: &serde_json::Value,
+    limit: usize,
 ) -> serde_json::Value {
-    let limit = parse_limit(args);
+    let cb = search_service.circuit_breaker();
     match search_service.get_recent_observations(limit).await {
-        Ok(results) => mcp_ok(&results),
-        Err(e) => mcp_err(e),
+        Ok(results) => {
+            cb.record_success();
+            mcp_ok(&results)
+        },
+        Err(e) => degrade_read_err::<Vec<opencode_mem_core::Observation>>(e, cb),
     }
 }
 
 pub(super) async fn handle_hybrid_search(
     search_service: &SearchService,
     args: &serde_json::Value,
+    limit: usize,
 ) -> serde_json::Value {
     let Some(query) = args.get("query").and_then(|q| q.as_str()).filter(|s| !s.is_empty()) else {
         return mcp_err("'query' parameter is required and must not be empty");
     };
-    let limit = parse_limit(args);
+    let cb = search_service.circuit_breaker();
     match search_service.hybrid_search(query, limit).await {
-        Ok(results) => mcp_ok(&results),
-        Err(e) => mcp_err(e),
+        Ok(results) => {
+            cb.record_success();
+            mcp_ok(&results)
+        },
+        Err(e) => degrade_read_err::<Vec<opencode_mem_core::SearchResult>>(e, cb),
     }
 }
 
 pub(super) async fn handle_semantic_search(
     search_service: &SearchService,
     args: &serde_json::Value,
+    limit: usize,
 ) -> serde_json::Value {
     let Some(query) = args.get("query").and_then(|q| q.as_str()).filter(|s| !s.is_empty()) else {
         return mcp_err("'query' parameter is required and must not be empty");
     };
-    let limit = parse_limit(args);
-
+    let cb = search_service.circuit_breaker();
     match search_service.semantic_search_with_fallback(query, limit).await {
-        Ok(results) => mcp_ok(&results),
-        Err(e) => mcp_err(e),
+        Ok(results) => {
+            cb.record_success();
+            mcp_ok(&results)
+        },
+        Err(e) => degrade_read_err::<Vec<opencode_mem_core::SearchResult>>(e, cb),
     }
 }
 
@@ -139,7 +180,7 @@ pub(super) async fn handle_save_memory(
         Ok(opencode_mem_service::SaveMemoryResult::Filtered) => {
             mcp_text("Observation filtered as low-value")
         },
-        Err(e) => mcp_err(e),
+        Err(e) => degrade_write_err(e, observation_service.circuit_breaker()),
     }
 }
 
@@ -149,7 +190,7 @@ pub(super) async fn handle_save_memory(
 mod tests {
     use super::*;
     use opencode_mem_core::{Observation, ObservationType};
-    use opencode_mem_storage::{traits::ObservationStore, StorageBackend};
+    use opencode_mem_storage::{StorageBackend, traits::ObservationStore};
     use serde_json::json;
     use std::sync::Arc;
 
@@ -298,7 +339,7 @@ mod tests {
         let backend = setup_storage().await;
         let search_svc = setup_search_service(backend);
         let args = json!({"query": ""});
-        let result = handle_hybrid_search(&search_svc, &args).await;
+        let result = handle_hybrid_search(&search_svc, &args, 20).await;
         assert_eq!(result["isError"].as_bool(), Some(true));
         assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
     }
@@ -309,7 +350,7 @@ mod tests {
         let backend = setup_storage().await;
         let search_svc = setup_search_service(backend);
         let args = json!({});
-        let result = handle_hybrid_search(&search_svc, &args).await;
+        let result = handle_hybrid_search(&search_svc, &args, 20).await;
         assert_eq!(result["isError"].as_bool(), Some(true));
         assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
     }
@@ -320,7 +361,7 @@ mod tests {
         let backend = setup_storage().await;
         let search_svc = setup_search_service(backend);
         let args = json!({"query": ""});
-        let result = handle_semantic_search(&search_svc, &args).await;
+        let result = handle_semantic_search(&search_svc, &args, 20).await;
         assert_eq!(result["isError"].as_bool(), Some(true));
         assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
     }
@@ -343,7 +384,7 @@ mod tests {
         let backend = setup_storage().await;
         let search_svc = setup_search_service(backend);
         let args = json!({"query": "test", "limit": 5000});
-        let result = handle_search(&search_svc, &args).await;
+        let result = handle_search(&search_svc, &args, 1000).await;
         assert!(result.get("isError").is_none());
     }
 
@@ -364,17 +405,23 @@ mod tests {
 
         let search_svc = setup_search_service(backend);
 
-        let result =
-            handle_search(&search_svc, &json!({"query": "date filter test", "from": "2020-01-01"}))
-                .await;
+        let result = handle_search(
+            &search_svc,
+            &json!({"query": "date filter test", "from": "2020-01-01"}),
+            50,
+        )
+        .await;
         assert!(result.get("isError").is_none());
         let content_text = result["content"][0]["text"].as_str().unwrap();
         let results: Vec<serde_json::Value> = serde_json::from_str(content_text).unwrap();
         assert_eq!(results.len(), 1);
 
-        let result =
-            handle_search(&search_svc, &json!({"query": "date filter test", "to": "2020-01-01"}))
-                .await;
+        let result = handle_search(
+            &search_svc,
+            &json!({"query": "date filter test", "to": "2020-01-01"}),
+            50,
+        )
+        .await;
         assert!(result.get("isError").is_none());
         let content_text = result["content"][0]["text"].as_str().unwrap();
         let results: Vec<serde_json::Value> = serde_json::from_str(content_text).unwrap();
