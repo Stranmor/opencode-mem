@@ -10,3 +10,4 @@ target/
 .env.*
 .env.local
 *.env
+Cargo.lock
