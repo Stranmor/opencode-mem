@@ -22,9 +22,9 @@ pub(crate) async fn hybrid_search(
 
     let rows = sqlx::query(
         "SELECT id, title, subtitle, observation_type, noise_level, keywords,
-                ts_rank_cd(search_vec, to_tsquery('english', $1))::float8 as fts_score
+                ts_rank_cd(search_vec, to_tsquery('simple', $1))::float8 as fts_score
            FROM observations
-           WHERE search_vec @@ to_tsquery('english', $1)
+           WHERE search_vec @@ to_tsquery('simple', $1)
            ORDER BY fts_score DESC
            LIMIT $2",
     )
@@ -150,9 +150,9 @@ pub(crate) async fn hybrid_search_v2_with_filters(
         Some(tsquery) => {
             let fts_sql = format!(
                 "SELECT id, title, subtitle, observation_type, noise_level,
-                        ts_rank_cd(search_vec, to_tsquery('english', ${p}))::float8 as score
+                        ts_rank_cd(search_vec, to_tsquery('simple', ${p}))::float8 as score
                    FROM observations
-                   WHERE search_vec @@ to_tsquery('english', ${p}) {f}
+                   WHERE search_vec @@ to_tsquery('simple', ${p}) {f}
                    ORDER BY score DESC
                    LIMIT ${n}",
                 p = param_idx,

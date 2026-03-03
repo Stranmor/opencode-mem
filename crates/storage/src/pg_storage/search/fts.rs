@@ -14,9 +14,9 @@ pub(crate) async fn search(
     };
     let rows = sqlx::query(
         "SELECT id, title, subtitle, observation_type, noise_level,
-                ts_rank_cd(search_vec, to_tsquery('english', $1))::float8 as score
+                ts_rank_cd(search_vec, to_tsquery('simple', $1))::float8 as score
            FROM observations
-           WHERE search_vec @@ to_tsquery('english', $1)
+           WHERE search_vec @@ to_tsquery('simple', $1)
            ORDER BY score DESC
            LIMIT $2",
     )
@@ -63,10 +63,10 @@ pub(crate) async fn search_with_filters(
 
     if let Some(q) = query {
         if let Some(tsquery) = build_tsquery(q) {
-            let fts_cond = format!("search_vec @@ to_tsquery('english', ${param_idx})");
+            let fts_cond = format!("search_vec @@ to_tsquery('simple', ${param_idx})");
             param_idx += 1;
             let score_expr = format!(
-                "ts_rank_cd(search_vec, to_tsquery('english', ${}))::float8 as score",
+                "ts_rank_cd(search_vec, to_tsquery('simple', ${}))::float8 as score",
                 param_idx - 1
             );
             let extra_where = if conditions.is_empty() {

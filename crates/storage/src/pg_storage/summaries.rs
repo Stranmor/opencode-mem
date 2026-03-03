@@ -179,8 +179,8 @@ impl SummaryStore for PgStorage {
         };
         let rows = sqlx::query(&format!(
             "SELECT {SUMMARY_COLUMNS} FROM session_summaries
-             WHERE search_vec @@ to_tsquery('english', $1)
-             ORDER BY ts_rank_cd(search_vec, to_tsquery('english', $1)) DESC
+             WHERE search_vec @@ to_tsquery('simple', $1)
+             ORDER BY ts_rank_cd(search_vec, to_tsquery('simple', $1)) DESC
              LIMIT $2"
         ))
         .bind(&tsquery)

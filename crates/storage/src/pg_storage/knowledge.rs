@@ -199,9 +199,9 @@ impl KnowledgeStore for PgStorage {
         };
         let rows = sqlx::query(&format!(
             "SELECT {KNOWLEDGE_COLUMNS},
-                    ts_rank_cd(search_vec, to_tsquery('english', $1))::float8 as score
+                    ts_rank_cd(search_vec, to_tsquery('simple', $1))::float8 as score
              FROM global_knowledge
-             WHERE search_vec @@ to_tsquery('english', $1)
+             WHERE search_vec @@ to_tsquery('simple', $1)
              ORDER BY score DESC
              LIMIT $2"
         ))
