@@ -173,3 +173,22 @@ pub fn sanitize_input(text: &str) -> String {
 
 #[cfg(test)]
 mod tests;
+
+/// Recursively sanitizes JSON values, applying string filters to leaves
+/// while preserving the JSON structure (preventing parsing failures on valid JSON).
+pub fn sanitize_json_values(val: &serde_json::Value) -> serde_json::Value {
+    match val {
+        serde_json::Value::String(s) => serde_json::Value::String(sanitize_input(s)),
+        serde_json::Value::Array(arr) => {
+            serde_json::Value::Array(arr.iter().map(sanitize_json_values).collect())
+        },
+        serde_json::Value::Object(obj) => {
+            let mut new_obj = serde_json::Map::new();
+            for (k, v) in obj {
+                new_obj.insert(k.clone(), sanitize_json_values(v));
+            }
+            serde_json::Value::Object(new_obj)
+        },
+        _ => val.clone(),
+    }
+}

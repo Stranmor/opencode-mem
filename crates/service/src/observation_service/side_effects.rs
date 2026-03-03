@@ -58,17 +58,7 @@ impl ObservationService {
     ) -> Result<(), crate::ServiceError> {
         if let Some(ref infinite_mem) = self.infinite_mem {
             let filtered_output = sanitize_input(&tool_call.output);
-            let filtered_input = {
-                let input_str = serde_json::to_string(&tool_call.input).unwrap_or_default();
-                let filtered = sanitize_input(&input_str);
-                serde_json::from_str(&filtered).unwrap_or_else(|e| {
-                    tracing::warn!(
-                        error = %e,
-                        "Privacy/injection filter corrupted JSON input in infinite memory — using Null instead of unfiltered fallback"
-                    );
-                    serde_json::Value::Null
-                })
-            };
+            let filtered_input = opencode_mem_core::sanitize_json_values(&tool_call.input);
 
             let files_modified = observation.map_or_else(Vec::new, |o| o.files_modified.clone());
             let obs_id_for_log =

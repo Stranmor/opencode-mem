@@ -58,8 +58,8 @@ pub(super) async fn handle_infinite_time_range(
 ) -> McpResponse {
     match infinite_mem {
         Some(mem) => {
-            let from = args.get("from").and_then(|f| f.as_str()).unwrap_or("");
-            let to = args.get("to").and_then(|t| t.as_str()).unwrap_or("");
+            let from = args.get("start").and_then(|f| f.as_str()).unwrap_or("");
+            let to = args.get("end").and_then(|t| t.as_str()).unwrap_or("");
             let session_id = args.get("session_id").and_then(|s| s.as_str());
             let limit = args
                 .get("limit")

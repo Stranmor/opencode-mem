@@ -76,10 +76,11 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
 /// Runs until the process receives a shutdown signal (ctrl+c).
 pub async fn start_queue_poller(state: Arc<AppState>) {
     let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+    let mut shutdown_rx = state.shutdown_tx.subscribe();
     loop {
         tokio::select! {
             _ = interval.tick() => {},
-            () = shutdown_signal() => {
+            _ = shutdown_rx.recv() => {
                 tracing::info!("Queue poller: shutting down");
                 return;
             }
@@ -114,12 +115,19 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
             continue;
         }
 
-        let count = messages.len();
+        let mut spawned = 0;
+        let mut unspawned = Vec::new();
+        
         for msg in messages {
-            let permit = match Arc::clone(&state.semaphore).acquire_owned().await {
+            let permit = match Arc::clone(&state.semaphore).try_acquire_owned() {
                 Ok(p) => p,
-                Err(_) => continue,
+                Err(_) => {
+                    unspawned.push(msg);
+                    continue;
+                }
             };
+            
+            spawned += 1;
             let state_clone = Arc::clone(&state);
             tokio::spawn(async move {
                 let _permit = permit;
@@ -144,8 +152,19 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
                 }
             });
         }
+        
+        if !unspawned.is_empty() {
+            let unspawned_ids: Vec<i64> = unspawned.iter().map(|m| m.id).collect();
+            if let Err(e) = state.queue_service.release_messages(&unspawned_ids).await {
+                tracing::error!("Background processor: failed to release unspawned messages: {}", e);
+            }
+        }
+        
+        if spawned > 0 {
+            tracing::info!("Background processor: spawned {} message tasks", spawned);
+        }
 
-        tracing::info!("Background processor: spawned {} message tasks", count);
+        
     }
 }
 
@@ -159,11 +178,12 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
 /// Runs until the process receives a shutdown signal (ctrl+c).
 pub async fn start_cron_scheduler(state: Arc<AppState>) {
     let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+    let mut shutdown_rx = state.shutdown_tx.subscribe();
     let mut loop_count: u64 = 0;
     loop {
         tokio::select! {
             _ = interval.tick() => {},
-            () = shutdown_signal() => {
+            _ = shutdown_rx.recv() => {
                 tracing::info!("Cron scheduler: shutting down");
                 return;
             }
@@ -175,63 +195,76 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
 
         loop_count = loop_count.wrapping_add(1);
 
-        if loop_count.is_multiple_of(60) {
+        if loop_count % 60 == 0 {
             if let Some(ref infinite_mem) = state.infinite_mem {
                 tracing::debug!("Cron: running infinite memory compression...");
                 let mem = Arc::clone(infinite_mem);
-                match tokio::spawn(async move { mem.run_full_compression().await }).await {
-                    Ok(Ok((five_min, hour, day))) => {
-                        if five_min > 0 || hour > 0 || day > 0 {
-                            tracing::info!(
-                                "Cron: created {} 5min, {} hour, {} day summaries",
-                                five_min, hour, day,
-                            );
-                        }
-                    },
-                    Ok(Err(e)) => tracing::warn!("Cron: infinite memory error: {e:?}"),
-                    Err(e) => tracing::warn!("Cron: infinite memory panic: {e:?}"),
-                }
+                tokio::spawn(async move {
+                    match mem.run_full_compression().await {
+                        Ok((five_min, hour, day)) => {
+                            if five_min > 0 || hour > 0 || day > 0 {
+                                tracing::info!(
+                                    "Cron: created {} 5min, {} hour, {} day summaries",
+                                    five_min, hour, day,
+                                );
+                            }
+                        },
+                        Err(e) => tracing::warn!("Cron: infinite memory error: {e:?}"),
+                    }
+                });
             }
         }
 
-        if loop_count.is_multiple_of(180) {
+        if loop_count % 180 == 0 {
             tracing::debug!("Cron: running embedding backfill...");
-            match state.search_service.run_embedding_backfill(100).await {
-                Ok(generated) if generated > 0 => {
-                    tracing::info!("Cron: generated {} embeddings", generated);
-                },
-                Ok(_) => {},
-                Err(e) => tracing::warn!("Cron: embedding backfill failed: {}", e),
-            }
+            let state_clone = Arc::clone(&state);
+            tokio::spawn(async move {
+                match state_clone.search_service.run_embedding_backfill(100).await {
+                    Ok(generated) if generated > 0 => {
+                        tracing::info!("Cron: generated {} embeddings", generated);
+                    },
+                    Ok(_) => {},
+                    Err(e) => tracing::warn!("Cron: embedding backfill failed: {}", e),
+                }
+            });
         }
 
-        if loop_count.is_multiple_of(360) {
-            match state.observation_service.run_dedup_sweep().await {
-                Ok(merged) if merged > 0 => {
-                    tracing::info!(merged, "Cron: dedup sweep completed");
-                },
-                Ok(_) => {},
-                Err(e) => tracing::warn!(error = %e, "Cron: dedup sweep failed"),
-            }
+        if loop_count % 360 == 0 {
+            let state_clone = Arc::clone(&state);
+            tokio::spawn(async move {
+                match state_clone.observation_service.run_dedup_sweep().await {
+                    Ok(merged) if merged > 0 => {
+                        tracing::info!(merged, "Cron: dedup sweep completed");
+                    },
+                    Ok(_) => {},
+                    Err(e) => tracing::warn!(error = %e, "Cron: dedup sweep failed"),
+                }
+            });
         }
 
-        if loop_count.is_multiple_of(720) {
-            if let Err(e) = state.observation_service.cleanup_old_injections().await {
-                tracing::warn!(error = %e, "Cron: injection cleanup failed");
-            }
+        if loop_count % 720 == 0 {
+            let state_clone = Arc::clone(&state);
+            tokio::spawn(async move {
+                if let Err(e) = state_clone.observation_service.cleanup_old_injections().await {
+                    tracing::warn!(error = %e, "Cron: injection cleanup failed");
+                }
+            });
         }
 
-        if loop_count.is_multiple_of(17280) {
+        if loop_count % 17280 == 0 {
             let ttl_secs =
                 opencode_mem_core::env_parse_with_default("OPENCODE_MEM_DLQ_TTL_DAYS", 7_i64)
                     * 86400;
-            match state.queue_service.clear_stale_failed_messages(ttl_secs).await {
-                Ok(deleted) if deleted > 0 => {
-                    tracing::info!(deleted, "Cron: DLQ garbage collection completed");
-                },
-                Ok(_) => {},
-                Err(e) => tracing::warn!(error = %e, "Cron: DLQ garbage collection failed"),
-            }
+            let state_clone = Arc::clone(&state);
+            tokio::spawn(async move {
+                match state_clone.queue_service.clear_stale_failed_messages(ttl_secs).await {
+                    Ok(deleted) if deleted > 0 => {
+                        tracing::info!(deleted, "Cron: DLQ garbage collection completed");
+                    },
+                    Ok(_) => {},
+                    Err(e) => tracing::warn!(error = %e, "Cron: DLQ garbage collection failed"),
+                }
+            });
         }
     }
 }
@@ -251,11 +284,6 @@ pub fn start_background_processor(state: Arc<AppState>) {
     tokio::spawn(async move {
         start_cron_scheduler(state_cron).await;
     });
-}
-
-/// Waits for a shutdown signal (ctrl+c).
-async fn shutdown_signal() {
-    tokio::signal::ctrl_c().await.ok();
 }
 
 /// Releases stale messages back to pending queue on startup.
