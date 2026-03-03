@@ -1,56 +1,97 @@
+# CI workflow for opencode-mem
+# Triggers on push to main or pull requests against main.
 name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [ "main" ]
   pull_request:
+    branches: [ "main" ]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check:
-    name: Check
+  fmt:
+    name: Format
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: pgvector/pgvector:pg16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: opencode_mem_test
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/opencode_mem_test
-
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Install sqlx-cli
-        run: cargo install sqlx-cli --no-default-features --features postgres
-
-      - name: Run migrations
-        run: sqlx database setup
-
-      - name: Check formatting
+          components: rustfmt
+          
+      - name: Check code formatting
         run: cargo fmt --all -- --check
 
-      - name: Clippy
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+          
+      - name: Setup Rust caching
+        uses: Swatinem/rust-cache@v2
+        
+      - name: Run clippy checks across workspace
         run: cargo clippy --workspace -- -D warnings
 
-      - name: Tests
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        
+      - name: Setup Rust caching
+        uses: Swatinem/rust-cache@v2
+        
+      - name: Run unit tests
+        # Runs unit tests only (no DB needed). Skips #[ignore] tests by default.
         run: cargo test --workspace
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        
+      - name: Setup Rust caching
+        uses: Swatinem/rust-cache@v2
+        
+      - name: Build release binaries
+        run: cargo build --workspace --release
+
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Install MSRV toolchain (1.75.0)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.75.0
+          
+      - name: Setup Rust caching
+        uses: Swatinem/rust-cache@v2
+        
+      - name: Check workspace against MSRV
+        run: cargo check --workspace

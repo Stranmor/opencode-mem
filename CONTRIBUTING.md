@@ -1,52 +1,33 @@
 # Contributing to opencode-mem
 
+Rust workspace with 10 crates. PostgreSQL + pgvector backend.
+
 ## Development Setup
+Prerequisites include Rust 1.75+ and a running PostgreSQL instance with the pgvector extension.
+- Clone the repository to your local machine.
+- Run `cargo build --workspace` to compile the project.
 
-1. **Rust toolchain** — install via [rustup](https://rustup.rs/) (stable channel)
-2. **PostgreSQL 16+** with the [pgvector](https://github.com/pgvector/pgvector) extension
-3. Create a database and set `DATABASE_URL`:
-   ```bash
-   createdb opencode_mem_dev
-   psql -d opencode_mem_dev -c 'CREATE EXTENSION IF NOT EXISTS vector'
-   export DATABASE_URL=postgres://localhost/opencode_mem_dev
-   ```
-4. Run migrations:
-   ```bash
-   cargo install sqlx-cli --no-default-features --features postgres
-   sqlx database setup
-   ```
+## Running Tests
+Tests are executed using standard Cargo commands.
+- Run `cargo test --workspace` to execute unit tests.
+- Integration tests require the `DATABASE_URL` environment variable pointing to a PostgreSQL instance with the pgvector extension.
 
-## Building & Testing
-
-```bash
-cargo build --workspace
-cargo test --workspace
-```
-
-Tests marked with `#[ignore]` require a live LLM API connection (Antigravity API) and are skipped by default. Run them explicitly:
-
-```bash
-cargo test --workspace -- --ignored
-```
-
-## Code Style
-
-This project enforces strict linting:
-
-```bash
-cargo fmt --all -- --check
-cargo clippy --workspace -- -D warnings
-```
-
-All warnings are treated as errors. Fix clippy warnings before submitting.
+## Code Quality
+All code must pass strict formatting and linting checks before submission. All warnings are treated as errors.
+- Format code: `cargo fmt --all`
+- Run lints: `cargo clippy --workspace -- -D warnings`
 
 ## Pull Request Process
+- Fork the repository and create a dedicated feature branch.
+- Implement your changes, run tests, and ensure lints pass.
+- Open a Pull Request against the `main` branch.
+- Include a clear description of the changes and the problem they solve.
 
-1. Fork the repository and create a feature branch
-2. Make your changes with clear, atomic commits
-3. Ensure `cargo fmt`, `cargo clippy`, and `cargo test` pass
-4. Open a PR against `main` with a clear description of changes
+## Reporting Issues
+Use GitHub Issues to report bugs or request features. When filing a bug report, include:
+- The output of `rustc --version`
+- Your operating system details
+- Minimal reproduction steps
 
-## Architecture
-
-See [AGENTS.md](AGENTS.md) for project architecture, crate layout, and design decisions.
+## License
+All contributions to this repository are licensed under the MIT License.
