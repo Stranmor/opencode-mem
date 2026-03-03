@@ -21,12 +21,12 @@ Unlike traditional TS/SQLite memory servers, `opencode-mem` is designed for
 unbounded scale and operational safety in autonomous AI coding environments.
 
 | Feature | opencode-mem | Typical TS/SQLite |
-|---------|-------------|-------------------|
+|---------|--------------|-------------------|
 | **Runtime** | Native binary (Rust) | Node.js/Bun |
 | **Database** | PostgreSQL + pgvector | SQLite + ChromaDB |
 | **Search** | Hybrid FTS BM25 + Vector | Separate engines |
 | **Memory model** | Infinite (never deleted) | Fixed window / FIFO |
-| **Crash recovery** | DLQ + visibility timeout | None |
+| **Crash recovery**| DLQ + visibility timeout | None |
 | **Privacy** | Built-in `<private>` filtering | None |
 | **Multilingual** | 100+ languages (BGE-M3) | English-centric |
 
@@ -49,13 +49,13 @@ enforce modularity and prevent cyclic dependencies.
 
 ```mermaid
 graph LR
-    A[OpenCode IDE] -->|MCP/HTTP| B[opencode-mem]
-    B --> C[Queue Processor]
-    C --> D[LLM Compression]
-    D --> E[PostgreSQL]
-    E -->|pgvector| F[Semantic Search]
-    E -->|tsvector/GIN| G[Full-Text Search]
-    F --> H[Hybrid Results]
+    A["OpenCode IDE"] -->|"MCP/HTTP"| B["opencode-mem"]
+    B --> C["Queue Processor"]
+    C --> D["LLM Compression"]
+    D --> E["PostgreSQL"]
+    E -->|"pgvector"| F["Semantic Search"]
+    E -->|"tsvector/GIN"| G["Full-Text Search"]
+    F --> H["Hybrid Results"]
     G --> H
 ```
 
@@ -92,6 +92,7 @@ cargo build --release
 ## Quick Start
 
 **Prerequisites:**
+
 - Rust 1.75+
 - PostgreSQL with `pgvector` extension
 
@@ -115,10 +116,6 @@ opencode-mem-cli serve
 
 ### 3. OpenCode Integration
 
-Configure your IDE client context to use the memory system via local processes.
-
-### 4. OpenCode Integration
-
 Add the following snippet to your `opencode.json` configuration file:
 
 ```json
@@ -137,9 +134,13 @@ Add the following snippet to your `opencode.json` configuration file:
 }
 ```
 
+### 4. OpenCode Integration
+
+Ensure you have a proper setup and understand the tooling boundaries.
+
 ## MCP Tools Reference
 
-The server exposes 17 powerful MCP tools. 
+The server exposes 17 powerful MCP tools.
 
 | Tool | Description |
 |------|-------------|
