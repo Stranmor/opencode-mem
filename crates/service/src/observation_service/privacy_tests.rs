@@ -1,4 +1,4 @@
-use opencode_mem_core::{sanitize_input, Observation, ObservationType};
+use opencode_mem_core::{Observation, ObservationType, sanitize_input};
 
 #[test]
 fn test_post_llm_title_filtering() {

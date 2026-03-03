@@ -2,7 +2,7 @@
 
 #![allow(clippy::unwrap_used)]
 
-use opencode_mem_core::{observation_embedding_text, ObservationType};
+use opencode_mem_core::{ObservationType, observation_embedding_text};
 
 #[test]
 fn test_observation_embedding_text() {

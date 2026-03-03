@@ -6,7 +6,6 @@ use crate::error::StorageError;
 use crate::traits::ObservationStore;
 use async_trait::async_trait;
 
-
 #[async_trait]
 impl ObservationStore for PgStorage {
     async fn save_observation(&self, obs: &Observation) -> Result<bool, StorageError> {
