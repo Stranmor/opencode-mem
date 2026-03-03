@@ -36,7 +36,7 @@ unbounded scale and operational safety in autonomous AI coding environments.
 - 🔍 **Semantic & Hybrid Search:** Powered by `fastembed-rs` using BGE-M3.
 - 🧱 **Structured Metadata Extraction:** Summaries aren't just text.
 - 🛡️ **Context-Aware Compression:** Eliminates duplicate entries and overhead.
-- 🔌 **17 MCP Tools** for seamless AI agent integration.
+- 🔌 **18 MCP Tools** for seamless AI agent integration.
 - 🌐 **65+ HTTP API endpoints** for external integrations and dashboards.
 - ⚡ **CLI with full hook system** for context injection and summarization.
 - 🔒 **Privacy tags:** Built-in `<private>` filtering.
@@ -138,7 +138,7 @@ Add the following snippet to your `opencode.json` configuration file:
 
 ## MCP Tools Reference
 
-The server exposes 17 powerful MCP tools.
+The server exposes 18 powerful MCP tools.
 
 | Tool | Description |
 |---|---|
