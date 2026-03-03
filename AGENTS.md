@@ -28,6 +28,7 @@ Last reviewed commit: `eea4f599c0c54eb8d7dcc0d81a9364f2302fd1e6`
 | Hybrid Capture | ✅ 100% | Per-turn observation via `session.idle` + debounce + batch endpoint |
 | Project Exclusion | ✅ 100% | OPENCODE_MEM_EXCLUDED_PROJECTS env var, glob patterns, ~ expansion |
 | Save Memory | ✅ 100% | Direct observation storage (MCP + HTTP), bypasses LLM compression |
+| Circuit Breaker | ✅ 100% | Graceful degradation when PostgreSQL unavailable — MCP tools return empty results, HTTP returns 200 + X-Memory-Degraded header, auto-recovery on reconnect |
 
 ### NOT Implemented
 
@@ -55,7 +56,7 @@ Last reviewed commit: `eea4f599c0c54eb8d7dcc0d81a9364f2302fd1e6`
 ```
 crates/
 ├── core/        # Domain types (Observation, Session, etc.)
-├── storage/     # PostgreSQL + pgvector + migrations
+├── storage/     # PostgreSQL + pgvector + migrations + circuit breaker (circuit_breaker.rs: 3-state Closed/Open/HalfOpen, exponential backoff 30s-300s)
 ├── embeddings/  # Vector embeddings (fastembed BGE-M3, 1024d, multilingual)
 ├── search/      # Hybrid search (FTS + keyword + semantic)
 ├── llm/         # LLM compression (Antigravity API)
