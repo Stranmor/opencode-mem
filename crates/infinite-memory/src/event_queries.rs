@@ -56,12 +56,19 @@ pub async fn get_recent(pool: &PgPool, limit: i64) -> Result<Vec<StoredEvent>> {
     Ok(rows.into_iter().filter_map(row_to_stored_event).collect())
 }
 
+/// Release events back for future processing after a failed compression attempt.
+///
+/// Sets `processing_started_at` to NOW() (not NULL) so the visibility timeout
+/// provides a cooldown period before re-fetch. `get_unsummarized_events()` only
+/// picks up events where `processing_started_at IS NULL OR processing_started_at < stale_threshold`,
+/// so events released here won't be re-fetched until the 5-minute visibility timeout expires.
+/// This prevents the spin-loop where zeroing `processing_started_at` caused immediate re-fetch.
 pub async fn release_events(pool: &PgPool, ids: &[i64]) -> Result<()> {
     if ids.is_empty() {
         return Ok(());
     }
     sqlx::query(
-        "UPDATE raw_events SET processing_instance_id = NULL, processing_started_at = NULL, retry_count = retry_count + 1 WHERE id = ANY($1)",
+        "UPDATE raw_events SET processing_instance_id = NULL, processing_started_at = NOW(), retry_count = retry_count + 1 WHERE id = ANY($1)",
     )
     .bind(ids)
     .execute(pool)

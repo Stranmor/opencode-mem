@@ -103,100 +103,111 @@ impl SearchService {
             return Ok(observations);
         }
 
-        let embedding_map: HashMap<&str, &[f32]> = embedding_pairs
+        // O(N²) comparison in spawn_blocking to avoid starving the async executor
+        let obs_data: Vec<(
+            String,
+            opencode_mem_core::NoiseLevel,
+            chrono::DateTime<chrono::Utc>,
+        )> = observations
             .iter()
-            .map(|(id, vec)| (id.as_str(), vec.as_slice()))
+            .map(|o| (o.id.clone(), o.noise_level, o.created_at))
             .collect();
 
-        // Union-find for grouping similar observations
-        let obs_count = observations.len();
-        let mut parent: Vec<usize> = (0..obs_count).collect();
+        let embedding_owned: Vec<(String, Vec<f32>)> = embedding_pairs;
 
-        // Find root with path compression
-        fn find(parent: &mut [usize], mut i: usize) -> usize {
-            while let Some(&p) = parent.get(i) {
-                if p == i {
-                    break;
+        let kept_indices = tokio::task::spawn_blocking(move || {
+            let emb_map: HashMap<&str, &[f32]> = embedding_owned
+                .iter()
+                .map(|(id, vec)| (id.as_str(), vec.as_slice()))
+                .collect();
+
+            let obs_count = obs_data.len();
+            let mut parent: Vec<usize> = (0..obs_count).collect();
+
+            fn find(parent: &mut [usize], mut i: usize) -> usize {
+                while let Some(&p) = parent.get(i) {
+                    if p == i {
+                        break;
+                    }
+                    let gp = parent.get(p).copied().unwrap_or(p);
+                    if let Some(slot) = parent.get_mut(i) {
+                        *slot = gp;
+                    }
+                    i = p;
                 }
-                // Path compression: read grandparent, then write
-                let gp = parent.get(p).copied().unwrap_or(p);
-                if let Some(slot) = parent.get_mut(i) {
-                    *slot = gp;
-                }
-                i = p;
+                i
             }
-            i
-        }
 
-        // Compare all pairs and union those above threshold
-        for i in 0..obs_count {
-            let Some(emb_a) = embedding_map.get(
-                observations
+            for i in 0..obs_count {
+                let Some(emb_a) = obs_data
                     .get(i)
-                    .map(|o| o.id.as_str())
-                    .unwrap_or_default(),
-            ) else {
-                continue;
-            };
-            for j in (i.checked_add(1).unwrap_or(obs_count))..obs_count {
-                let Some(emb_b) = embedding_map.get(
-                    observations
-                        .get(j)
-                        .map(|o| o.id.as_str())
-                        .unwrap_or_default(),
-                ) else {
+                    .and_then(|(id, _, _)| emb_map.get(id.as_str()))
+                else {
                     continue;
                 };
-                let sim = cosine_similarity(emb_a, emb_b);
-                if sim > DEDUP_SIMILARITY_THRESHOLD {
-                    let ra = find(&mut parent, i);
-                    let rb = find(&mut parent, j);
-                    if ra != rb
-                        && let Some(slot) = parent.get_mut(rb)
-                    {
-                        *slot = ra;
+                for j in (i.checked_add(1).unwrap_or(obs_count))..obs_count {
+                    let Some(emb_b) = obs_data
+                        .get(j)
+                        .and_then(|(id, _, _)| emb_map.get(id.as_str()))
+                    else {
+                        continue;
+                    };
+                    let sim = cosine_similarity(emb_a, emb_b);
+                    if sim > DEDUP_SIMILARITY_THRESHOLD {
+                        let ra = find(&mut parent, i);
+                        let rb = find(&mut parent, j);
+                        if ra != rb
+                            && let Some(slot) = parent.get_mut(rb)
+                        {
+                            *slot = ra;
+                        }
                     }
                 }
             }
-        }
 
-        // Group observations by their root
-        let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
-        for idx in 0..obs_count {
-            let root = find(&mut parent, idx);
-            groups.entry(root).or_default().push(idx);
-        }
-
-        // For each group, keep the observation with highest noise priority
-        // (smallest ordinal: Critical < High < Medium), then most recent as tiebreaker
-        let mut kept: Vec<&Observation> = Vec::with_capacity(groups.len());
-        for members in groups.values() {
-            let best = members
-                .iter()
-                .filter_map(|&idx| observations.get(idx))
-                .min_by(|a, b| {
-                    a.noise_level
-                        .cmp(&b.noise_level)
-                        .then_with(|| b.created_at.cmp(&a.created_at))
-                });
-            if let Some(obs) = best {
-                kept.push(obs);
+            let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
+            for idx in 0..obs_count {
+                let root = find(&mut parent, idx);
+                groups.entry(root).or_default().push(idx);
             }
-        }
 
-        // Restore chronological order (most recent first)
-        kept.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            let mut kept: Vec<usize> = Vec::with_capacity(groups.len());
+            for members in groups.values() {
+                let best = members
+                    .iter()
+                    .filter_map(|&idx| obs_data.get(idx).map(|d| (idx, d)))
+                    .min_by(|(_, a), (_, b)| a.1.cmp(&b.1).then_with(|| b.2.cmp(&a.2)));
+                if let Some((idx, _)) = best {
+                    kept.push(idx);
+                }
+            }
 
-        let deduped_count = obs_count.saturating_sub(kept.len());
-        if deduped_count > 0 {
-            tracing::debug!(
-                original = obs_count,
-                deduped = deduped_count,
-                remaining = kept.len(),
-                "Deduplicated context observations by embedding similarity"
-            );
-        }
+            kept.sort_by(|&a, &b| {
+                let ts_a = obs_data.get(a).map(|d| d.2);
+                let ts_b = obs_data.get(b).map(|d| d.2);
+                ts_b.cmp(&ts_a)
+            });
 
-        Ok(kept.into_iter().cloned().collect())
+            let deduped_count = obs_count.saturating_sub(kept.len());
+            if deduped_count > 0 {
+                tracing::debug!(
+                    original = obs_count,
+                    deduped = deduped_count,
+                    remaining = kept.len(),
+                    "Deduplicated context observations by embedding similarity"
+                );
+            }
+
+            kept
+        })
+        .await
+        .map_err(|e| ServiceError::System(anyhow::anyhow!("spawn_blocking failed: {}", e)))?;
+
+        let result: Vec<Observation> = kept_indices
+            .into_iter()
+            .filter_map(|idx| observations.get(idx).cloned())
+            .collect();
+
+        Ok(result)
     }
 }

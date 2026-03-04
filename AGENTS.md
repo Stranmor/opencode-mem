@@ -139,10 +139,6 @@ LLM always creates NEW observations even when near-identical ones exist. The `ex
 - Gate MCP review tooling intermittently returns 429/502 or "Max retries exceeded", blocking automated code review.
 - Test coverage: ~40% of critical paths. Service layer, HTTP handlers, infinite-memory, CLI still have zero tests.
 - **CUDA GPU acceleration blocked on Pascal** — ort-sys 2.0.0-rc.11 pre-built CUDA provider includes only SM 7.0+ (Volta+). GTX 1060 (SM 6.1 Pascal) gets `cudaErrorSymbolNotFound` at inference. CUDA EP registers successfully but all inference ops fail. CUDA 12 compat libs cleaned up from home-server. Workaround: CPU-only embeddings with `OPENCODE_MEM_DISABLE_EMBEDDINGS=1` for throttling. To resolve: either build ONNX Runtime from source with `CMAKE_CUDA_ARCHITECTURES=61`, or upgrade to Volta+ GPU.
-- **Infinite Memory spin-loop:** `release_events()` zeroes `processing_started_at` causing immediate re-fetch — events cycle through the pipeline without cooldown.
-- **deduplicate_by_embedding O(N²) blocks async runtime** — `find_similar` called in a loop without `spawn_blocking`, blocking the tokio executor for large observation sets.
-- **Unstable pagination in get_observations_paginated** — no secondary `ORDER BY` tie-breaker; rows with identical sort values return in non-deterministic order across pages.
-- **Tombstone save silent discard** — `let _ = self.storage.save_observation(&tombstone).await` swallows errors; failed tombstone writes leave stale observations visible after merge.
 ### Resolved
 - ~~Permissive CORS on HTTP server~~ — fixed by removing CorsLayer
 - ~~Local HTTP server fails to start if port 37777 is already in use~~ — fixed by returning a clear error message with a shutdown command, and removing SO_REUSEPORT to prevent load balancing with zombie instances.
@@ -258,3 +254,7 @@ LLM always creates NEW observations even when near-identical ones exist. The `ex
 - ~~KnowledgeQuery/SaveKnowledgeRequest knowledge_type raw String~~ — fixed by using `KnowledgeType` enum directly in query/request types
 - ~~Raw `as` casts in pipeline.rs~~ — fixed by checked conversions (`TryFrom`, `try_into`)
 - ~~Files >300 lines (memory.rs 488, search_service.rs 471, pg_storage/mod.rs 470, observation_service/mod.rs 459)~~ — fixed by module splits into focused submodules
+- ~~Infinite Memory spin-loop~~ — `release_events()` and `release_summaries_*()` now set `processing_started_at = NOW()` instead of NULL, providing cooldown via the existing 5-minute visibility timeout
+- ~~deduplicate_by_embedding O(N²) blocks async runtime~~ — O(N²) comparison loop moved into `spawn_blocking`
+- ~~Unstable pagination in get_observations_paginated~~ — added `id` as secondary `ORDER BY` tie-breaker
+- ~~Tombstone save silent discard~~ — `save_observation(&tombstone)` errors now logged at warn level with context

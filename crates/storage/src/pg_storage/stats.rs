@@ -70,7 +70,7 @@ impl StatsStore for PgStorage {
                 "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
                         facts, concepts, files_read, files_modified, keywords, prompt_number,
                         discovery_tokens, noise_level, noise_reason, created_at
-                   FROM observations WHERE (project = $1 OR project IS NULL) ORDER BY created_at DESC LIMIT $2 OFFSET $3",
+                   FROM observations WHERE (project = $1 OR project IS NULL) ORDER BY created_at DESC, id LIMIT $2 OFFSET $3",
             )
             .bind(p)
             .bind(usize_to_i64(limit))
@@ -82,7 +82,7 @@ impl StatsStore for PgStorage {
                 "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
                         facts, concepts, files_read, files_modified, keywords, prompt_number,
                         discovery_tokens, noise_level, noise_reason, created_at
-                   FROM observations ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+                   FROM observations ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
             )
             .bind(usize_to_i64(limit))
             .bind(usize_to_i64(offset))

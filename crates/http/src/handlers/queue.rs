@@ -52,7 +52,7 @@ pub async fn process_pending_queue(
             failed: 0,
         }));
     }
-    let max_workers = max_queue_workers();
+    let max_workers = max_queue_workers(&state);
     let available_permits = state.semaphore.available_permits().min(max_workers);
 
     if available_permits == 0 {
