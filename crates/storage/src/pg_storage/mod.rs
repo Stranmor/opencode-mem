@@ -25,15 +25,14 @@ use crate::circuit_breaker::CircuitBreaker;
 use crate::error::StorageError;
 use chrono::{DateTime, Utc};
 use opencode_mem_core::{
-    sort_by_score_descending, DiscoveryTokens, GlobalKnowledge, KnowledgeType, NoiseLevel,
-    Observation, ObservationType, PromptNumber, SearchResult, Session, SessionStatus,
-    SessionSummary, UserPrompt, PG_POOL_ACQUIRE_TIMEOUT_SECS, PG_POOL_IDLE_TIMEOUT_SECS,
-    PG_POOL_MAX_CONNECTIONS,
+    DiscoveryTokens, GlobalKnowledge, KnowledgeType, NoiseLevel, Observation, ObservationType,
+    PG_POOL_ACQUIRE_TIMEOUT_SECS, PG_POOL_IDLE_TIMEOUT_SECS, PG_POOL_MAX_CONNECTIONS, PromptNumber,
+    SearchResult, Session, SessionStatus, SessionSummary, UserPrompt, sort_by_score_descending,
 };
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::pending_queue::{PendingMessage, PendingMessageStatus};
 
@@ -88,16 +87,21 @@ impl PgStorage {
     /// Attempt to run pending migrations. Safe to call repeatedly — idempotent.
     /// Returns `Ok(true)` if migrations ran, `Ok(false)` if DB unavailable or not needed.
     pub async fn try_run_migrations(&self) -> Result<bool, StorageError> {
-        if !self.migrations_pending.load(Ordering::Acquire) {
+        if self
+            .migrations_pending
+            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
             return Ok(false);
         }
+
         match run_pg_migrations(&self.pool).await {
             Ok(()) => {
-                self.migrations_pending.store(false, Ordering::Release);
                 tracing::info!("Deferred migrations completed successfully");
                 Ok(true)
             },
             Err(e) => {
+                self.migrations_pending.store(true, Ordering::Release);
                 tracing::debug!("Deferred migration attempt failed (DB may still be down): {e}");
                 Ok(false)
             },

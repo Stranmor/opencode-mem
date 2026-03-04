@@ -11,7 +11,9 @@ use opencode_mem_storage::traits::{
     EmbeddingStore, KnowledgeStore, ObservationStore, PromptStore, SearchStore, StatsStore,
     SummaryStore,
 };
-use opencode_mem_storage::{CircuitBreaker, PaginatedResult, StorageBackend, StorageStats};
+use opencode_mem_storage::{
+    CircuitBreaker, PaginatedResult, StorageBackend, StorageError, StorageStats,
+};
 
 use crate::ServiceError;
 
@@ -41,12 +43,23 @@ impl SearchService {
         self.storage.circuit_breaker()
     }
 
+    fn fast_fail_if_db_unavailable(&self) -> Result<(), ServiceError> {
+        let cb = self.storage.circuit_breaker();
+        if cb.should_allow() {
+            Ok(())
+        } else {
+            Err(ServiceError::Storage(StorageError::Unavailable {
+                seconds_until_probe: cb.seconds_until_probe(),
+            }))
+        }
+    }
+
     async fn with_cb<T>(&self, result: Result<T, ServiceError>) -> Result<T, ServiceError> {
         match &result {
             Ok(_) => {
                 let recovered = self.storage.circuit_breaker().record_success();
                 if recovered {
-                    self.on_recovery();
+                    self.handle_recovery();
                 }
             },
             Err(e) if e.is_db_unavailable() => self.storage.circuit_breaker().record_failure(),
@@ -55,7 +68,7 @@ impl SearchService {
         result
     }
 
-    fn on_recovery(&self) {
+    pub fn handle_recovery(&self) {
         if self.storage.has_pending_migrations() {
             let storage = self.storage.clone();
             tokio::spawn(async move {
@@ -84,6 +97,7 @@ impl SearchService {
         to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
         let result = self
             .hybrid_search
             .search_with_filters(query, project, obs_type, from, to, limit)
@@ -97,6 +111,7 @@ impl SearchService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
         let result = self.hybrid_search.search(query, limit).await.map_err(ServiceError::Search);
         self.with_cb(result).await
     }
@@ -107,6 +122,7 @@ impl SearchService {
         to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
         let result = self.storage.get_timeline(from, to, limit).await.map_err(ServiceError::from);
         self.with_cb(result).await
     }
@@ -116,6 +132,7 @@ impl SearchService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
         let result = self
             .hybrid_search
             .semantic_search_with_fallback(query, limit)
@@ -130,6 +147,7 @@ impl SearchService {
         &self,
         id: &str,
     ) -> Result<Option<Observation>, ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
         let result = self.storage.get_by_id(id).await.map_err(ServiceError::from);
         self.with_cb(result).await
     }
@@ -138,6 +156,7 @@ impl SearchService {
         &self,
         limit: usize,
     ) -> Result<Vec<Observation>, ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
         let result = self.storage.get_recent(limit).await.map_err(ServiceError::from);
         self.with_cb(result).await
     }
@@ -146,6 +165,7 @@ impl SearchService {
         &self,
         ids: &[String],
     ) -> Result<Vec<Observation>, ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
         let result = self.storage.get_observations_by_ids(ids).await.map_err(ServiceError::from);
         self.with_cb(result).await
     }

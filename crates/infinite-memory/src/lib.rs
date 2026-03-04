@@ -41,8 +41,8 @@ mod pipeline;
 mod summary_queries;
 
 pub use event_types::{
-    assistant_event, tool_event, user_event, EventType, RawEvent, StoredEvent, Summary,
-    SummaryEntities,
+    EventType, RawEvent, StoredEvent, Summary, SummaryEntities, assistant_event, tool_event,
+    user_event,
 };
 
 use anyhow::Result;
@@ -52,8 +52,8 @@ use opencode_mem_llm::LlmClient;
 use opencode_mem_storage::CircuitBreaker;
 
 use sqlx::PgPool;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 pub struct InfiniteMemory {
     pool: PgPool,
@@ -94,16 +94,21 @@ impl InfiniteMemory {
 
     /// Attempt to run pending migrations. Safe to call repeatedly — idempotent.
     pub async fn try_run_migrations(&self) -> bool {
-        if !self.migrations_pending.load(Ordering::Acquire) {
+        if self
+            .migrations_pending
+            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
             return false;
         }
+
         match migrations::run_migrations(&self.pool).await {
             Ok(()) => {
-                self.migrations_pending.store(false, Ordering::Release);
                 tracing::info!("Infinite Memory deferred migrations completed successfully");
                 true
             },
             Err(e) => {
+                self.migrations_pending.store(true, Ordering::Release);
                 tracing::warn!("Infinite Memory deferred migration attempt failed: {e}");
                 false
             },
@@ -119,22 +124,9 @@ impl InfiniteMemory {
         if result.is_ok() {
             let recovered = self.circuit_breaker.record_success();
             if recovered && self.migrations_pending.load(Ordering::Acquire) {
-                let pool = self.pool.clone();
-                let flag = Arc::clone(&self.migrations_pending);
+                let this = self.clone();
                 tokio::spawn(async move {
-                    match migrations::run_migrations(&pool).await {
-                        Ok(()) => {
-                            flag.store(false, Ordering::Release);
-                            tracing::info!(
-                                "Infinite Memory deferred migrations completed on recovery"
-                            );
-                        },
-                        Err(e) => {
-                            tracing::warn!(
-                                "Infinite Memory deferred migrations failed on recovery: {e}"
-                            );
-                        },
-                    }
+                    let _ = this.try_run_migrations().await;
                 });
             }
         } else {
@@ -309,5 +301,16 @@ impl InfiniteMemory {
         let result = summary_queries::get_hour_summaries_by_day_id(&self.pool, day_id, limit).await;
         self.record_result(&result);
         result
+    }
+}
+
+impl Clone for InfiniteMemory {
+    fn clone(&self) -> Self {
+        Self {
+            pool: self.pool.clone(),
+            llm: Arc::clone(&self.llm),
+            circuit_breaker: Arc::clone(&self.circuit_breaker),
+            migrations_pending: Arc::clone(&self.migrations_pending),
+        }
     }
 }
