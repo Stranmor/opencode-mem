@@ -5,7 +5,8 @@ use opencode_mem_core::SearchResult;
 use sqlx::Row;
 
 use super::super::{
-    PgStorage, parse_pg_noise_level, parse_pg_observation_type, row_to_search_result, usize_to_i64,
+    PgStorage, collect_skipping_corrupt, parse_pg_noise_level, parse_pg_observation_type,
+    row_to_search_result, usize_to_i64,
 };
 use super::utils::{build_or_tsquery, build_tsquery};
 use opencode_mem_core::sort_by_score_descending;
@@ -35,29 +36,54 @@ pub(crate) async fn hybrid_search(
 
     let raw_results: Vec<(SearchResult, f64, HashSet<String>)> = rows
         .iter()
-        .map(|row| {
-            let obs_type =
-                parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?)?;
+        .filter_map(|row| {
+            let obs_type = match parse_pg_observation_type(&match row
+                .try_get::<String, _>("observation_type")
+            {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!("Skipping corrupt row in hybrid search: {e}");
+                    return None;
+                }
+            }) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!("Skipping corrupt row in hybrid search: {e}");
+                    return None;
+                }
+            };
             let noise_level =
-                parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref())?;
-            let fts_score: f64 = row.try_get("fts_score")?;
-            let kw_json: serde_json::Value = row.try_get("keywords")?;
+                match parse_pg_noise_level(match row.try_get::<Option<String>, _>("noise_level") {
+                    Ok(ref v) => v.as_deref(),
+                    Err(e) => {
+                        tracing::warn!("Skipping corrupt row in hybrid search: {e}");
+                        return None;
+                    }
+                }) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!("Skipping corrupt row in hybrid search: {e}");
+                        return None;
+                    }
+                };
+            let fts_score: f64 = row.try_get("fts_score").ok()?;
+            let kw_json: serde_json::Value = row.try_get("keywords").ok()?;
             let obs_kw: HashSet<String> = serde_json::from_value::<Vec<String>>(kw_json)
                 .unwrap_or_default()
                 .into_iter()
                 .map(|s| s.to_lowercase())
                 .collect();
             let sr = SearchResult::new(
-                row.try_get("id")?,
-                row.try_get("title")?,
-                row.try_get("subtitle")?,
+                row.try_get("id").ok()?,
+                row.try_get("title").ok()?,
+                row.try_get("subtitle").ok()?,
                 obs_type,
                 noise_level,
                 0.0,
             );
-            Ok((sr, fts_score, obs_kw))
+            Some((sr, fts_score, obs_kw))
         })
-        .collect::<Result<_, StorageError>>()?;
+        .collect();
 
     let (min_fts, max_fts) = raw_results.iter().fold(
         (f64::INFINITY, f64::NEG_INFINITY),
@@ -172,9 +198,7 @@ pub(crate) async fn hybrid_search_v2_with_filters(
             q = q.bind(&tsquery);
             q = q.bind(fetch_limit);
             let rows = q.fetch_all(&storage.pool).await?;
-            rows.iter()
-                .map(row_to_search_result)
-                .collect::<Result<Vec<_>, StorageError>>()?
+            collect_skipping_corrupt(rows.iter().map(row_to_search_result))
         }
         None => Vec::new(),
     };
@@ -201,9 +225,7 @@ pub(crate) async fn hybrid_search_v2_with_filters(
         q = q.bind(&query_vector);
         q = q.bind(fetch_limit);
         let rows = q.fetch_all(&storage.pool).await?;
-        rows.iter()
-            .map(row_to_search_result)
-            .collect::<Result<Vec<_>, StorageError>>()?
+        collect_skipping_corrupt(rows.iter().map(row_to_search_result))
     };
 
     Ok(merge_and_rank(fts_results, vector_results, limit))

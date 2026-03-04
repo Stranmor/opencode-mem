@@ -222,12 +222,25 @@ impl KnowledgeStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter()
-            .map(|r| {
-                let score: f64 = r.try_get("score")?;
-                Ok(KnowledgeSearchResult::new(row_to_knowledge(r)?, score))
+        Ok(rows
+            .iter()
+            .filter_map(|r| {
+                let score: f64 = match r.try_get("score") {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::warn!("Skipping knowledge row: score parse error: {e}");
+                        return None;
+                    }
+                };
+                match row_to_knowledge(r) {
+                    Ok(k) => Some(KnowledgeSearchResult::new(k, score)),
+                    Err(e) => {
+                        tracing::warn!("Skipping corrupt knowledge row: {e}");
+                        None
+                    }
+                }
             })
-            .collect()
+            .collect())
     }
 
     async fn list_knowledge(
@@ -254,7 +267,7 @@ impl KnowledgeStore for PgStorage {
             .fetch_all(&self.pool)
             .await?
         };
-        rows.iter().map(row_to_knowledge).collect()
+        Ok(collect_skipping_corrupt(rows.iter().map(row_to_knowledge)))
     }
 
     async fn update_knowledge_usage(&self, id: &str) -> Result<(), StorageError> {

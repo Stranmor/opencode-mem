@@ -1,7 +1,7 @@
 use crate::error::StorageError;
 use opencode_mem_core::SearchResult;
 
-use super::super::{PgStorage, row_to_search_result, usize_to_i64};
+use super::super::{PgStorage, collect_skipping_corrupt, row_to_search_result, usize_to_i64};
 use super::utils::build_tsquery;
 
 pub(crate) async fn search(
@@ -24,9 +24,9 @@ pub(crate) async fn search(
     .bind(usize_to_i64(limit))
     .fetch_all(&storage.pool)
     .await?;
-    rows.iter()
-        .map(row_to_search_result)
-        .collect::<Result<_, StorageError>>()
+    Ok(collect_skipping_corrupt(
+        rows.iter().map(row_to_search_result),
+    ))
 }
 
 pub(crate) async fn search_with_filters(
@@ -92,10 +92,9 @@ pub(crate) async fn search_with_filters(
         q = q.bind(&tsquery);
         q = q.bind(usize_to_i64(limit));
         let rows = q.fetch_all(&storage.pool).await?;
-        return rows
-            .iter()
-            .map(row_to_search_result)
-            .collect::<Result<_, StorageError>>();
+        return Ok(collect_skipping_corrupt(
+            rows.iter().map(row_to_search_result),
+        ));
     }
 
     let where_clause = if conditions.is_empty() {
@@ -116,7 +115,7 @@ pub(crate) async fn search_with_filters(
     }
     q = q.bind(usize_to_i64(limit));
     let rows = q.fetch_all(&storage.pool).await?;
-    rows.iter()
-        .map(row_to_search_result)
-        .collect::<Result<_, StorageError>>()
+    Ok(collect_skipping_corrupt(
+        rows.iter().map(row_to_search_result),
+    ))
 }

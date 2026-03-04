@@ -38,9 +38,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use super::pg_migrations::run_pg_migrations;
 
 pub(crate) use row_parsers::{
-    escape_like, parse_json_value, parse_pg_noise_level, parse_pg_observation_type,
-    row_to_knowledge, row_to_observation, row_to_pending_message, row_to_prompt,
-    row_to_search_result, row_to_session, row_to_summary, usize_to_i64,
+    collect_skipping_corrupt, escape_like, parse_json_value, parse_pg_noise_level,
+    parse_pg_observation_type, row_to_knowledge, row_to_observation, row_to_pending_message,
+    row_to_prompt, row_to_search_result, row_to_session, row_to_summary, usize_to_i64,
 };
 
 #[derive(Clone, Debug)]

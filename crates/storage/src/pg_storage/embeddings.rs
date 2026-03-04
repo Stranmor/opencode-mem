@@ -67,7 +67,9 @@ impl EmbeddingStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_observation).collect()
+        Ok(collect_skipping_corrupt(
+            rows.iter().map(row_to_observation),
+        ))
     }
 
     async fn clear_embeddings(&self) -> Result<(), StorageError> {

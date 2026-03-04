@@ -177,10 +177,7 @@ impl SummaryStore for PgStorage {
             .await?
         };
 
-        let items: Vec<SessionSummary> = rows
-            .iter()
-            .map(row_to_summary)
-            .collect::<Result<_, StorageError>>()?;
+        let items: Vec<SessionSummary> = collect_skipping_corrupt(rows.iter().map(row_to_summary));
         Ok(PaginatedResult::new(items, total, offset, limit))
     }
 
@@ -202,6 +199,6 @@ impl SummaryStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_summary).collect()
+        Ok(collect_skipping_corrupt(rows.iter().map(row_to_summary)))
     }
 }

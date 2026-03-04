@@ -1,7 +1,7 @@
 use crate::error::StorageError;
 use opencode_mem_core::SearchResult;
 
-use super::super::{PgStorage, row_to_search_result, usize_to_i64};
+use super::super::{PgStorage, collect_skipping_corrupt, row_to_search_result, usize_to_i64};
 
 pub(crate) async fn get_timeline(
     storage: &PgStorage,
@@ -49,10 +49,8 @@ pub(crate) async fn get_timeline(
     }
     q = q.bind(usize_to_i64(limit));
     let rows = q.fetch_all(&storage.pool).await?;
-    let mut results: Vec<SearchResult> = rows
-        .iter()
-        .map(row_to_search_result)
-        .collect::<Result<_, StorageError>>()?;
+    let mut results: Vec<SearchResult> =
+        collect_skipping_corrupt(rows.iter().map(row_to_search_result));
 
     if order_direction == "ASC" {
         results.reverse();

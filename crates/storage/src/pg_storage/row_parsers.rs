@@ -282,3 +282,23 @@ pub(crate) fn row_to_pending_message(
         project: row.try_get("project")?,
     })
 }
+
+/// Collect row parsing results, skipping corrupt rows with a warning instead
+/// of aborting the entire query. One bad row should not cause zero results.
+pub(crate) fn collect_skipping_corrupt<T>(
+    results: impl Iterator<Item = Result<T, StorageError>>,
+) -> Vec<T> {
+    results
+        .filter_map(|r| match r {
+            Ok(val) => Some(val),
+            Err(StorageError::DataCorruption { ref context, .. }) => {
+                tracing::warn!("Skipping corrupt row: {context}");
+                None
+            }
+            Err(e) => {
+                tracing::warn!("Skipping row with unexpected error: {e}");
+                None
+            }
+        })
+        .collect()
+}

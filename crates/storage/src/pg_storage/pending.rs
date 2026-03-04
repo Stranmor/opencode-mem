@@ -63,9 +63,9 @@ impl PendingQueueStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter()
-            .map(row_to_pending_message)
-            .collect::<Result<_, StorageError>>()
+        Ok(collect_skipping_corrupt(
+            rows.iter().map(row_to_pending_message),
+        ))
     }
 
     async fn complete_message(&self, id: i64) -> Result<(), StorageError> {
@@ -153,9 +153,9 @@ impl PendingQueueStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter()
-            .map(row_to_pending_message)
-            .collect::<Result<_, StorageError>>()
+        Ok(collect_skipping_corrupt(
+            rows.iter().map(row_to_pending_message),
+        ))
     }
 
     async fn get_all_pending_messages(
@@ -173,9 +173,9 @@ impl PendingQueueStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter()
-            .map(row_to_pending_message)
-            .collect::<Result<_, StorageError>>()
+        Ok(collect_skipping_corrupt(
+            rows.iter().map(row_to_pending_message),
+        ))
     }
 
     async fn get_queue_stats(&self) -> Result<QueueStats, StorageError> {

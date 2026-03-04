@@ -86,7 +86,9 @@ impl ObservationStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_observation).collect()
+        Ok(collect_skipping_corrupt(
+            rows.iter().map(row_to_observation),
+        ))
     }
 
     async fn get_session_observations(
@@ -101,7 +103,9 @@ impl ObservationStore for PgStorage {
         .bind(session_id)
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_observation).collect()
+        Ok(collect_skipping_corrupt(
+            rows.iter().map(row_to_observation),
+        ))
     }
     async fn get_recent_session_observations(
         &self,
@@ -117,7 +121,9 @@ impl ObservationStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_observation).collect()
+        Ok(collect_skipping_corrupt(
+            rows.iter().map(row_to_observation),
+        ))
     }
 
     async fn get_observations_by_ids(
@@ -135,7 +141,9 @@ impl ObservationStore for PgStorage {
         .bind(ids)
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_observation).collect()
+        Ok(collect_skipping_corrupt(
+            rows.iter().map(row_to_observation),
+        ))
     }
 
     async fn get_context_for_project(
@@ -155,7 +163,9 @@ impl ObservationStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_observation).collect()
+        Ok(collect_skipping_corrupt(
+            rows.iter().map(row_to_observation),
+        ))
     }
 
     async fn get_session_observation_count(&self, session_id: &str) -> Result<usize, StorageError> {
@@ -183,7 +193,9 @@ impl ObservationStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_search_result).collect()
+        Ok(collect_skipping_corrupt(
+            rows.iter().map(row_to_search_result),
+        ))
     }
 
     async fn merge_into_existing(
