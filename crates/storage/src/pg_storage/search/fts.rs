@@ -1,7 +1,7 @@
 use crate::error::StorageError;
 use opencode_mem_core::SearchResult;
 
-use super::super::{row_to_search_result, usize_to_i64, PgStorage};
+use super::super::{PgStorage, row_to_search_result, usize_to_i64};
 use super::utils::build_tsquery;
 
 pub(crate) async fn search(
@@ -61,36 +61,36 @@ pub(crate) async fn search_with_filters(
         bind_strings.push(t.to_owned());
     }
 
-    if let Some(q) = query {
-        if let Some(tsquery) = build_tsquery(q) {
-            let fts_cond = format!("search_vec @@ to_tsquery('simple', ${param_idx})");
-            param_idx += 1;
-            let score_expr = format!(
-                "ts_rank_cd(search_vec, to_tsquery('simple', ${}))::float8 as score",
-                param_idx - 1
-            );
-            let extra_where = if conditions.is_empty() {
-                String::new()
-            } else {
-                format!("AND {}", conditions.join(" AND "))
-            };
-            let sql = format!(
-                "SELECT id, title, subtitle, observation_type, noise_level, {score_expr}
-                   FROM observations
-                   WHERE {fts_cond} {extra_where}
-                   ORDER BY score DESC
-                   LIMIT ${param_idx}"
-            );
+    if let Some(q) = query
+        && let Some(tsquery) = build_tsquery(q)
+    {
+        let fts_cond = format!("search_vec @@ to_tsquery('simple', ${param_idx})");
+        param_idx += 1;
+        let score_expr = format!(
+            "ts_rank_cd(search_vec, to_tsquery('simple', ${}))::float8 as score",
+            param_idx - 1
+        );
+        let extra_where = if conditions.is_empty() {
+            String::new()
+        } else {
+            format!("AND {}", conditions.join(" AND "))
+        };
+        let sql = format!(
+            "SELECT id, title, subtitle, observation_type, noise_level, {score_expr}
+               FROM observations
+               WHERE {fts_cond} {extra_where}
+               ORDER BY score DESC
+               LIMIT ${param_idx}"
+        );
 
-            let mut q = sqlx::query(&sql);
-            for val in &bind_strings {
-                q = q.bind(val);
-            }
-            q = q.bind(&tsquery);
-            q = q.bind(usize_to_i64(limit));
-            let rows = q.fetch_all(&storage.pool).await?;
-            return rows.iter().map(row_to_search_result).collect::<Result<_, StorageError>>();
+        let mut q = sqlx::query(&sql);
+        for val in &bind_strings {
+            q = q.bind(val);
         }
+        q = q.bind(&tsquery);
+        q = q.bind(usize_to_i64(limit));
+        let rows = q.fetch_all(&storage.pool).await?;
+        return rows.iter().map(row_to_search_result).collect::<Result<_, StorageError>>();
     }
 
     let where_clause = if conditions.is_empty() {

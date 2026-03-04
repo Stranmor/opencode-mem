@@ -5,6 +5,7 @@ use super::*;
 use crate::error::StorageError;
 use crate::traits::ObservationStore;
 use async_trait::async_trait;
+use opencode_mem_core::{Observation, SearchResult};
 
 #[async_trait]
 impl ObservationStore for PgStorage {

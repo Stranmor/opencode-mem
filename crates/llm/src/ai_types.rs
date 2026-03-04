@@ -1,5 +1,16 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
+/// OpenAI-compatible `response_format.type` field.
+/// Only `json_object` and `text` are valid values.
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ResponseFormatType {
+    /// Structured JSON output mode
+    JsonObject,
+    /// Plain text output mode
+    Text,
+}
+
 /// Deserializes a JSON `null` as `String::default()` (empty string).
 ///
 /// Serde's `#[serde(default)]` only applies when the key is absent.
@@ -42,7 +53,7 @@ pub struct ChatRequest {
 #[derive(Serialize, Clone)]
 pub struct ResponseFormat {
     #[serde(rename = "type")]
-    pub format_type: String,
+    pub format_type: ResponseFormatType,
 }
 
 #[derive(Serialize, Clone)]

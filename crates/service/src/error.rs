@@ -50,6 +50,17 @@ pub enum ServiceError {
 }
 
 impl ServiceError {
+    fn has_connection_failure_pattern(msg: &str) -> bool {
+        msg.contains("No route to host")
+            || msg.contains("connection refused")
+            || msg.contains("Connection reset")
+            || msg.contains("broken pipe")
+            || msg.contains("PoolTimedOut")
+            || msg.contains("PoolClosed")
+            || msg.contains("WorkerCrashed")
+            || msg.contains("pool timed out while waiting for an open connection")
+    }
+
     /// Whether this error is likely transient (worth retrying).
     pub fn is_transient(&self) -> bool {
         match self {
@@ -87,19 +98,11 @@ impl ServiceError {
                 // anyhow chain may not contain StorageError directly —
                 // check the error string for connection failure patterns.
                 let msg = format!("{e:?}");
-                msg.contains("No route to host")
-                    || msg.contains("connection refused")
-                    || msg.contains("Connection reset")
-                    || msg.contains("PoolTimedOut")
-                    || msg.contains("PoolClosed")
-                    || msg.contains("WorkerCrashed")
+                Self::has_connection_failure_pattern(&msg)
             },
             Self::System(e) => {
                 let msg = format!("{e:?}");
-                msg.contains("No route to host")
-                    || msg.contains("connection refused")
-                    || msg.contains("PoolTimedOut")
-                    || msg.contains("PoolClosed")
+                Self::has_connection_failure_pattern(&msg)
             },
             _ => false,
         }

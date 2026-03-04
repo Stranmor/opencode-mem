@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use opencode_mem_core::{GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType};
-use opencode_mem_storage::StorageBackend;
 use opencode_mem_storage::traits::KnowledgeStore;
+use opencode_mem_storage::{StorageBackend, StorageError};
 
 use crate::ServiceError;
 
@@ -21,7 +21,19 @@ impl KnowledgeService {
         self.storage.circuit_breaker()
     }
 
+    fn fast_fail_if_db_unavailable(&self) -> Result<(), ServiceError> {
+        let cb = self.storage.circuit_breaker();
+        if cb.should_allow() {
+            Ok(())
+        } else {
+            Err(ServiceError::Storage(StorageError::Unavailable {
+                seconds_until_probe: cb.seconds_until_probe(),
+            }))
+        }
+    }
+
     pub async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
         Ok(self.storage.get_knowledge(id).await?)
     }
 
@@ -29,10 +41,12 @@ impl KnowledgeService {
         &self,
         input: KnowledgeInput,
     ) -> Result<GlobalKnowledge, ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
         Ok(self.storage.save_knowledge(input).await?)
     }
 
     pub async fn delete_knowledge(&self, id: &str) -> Result<bool, ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
         Ok(self.storage.delete_knowledge(id).await?)
     }
 
@@ -41,6 +55,7 @@ impl KnowledgeService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<KnowledgeSearchResult>, ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
         Ok(self.storage.search_knowledge(query, limit).await?)
     }
 
@@ -49,10 +64,12 @@ impl KnowledgeService {
         knowledge_type: Option<KnowledgeType>,
         limit: usize,
     ) -> Result<Vec<GlobalKnowledge>, ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
         Ok(self.storage.list_knowledge(knowledge_type, limit).await?)
     }
 
     pub async fn update_knowledge_usage(&self, id: &str) -> Result<(), ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
         Ok(self.storage.update_knowledge_usage(id).await?)
     }
 }

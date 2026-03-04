@@ -5,10 +5,10 @@ use opencode_mem_core::SearchResult;
 use sqlx::Row;
 
 use super::super::{
-    parse_pg_noise_level, parse_pg_observation_type, row_to_search_result,
-    sort_by_score_descending, usize_to_i64, PgStorage,
+    PgStorage, parse_pg_noise_level, parse_pg_observation_type, row_to_search_result, usize_to_i64,
 };
 use super::utils::{build_or_tsquery, build_tsquery};
+use opencode_mem_core::sort_by_score_descending;
 
 pub(crate) async fn hybrid_search(
     storage: &PgStorage,

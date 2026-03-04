@@ -157,16 +157,15 @@ pub async fn run_mcp_server(
             &request,
         )
         .await
+            && let Ok(response_json) = serde_json::to_string(&response)
         {
-            if let Ok(response_json) = serde_json::to_string(&response) {
-                if let Err(e) = stdout.write_all(format!("{response_json}\n").as_bytes()).await {
-                    tracing::error!("MCP stdout write error: {}", e);
-                    break;
-                }
-                if let Err(e) = stdout.flush().await {
-                    tracing::error!("MCP stdout flush error: {}", e);
-                    break;
-                }
+            if let Err(e) = stdout.write_all(format!("{response_json}\n").as_bytes()).await {
+                tracing::error!("MCP stdout write error: {}", e);
+                break;
+            }
+            if let Err(e) = stdout.flush().await {
+                tracing::error!("MCP stdout flush error: {}", e);
+                break;
             }
         }
     }

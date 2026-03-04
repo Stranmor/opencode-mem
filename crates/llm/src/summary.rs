@@ -1,6 +1,6 @@
 use opencode_mem_core::Observation;
 
-use crate::ai_types::{ChatRequest, Message, ResponseFormat, SummaryJson};
+use crate::ai_types::{ChatRequest, Message, ResponseFormat, ResponseFormatType, SummaryJson};
 use crate::client::LlmClient;
 use crate::error::LlmError;
 
@@ -43,7 +43,7 @@ Return JSON: {{"summary": "..."}}"#
         let request = ChatRequest {
             model: self.model(),
             messages: vec![Message { role: "user".to_owned(), content: prompt }],
-            response_format: ResponseFormat { format_type: "json_object".to_owned() },
+            response_format: ResponseFormat { format_type: ResponseFormatType::JsonObject },
             max_tokens: None,
         };
 

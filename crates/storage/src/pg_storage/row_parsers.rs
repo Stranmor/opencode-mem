@@ -1,0 +1,274 @@
+//! Row-to-domain type conversion functions for PostgreSQL query results.
+
+use chrono::{DateTime, Utc};
+use opencode_mem_core::{
+    DiscoveryTokens, GlobalKnowledge, KnowledgeType, NoiseLevel, Observation, ObservationType,
+    PromptNumber, SearchResult, Session, SessionStatus, SessionSummary, UserPrompt,
+};
+use sqlx::Row;
+
+use crate::error::StorageError;
+use crate::pending_queue::{PendingMessage, PendingMessageStatus};
+
+pub(crate) fn parse_json_value<T: serde::de::DeserializeOwned>(val: serde_json::Value) -> Vec<T> {
+    serde_json::from_value(val).unwrap_or_default()
+}
+
+pub(crate) fn parse_pg_observation_type(s: &str) -> Result<ObservationType, StorageError> {
+    serde_json::from_str(s).or_else(|_| s.parse::<ObservationType>()).map_err(|e| {
+        tracing::warn!("Invalid observation_type '{}' in DB: {}", s, e);
+        StorageError::DataCorruption {
+            context: format!("invalid observation_type in DB: '{s}'"),
+            source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+        }
+    })
+}
+
+pub(crate) fn parse_pg_noise_level(s: Option<&str>) -> Result<NoiseLevel, StorageError> {
+    match s {
+        Some(s) => s.parse::<NoiseLevel>().map_err(|e| {
+            tracing::warn!("Invalid noise_level '{}' in DB: {}", s, e);
+            StorageError::DataCorruption {
+                context: format!("invalid noise_level in DB: '{s}'"),
+                source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+            }
+        }),
+        None => Ok(NoiseLevel::Medium),
+    }
+}
+
+pub(crate) fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observation, StorageError> {
+    let obs_type = parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?)?;
+    let noise_level =
+        parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref())?;
+    let noise_reason: Option<String> = row.try_get("noise_reason")?;
+    let created_at: DateTime<Utc> = row.try_get("created_at")?;
+    let facts: serde_json::Value = row.try_get("facts")?;
+    let concepts: serde_json::Value = row.try_get("concepts")?;
+    let files_read: serde_json::Value = row.try_get("files_read")?;
+    let files_modified: serde_json::Value = row.try_get("files_modified")?;
+    let keywords: serde_json::Value = row.try_get("keywords")?;
+
+    Ok(Observation::builder(
+        row.try_get("id")?,
+        row.try_get("session_id")?,
+        obs_type,
+        row.try_get("title")?,
+    )
+    .maybe_project(row.try_get("project")?)
+    .maybe_subtitle(row.try_get("subtitle")?)
+    .maybe_narrative(row.try_get("narrative")?)
+    .facts(parse_json_value(facts))
+    .concepts(parse_json_value(concepts))
+    .files_read(parse_json_value(files_read))
+    .files_modified(parse_json_value(files_modified))
+    .keywords(parse_json_value(keywords))
+    .maybe_prompt_number(
+        row.try_get::<Option<i32>, _>("prompt_number")?
+            .map(|v| {
+                u32::try_from(v).map_err(|e| StorageError::DataCorruption {
+                    context: "prompt_number negative in DB".into(),
+                    source: Box::new(e),
+                })
+            })
+            .transpose()?
+            .map(PromptNumber),
+    )
+    .maybe_discovery_tokens(
+        row.try_get::<Option<i32>, _>("discovery_tokens")?
+            .map(|v| {
+                u32::try_from(v).map_err(|e| StorageError::DataCorruption {
+                    context: "discovery_tokens negative in DB".into(),
+                    source: Box::new(e),
+                })
+            })
+            .transpose()?
+            .map(DiscoveryTokens),
+    )
+    .noise_level(noise_level)
+    .maybe_noise_reason(noise_reason)
+    .created_at(created_at)
+    .build())
+}
+
+pub(crate) fn escape_like(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+}
+
+pub(crate) fn usize_to_i64(val: usize) -> i64 {
+    i64::try_from(val).unwrap_or(i64::MAX)
+}
+
+pub(crate) fn row_to_search_result(
+    row: &sqlx::postgres::PgRow,
+) -> Result<SearchResult, StorageError> {
+    let obs_type = parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?)?;
+    let noise_level =
+        parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref())?;
+    let score: f64 = row.try_get("score").unwrap_or(0.0);
+    Ok(SearchResult::new(
+        row.try_get("id")?,
+        row.try_get("title")?,
+        row.try_get("subtitle")?,
+        obs_type,
+        noise_level,
+        score,
+    ))
+}
+
+#[allow(dead_code)]
+pub(crate) fn row_to_search_result_with_score(
+    row: &sqlx::postgres::PgRow,
+    score: f64,
+) -> Result<SearchResult, StorageError> {
+    let obs_type = parse_pg_observation_type(&row.try_get::<String, _>("observation_type")?)?;
+    let noise_level =
+        parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref())?;
+    Ok(SearchResult::new(
+        row.try_get("id")?,
+        row.try_get("title")?,
+        row.try_get("subtitle")?,
+        obs_type,
+        noise_level,
+        score,
+    ))
+}
+
+pub(crate) fn row_to_session(row: &sqlx::postgres::PgRow) -> Result<Session, StorageError> {
+    let started_at: DateTime<Utc> = row.try_get("started_at")?;
+    let ended_at: Option<DateTime<Utc>> = row.try_get("ended_at")?;
+    let status_str: String = row.try_get("status")?;
+    let status: SessionStatus = status_str
+        .parse()
+        .or_else(|_| serde_json::from_str::<SessionStatus>(&status_str))
+        .map_err(|e| StorageError::DataCorruption {
+            context: format!("invalid session status in DB: {}", status_str),
+            source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+        })?;
+    Ok(Session::new(
+        row.try_get("id")?,
+        row.try_get("content_session_id")?,
+        row.try_get("memory_session_id")?,
+        row.try_get("project")?,
+        row.try_get("user_prompt")?,
+        started_at,
+        ended_at,
+        status,
+        u32::try_from(row.try_get::<i32, _>("prompt_counter")?).map_err(|e| {
+            StorageError::DataCorruption {
+                context: "prompt_counter negative in DB".into(),
+                source: Box::new(e),
+            }
+        })?,
+    ))
+}
+
+pub(crate) fn row_to_summary(row: &sqlx::postgres::PgRow) -> Result<SessionSummary, StorageError> {
+    let created_at: DateTime<Utc> = row.try_get("created_at")?;
+    let files_read: serde_json::Value = row.try_get("files_read")?;
+    let files_edited: serde_json::Value = row.try_get("files_edited")?;
+    Ok(SessionSummary::new(
+        row.try_get("session_id")?,
+        row.try_get("project")?,
+        row.try_get("request")?,
+        row.try_get("investigated")?,
+        row.try_get("learned")?,
+        row.try_get("completed")?,
+        row.try_get("next_steps")?,
+        row.try_get("notes")?,
+        parse_json_value(files_read),
+        parse_json_value(files_edited),
+        row.try_get::<Option<i32>, _>("prompt_number")?
+            .map(|v| {
+                u32::try_from(v).map_err(|e| StorageError::DataCorruption {
+                    context: "prompt_number negative in DB".into(),
+                    source: Box::new(e),
+                })
+            })
+            .transpose()?
+            .map(PromptNumber),
+        row.try_get::<Option<i32>, _>("discovery_tokens")?
+            .map(|v| {
+                u32::try_from(v).map_err(|e| StorageError::DataCorruption {
+                    context: "discovery_tokens negative in DB".into(),
+                    source: Box::new(e),
+                })
+            })
+            .transpose()?
+            .map(DiscoveryTokens),
+        created_at,
+    ))
+}
+
+pub(crate) fn row_to_knowledge(
+    row: &sqlx::postgres::PgRow,
+) -> Result<GlobalKnowledge, StorageError> {
+    let kt_str: String = row.try_get("knowledge_type")?;
+    let knowledge_type: KnowledgeType =
+        kt_str.parse::<KnowledgeType>().map_err(|e| StorageError::DataCorruption {
+            context: format!("invalid knowledge_type in DB: {}", kt_str),
+            source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+        })?;
+    let triggers: serde_json::Value = row.try_get("triggers")?;
+    let source_projects: serde_json::Value = row.try_get("source_projects")?;
+    let source_observations: serde_json::Value = row.try_get("source_observations")?;
+    let created_at: DateTime<Utc> = row.try_get("created_at")?;
+    let updated_at: DateTime<Utc> = row.try_get("updated_at")?;
+    let last_used_at: Option<DateTime<Utc>> = row.try_get("last_used_at")?;
+    Ok(GlobalKnowledge::new(
+        row.try_get("id")?,
+        knowledge_type,
+        row.try_get("title")?,
+        row.try_get("description")?,
+        row.try_get("instructions")?,
+        parse_json_value(triggers),
+        parse_json_value(source_projects),
+        parse_json_value(source_observations),
+        row.try_get("confidence")?,
+        row.try_get::<i64, _>("usage_count")?,
+        last_used_at.map(|d| d.to_rfc3339()),
+        created_at.to_rfc3339(),
+        updated_at.to_rfc3339(),
+    ))
+}
+
+pub(crate) fn row_to_prompt(row: &sqlx::postgres::PgRow) -> Result<UserPrompt, StorageError> {
+    let created_at: DateTime<Utc> = row.try_get("created_at")?;
+    Ok(UserPrompt::new(
+        row.try_get("id")?,
+        row.try_get("content_session_id")?,
+        PromptNumber(u32::try_from(row.try_get::<i32, _>("prompt_number")?).map_err(|e| {
+            StorageError::DataCorruption {
+                context: "prompt_number negative in DB".into(),
+                source: Box::new(e),
+            }
+        })?),
+        row.try_get("prompt_text")?,
+        row.try_get("project")?,
+        created_at,
+    ))
+}
+
+pub(crate) fn row_to_pending_message(
+    row: &sqlx::postgres::PgRow,
+) -> Result<PendingMessage, StorageError> {
+    let status_str: String = row.try_get("status")?;
+    let status =
+        status_str.parse::<PendingMessageStatus>().map_err(|e| StorageError::DataCorruption {
+            context: format!("invalid pending message status in DB: {}", status_str),
+            source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+        })?;
+    Ok(PendingMessage {
+        id: row.try_get("id")?,
+        session_id: row.try_get("session_id")?,
+        status,
+        tool_name: row.try_get("tool_name")?,
+        tool_input: row.try_get("tool_input")?,
+        tool_response: row.try_get("tool_response")?,
+        retry_count: row.try_get("retry_count")?,
+        created_at_epoch: row.try_get("created_at_epoch")?,
+        claimed_at_epoch: row.try_get("claimed_at_epoch")?,
+        completed_at_epoch: row.try_get("completed_at_epoch")?,
+        project: row.try_get("project")?,
+    })
+}

@@ -84,7 +84,7 @@ Full feature parity with [claude-mem](https://github.com/thedotmack/claude-mem).
 | `src/services/sqlite/SessionStore.ts` | `crates/storage` |
 | `src/services/sqlite/SessionSearch.ts` | `crates/search` |
 | `src/services/sync/ChromaSync.ts` | `crates/embeddings` |
-| `src/services/context/ContextBuilder.ts` | `crates/plugin` |
+| `src/services/context/ContextBuilder.ts` | `crates/service` |
 | `src/services/worker-service.ts` | `crates/http` |
 | `src/servers/mcp-server.ts` | `crates/mcp` |
-| `plugin/hooks/*` | `crates/plugin` |
+| `plugin/hooks/*` | `crates/cli` (hook subcommands) |

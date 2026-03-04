@@ -30,7 +30,7 @@ jobs:
       - name: Check code formatting
         run: |
           # Format all Rust files in the project
-          find . -name "*.rs" -exec rustfmt --edition 2021 {} \;
+          find . -name "*.rs" -exec rustfmt --edition 2024 {} \;
           # For now, just format and warn, don't fail the build
           # TODO: Re-enable strict formatting check once environment is consistent
           if [ -n "$(git diff --stat)" ]; then
@@ -98,10 +98,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         
-      - name: Install MSRV toolchain (1.75.0)
+      - name: Install MSRV toolchain (1.85.0)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.88.0
+          toolchain: 1.85.0
           
       - name: Setup Rust caching
         uses: Swatinem/rust-cache@v2

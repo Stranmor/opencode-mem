@@ -25,6 +25,28 @@ fn degrade_infinite_read(
     }
 }
 
+/// Fast-fail for infinite memory read handlers when the circuit breaker is open.
+///
+/// Returns `Some(empty_McpResponse)` if the CB blocks the request (database unavailable),
+/// preventing a full connection-timeout hang on the single-threaded stdio MCP stream.
+/// Returns `None` if the CB allows the request through (circuit closed or half-open probe).
+fn cb_fast_fail_infinite(mem: &InfiniteMemory, id: &serde_json::Value) -> Option<McpResponse> {
+    let cb = mem.circuit_breaker();
+    if !cb.should_allow() {
+        tracing::debug!(
+            "MCP infinite read: circuit breaker blocking request, fast-failing with empty results"
+        );
+        Some(McpResponse {
+            jsonrpc: "2.0".to_owned(),
+            id: id.clone(),
+            result: Some(mcp_ok(&Vec::<serde_json::Value>::new())),
+            error: None,
+        })
+    } else {
+        None
+    }
+}
+
 pub(super) async fn handle_infinite_expand(
     infinite_mem: Option<&InfiniteMemory>,
     _handle: &Handle,
@@ -33,6 +55,9 @@ pub(super) async fn handle_infinite_expand(
 ) -> McpResponse {
     match infinite_mem {
         Some(mem) => {
+            if let Some(degraded) = cb_fast_fail_infinite(mem, &id) {
+                return degraded;
+            }
             let Some(summary_id) = args.get("id").and_then(serde_json::Value::as_i64) else {
                 return McpResponse {
                     jsonrpc: "2.0".to_owned(),
@@ -47,11 +72,14 @@ pub(super) async fn handle_infinite_expand(
                 .unwrap_or(1000)
                 .min(MAX_QUERY_LIMIT_I64);
             match mem.get_events_by_summary_id(summary_id, limit).await {
-                Ok(events) => McpResponse {
-                    jsonrpc: "2.0".to_owned(),
-                    id,
-                    result: Some(mcp_ok(&events)),
-                    error: None,
+                Ok(events) => {
+                    mem.circuit_breaker().record_success();
+                    McpResponse {
+                        jsonrpc: "2.0".to_owned(),
+                        id,
+                        result: Some(mcp_ok(&events)),
+                        error: None,
+                    }
                 },
                 Err(e) => degrade_infinite_read(e, mem, id),
             }
@@ -73,6 +101,9 @@ pub(super) async fn handle_infinite_time_range(
 ) -> McpResponse {
     match infinite_mem {
         Some(mem) => {
+            if let Some(degraded) = cb_fast_fail_infinite(mem, &id) {
+                return degraded;
+            }
             let from = args.get("start").and_then(|f| f.as_str()).unwrap_or("");
             let to = args.get("end").and_then(|t| t.as_str()).unwrap_or("");
             let session_id = args.get("session_id").and_then(|s| s.as_str());
@@ -104,11 +135,14 @@ pub(super) async fn handle_infinite_time_range(
                 },
             };
             match mem.get_events_by_time_range(start, end, session_id, limit).await {
-                Ok(events) => McpResponse {
-                    jsonrpc: "2.0".to_owned(),
-                    id,
-                    result: Some(mcp_ok(&events)),
-                    error: None,
+                Ok(events) => {
+                    mem.circuit_breaker().record_success();
+                    McpResponse {
+                        jsonrpc: "2.0".to_owned(),
+                        id,
+                        result: Some(mcp_ok(&events)),
+                        error: None,
+                    }
                 },
                 Err(e) => degrade_infinite_read(e, mem, id),
             }
@@ -130,6 +164,9 @@ pub(super) async fn handle_infinite_drill_hour(
 ) -> McpResponse {
     match infinite_mem {
         Some(mem) => {
+            if let Some(degraded) = cb_fast_fail_infinite(mem, &id) {
+                return degraded;
+            }
             let Some(day_id) = args.get("id").and_then(serde_json::Value::as_i64) else {
                 return McpResponse {
                     jsonrpc: "2.0".to_owned(),
@@ -144,11 +181,14 @@ pub(super) async fn handle_infinite_drill_hour(
                 .unwrap_or(100)
                 .min(MAX_QUERY_LIMIT_I64);
             match mem.get_hour_summaries_by_day_id(day_id, limit).await {
-                Ok(summaries) => McpResponse {
-                    jsonrpc: "2.0".to_owned(),
-                    id,
-                    result: Some(mcp_ok(&summaries)),
-                    error: None,
+                Ok(summaries) => {
+                    mem.circuit_breaker().record_success();
+                    McpResponse {
+                        jsonrpc: "2.0".to_owned(),
+                        id,
+                        result: Some(mcp_ok(&summaries)),
+                        error: None,
+                    }
                 },
                 Err(e) => degrade_infinite_read(e, mem, id),
             }
@@ -170,6 +210,9 @@ pub(super) async fn handle_infinite_drill_minute(
 ) -> McpResponse {
     match infinite_mem {
         Some(mem) => {
+            if let Some(degraded) = cb_fast_fail_infinite(mem, &id) {
+                return degraded;
+            }
             let Some(hour_id) = args.get("id").and_then(serde_json::Value::as_i64) else {
                 return McpResponse {
                     jsonrpc: "2.0".to_owned(),
@@ -184,11 +227,14 @@ pub(super) async fn handle_infinite_drill_minute(
                 .unwrap_or(100)
                 .min(MAX_QUERY_LIMIT_I64);
             match mem.get_5min_summaries_by_hour_id(hour_id, limit).await {
-                Ok(summaries) => McpResponse {
-                    jsonrpc: "2.0".to_owned(),
-                    id,
-                    result: Some(mcp_ok(&summaries)),
-                    error: None,
+                Ok(summaries) => {
+                    mem.circuit_breaker().record_success();
+                    McpResponse {
+                        jsonrpc: "2.0".to_owned(),
+                        id,
+                        result: Some(mcp_ok(&summaries)),
+                        error: None,
+                    }
                 },
                 Err(e) => degrade_infinite_read(e, mem, id),
             }

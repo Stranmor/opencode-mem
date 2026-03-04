@@ -1,6 +1,6 @@
 //! Request/query types (Deserialize)
 
-use opencode_mem_core::{DEFAULT_QUERY_LIMIT, MAX_BATCH_IDS, MAX_QUERY_LIMIT};
+use opencode_mem_core::{DEFAULT_QUERY_LIMIT, KnowledgeType, MAX_BATCH_IDS, MAX_QUERY_LIMIT};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -205,12 +205,12 @@ pub struct KnowledgeQuery {
     pub q: String,
     #[serde(default = "default_limit")]
     pub limit: usize,
-    pub knowledge_type: Option<String>,
+    pub knowledge_type: Option<KnowledgeType>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct SaveKnowledgeRequest {
-    pub knowledge_type: String,
+    pub knowledge_type: KnowledgeType,
     pub title: String,
     pub description: String,
     pub instructions: Option<String>,

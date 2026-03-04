@@ -5,7 +5,9 @@ use super::*;
 use crate::error::StorageError;
 use crate::traits::KnowledgeStore;
 use async_trait::async_trait;
-use opencode_mem_core::{KnowledgeInput, KnowledgeSearchResult};
+use chrono::{DateTime, Utc};
+use opencode_mem_core::{GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType};
+use sqlx::Row;
 
 impl PgStorage {
     async fn save_knowledge_inner(
@@ -57,15 +59,15 @@ impl PgStorage {
                     triggers.push(t.clone());
                 }
             }
-            if let Some(ref p) = input.source_project {
-                if !source_projects.contains(p) {
-                    source_projects.push(p.clone());
-                }
+            if let Some(ref p) = input.source_project
+                && !source_projects.contains(p)
+            {
+                source_projects.push(p.clone());
             }
-            if let Some(ref o) = input.source_observation {
-                if !source_observations.contains(o) {
-                    source_observations.push(o.clone());
-                }
+            if let Some(ref o) = input.source_observation
+                && !source_observations.contains(o)
+            {
+                source_observations.push(o.clone());
             }
 
             sqlx::query(

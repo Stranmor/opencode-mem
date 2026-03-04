@@ -1,16 +1,20 @@
 use opencode_mem_service::KnowledgeService;
 use serde_json::json;
 
-use super::{degrade_read_err, degrade_write_err, mcp_err, mcp_ok, mcp_text, parse_limit};
+use super::{
+    cb_fast_fail_read, cb_fast_fail_write, degrade_read_err, degrade_write_err, mcp_err, mcp_ok,
+};
 
 pub(super) async fn handle_knowledge_search(
     knowledge_service: &KnowledgeService,
     args: &serde_json::Value,
-    _limit: usize,
+    limit: usize,
 ) -> serde_json::Value {
     let query = args.get("query").and_then(|q| q.as_str()).unwrap_or("");
-    let limit = parse_limit(args);
     let cb = knowledge_service.circuit_breaker();
+    if let Some(degraded) = cb_fast_fail_read::<Vec<opencode_mem_core::KnowledgeSearchResult>>(cb) {
+        return degraded;
+    }
     match knowledge_service.search_knowledge(query, limit).await {
         Ok(results) => {
             cb.record_success();
@@ -38,6 +42,9 @@ pub(super) async fn handle_knowledge_get(
         None => return mcp_err("id is required"),
     };
     let cb = knowledge_service.circuit_breaker();
+    if let Some(degraded) = cb_fast_fail_read::<Vec<opencode_mem_core::GlobalKnowledge>>(cb) {
+        return degraded;
+    }
     match knowledge_service.get_knowledge(id_str).await {
         Ok(Some(knowledge)) => {
             cb.record_success();
@@ -46,12 +53,12 @@ pub(super) async fn handle_knowledge_get(
         },
         Ok(None) => {
             cb.record_success();
-            mcp_text(&format!("Knowledge not found: {id_str}"))
+            mcp_ok(&serde_json::Value::Null)
         },
         Err(e) if e.is_db_unavailable() || e.is_transient() => {
             cb.record_failure();
-            tracing::warn!(error = %e, "MCP read: database unavailable, returning null for knowledge");
-            mcp_ok(&serde_json::Value::Null)
+            tracing::warn!(error = %e, "MCP read: database unavailable, returning empty array for knowledge");
+            mcp_ok(&Vec::<opencode_mem_core::GlobalKnowledge>::new())
         },
         Err(e) => mcp_err(e),
     }
@@ -60,7 +67,7 @@ pub(super) async fn handle_knowledge_get(
 pub(super) async fn handle_knowledge_list(
     knowledge_service: &KnowledgeService,
     args: &serde_json::Value,
-    _limit: usize,
+    limit: usize,
 ) -> serde_json::Value {
     let knowledge_type = match args.get("knowledge_type").and_then(|t| t.as_str()) {
         Some(s) => match s.parse::<opencode_mem_core::KnowledgeType>() {
@@ -69,8 +76,10 @@ pub(super) async fn handle_knowledge_list(
         },
         None => None,
     };
-    let limit = parse_limit(args);
     let cb = knowledge_service.circuit_breaker();
+    if let Some(degraded) = cb_fast_fail_read::<Vec<opencode_mem_core::GlobalKnowledge>>(cb) {
+        return degraded;
+    }
     match knowledge_service.list_knowledge(knowledge_type, limit).await {
         Ok(results) => {
             cb.record_success();
@@ -89,6 +98,9 @@ pub(super) async fn handle_knowledge_delete(
         None => return mcp_err("id is required"),
     };
     let cb = knowledge_service.circuit_breaker();
+    if let Some(degraded) = cb_fast_fail_write(cb) {
+        return degraded;
+    }
     match knowledge_service.delete_knowledge(id_str).await {
         Ok(deleted) => {
             cb.record_success();
@@ -136,6 +148,9 @@ pub(super) async fn handle_knowledge_save(
     );
 
     let cb = knowledge_service.circuit_breaker();
+    if let Some(degraded) = cb_fast_fail_write(cb) {
+        return degraded;
+    }
     match knowledge_service.save_knowledge(input).await {
         Ok(knowledge) => {
             cb.record_success();

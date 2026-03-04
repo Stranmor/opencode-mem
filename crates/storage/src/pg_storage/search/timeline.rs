@@ -1,7 +1,7 @@
 use crate::error::StorageError;
 use opencode_mem_core::SearchResult;
 
-use super::super::{row_to_search_result, usize_to_i64, PgStorage};
+use super::super::{PgStorage, row_to_search_result, usize_to_i64};
 
 pub(crate) async fn get_timeline(
     storage: &PgStorage,

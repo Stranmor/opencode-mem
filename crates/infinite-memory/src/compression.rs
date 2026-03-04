@@ -77,7 +77,9 @@ pub async fn compress_events(
     let request = opencode_mem_llm::ChatRequest {
         model: llm.model().to_owned(),
         messages: vec![opencode_mem_llm::Message { role: "user".to_owned(), content: prompt }],
-        response_format: opencode_mem_llm::ResponseFormat { format_type: "json_object".to_owned() },
+        response_format: opencode_mem_llm::ResponseFormat {
+            format_type: opencode_mem_llm::ResponseFormatType::JsonObject,
+        },
         max_tokens: None,
     };
 
@@ -124,7 +126,9 @@ pub async fn compress_summaries(llm: &LlmClient, summaries: &[Summary]) -> Resul
     let request = opencode_mem_llm::ChatRequest {
         model: llm.model().to_owned(),
         messages: vec![opencode_mem_llm::Message { role: "user".to_owned(), content: prompt }],
-        response_format: opencode_mem_llm::ResponseFormat { format_type: "text".to_owned() },
+        response_format: opencode_mem_llm::ResponseFormat {
+            format_type: opencode_mem_llm::ResponseFormatType::Text,
+        },
         max_tokens: Some(300),
     };
 

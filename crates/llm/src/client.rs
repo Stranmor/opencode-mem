@@ -6,7 +6,7 @@ use crate::error::LlmError;
 /// Maximum output length for truncation.
 pub const MAX_OUTPUT_LEN: usize = 2000;
 /// Default LLM model to use.
-pub const DEFAULT_MODEL: &str = "gemini-3-pro-high";
+pub const DEFAULT_MODEL: &str = "gpt-4o";
 
 /// Client for LLM API calls.
 pub struct LlmClient {
@@ -65,20 +65,20 @@ impl LlmClient {
         base_url: Option<String>,
         model: Option<String>,
     ) {
-        if let Some(key) = api_key {
-            if let Ok(mut k) = self.api_key.write() {
-                *k = key;
-            }
+        if let Some(key) = api_key
+            && let Ok(mut k) = self.api_key.write()
+        {
+            *k = key;
         }
-        if let Some(url) = base_url {
-            if let Ok(mut u) = self.base_url.write() {
-                *u = url.trim_end_matches('/').to_owned();
-            }
+        if let Some(url) = base_url
+            && let Ok(mut u) = self.base_url.write()
+        {
+            *u = url.trim_end_matches('/').to_owned();
         }
-        if let Some(m) = model {
-            if let Ok(mut md) = self.model.write() {
-                *md = m;
-            }
+        if let Some(m) = model
+            && let Ok(mut md) = self.model.write()
+        {
+            *md = m;
         }
     }
 

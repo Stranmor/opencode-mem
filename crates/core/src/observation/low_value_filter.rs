@@ -316,36 +316,36 @@ pub fn is_trivial_tool_call(tool_name: &str, input: &serde_json::Value) -> bool 
     }
 
     // Bash read-only or negligible commands
-    if t == "bash" {
-        if let Some(cmd) = input.get("command").and_then(|c| c.as_str()) {
-            let cmd_lower = cmd.to_lowercase();
-            let trimmed = cmd_lower.trim();
+    if t == "bash"
+        && let Some(cmd) = input.get("command").and_then(|c| c.as_str())
+    {
+        let cmd_lower = cmd.to_lowercase();
+        let trimmed = cmd_lower.trim();
 
-            // Check for shell metacharacters that allow command chaining or redirection
-            let has_metachars = cmd.contains([';', '&', '|', '<', '>', '\n', '$', '`']);
+        // Check for shell metacharacters that allow command chaining or redirection
+        let has_metachars = cmd.contains([';', '&', '|', '<', '>', '\n', '$', '`']);
 
-            if !has_metachars
-                && (trimmed == "ls"
-                    || trimmed.starts_with("ls ")
-                    || trimmed.starts_with("pwd")
-                    || trimmed.starts_with("cat ")
-                    || trimmed.starts_with("echo ")
-                    || trimmed.starts_with("grep ")
-                    || trimmed.starts_with("find ")
-                    || trimmed.starts_with("git status")
-                    || trimmed.starts_with("git log")
-                    || trimmed.starts_with("git diff")
-                    || trimmed.starts_with("cargo check")
-                    || trimmed.starts_with("cargo test")
-                    || trimmed.starts_with("cargo build")
-                    || trimmed.starts_with("npm test")
-                    || trimmed.starts_with("npm run test")
-                    || trimmed.starts_with("npm run build")
-                    || trimmed.starts_with("npm install")
-                    || trimmed.starts_with("pytest"))
-            {
-                return true;
-            }
+        if !has_metachars
+            && (trimmed == "ls"
+                || trimmed.starts_with("ls ")
+                || trimmed.starts_with("pwd")
+                || trimmed.starts_with("cat ")
+                || trimmed.starts_with("echo ")
+                || trimmed.starts_with("grep ")
+                || trimmed.starts_with("find ")
+                || trimmed.starts_with("git status")
+                || trimmed.starts_with("git log")
+                || trimmed.starts_with("git diff")
+                || trimmed.starts_with("cargo check")
+                || trimmed.starts_with("cargo test")
+                || trimmed.starts_with("cargo build")
+                || trimmed.starts_with("npm test")
+                || trimmed.starts_with("npm run test")
+                || trimmed.starts_with("npm run build")
+                || trimmed.starts_with("npm install")
+                || trimmed.starts_with("pytest"))
+        {
+            return true;
         }
     }
 

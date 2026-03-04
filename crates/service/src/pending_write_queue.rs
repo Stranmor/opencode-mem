@@ -5,8 +5,8 @@
 //! is flushed back to the database.
 
 use std::collections::VecDeque;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 
 /// Maximum items in the pending write queue to prevent OOM.
 const MAX_QUEUE_SIZE: usize = 1000;

@@ -11,3 +11,7 @@ target/
 .env.local
 *.env
 Cargo.lock
+
+# One-off migration scripts (not part of the project)
+fix_*.py
+patch_*.js

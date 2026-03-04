@@ -2,18 +2,29 @@
 
 /// Strip markdown code block wrappers from JSON content.
 ///
-/// Handles `` ```json ... ``` ``, `` ``` ... ``` ``, and other language identifiers.
+/// Handles LLM preamble text before the code block (e.g. "Here is the summary:\n```json\n{...}\n```")
+/// by finding the FIRST ``` and LAST ``` in the input and extracting content between them.
 #[must_use]
 pub fn strip_markdown_json(content: &str) -> &str {
     let trimmed = content.trim();
-    if trimmed.starts_with("```") && trimmed.ends_with("```") {
-        let without_prefix = trimmed.strip_prefix("```").unwrap_or(trimmed);
-        let without_suffix = without_prefix.strip_suffix("```").unwrap_or(without_prefix);
-        return without_suffix
-            .split_once('\n')
-            .map_or_else(|| without_suffix.trim(), |(_, rest)| rest.trim());
+
+    let Some(open_pos) = trimmed.find("```") else {
+        return trimmed;
+    };
+    // Find the LAST occurrence of ```
+    let Some(close_pos) = trimmed.rfind("```") else {
+        return trimmed;
+    };
+    // open and close must be different positions (not the same ```)
+    if close_pos <= open_pos {
+        return trimmed;
     }
-    trimmed
+
+    // Content between opening ``` (skip past the ```) and closing ```
+    let after_open = &trimmed[open_pos.saturating_add(3)..close_pos];
+
+    // Skip the language identifier on the first line (e.g. "json", "json5", " json")
+    after_open.split_once('\n').map_or_else(|| after_open.trim(), |(_, rest)| rest.trim())
 }
 
 #[cfg(test)]
@@ -53,6 +64,24 @@ mod tests {
     #[test]
     fn test_space_before_lang() {
         let input = "``` json\n{\"key\": \"value\"}\n```";
+        assert_eq!(strip_markdown_json(input), "{\"key\": \"value\"}");
+    }
+
+    #[test]
+    fn test_preamble_text_before_code_block() {
+        let input = "Here is the summary:\n```json\n{\"key\": \"value\"}\n```";
+        assert_eq!(strip_markdown_json(input), "{\"key\": \"value\"}");
+    }
+
+    #[test]
+    fn test_preamble_and_trailing_text() {
+        let input = "Sure! Here you go:\n```json\n{\"key\": \"value\"}\n```\nHope this helps!";
+        assert_eq!(strip_markdown_json(input), "{\"key\": \"value\"}");
+    }
+
+    #[test]
+    fn test_preamble_plain_block() {
+        let input = "Result:\n```\n{\"key\": \"value\"}\n```";
         assert_eq!(strip_markdown_json(input), "{\"key\": \"value\"}");
     }
 }

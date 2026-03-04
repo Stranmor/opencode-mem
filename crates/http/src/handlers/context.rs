@@ -1,8 +1,8 @@
 use crate::api_error::ApiError;
 use axum::{
+    Json,
     extract::{Query, State},
     response::sse::{Event, Sse},
-    Json,
 };
 use futures_util::stream::Stream;
 use std::convert::Infallible;
@@ -12,11 +12,11 @@ use tokio::sync::broadcast::error::RecvError;
 use opencode_mem_core::{Observation, SearchResult};
 use opencode_mem_service::StorageStats;
 
+use crate::AppState;
 use crate::api_types::{
     ContextPreview, ContextPreviewQuery, ContextQuery, SearchHelpResponse, SearchQuery,
     TimelineResult, UnifiedTimelineQuery,
 };
-use crate::AppState;
 
 use super::api_docs::get_search_help;
 use super::search::unified_timeline;
@@ -35,12 +35,11 @@ pub async fn get_context_recent(
 
     if let Some(ref session_id) = query.session_id {
         let ids: Vec<String> = observations.iter().map(|o| o.id.clone()).collect();
-        if !ids.is_empty() {
-            if let Err(e) =
+        if !ids.is_empty()
+            && let Err(e) =
                 state.observation_service.save_injected_observations(session_id, &ids).await
-            {
-                tracing::warn!("Failed to record injected observations: {}", e);
-            }
+        {
+            tracing::warn!("Failed to record injected observations: {}", e);
         }
     }
 

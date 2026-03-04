@@ -2,8 +2,8 @@
 
 use anyhow::{Context, Result};
 use opencode_mem_core::{KnowledgeInput, KnowledgeType};
-use opencode_mem_storage::traits::KnowledgeStore;
 use opencode_mem_storage::StorageBackend;
+use opencode_mem_storage::traits::KnowledgeStore;
 use regex::Regex;
 use std::path::Path;
 use std::sync::LazyLock;

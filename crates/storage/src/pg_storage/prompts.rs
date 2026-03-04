@@ -6,6 +6,7 @@ use crate::error::StorageError;
 use crate::pending_queue::PaginatedResult;
 use crate::traits::PromptStore;
 use async_trait::async_trait;
+use opencode_mem_core::UserPrompt;
 
 #[async_trait]
 impl PromptStore for PgStorage {

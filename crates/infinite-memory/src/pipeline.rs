@@ -169,15 +169,14 @@ pub async fn create_day_summary(
     tx.commit().await?;
     Ok(day_id)
 }
-
 const MAX_EVENTS_PER_BATCH: usize = 100;
 
 pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<u32> {
     let mut total_processed = 0u32;
+    let batch_limit = i64::try_from(MAX_EVENTS_PER_BATCH)
+        .map_err(|e| anyhow::anyhow!("MAX_EVENTS_PER_BATCH exceeds i64::MAX: {e}"))?;
     loop {
-        let events =
-            event_queries::get_unsummarized_events(pool, MAX_EVENTS_PER_BATCH as i64).await?;
-
+        let events = event_queries::get_unsummarized_events(pool, batch_limit).await?;
         if events.is_empty() {
             break;
         }
@@ -239,7 +238,17 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
                     let ids: Vec<i64> = owned_events.iter().map(|e| e.id).collect();
                     let _ = event_queries::release_events(pool, &ids).await;
                 } else {
-                    total_processed += owned_events.len() as u32;
+                    let event_count = u32::try_from(owned_events.len()).map_err(|e| {
+                        anyhow::anyhow!(
+                            "owned_events.len() {} exceeds u32::MAX: {}",
+                            owned_events.len(),
+                            e
+                        )
+                    })?;
+                    total_processed =
+                        total_processed.checked_add(event_count).ok_or_else(|| {
+                            anyhow::anyhow!("total_processed overflow at {}", total_processed)
+                        })?;
                 }
             }
         }

@@ -8,8 +8,10 @@ use crate::error::StorageError;
 use crate::traits::EmbeddingStore;
 use async_trait::async_trait;
 use opencode_mem_core::{
-    contains_non_finite, is_zero_vector, SimilarMatch, EMBEDDING_DIMENSION, MAX_BATCH_IDS,
+    EMBEDDING_DIMENSION, MAX_BATCH_IDS, Observation, SimilarMatch, contains_non_finite,
+    is_zero_vector,
 };
+use sqlx::Row;
 
 #[async_trait]
 impl EmbeddingStore for PgStorage {

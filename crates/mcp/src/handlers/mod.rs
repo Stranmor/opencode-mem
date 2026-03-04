@@ -20,13 +20,14 @@ use crate::{McpError, McpResponse};
 
 /// Parse a `limit` argument from MCP tool arguments.
 ///
-/// Returns `DEFAULT_QUERY_LIMIT` when absent or non-numeric, clamped to `MAX_QUERY_LIMIT`.
+/// Returns `default` when absent or non-numeric, clamped to `MAX_QUERY_LIMIT`.
+/// Each caller passes the default matching its tool's JSON schema description.
 /// Uses `usize::try_from` to avoid truncating `as` casts.
-pub(crate) fn parse_limit(args: &serde_json::Value) -> usize {
+pub(crate) fn parse_limit(args: &serde_json::Value, default: usize) -> usize {
     let raw = args
         .get("limit")
         .and_then(serde_json::Value::as_u64)
-        .unwrap_or(u64::try_from(DEFAULT_QUERY_LIMIT).unwrap_or(u64::MAX));
+        .unwrap_or(u64::try_from(default).unwrap_or(u64::MAX));
     usize::try_from(raw).unwrap_or(MAX_QUERY_LIMIT).min(MAX_QUERY_LIMIT)
 }
 
@@ -169,31 +170,49 @@ pub async fn handle_tool_call(
         McpTool::Important => {
             json!({ "content": [{ "type": "text", "text": WORKFLOW_DOCS }] })
         },
-        McpTool::Search => memory::handle_search(search_service, &args, parse_limit(&args)).await,
+        McpTool::Search => {
+            memory::handle_search(search_service, &args, parse_limit(&args, 50)).await
+        },
         McpTool::Timeline => {
-            memory::handle_timeline(search_service, &args, parse_limit(&args)).await
+            memory::handle_timeline(search_service, &args, parse_limit(&args, 50)).await
         },
         McpTool::GetObservations => memory::handle_get_observations(search_service, &args).await,
         McpTool::MemoryGet => memory::handle_memory_get(search_service, &args).await,
         McpTool::MemoryRecent => {
-            memory::handle_memory_recent(search_service, &args, parse_limit(&args)).await
+            memory::handle_memory_recent(search_service, &args, parse_limit(&args, 10)).await
         },
         McpTool::MemoryHybridSearch => {
-            memory::handle_hybrid_search(search_service, &args, parse_limit(&args)).await
+            memory::handle_hybrid_search(
+                search_service,
+                &args,
+                parse_limit(&args, DEFAULT_QUERY_LIMIT),
+            )
+            .await
         },
         McpTool::MemorySemanticSearch => {
-            memory::handle_semantic_search(search_service, &args, parse_limit(&args)).await
+            memory::handle_semantic_search(
+                search_service,
+                &args,
+                parse_limit(&args, DEFAULT_QUERY_LIMIT),
+            )
+            .await
         },
         McpTool::SaveMemory => {
             memory::handle_save_memory(observation_service, pending_writes, &args).await
         },
         McpTool::KnowledgeSearch => {
-            knowledge::handle_knowledge_search(knowledge_service, &args, parse_limit(&args)).await
+            knowledge::handle_knowledge_search(knowledge_service, &args, parse_limit(&args, 10))
+                .await
         },
         McpTool::KnowledgeSave => knowledge::handle_knowledge_save(knowledge_service, &args).await,
         McpTool::KnowledgeGet => knowledge::handle_knowledge_get(knowledge_service, &args).await,
         McpTool::KnowledgeList => {
-            knowledge::handle_knowledge_list(knowledge_service, &args, parse_limit(&args)).await
+            knowledge::handle_knowledge_list(
+                knowledge_service,
+                &args,
+                parse_limit(&args, DEFAULT_QUERY_LIMIT),
+            )
+            .await
         },
         McpTool::KnowledgeDelete => {
             knowledge::handle_knowledge_delete(knowledge_service, &args).await

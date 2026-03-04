@@ -41,8 +41,8 @@ mod pipeline;
 mod summary_queries;
 
 pub use event_types::{
-    EventType, RawEvent, StoredEvent, Summary, SummaryEntities, assistant_event, tool_event,
-    user_event,
+    assistant_event, tool_event, user_event, EventType, RawEvent, StoredEvent, Summary,
+    SummaryEntities,
 };
 
 use anyhow::Result;
@@ -52,8 +52,8 @@ use opencode_mem_llm::LlmClient;
 use opencode_mem_storage::CircuitBreaker;
 
 use sqlx::PgPool;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 pub struct InfiniteMemory {
     pool: PgPool,

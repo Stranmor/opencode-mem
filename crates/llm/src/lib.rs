@@ -19,7 +19,7 @@ mod knowledge;
 mod observation;
 mod summary;
 
-pub use ai_types::{ChatRequest, Message, ResponseFormat};
+pub use ai_types::{ChatRequest, Message, ResponseFormat, ResponseFormatType};
 pub use client::LlmClient;
 pub use error::LlmError;
 pub use observation::CompressionResult;

@@ -2,7 +2,7 @@
 #[expect(clippy::unwrap_used, reason = "test code")]
 #[expect(clippy::expect_used, reason = "test code")]
 mod tests {
-    use crate::ai_types::{ChatRequest, Message, ResponseFormat};
+    use crate::ai_types::{ChatRequest, Message, ResponseFormat, ResponseFormatType};
     use crate::client::LlmClient;
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -15,7 +15,7 @@ mod tests {
         ChatRequest {
             model: "test-model".to_owned(),
             messages: vec![Message { role: "user".to_owned(), content: "hello".to_owned() }],
-            response_format: ResponseFormat { format_type: "text".to_owned() },
+            response_format: ResponseFormat { format_type: ResponseFormatType::Text },
             max_tokens: None,
         }
     }

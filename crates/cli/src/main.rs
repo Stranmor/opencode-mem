@@ -99,8 +99,7 @@ pub fn get_api_key() -> Result<String> {
 
 #[must_use]
 pub fn get_base_url() -> String {
-    std::env::var("OPENCODE_MEM_API_URL")
-        .unwrap_or_else(|_| "https://antigravity.quantumind.ru".to_owned())
+    std::env::var("OPENCODE_MEM_API_URL").unwrap_or_else(|_| "https://api.openai.com".to_owned())
 }
 
 pub async fn create_storage() -> Result<StorageBackend> {

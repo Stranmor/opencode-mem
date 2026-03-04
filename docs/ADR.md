@@ -9,7 +9,7 @@
 **Decision:** Full rewrite in Rust.
 
 **Rationale:**
-- RUST_ONLY doctrine (AGENTS.md)
+- Project architecture mandates Rust-only codebase
 - Better performance for embedding operations
 - Single binary deployment
 - No Node.js/Bun runtime dependency
@@ -154,7 +154,7 @@ OpenCode → TS Plugin → HTTP :37777 → Rust Backend
 
 ## ADR-006: 3-Layer Search Pattern
 
-**Status:** Planned
+**Status:** Accepted
 
 **Context:** claude-mem uses 3-layer pattern for token efficiency.
 

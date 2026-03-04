@@ -3,8 +3,8 @@ use std::fmt::Write as _;
 use opencode_mem_core::{Concept, Observation, ObservationType};
 use serde::Deserialize;
 
-use crate::ai_types::{ChatRequest, Message, ResponseFormat};
-use crate::client::{truncate, LlmClient};
+use crate::ai_types::{ChatRequest, Message, ResponseFormat, ResponseFormatType};
+use crate::client::{LlmClient, truncate};
 use crate::error::LlmError;
 
 /// Single insight extracted from session analysis
@@ -180,7 +180,7 @@ impl LlmClient {
         let request = ChatRequest {
             model: self.model(),
             messages: vec![Message { role: "user".to_owned(), content: prompt }],
-            response_format: ResponseFormat { format_type: "json_object".to_owned() },
+            response_format: ResponseFormat { format_type: ResponseFormatType::JsonObject },
             max_tokens: None,
         };
 

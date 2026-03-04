@@ -1,9 +1,9 @@
 use crate::api_error::ApiError;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use opencode_mem_core::{ProjectFilter, ToolCall};
-use opencode_mem_service::{default_visibility_timeout_secs, PendingMessage};
+use opencode_mem_service::{PendingMessage, default_visibility_timeout_secs};
 
 use crate::AppState;
 
@@ -12,11 +12,11 @@ pub(crate) fn max_queue_workers() -> usize {
 }
 
 pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> anyhow::Result<()> {
-    if let Some(project) = msg.project.as_deref().filter(|p| !p.is_empty() && *p != "unknown") {
-        if ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project)) {
-            tracing::debug!("Skipping excluded project '{}' for message {}", project, msg.id);
-            return Ok(());
-        }
+    if let Some(project) = msg.project.as_deref().filter(|p| !p.is_empty() && *p != "unknown")
+        && ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project))
+    {
+        tracing::debug!("Skipping excluded project '{}' for message {}", project, msg.id);
+        return Ok(());
     }
 
     let tool_name = msg.tool_name.as_deref().unwrap_or("unknown");

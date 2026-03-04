@@ -8,13 +8,20 @@
 #![allow(clippy::needless_borrow, reason = "borrow needed for contains() on &str slice")]
 
 use opencode_mem_mcp::McpTool;
-use opencode_mem_service::{KnowledgeService, ObservationService, SearchService, SessionService};
+use opencode_mem_service::{
+    KnowledgeService, ObservationService, PendingWriteQueue, SearchService, SessionService,
+};
 use opencode_mem_storage::StorageBackend;
 use serde_json::json;
 use std::sync::Arc;
 
-fn setup_degraded_services(
-) -> (Arc<ObservationService>, Arc<SessionService>, Arc<KnowledgeService>, Arc<SearchService>) {
+fn setup_degraded_services() -> (
+    Arc<ObservationService>,
+    Arc<SessionService>,
+    Arc<KnowledgeService>,
+    Arc<SearchService>,
+    Arc<PendingWriteQueue>,
+) {
     let backend =
         Arc::new(StorageBackend::new_degraded("postgres://bogus:bogus@127.0.0.1:1/bogus"));
 
@@ -26,8 +33,9 @@ fn setup_degraded_services(
     let session_service = Arc::new(SessionService::new(backend.clone(), llm));
     let knowledge_service = Arc::new(KnowledgeService::new(backend.clone()));
     let search_service = Arc::new(SearchService::new(backend, None, None));
+    let pending_writes = Arc::new(PendingWriteQueue::new());
 
-    (observation_service, session_service, knowledge_service, search_service)
+    (observation_service, session_service, knowledge_service, search_service, pending_writes)
 }
 
 fn tool_args(tool_name: &str) -> serde_json::Value {
@@ -66,7 +74,7 @@ const INFINITE_TOOLS: [&str; 4] =
 
 #[tokio::test]
 async fn all_tools_degrade_gracefully_without_database() {
-    let (observation_service, session_service, knowledge_service, search_service) =
+    let (observation_service, session_service, knowledge_service, search_service, pending_writes) =
         setup_degraded_services();
     let handle = tokio::runtime::Handle::current();
 
@@ -83,6 +91,7 @@ async fn all_tools_degrade_gracefully_without_database() {
             &session_service,
             &knowledge_service,
             &search_service,
+            &pending_writes,
             &handle,
             &params,
             json!(1),
@@ -130,7 +139,7 @@ async fn all_tools_degrade_gracefully_without_database() {
 
 #[tokio::test]
 async fn read_tools_return_empty_results_in_degraded_mode() {
-    let (observation_service, session_service, knowledge_service, search_service) =
+    let (observation_service, session_service, knowledge_service, search_service, pending_writes) =
         setup_degraded_services();
     let handle = tokio::runtime::Handle::current();
 
@@ -159,6 +168,7 @@ async fn read_tools_return_empty_results_in_degraded_mode() {
             &session_service,
             &knowledge_service,
             &search_service,
+            &pending_writes,
             &handle,
             &params,
             json!(1),
@@ -178,10 +188,9 @@ async fn read_tools_return_empty_results_in_degraded_mode() {
         );
     }
 
-    // Tools that return "not found" text when degraded (single-item lookups)
-    let not_found_tools = ["memory_get", "knowledge_get"];
+    let single_lookup_tools = ["memory_get", "knowledge_get"];
 
-    for tool_name in not_found_tools {
+    for tool_name in single_lookup_tools {
         let args = tool_args(tool_name);
         let params = json!({
             "name": tool_name,
@@ -194,6 +203,7 @@ async fn read_tools_return_empty_results_in_degraded_mode() {
             &session_service,
             &knowledge_service,
             &search_service,
+            &pending_writes,
             &handle,
             &params,
             json!(1),
@@ -205,16 +215,23 @@ async fn read_tools_return_empty_results_in_degraded_mode() {
         assert!(!is_error, "Read tool '{tool_name}' returned isError=true in degraded mode");
 
         let text = result["content"][0]["text"].as_str().unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+        let arr = parsed.as_array().unwrap_or_else(|| {
+            panic!(
+                "Read tool '{tool_name}' should return a JSON array in degraded mode, got: {text}"
+            )
+        });
         assert!(
-            text.to_lowercase().contains("not found"),
-            "Read tool '{tool_name}' should return 'not found' in degraded mode, got: {text}"
+            arr.is_empty(),
+            "Read tool '{tool_name}' should return an empty array in degraded mode, got {len} items",
+            len = arr.len()
         );
     }
 }
 
 #[tokio::test]
 async fn write_tools_return_degraded_message() {
-    let (observation_service, session_service, knowledge_service, search_service) =
+    let (observation_service, session_service, knowledge_service, search_service, pending_writes) =
         setup_degraded_services();
     let handle = tokio::runtime::Handle::current();
 
@@ -233,6 +250,7 @@ async fn write_tools_return_degraded_message() {
             &session_service,
             &knowledge_service,
             &search_service,
+            &pending_writes,
             &handle,
             &params,
             json!(1),
@@ -245,7 +263,10 @@ async fn write_tools_return_degraded_message() {
 
         let text = result["content"][0]["text"].as_str().unwrap();
         assert!(
-            text.contains("degraded") || text.contains("unavailable") || text.contains("skipped"),
+            text.contains("degraded")
+                || text.contains("unavailable")
+                || text.contains("skipped")
+                || text.contains("buffered"),
             "Write tool '{tool_name}' should indicate degraded mode in its response, got: {text}"
         );
     }

@@ -1,5 +1,5 @@
 use crate::client::truncate;
-use opencode_mem_core::{strip_markdown_json, Concept};
+use opencode_mem_core::{Concept, strip_markdown_json};
 use std::str::FromStr;
 
 #[test]

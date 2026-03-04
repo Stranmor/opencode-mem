@@ -114,10 +114,10 @@ impl ObservationService {
             },
         };
 
-        if let Some(emb) = self.generate_embedding(&merged_obs).await {
-            if let Err(e) = self.storage.store_embedding(observation_id, &emb).await {
-                tracing::warn!("Failed to update embedding after merge: {}", e);
-            }
+        if let Some(emb) = self.generate_embedding(&merged_obs).await
+            && let Err(e) = self.storage.store_embedding(observation_id, &emb).await
+        {
+            tracing::warn!("Failed to update embedding after merge: {}", e);
         }
     }
 

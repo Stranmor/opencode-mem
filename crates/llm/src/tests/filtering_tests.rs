@@ -5,11 +5,16 @@ use crate::observation::CompressionResult;
 use opencode_mem_core::{NoiseLevel, Observation, ObservationInput, ObservationType, ToolOutput};
 
 fn create_client() -> Option<LlmClient> {
-    let api_key = env::var("ANTIGRAVITY_API_KEY").ok()?;
+    let api_key =
+        env::var("OPENCODE_MEM_API_KEY").or_else(|_| env::var("ANTIGRAVITY_API_KEY")).ok()?;
     Some(
-        LlmClient::new(api_key, "https://antigravity.quantumind.ru".to_owned())
-            .ok()?
-            .with_model("gemini-3-flash".to_owned()),
+        LlmClient::new(
+            api_key,
+            env::var("OPENCODE_MEM_API_URL")
+                .unwrap_or_else(|_| "https://api.openai.com".to_owned()),
+        )
+        .ok()?
+        .with_model(env::var("OPENCODE_MEM_MODEL").unwrap_or_else(|_| "gpt-4o".to_owned())),
     )
 }
 
@@ -31,7 +36,7 @@ fn make_input(tool: &str, title: &str, output: &str) -> ObservationInput {
 #[expect(clippy::use_debug, reason = "test output")]
 async fn test_generic_pattern_low_noise() {
     let Some(client) = create_client() else {
-        eprintln!("Skipping test: ANTIGRAVITY_API_KEY not set");
+        eprintln!("Skipping test: OPENCODE_MEM_API_KEY not set");
         return;
     };
 
@@ -77,7 +82,7 @@ Standard fix for race condition - use RwLock instead of direct access.",
 #[expect(clippy::use_debug, reason = "test output")]
 async fn test_project_decision_saved() {
     let Some(client) = create_client() else {
-        eprintln!("Skipping test: ANTIGRAVITY_API_KEY not set");
+        eprintln!("Skipping test: OPENCODE_MEM_API_KEY not set");
         return;
     };
 
@@ -121,7 +126,7 @@ Trade-off: ChromaDB has a nicer API, but we prioritize infrastructure simplicity
 #[expect(clippy::use_debug, reason = "test output")]
 async fn test_project_gotcha_saved() {
     let Some(client) = create_client() else {
-        eprintln!("Skipping test: ANTIGRAVITY_API_KEY not set");
+        eprintln!("Skipping test: OPENCODE_MEM_API_KEY not set");
         return;
     };
 
@@ -165,7 +170,7 @@ Anyone new to this project would expect opencode-mem-cli based on crate name."#,
 #[expect(clippy::use_debug, reason = "test output")]
 async fn test_duplicate_marked_negligible_with_context() {
     let Some(client) = create_client() else {
-        eprintln!("Skipping test: ANTIGRAVITY_API_KEY not set");
+        eprintln!("Skipping test: OPENCODE_MEM_API_KEY not set");
         return;
     };
 
@@ -225,7 +230,7 @@ async fn test_duplicate_marked_negligible_with_context() {
 #[expect(clippy::use_debug, reason = "test output")]
 async fn test_new_insight_saved_despite_existing_titles() {
     let Some(client) = create_client() else {
-        eprintln!("Skipping test: ANTIGRAVITY_API_KEY not set");
+        eprintln!("Skipping test: OPENCODE_MEM_API_KEY not set");
         return;
     };
 
@@ -283,7 +288,7 @@ async fn test_new_insight_saved_despite_existing_titles() {
 #[expect(clippy::use_debug, reason = "test output")]
 async fn test_simple_file_read_low_noise() {
     let Some(client) = create_client() else {
-        eprintln!("Skipping test: ANTIGRAVITY_API_KEY not set");
+        eprintln!("Skipping test: OPENCODE_MEM_API_KEY not set");
         return;
     };
 
@@ -329,7 +334,7 @@ tokio = "1.0""#,
 #[expect(clippy::use_debug, reason = "test output")]
 async fn test_context_aware_skip_with_duplicate_candidates() {
     let Some(client) = create_client() else {
-        eprintln!("Skipping test: ANTIGRAVITY_API_KEY not set");
+        eprintln!("Skipping test: OPENCODE_MEM_API_KEY not set");
         return;
     };
 
@@ -392,7 +397,7 @@ async fn test_context_aware_skip_with_duplicate_candidates() {
 #[expect(clippy::use_debug, reason = "test output")]
 async fn test_context_aware_create_with_unrelated_candidates() {
     let Some(client) = create_client() else {
-        eprintln!("Skipping test: ANTIGRAVITY_API_KEY not set");
+        eprintln!("Skipping test: OPENCODE_MEM_API_KEY not set");
         return;
     };
 

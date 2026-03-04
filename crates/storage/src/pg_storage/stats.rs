@@ -6,6 +6,7 @@ use crate::error::StorageError;
 use crate::pending_queue::{PaginatedResult, StorageStats};
 use crate::traits::StatsStore;
 use async_trait::async_trait;
+use opencode_mem_core::Observation;
 
 #[async_trait]
 impl StatsStore for PgStorage {

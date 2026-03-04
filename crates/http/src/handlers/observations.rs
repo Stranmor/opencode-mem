@@ -1,30 +1,30 @@
 use crate::api_error::ApiError;
 use axum::{
+    Json,
     extract::{Path, Query, State},
     http::StatusCode,
-    Json,
 };
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    sanitize_input, Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall, UserPrompt,
+    Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall, UserPrompt, sanitize_input,
 };
 use opencode_mem_service::PaginatedResult;
 
+use crate::AppState;
 use crate::api_types::{
     BatchRequest, ObserveBatchResponse, ObserveResponse, PaginationQuery, SaveMemoryRequest,
     SearchQuery, TimelineQuery,
 };
-use crate::AppState;
 
 pub async fn observe(
     State(state): State<Arc<AppState>>,
     Json(tool_call): Json<ToolCall>,
 ) -> Result<Json<ObserveResponse>, ApiError> {
-    if let Some(project) = tool_call.project.as_deref() {
-        if ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project)) {
-            return Ok(Json(ObserveResponse { id: String::new(), queued: false }));
-        }
+    if let Some(project) = tool_call.project.as_deref()
+        && ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project))
+    {
+        return Ok(Json(ObserveResponse { id: String::new(), queued: false }));
     }
 
     let tool_input = serde_json::to_string(&tool_call.input).ok();
@@ -56,10 +56,10 @@ pub async fn observe_batch(
     let total = tool_calls.len();
     let mut count = 0usize;
     for tool_call in &tool_calls {
-        if let Some(project) = tool_call.project.as_deref() {
-            if ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project)) {
-                continue;
-            }
+        if let Some(project) = tool_call.project.as_deref()
+            && ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project))
+        {
+            continue;
         }
         let tool_input = serde_json::to_string(&tool_call.input).ok();
         let filtered_input = tool_input.as_deref().map(opencode_mem_core::sanitize_input);

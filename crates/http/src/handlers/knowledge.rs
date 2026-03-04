@@ -1,33 +1,25 @@
 use super::is_localhost;
 use crate::api_error::ApiError;
 use axum::{
-    extract::{ConnectInfo, Path, Query, State},
     Json,
+    extract::{ConnectInfo, Path, Query, State},
 };
 use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use opencode_mem_core::{
-    GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType, MAX_QUERY_LIMIT,
-};
+use opencode_mem_core::{GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, MAX_QUERY_LIMIT};
 
-use crate::api_types::{KnowledgeQuery, KnowledgeUsageResponse, SaveKnowledgeRequest};
 use crate::AppState;
+use crate::api_types::{KnowledgeQuery, KnowledgeUsageResponse, SaveKnowledgeRequest};
 
 pub async fn list_knowledge(
     State(state): State<Arc<AppState>>,
     Query(query): Query<KnowledgeQuery>,
 ) -> Result<Json<Vec<GlobalKnowledge>>, ApiError> {
-    let knowledge_type = match query.knowledge_type.as_ref() {
-        Some(s) => Some(
-            s.parse::<KnowledgeType>().map_err(|_| ApiError::BadRequest("Bad Request".into()))?,
-        ),
-        None => None,
-    };
     state
         .knowledge_service
-        .list_knowledge(knowledge_type, query.limit.min(MAX_QUERY_LIMIT))
+        .list_knowledge(query.knowledge_type, query.limit.min(MAX_QUERY_LIMIT))
         .await
         .map(Json)
         .map_err(|e| {
@@ -92,13 +84,8 @@ pub async fn save_knowledge(
     State(state): State<Arc<AppState>>,
     Json(req): Json<SaveKnowledgeRequest>,
 ) -> Result<Json<GlobalKnowledge>, ApiError> {
-    let knowledge_type = req
-        .knowledge_type
-        .parse::<KnowledgeType>()
-        .map_err(|_parse_err| ApiError::BadRequest("Bad Request".into()))?;
-
     let input = KnowledgeInput::new(
-        knowledge_type,
+        req.knowledge_type,
         req.title,
         req.description,
         req.instructions,

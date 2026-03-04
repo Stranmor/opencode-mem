@@ -1,8 +1,8 @@
 use anyhow::Result;
 use clap::Subcommand;
 use opencode_mem_core::{
-    sanitize_input, ObservationHookRequest, ProjectFilter, SessionInitHookRequest,
-    SummarizeHookRequest,
+    ObservationHookRequest, ProjectFilter, SessionInitHookRequest, SummarizeHookRequest,
+    sanitize_input,
 };
 use std::io::{IsTerminal, Read};
 
