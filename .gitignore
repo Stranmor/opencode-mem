@@ -10,7 +10,6 @@ target/
 .env.*
 .env.local
 *.env
-Cargo.lock
 
 # One-off patch/migration scripts (not part of the project)
 fix_*.py

@@ -4,7 +4,6 @@ members = [
     "crates/core",
     "crates/storage",
     "crates/embeddings",
-    "crates/search",
     "crates/llm",
     "crates/service",
     "crates/http",
@@ -62,16 +61,15 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Internal crates
-opencode-mem-core = { path = "crates/core" }
-opencode-mem-storage = { path = "crates/storage" }
-opencode-mem-embeddings = { path = "crates/embeddings" }
-opencode-mem-search = { path = "crates/search" }
-opencode-mem-llm = { path = "crates/llm" }
-opencode-mem-http = { path = "crates/http" }
-opencode-mem-mcp = { path = "crates/mcp" }
+opencode-mem-core = { path = "crates/core", version = "0.1.0" }
+opencode-mem-storage = { path = "crates/storage", version = "0.1.0" }
+opencode-mem-embeddings = { path = "crates/embeddings", version = "0.1.0" }
+opencode-mem-llm = { path = "crates/llm", version = "0.1.0" }
+opencode-mem-http = { path = "crates/http", version = "0.1.0" }
+opencode-mem-mcp = { path = "crates/mcp", version = "0.1.0" }
 
-opencode-mem-infinite = { path = "crates/infinite-memory" }
-opencode-mem-service = { path = "crates/service" }
+opencode-mem-infinite = { path = "crates/infinite-memory", version = "0.1.0" }
+opencode-mem-service = { path = "crates/service", version = "0.1.0" }
 
 [workspace.lints.rust]
 forbidden_lint_groups = "allow"
