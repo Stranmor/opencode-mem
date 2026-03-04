@@ -35,7 +35,12 @@ pub(crate) async fn run() -> Result<()> {
     let infinite_mem = if let Ok(url) = std::env::var("INFINITE_MEMORY_URL")
         .or_else(|_| std::env::var("OPENCODE_MEM_INFINITE_MEMORY"))
     {
-        let pool = sqlx::postgres::PgPoolOptions::new().max_connections(5).connect_lazy(&url);
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(5)
+            .acquire_timeout(std::time::Duration::from_secs(
+                opencode_mem_core::PG_POOL_ACQUIRE_TIMEOUT_SECS,
+            ))
+            .connect_lazy(&url);
 
         match pool {
             Ok(p) => match InfiniteMemory::new(p, llm.clone()).await {

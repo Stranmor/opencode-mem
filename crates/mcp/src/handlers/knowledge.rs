@@ -50,8 +50,8 @@ pub(super) async fn handle_knowledge_get(
         },
         Err(e) if e.is_db_unavailable() || e.is_transient() => {
             cb.record_failure();
-            tracing::warn!(error = %e, "MCP read: database unavailable, returning not found for knowledge");
-            mcp_text(&format!("Knowledge not found: {id_str}"))
+            tracing::warn!(error = %e, "MCP read: database unavailable, returning null for knowledge");
+            mcp_ok(&serde_json::Value::Null)
         },
         Err(e) => mcp_err(e),
     }

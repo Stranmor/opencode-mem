@@ -12,7 +12,9 @@ pub const MAX_QUERY_LIMIT_I64: i64 = 1000;
 pub const PG_POOL_MAX_CONNECTIONS: u32 = 20;
 
 /// PostgreSQL connection pool: acquire timeout in seconds.
-pub const PG_POOL_ACQUIRE_TIMEOUT_SECS: u64 = 10;
+/// Short timeout (3s) ensures fast-fail when DB is unavailable,
+/// triggering circuit breaker instead of hanging for 30+ seconds.
+pub const PG_POOL_ACQUIRE_TIMEOUT_SECS: u64 = 3;
 
 /// PostgreSQL connection pool: idle timeout in seconds.
 pub const PG_POOL_IDLE_TIMEOUT_SECS: u64 = 300;

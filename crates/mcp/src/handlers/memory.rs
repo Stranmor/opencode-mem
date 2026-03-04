@@ -101,8 +101,8 @@ pub(super) async fn handle_memory_get(
         },
         Err(e) if e.is_db_unavailable() || e.is_transient() => {
             cb.record_failure();
-            tracing::warn!(error = %e, "MCP read: database unavailable, returning not found");
-            mcp_text(&format!("Observation not found: {id_str}"))
+            tracing::warn!(error = %e, "MCP read: database unavailable, returning null");
+            mcp_ok(&serde_json::Value::Null)
         },
         Err(e) => mcp_err(e),
     }

@@ -65,7 +65,8 @@ pub(crate) fn degrade_read_err<T: Serialize + Default>(
 /// Handle a service error for **write** operations with graceful degradation.
 ///
 /// When the database is unavailable, silently skips the write and returns
-/// a non-error text response instead of failing.
+/// a valid JSON object instead of failing. Returns `{"success": false, "degraded": true}`
+/// so the IDE plugin can parse it without crashing (plugin expects JSON, not plain text).
 pub(crate) fn degrade_write_err(
     err: ServiceError,
     cb: &opencode_mem_storage::CircuitBreaker,
@@ -73,7 +74,7 @@ pub(crate) fn degrade_write_err(
     if err.is_db_unavailable() || err.is_transient() {
         cb.record_failure();
         tracing::warn!(error = %err, "MCP write: database unavailable, skipping write");
-        mcp_text("Memory server is in degraded mode (database unavailable). Write skipped.")
+        mcp_ok(&json!({ "success": false, "degraded": true }))
     } else {
         mcp_err(err)
     }
