@@ -4,6 +4,8 @@
 #![allow(missing_docs, reason = "test code")]
 #![allow(clippy::implicit_return, reason = "test code")]
 #![allow(clippy::question_mark_used, reason = "test code")]
+#![allow(clippy::panic, reason = "test assertions use panic for descriptive failure messages")]
+#![allow(clippy::needless_borrow, reason = "borrow needed for contains() on &str slice")]
 
 use opencode_mem_mcp::McpTool;
 use opencode_mem_service::{KnowledgeService, ObservationService, SearchService, SessionService};
@@ -128,11 +130,12 @@ async fn all_tools_degrade_gracefully_without_database() {
 
 #[tokio::test]
 async fn read_tools_return_empty_results_in_degraded_mode() {
-    let (_observation_service, _session_service, _knowledge_service, _search_service) =
+    let (observation_service, session_service, knowledge_service, search_service) =
         setup_degraded_services();
     let handle = tokio::runtime::Handle::current();
 
-    let read_tools = [
+    // Tools that return empty JSON arrays when degraded
+    let array_tools = [
         "search",
         "timeline",
         "get_observations",
@@ -143,7 +146,7 @@ async fn read_tools_return_empty_results_in_degraded_mode() {
         "knowledge_list",
     ];
 
-    for tool_name in read_tools {
+    for tool_name in array_tools {
         let args = tool_args(tool_name);
         let params = json!({
             "name": tool_name,
@@ -152,24 +155,10 @@ async fn read_tools_return_empty_results_in_degraded_mode() {
 
         let response = opencode_mem_mcp::handle_tool_call(
             None,
-            &Arc::new(ObservationService::new(
-                Arc::new(StorageBackend::new_degraded("postgres://bogus:bogus@127.0.0.1:1/bogus")),
-                Arc::new(opencode_mem_llm::LlmClient::new(String::new(), String::new()).unwrap()),
-                None,
-                tokio::sync::broadcast::channel(16).0,
-                None,
-            )),
-            &Arc::new(SessionService::new(
-                Arc::new(StorageBackend::new_degraded("postgres://bogus:bogus@127.0.0.1:1/bogus")),
-                Arc::new(opencode_mem_llm::LlmClient::new(String::new(), String::new()).unwrap()),
-            )),
-            &Arc::new(KnowledgeService::new(Arc::new(StorageBackend::new_degraded(
-                "postgres://bogus:bogus@127.0.0.1:1/bogus",
-            )))),
-            &Arc::new(SearchService::new(
-                Arc::new(StorageBackend::new_degraded("postgres://bogus:bogus@127.0.0.1:1/bogus")),
-                None,
-            )),
+            &observation_service,
+            &session_service,
+            &knowledge_service,
+            &search_service,
             &handle,
             &params,
             json!(1),
@@ -179,9 +168,46 @@ async fn read_tools_return_empty_results_in_degraded_mode() {
         let result = response.result.as_ref().unwrap();
         let text = result["content"][0]["text"].as_str().unwrap();
         let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
+        let arr = parsed.as_array().unwrap_or_else(|| {
+            panic!("Read tool '{tool_name}' should return a JSON array, got: {text}")
+        });
         assert!(
-            parsed.as_array().is_some(),
-            "Read tool '{tool_name}' should return a JSON array, got: {text}"
+            arr.is_empty(),
+            "Read tool '{tool_name}' should return an empty array in degraded mode, got {len} items",
+            len = arr.len()
+        );
+    }
+
+    // Tools that return "not found" text when degraded (single-item lookups)
+    let not_found_tools = ["memory_get", "knowledge_get"];
+
+    for tool_name in not_found_tools {
+        let args = tool_args(tool_name);
+        let params = json!({
+            "name": tool_name,
+            "arguments": args,
+        });
+
+        let response = opencode_mem_mcp::handle_tool_call(
+            None,
+            &observation_service,
+            &session_service,
+            &knowledge_service,
+            &search_service,
+            &handle,
+            &params,
+            json!(1),
+        )
+        .await;
+
+        let result = response.result.as_ref().unwrap();
+        let is_error = result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false);
+        assert!(!is_error, "Read tool '{tool_name}' returned isError=true in degraded mode");
+
+        let text = result["content"][0]["text"].as_str().unwrap();
+        assert!(
+            text.to_lowercase().contains("not found"),
+            "Read tool '{tool_name}' should return 'not found' in degraded mode, got: {text}"
         );
     }
 }
