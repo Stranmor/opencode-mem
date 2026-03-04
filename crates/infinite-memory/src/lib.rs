@@ -41,8 +41,8 @@ mod pipeline;
 mod summary_queries;
 
 pub use event_types::{
-    EventType, RawEvent, StoredEvent, Summary, SummaryEntities, assistant_event, tool_event,
-    user_event,
+    assistant_event, tool_event, user_event, EventType, RawEvent, StoredEvent, Summary,
+    SummaryEntities,
 };
 
 use anyhow::Result;
@@ -52,25 +52,38 @@ use opencode_mem_llm::LlmClient;
 use opencode_mem_storage::CircuitBreaker;
 
 use sqlx::PgPool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 pub struct InfiniteMemory {
     pool: PgPool,
     llm: Arc<LlmClient>,
     circuit_breaker: Arc<CircuitBreaker>,
+    migrations_pending: Arc<AtomicBool>,
 }
 
 impl InfiniteMemory {
     pub async fn new(pool: sqlx::PgPool, llm: Arc<LlmClient>) -> Result<Self> {
         // Try migrations — if DB is unavailable (lazy pool), log warning and continue
-        match migrations::run_migrations(&pool).await {
-            Ok(()) => tracing::info!("Infinite Memory migrations completed"),
-            Err(e) => tracing::warn!(
-                "Infinite Memory started without migrations (DB may be unavailable): {e}"
-            ),
-        }
+        let migrations_pending = match migrations::run_migrations(&pool).await {
+            Ok(()) => {
+                tracing::info!("Infinite Memory migrations completed");
+                false
+            },
+            Err(e) => {
+                tracing::warn!(
+                    "Infinite Memory started without migrations (DB may be unavailable): {e}"
+                );
+                true
+            },
+        };
 
-        Ok(Self { pool, llm, circuit_breaker: Arc::new(CircuitBreaker::new()) })
+        Ok(Self {
+            pool,
+            llm,
+            circuit_breaker: Arc::new(CircuitBreaker::new()),
+            migrations_pending: Arc::new(AtomicBool::new(migrations_pending)),
+        })
     }
 
     /// Access the circuit breaker for health monitoring.
@@ -79,9 +92,51 @@ impl InfiniteMemory {
         &self.circuit_breaker
     }
 
+    /// Attempt to run pending migrations. Safe to call repeatedly — idempotent.
+    pub async fn try_run_migrations(&self) -> bool {
+        if !self.migrations_pending.load(Ordering::Acquire) {
+            return false;
+        }
+        match migrations::run_migrations(&self.pool).await {
+            Ok(()) => {
+                self.migrations_pending.store(false, Ordering::Release);
+                tracing::info!("Infinite Memory deferred migrations completed successfully");
+                true
+            },
+            Err(e) => {
+                tracing::warn!("Infinite Memory deferred migration attempt failed: {e}");
+                false
+            },
+        }
+    }
+
+    #[must_use]
+    pub fn has_pending_migrations(&self) -> bool {
+        self.migrations_pending.load(Ordering::Acquire)
+    }
+
     fn record_result<T>(&self, result: &Result<T>) {
         if result.is_ok() {
-            self.circuit_breaker.record_success();
+            let recovered = self.circuit_breaker.record_success();
+            if recovered && self.migrations_pending.load(Ordering::Acquire) {
+                let pool = self.pool.clone();
+                let flag = Arc::clone(&self.migrations_pending);
+                tokio::spawn(async move {
+                    match migrations::run_migrations(&pool).await {
+                        Ok(()) => {
+                            flag.store(false, Ordering::Release);
+                            tracing::info!(
+                                "Infinite Memory deferred migrations completed on recovery"
+                            );
+                        },
+                        Err(e) => {
+                            tracing::warn!(
+                                "Infinite Memory deferred migrations failed on recovery: {e}"
+                            );
+                        },
+                    }
+                });
+            }
         } else {
             self.circuit_breaker.record_failure();
         }

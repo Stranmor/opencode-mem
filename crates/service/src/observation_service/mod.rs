@@ -7,14 +7,14 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    Observation, ObservationInput, ObservationType, ToolCall, ToolOutput, env_parse_with_default,
-    is_trivial_tool_call, sanitize_input,
+    env_parse_with_default, is_trivial_tool_call, sanitize_input, Observation, ObservationInput,
+    ObservationType, ToolCall, ToolOutput,
 };
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::{CompressionResult, LlmClient};
-use opencode_mem_storage::StorageBackend;
 use opencode_mem_storage::traits::{ObservationStore, SearchStore};
+use opencode_mem_storage::StorageBackend;
 use tokio::sync::broadcast;
 
 pub enum SaveMemoryResult {

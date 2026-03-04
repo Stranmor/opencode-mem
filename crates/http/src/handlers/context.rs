@@ -1,9 +1,8 @@
 use crate::api_error::ApiError;
 use axum::{
-    Json,
     extract::{Query, State},
-    http::StatusCode,
     response::sse::{Event, Sse},
+    Json,
 };
 use futures_util::stream::Stream;
 use std::convert::Infallible;
@@ -13,11 +12,11 @@ use tokio::sync::broadcast::error::RecvError;
 use opencode_mem_core::{Observation, SearchResult};
 use opencode_mem_service::StorageStats;
 
-use crate::AppState;
 use crate::api_types::{
     ContextPreview, ContextPreviewQuery, ContextQuery, SearchHelpResponse, SearchQuery,
     TimelineResult, UnifiedTimelineQuery,
 };
+use crate::AppState;
 
 use super::api_docs::get_search_help;
 use super::search::unified_timeline;
@@ -30,7 +29,7 @@ pub async fn get_context_recent(
         state.search_service.get_context_for_project(&query.project, query.limit).await.map_err(
             |e| {
                 tracing::error!("Get context error: {}", e);
-                ApiError::Internal(anyhow::anyhow!("Internal Error"))
+                ApiError::from(e)
             },
         )?;
 
@@ -53,14 +52,14 @@ pub async fn get_projects(
 ) -> Result<Json<Vec<String>>, ApiError> {
     state.search_service.get_all_projects().await.map(Json).map_err(|e| {
         tracing::error!("Get projects error: {}", e);
-        ApiError::Internal(anyhow::anyhow!("Internal Error"))
+        ApiError::from(e)
     })
 }
 
 pub async fn get_stats(State(state): State<Arc<AppState>>) -> Result<Json<StorageStats>, ApiError> {
     state.search_service.get_stats().await.map(Json).map_err(|e| {
         tracing::error!("Get stats error: {}", e);
-        ApiError::Internal(anyhow::anyhow!("Internal Error"))
+        ApiError::from(e)
     })
 }
 
@@ -101,7 +100,7 @@ pub async fn get_decisions(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get decisions error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         })
 }
 
@@ -124,7 +123,7 @@ pub async fn get_changes(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get changes error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         })
 }
 
@@ -140,7 +139,7 @@ pub async fn get_how_it_works(
     state.search_service.hybrid_search(&search_query, query.capped_limit()).await.map(Json).map_err(
         |e| {
             tracing::error!("How it works search error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         },
     )
 }
@@ -160,7 +159,7 @@ pub async fn context_preview(
         state.search_service.get_context_for_project(&query.project, query.limit).await.map_err(
             |e| {
                 tracing::error!("Context preview error: {}", e);
-                ApiError::Internal(anyhow::anyhow!("Internal Error"))
+                ApiError::from(e)
             },
         )?;
     let preview = if query.format == "full" {

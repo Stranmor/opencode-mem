@@ -1,17 +1,16 @@
 use crate::api_error::ApiError;
 use axum::{
-    Json,
     extract::{Path, State},
-    http::StatusCode,
+    Json,
 };
 use std::sync::Arc;
 
-use crate::AppState;
 use crate::api_types::{
     SessionCompleteResponse, SessionDeleteResponse, SessionInitRequest, SessionInitResponse,
     SessionObservationsRequest, SessionObservationsResponse, SessionStatusResponse,
     SessionSummaryRequest,
 };
+use crate::AppState;
 use opencode_mem_core::SessionStatus;
 
 use super::session_ops::{create_session, enqueue_session_observations};
@@ -25,7 +24,7 @@ pub async fn generate_summary(
         state.session_service.summarize_session(&req.session_id, &req.session_id).await.map_err(
             |e| {
                 tracing::error!("Generate summary failed: {}", e);
-                ApiError::Internal(anyhow::anyhow!("Internal Error"))
+                ApiError::from(e)
             },
         )?;
     Ok(Json(serde_json::json!({"session_id": req.session_id, "summary": summary})))
@@ -61,7 +60,7 @@ pub async fn session_summarize_legacy(
         state.session_service.summarize_session(&session_db_id, &session_db_id).await.map_err(
             |e| {
                 tracing::error!("Generate summary failed: {}", e);
-                ApiError::Internal(anyhow::anyhow!("Internal Error"))
+                ApiError::from(e)
             },
         )?;
     Ok(Json(serde_json::json!({"session_id": session_db_id, "summary": summary, "queued": true})))
@@ -73,7 +72,7 @@ pub async fn session_status(
 ) -> Result<Json<SessionStatusResponse>, ApiError> {
     let session = state.session_service.get_session(&session_db_id).await.map_err(|e| {
         tracing::error!("Get session error: {}", e);
-        ApiError::Internal(anyhow::anyhow!("Internal Error"))
+        ApiError::from(e)
     })?;
     match session {
         Some(s) => {
@@ -100,7 +99,7 @@ pub async fn session_delete(
 ) -> Result<Json<SessionDeleteResponse>, ApiError> {
     let deleted = state.session_service.delete_session(&session_db_id).await.map_err(|e| {
         tracing::error!("Delete session error: {}", e);
-        ApiError::Internal(anyhow::anyhow!("Internal Error"))
+        ApiError::from(e)
     })?;
     Ok(Json(SessionDeleteResponse { deleted, session_id: session_db_id }))
 }
@@ -111,7 +110,7 @@ pub async fn session_complete(
 ) -> Result<Json<SessionCompleteResponse>, ApiError> {
     let summary = state.session_service.complete_session(&session_db_id).await.map_err(|e| {
         tracing::error!("Complete session failed: {}", e);
-        ApiError::Internal(anyhow::anyhow!("Internal Error"))
+        ApiError::from(e)
     })?;
     Ok(Json(SessionCompleteResponse {
         session_id: session_db_id,

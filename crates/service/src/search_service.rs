@@ -2,10 +2,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    GlobalKnowledge, KnowledgeSearchResult, KnowledgeType, Observation, SearchResult,
-    SessionSummary, UserPrompt, cosine_similarity,
+    cosine_similarity, GlobalKnowledge, KnowledgeSearchResult, KnowledgeType, Observation,
+    SearchResult, SessionSummary, UserPrompt,
 };
 use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
+use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_storage::traits::{
     EmbeddingStore, KnowledgeStore, ObservationStore, PromptStore, SearchStore, StatsStore,
     SummaryStore,
@@ -21,18 +22,55 @@ pub struct SearchService {
     storage: Arc<StorageBackend>,
     embeddings: Option<Arc<EmbeddingService>>,
     hybrid_search: opencode_mem_search::HybridSearch,
+    infinite_mem: Option<Arc<InfiniteMemory>>,
 }
 
 impl SearchService {
     #[must_use]
-    pub fn new(storage: Arc<StorageBackend>, embeddings: Option<Arc<EmbeddingService>>) -> Self {
+    pub fn new(
+        storage: Arc<StorageBackend>,
+        embeddings: Option<Arc<EmbeddingService>>,
+        infinite_mem: Option<Arc<InfiniteMemory>>,
+    ) -> Self {
         let hybrid_search =
             opencode_mem_search::HybridSearch::new(storage.clone(), embeddings.clone());
-        Self { storage, embeddings, hybrid_search }
+        Self { storage, embeddings, hybrid_search, infinite_mem }
     }
 
     pub fn circuit_breaker(&self) -> &CircuitBreaker {
         self.storage.circuit_breaker()
+    }
+
+    async fn with_cb<T>(&self, result: Result<T, ServiceError>) -> Result<T, ServiceError> {
+        match &result {
+            Ok(_) => {
+                let recovered = self.storage.circuit_breaker().record_success();
+                if recovered {
+                    self.on_recovery();
+                }
+            },
+            Err(e) if e.is_db_unavailable() => self.storage.circuit_breaker().record_failure(),
+            Err(_) => {},
+        }
+        result
+    }
+
+    fn on_recovery(&self) {
+        if self.storage.has_pending_migrations() {
+            let storage = self.storage.clone();
+            tokio::spawn(async move {
+                let _ = storage.try_run_migrations().await;
+            });
+        }
+
+        if let Some(ref im) = self.infinite_mem {
+            if im.has_pending_migrations() {
+                let im = Arc::clone(im);
+                tokio::spawn(async move {
+                    im.try_run_migrations().await;
+                });
+            }
+        }
     }
 
     // ── SearchStore delegates ──────────────────────────────────────────
@@ -46,10 +84,12 @@ impl SearchService {
         to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
-        self.hybrid_search
+        let result = self
+            .hybrid_search
             .search_with_filters(query, project, obs_type, from, to, limit)
             .await
-            .map_err(ServiceError::Search)
+            .map_err(ServiceError::Search);
+        self.with_cb(result).await
     }
 
     pub async fn hybrid_search(
@@ -57,7 +97,8 @@ impl SearchService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
-        self.hybrid_search.search(query, limit).await.map_err(ServiceError::Search)
+        let result = self.hybrid_search.search(query, limit).await.map_err(ServiceError::Search);
+        self.with_cb(result).await
     }
 
     pub async fn get_timeline(
@@ -66,7 +107,8 @@ impl SearchService {
         to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
-        Ok(self.storage.get_timeline(from, to, limit).await?)
+        let result = self.storage.get_timeline(from, to, limit).await.map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     pub async fn semantic_search_with_fallback(
@@ -74,10 +116,12 @@ impl SearchService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
-        self.hybrid_search
+        let result = self
+            .hybrid_search
             .semantic_search_with_fallback(query, limit)
             .await
-            .map_err(ServiceError::Search)
+            .map_err(ServiceError::Search);
+        self.with_cb(result).await
     }
 
     // ── ObservationStore read delegates ─────────────────────────────────
@@ -86,21 +130,24 @@ impl SearchService {
         &self,
         id: &str,
     ) -> Result<Option<Observation>, ServiceError> {
-        Ok(self.storage.get_by_id(id).await?)
+        let result = self.storage.get_by_id(id).await.map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     pub async fn get_recent_observations(
         &self,
         limit: usize,
     ) -> Result<Vec<Observation>, ServiceError> {
-        Ok(self.storage.get_recent(limit).await?)
+        let result = self.storage.get_recent(limit).await.map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     pub async fn get_observations_by_ids(
         &self,
         ids: &[String],
     ) -> Result<Vec<Observation>, ServiceError> {
-        Ok(self.storage.get_observations_by_ids(ids).await?)
+        let result = self.storage.get_observations_by_ids(ids).await.map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     pub async fn get_context_for_project(
@@ -108,7 +155,9 @@ impl SearchService {
         project: &str,
         limit: usize,
     ) -> Result<Vec<Observation>, ServiceError> {
-        let observations = self.storage.get_context_for_project(project, limit).await?;
+        let result =
+            self.storage.get_context_for_project(project, limit).await.map_err(ServiceError::from);
+        let observations = self.with_cb(result).await?;
         self.deduplicate_by_embedding(observations).await
     }
 
@@ -117,17 +166,21 @@ impl SearchService {
         file_path: &str,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
-        Ok(self.storage.search_by_file(file_path, limit).await?)
+        let result =
+            self.storage.search_by_file(file_path, limit).await.map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     // ── StatsStore delegates ───────────────────────────────────────────
 
     pub async fn get_stats(&self) -> Result<StorageStats, ServiceError> {
-        Ok(self.storage.get_stats().await?)
+        let result = self.storage.get_stats().await.map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     pub async fn get_all_projects(&self) -> Result<Vec<String>, ServiceError> {
-        Ok(self.storage.get_all_projects().await?)
+        let result = self.storage.get_all_projects().await.map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     pub async fn get_observations_paginated(
@@ -136,7 +189,12 @@ impl SearchService {
         limit: usize,
         project: Option<&str>,
     ) -> Result<PaginatedResult<Observation>, ServiceError> {
-        Ok(self.storage.get_observations_paginated(offset, limit, project).await?)
+        let result = self
+            .storage
+            .get_observations_paginated(offset, limit, project)
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     // ── SummaryStore delegates ─────────────────────────────────────────
@@ -146,14 +204,16 @@ impl SearchService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<SessionSummary>, ServiceError> {
-        Ok(self.storage.search_sessions(query, limit).await?)
+        let result = self.storage.search_sessions(query, limit).await.map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     pub async fn get_session_summary(
         &self,
         session_id: &str,
     ) -> Result<Option<SessionSummary>, ServiceError> {
-        Ok(self.storage.get_session_summary(session_id).await?)
+        let result = self.storage.get_session_summary(session_id).await.map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     pub async fn get_summaries_paginated(
@@ -162,7 +222,12 @@ impl SearchService {
         limit: usize,
         project: Option<&str>,
     ) -> Result<PaginatedResult<SessionSummary>, ServiceError> {
-        Ok(self.storage.get_summaries_paginated(offset, limit, project).await?)
+        let result = self
+            .storage
+            .get_summaries_paginated(offset, limit, project)
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     // ── PromptStore delegates ──────────────────────────────────────────
@@ -172,11 +237,13 @@ impl SearchService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<UserPrompt>, ServiceError> {
-        Ok(self.storage.search_prompts(query, limit).await?)
+        let result = self.storage.search_prompts(query, limit).await.map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     pub async fn get_prompt_by_id(&self, id: &str) -> Result<Option<UserPrompt>, ServiceError> {
-        Ok(self.storage.get_prompt_by_id(id).await?)
+        let result = self.storage.get_prompt_by_id(id).await.map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     pub async fn get_prompts_paginated(
@@ -185,7 +252,12 @@ impl SearchService {
         limit: usize,
         project: Option<&str>,
     ) -> Result<PaginatedResult<UserPrompt>, ServiceError> {
-        Ok(self.storage.get_prompts_paginated(offset, limit, project).await?)
+        let result = self
+            .storage
+            .get_prompts_paginated(offset, limit, project)
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     // ── KnowledgeStore delegates (read-only) ───────────────────────────
@@ -195,7 +267,8 @@ impl SearchService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<KnowledgeSearchResult>, ServiceError> {
-        Ok(self.storage.search_knowledge(query, limit).await?)
+        let result = self.storage.search_knowledge(query, limit).await.map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     pub async fn list_knowledge(
@@ -203,17 +276,21 @@ impl SearchService {
         knowledge_type: Option<KnowledgeType>,
         limit: usize,
     ) -> Result<Vec<GlobalKnowledge>, ServiceError> {
-        Ok(self.storage.list_knowledge(knowledge_type, limit).await?)
+        let result =
+            self.storage.list_knowledge(knowledge_type, limit).await.map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     pub async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, ServiceError> {
-        Ok(self.storage.get_knowledge(id).await?)
+        let result = self.storage.get_knowledge(id).await.map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     // ── EmbeddingStore delegates ────────────────────────────────────────
 
     pub async fn clear_embeddings(&self) -> Result<(), ServiceError> {
-        Ok(self.storage.clear_embeddings().await?)
+        let result = self.storage.clear_embeddings().await.map_err(ServiceError::from);
+        self.with_cb(result).await
     }
 
     #[allow(

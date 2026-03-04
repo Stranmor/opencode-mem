@@ -1,4 +1,4 @@
-use opencode_mem_core::{Observation, is_low_value_observation};
+use opencode_mem_core::{is_low_value_observation, Observation};
 use opencode_mem_storage::traits::{EmbeddingStore, ObservationStore};
 
 use super::ObservationService;

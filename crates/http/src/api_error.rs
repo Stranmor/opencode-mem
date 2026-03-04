@@ -4,9 +4,9 @@
 //! Handlers can return `Result<Json<T>, ApiError>` instead of losing error context
 //! with bare `StatusCode`.
 
-use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use axum::Json;
 use opencode_mem_storage::StorageError;
 
 /// API error with HTTP status code and human-readable message.

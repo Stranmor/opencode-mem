@@ -40,9 +40,31 @@ pub enum StorageError {
 }
 
 impl StorageError {
-    /// Whether this error is likely transient (worth retrying).
+    /// Whether this error is a connection/availability failure (worth retrying).
+    ///
+    /// Matches all sqlx error variants that indicate the database is unreachable
+    /// or the connection pool is exhausted — NOT query-level errors like constraint
+    /// violations or row-not-found.
     pub fn is_transient(&self) -> bool {
-        matches!(self, Self::Database(sqlx::Error::PoolTimedOut | sqlx::Error::Io(_)))
+        match self {
+            Self::Database(
+                sqlx::Error::PoolTimedOut
+                | sqlx::Error::PoolClosed
+                | sqlx::Error::WorkerCrashed
+                | sqlx::Error::Io(_),
+            ) => true,
+            // sqlx wraps connection-refused/no-route-to-host as Database(BoxDynError)
+            // when the error comes from the connection layer. Check the error message
+            // for common connection failure patterns.
+            Self::Database(sqlx::Error::Database(db_err)) => {
+                let msg = db_err.message();
+                msg.contains("connection refused")
+                    || msg.contains("No route to host")
+                    || msg.contains("Connection reset")
+                    || msg.contains("broken pipe")
+            },
+            _ => false,
+        }
     }
 
     /// Whether this error is a unique-constraint violation.
@@ -51,8 +73,11 @@ impl StorageError {
     }
 
     /// Whether this error indicates the database is completely unavailable.
+    ///
+    /// Returns `true` for both the explicit `Unavailable` variant (circuit breaker open)
+    /// and for connection-level failures detected via `is_transient()`.
     pub fn is_unavailable(&self) -> bool {
-        matches!(self, Self::Unavailable { .. })
+        matches!(self, Self::Unavailable { .. }) || self.is_transient()
     }
 }
 

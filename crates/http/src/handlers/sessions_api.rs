@@ -1,12 +1,12 @@
 use crate::api_error::ApiError;
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{extract::State, Json};
 use std::sync::Arc;
 
-use crate::AppState;
 use crate::api_types::{
     SessionInitRequest, SessionInitResponse, SessionObservationsRequest,
     SessionObservationsResponse, SessionSummarizeRequest,
 };
+use crate::AppState;
 
 use super::session_ops::{create_session, enqueue_session_observations};
 
@@ -32,7 +32,7 @@ pub async fn api_session_observations(
         state.session_service.get_session_by_content_id(&content_session_id).await.map_err(
             |e| {
                 tracing::error!("Get session by content id error: {}", e);
-                ApiError::Internal(anyhow::anyhow!("Internal Error"))
+                ApiError::from(e)
             },
         )?;
     let session_id = session.map(|s| s.id).ok_or(ApiError::NotFound("Not Found".into()))?;
@@ -52,7 +52,7 @@ pub async fn api_session_summarize(
         state.session_service.get_session_by_content_id(&content_session_id).await.map_err(
             |e| {
                 tracing::error!("Get session by content id error: {}", e);
-                ApiError::Internal(anyhow::anyhow!("Internal Error"))
+                ApiError::from(e)
             },
         )?;
     let session_id = session.map(|s| s.id).ok_or_else(|| {
@@ -64,7 +64,7 @@ pub async fn api_session_summarize(
     let summary =
         state.session_service.summarize_session(&session_id, &cid).await.map_err(|e| {
             tracing::error!("Session summarize failed: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         })?;
 
     Ok(Json(serde_json::json!({

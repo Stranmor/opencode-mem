@@ -72,13 +72,35 @@ impl ServiceError {
         matches!(self, Self::Storage(e) if e.is_duplicate())
     }
 
-    /// Whether the database is completely unavailable (circuit breaker open).
+    /// Whether the database is completely unavailable.
+    ///
+    /// Checks both explicit `Unavailable` and connection-level failures.
+    /// Also checks `Search(anyhow)` by downcasting and inspecting error message
+    /// for common connection failure patterns.
     pub fn is_db_unavailable(&self) -> bool {
         match self {
-            Self::Storage(e) => e.is_unavailable() || e.is_transient(),
-            Self::Search(e) => e
-                .downcast_ref::<StorageError>()
-                .is_some_and(|se| se.is_unavailable() || se.is_transient()),
+            Self::Storage(e) => e.is_unavailable(),
+            Self::Search(e) => {
+                if e.downcast_ref::<StorageError>().is_some_and(StorageError::is_unavailable) {
+                    return true;
+                }
+                // anyhow chain may not contain StorageError directly —
+                // check the error string for connection failure patterns.
+                let msg = format!("{e:?}");
+                msg.contains("No route to host")
+                    || msg.contains("connection refused")
+                    || msg.contains("Connection reset")
+                    || msg.contains("PoolTimedOut")
+                    || msg.contains("PoolClosed")
+                    || msg.contains("WorkerCrashed")
+            },
+            Self::System(e) => {
+                let msg = format!("{e:?}");
+                msg.contains("No route to host")
+                    || msg.contains("connection refused")
+                    || msg.contains("PoolTimedOut")
+                    || msg.contains("PoolClosed")
+            },
             _ => false,
         }
     }

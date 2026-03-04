@@ -25,12 +25,14 @@ use crate::circuit_breaker::CircuitBreaker;
 use crate::error::StorageError;
 use chrono::{DateTime, Utc};
 use opencode_mem_core::{
-    DiscoveryTokens, GlobalKnowledge, KnowledgeType, NoiseLevel, Observation, ObservationType,
-    PG_POOL_ACQUIRE_TIMEOUT_SECS, PG_POOL_IDLE_TIMEOUT_SECS, PG_POOL_MAX_CONNECTIONS, PromptNumber,
-    SearchResult, Session, SessionStatus, SessionSummary, UserPrompt, sort_by_score_descending,
+    sort_by_score_descending, DiscoveryTokens, GlobalKnowledge, KnowledgeType, NoiseLevel,
+    Observation, ObservationType, PromptNumber, SearchResult, Session, SessionStatus,
+    SessionSummary, UserPrompt, PG_POOL_ACQUIRE_TIMEOUT_SECS, PG_POOL_IDLE_TIMEOUT_SECS,
+    PG_POOL_MAX_CONNECTIONS,
 };
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{PgPool, Row};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crate::pending_queue::{PendingMessage, PendingMessageStatus};
@@ -41,6 +43,7 @@ use super::pg_migrations::run_pg_migrations;
 pub struct PgStorage {
     pool: PgPool,
     circuit_breaker: Arc<CircuitBreaker>,
+    migrations_pending: Arc<AtomicBool>,
 }
 
 impl PgStorage {
@@ -61,22 +64,36 @@ impl PgStorage {
             .connect_lazy(database_url)?;
 
         // Try to run migrations — if DB is unavailable, log warning and continue.
-        // Migrations will run on next successful connection via try_run_migrations().
-        match run_pg_migrations(&pool).await {
-            Ok(()) => tracing::info!("PgStorage initialized with migrations"),
-            Err(e) => tracing::warn!(
-                "PgStorage initialized without migrations (DB may be unavailable): {e}"
-            ),
-        }
+        // Deferred migrations will run on first successful connection via recovery hook.
+        let migrations_pending = match run_pg_migrations(&pool).await {
+            Ok(()) => {
+                tracing::info!("PgStorage initialized with migrations");
+                false
+            },
+            Err(e) => {
+                tracing::warn!(
+                    "PgStorage initialized without migrations (DB may be unavailable): {e}"
+                );
+                true
+            },
+        };
 
-        Ok(Self { pool, circuit_breaker: Arc::new(CircuitBreaker::new()) })
+        Ok(Self {
+            pool,
+            circuit_breaker: Arc::new(CircuitBreaker::new()),
+            migrations_pending: Arc::new(AtomicBool::new(migrations_pending)),
+        })
     }
 
     /// Attempt to run pending migrations. Safe to call repeatedly — idempotent.
-    /// Returns `Ok(true)` if migrations ran, `Ok(false)` if DB unavailable.
+    /// Returns `Ok(true)` if migrations ran, `Ok(false)` if DB unavailable or not needed.
     pub async fn try_run_migrations(&self) -> Result<bool, StorageError> {
+        if !self.migrations_pending.load(Ordering::Acquire) {
+            return Ok(false);
+        }
         match run_pg_migrations(&self.pool).await {
             Ok(()) => {
+                self.migrations_pending.store(false, Ordering::Release);
                 tracing::info!("Deferred migrations completed successfully");
                 Ok(true)
             },
@@ -85,6 +102,11 @@ impl PgStorage {
                 Ok(false)
             },
         }
+    }
+
+    #[must_use]
+    pub fn has_pending_migrations(&self) -> bool {
+        self.migrations_pending.load(Ordering::Acquire)
     }
 
     #[must_use]
@@ -105,9 +127,17 @@ impl PgStorage {
         cb.record_failure();
         cb.record_failure();
         cb.record_failure();
-        Self { pool, circuit_breaker: Arc::new(cb) }
+        Self {
+            pool,
+            circuit_breaker: Arc::new(cb),
+            migrations_pending: Arc::new(AtomicBool::new(true)),
+        }
     }
 
+    #[allow(
+        dead_code,
+        reason = "CB guard infrastructure — used by guarded() and available for direct use"
+    )]
     pub(crate) fn check_availability(&self) -> Result<(), StorageError> {
         if self.circuit_breaker.should_allow() {
             Ok(())
@@ -118,19 +148,21 @@ impl PgStorage {
         }
     }
 
+    #[allow(dead_code, reason = "CB guard infrastructure — used by guarded()")]
     pub(crate) fn record_success(&self) {
         self.circuit_breaker.record_success();
     }
 
+    #[allow(dead_code, reason = "CB guard infrastructure — used by guarded()")]
     pub(crate) fn record_failure_if_connection_error(&self, err: &StorageError) {
         if err.is_transient() || matches!(err, StorageError::Database(_)) {
             self.circuit_breaker.record_failure();
         }
     }
 
-    #[expect(
+    #[allow(
         dead_code,
-        reason = "circuit breaker guard for wrapping individual storage trait methods — ready for incremental adoption"
+        reason = "CB guard for wrapping storage methods — available for incremental adoption"
     )]
     pub(crate) async fn guarded<F, T>(&self, op: F) -> Result<T, StorageError>
     where

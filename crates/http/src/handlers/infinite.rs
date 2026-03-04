@@ -1,8 +1,8 @@
 use crate::api_error::ApiError;
 use axum::{
-    Json,
     extract::{Path, Query, State},
     http::StatusCode,
+    Json,
 };
 use std::sync::Arc;
 
@@ -10,8 +10,8 @@ use opencode_mem_core::INFINITE_MEMORY_NOT_CONFIGURED;
 
 use opencode_mem_infinite::{InfiniteMemory, StoredEvent, Summary};
 
-use crate::AppState;
 use crate::api_types::{InfiniteTimeRangeQuery, SearchEntitiesQuery};
+use crate::AppState;
 
 fn require_infinite_mem(
     state: &AppState,

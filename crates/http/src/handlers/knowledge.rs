@@ -1,9 +1,8 @@
 use super::is_localhost;
 use crate::api_error::ApiError;
 use axum::{
-    Json,
     extract::{ConnectInfo, Path, Query, State},
-    http::StatusCode,
+    Json,
 };
 use serde_json::json;
 use std::net::SocketAddr;
@@ -13,8 +12,8 @@ use opencode_mem_core::{
     GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType, MAX_QUERY_LIMIT,
 };
 
-use crate::AppState;
 use crate::api_types::{KnowledgeQuery, KnowledgeUsageResponse, SaveKnowledgeRequest};
+use crate::AppState;
 
 pub async fn list_knowledge(
     State(state): State<Arc<AppState>>,
@@ -33,7 +32,7 @@ pub async fn list_knowledge(
         .map(Json)
         .map_err(|e| {
             tracing::error!("List knowledge error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         })
 }
 
@@ -50,7 +49,7 @@ pub async fn search_knowledge(
         .await
         .map_err(|e| {
             tracing::error!("Search knowledge error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         })?;
     // Fire-and-forget: update usage_count for all returned results.
     let knowledge_service = state.knowledge_service.clone();
@@ -69,7 +68,7 @@ pub async fn get_knowledge_by_id(
 ) -> Result<Json<GlobalKnowledge>, ApiError> {
     let knowledge = state.knowledge_service.get_knowledge(&id).await.map_err(|e| {
         tracing::error!("Get knowledge error: {}", e);
-        ApiError::Internal(anyhow::anyhow!("Internal Error"))
+        ApiError::from(e)
     })?;
     knowledge.map(Json).ok_or(ApiError::NotFound("Not Found".into()))
 }
@@ -84,7 +83,7 @@ pub async fn delete_knowledge(
     }
     let deleted = state.knowledge_service.delete_knowledge(&id).await.map_err(|e| {
         tracing::error!("Delete knowledge error: {}", e);
-        ApiError::Internal(anyhow::anyhow!("Internal Error"))
+        ApiError::from(e)
     })?;
     Ok(Json(json!({ "success": deleted, "id": id, "deleted": deleted })))
 }
@@ -110,7 +109,7 @@ pub async fn save_knowledge(
 
     state.knowledge_service.save_knowledge(input).await.map(Json).map_err(|e| {
         tracing::error!("Save knowledge error: {}", e);
-        ApiError::Internal(anyhow::anyhow!("Internal Error"))
+        ApiError::from(e)
     })
 }
 
@@ -120,7 +119,7 @@ pub async fn record_knowledge_usage(
 ) -> Result<Json<KnowledgeUsageResponse>, ApiError> {
     state.knowledge_service.update_knowledge_usage(&id).await.map_err(|e| {
         tracing::error!("Update knowledge usage error: {}", e);
-        ApiError::Internal(anyhow::anyhow!("Internal Error"))
+        ApiError::from(e)
     })?;
     Ok(Json(KnowledgeUsageResponse { success: true, id }))
 }

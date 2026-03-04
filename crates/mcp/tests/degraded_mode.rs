@@ -13,8 +13,8 @@ use opencode_mem_storage::StorageBackend;
 use serde_json::json;
 use std::sync::Arc;
 
-fn setup_degraded_services()
--> (Arc<ObservationService>, Arc<SessionService>, Arc<KnowledgeService>, Arc<SearchService>) {
+fn setup_degraded_services(
+) -> (Arc<ObservationService>, Arc<SessionService>, Arc<KnowledgeService>, Arc<SearchService>) {
     let backend =
         Arc::new(StorageBackend::new_degraded("postgres://bogus:bogus@127.0.0.1:1/bogus"));
 
@@ -25,7 +25,7 @@ fn setup_degraded_services()
         Arc::new(ObservationService::new(backend.clone(), llm.clone(), None, event_tx, None));
     let session_service = Arc::new(SessionService::new(backend.clone(), llm));
     let knowledge_service = Arc::new(KnowledgeService::new(backend.clone()));
-    let search_service = Arc::new(SearchService::new(backend, None));
+    let search_service = Arc::new(SearchService::new(backend, None, None));
 
     (observation_service, session_service, knowledge_service, search_service)
 }

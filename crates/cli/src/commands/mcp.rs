@@ -75,7 +75,7 @@ pub(crate) async fn run() -> Result<()> {
     ));
     let session_service = Arc::new(SessionService::new(storage.clone(), llm.clone()));
     let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));
-    let search_service = Arc::new(SearchService::new(storage, embeddings));
+    let search_service = Arc::new(SearchService::new(storage, embeddings, infinite_mem.clone()));
 
     let handle = tokio::runtime::Handle::current();
 

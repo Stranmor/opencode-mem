@@ -6,7 +6,7 @@
 //! - Timeline view with observation cards
 
 use axum::{
-    http::{StatusCode, header},
+    http::{header, StatusCode},
     response::{Html, IntoResponse, Response},
 };
 

@@ -1,9 +1,9 @@
 use super::is_localhost;
 use crate::api_error::ApiError;
 use axum::{
-    Json,
     extract::{ConnectInfo, Query, State},
     http::StatusCode,
+    Json,
 };
 use std::fs;
 use std::net::SocketAddr;
@@ -14,12 +14,12 @@ use std::time::Duration;
 use tokio::task::spawn_blocking;
 use tokio::time::sleep;
 
-use crate::AppState;
 use crate::api_types::{
     AdminResponse, BranchStatusResponse, InstructionsQuery, InstructionsResponse,
     McpStatusResponse, SettingsResponse, SwitchBranchRequest, SwitchBranchResponse,
     ToggleMcpRequest, UpdateBranchResponse, UpdateSettingsRequest,
 };
+use crate::AppState;
 
 pub async fn get_settings(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,

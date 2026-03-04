@@ -1,4 +1,4 @@
-use opencode_mem_core::{Observation, ToolCall, sanitize_input};
+use opencode_mem_core::{sanitize_input, Observation, ToolCall};
 use opencode_mem_infinite::tool_event;
 use opencode_mem_storage::traits::KnowledgeStore;
 

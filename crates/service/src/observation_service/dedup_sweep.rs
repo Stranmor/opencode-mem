@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use opencode_mem_core::{
-    DEDUP_SWEEP_MAX_OBSERVATIONS, MAX_BATCH_IDS, NoiseLevel, cosine_similarity,
+    cosine_similarity, NoiseLevel, DEDUP_SWEEP_MAX_OBSERVATIONS, MAX_BATCH_IDS,
 };
 use opencode_mem_storage::traits::{EmbeddingStore, ObservationStore};
 

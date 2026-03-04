@@ -9,7 +9,7 @@
 //!
 //! The circuit breaker is shared across all storage operations via `Arc`.
 
-use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Circuit breaker states stored as u8 for atomic operations.
@@ -91,13 +91,17 @@ impl CircuitBreaker {
     /// Record a successful database operation.
     ///
     /// Resets the circuit to closed state, clears failure count and backoff.
-    pub fn record_success(&self) {
+    /// Returns `true` if this success caused a recovery transition (Open/HalfOpen → Closed),
+    /// meaning this is the first success after a failure period.
+    pub fn record_success(&self) -> bool {
         let prev = self.state.swap(STATE_CLOSED, Ordering::Release);
-        if prev != STATE_CLOSED {
+        let recovered = prev != STATE_CLOSED;
+        if recovered {
             tracing::info!("Circuit breaker: → Closed (database recovered)");
         }
         self.failure_count.store(0, Ordering::Relaxed);
         self.backoff_secs.store(MIN_BACKOFF_SECS, Ordering::Relaxed);
+        recovered
     }
 
     /// Record a failed database operation.
@@ -245,5 +249,35 @@ mod tests {
         cb.record_failure();
         let backoff = cb.backoff_secs.load(Ordering::Relaxed);
         assert_eq!(backoff, MAX_BACKOFF_SECS);
+    }
+
+    #[test]
+    fn test_record_success_returns_recovery_signal() {
+        let cb = CircuitBreaker::new();
+        // Normal closed state — no recovery
+        assert!(!cb.record_success());
+        assert!(!cb.record_success());
+
+        // Open the circuit
+        for _ in 0..FAILURE_THRESHOLD {
+            cb.record_failure();
+        }
+        assert!(cb.is_open());
+
+        // Recovery from open → closed
+        assert!(cb.record_success());
+        // Subsequent successes are not recovery
+        assert!(!cb.record_success());
+    }
+
+    #[test]
+    fn test_record_success_returns_recovery_from_half_open() {
+        let cb = CircuitBreaker::new();
+        // Force into half-open
+        cb.state.store(STATE_HALF_OPEN, Ordering::Release);
+
+        // Recovery from half-open → closed
+        assert!(cb.record_success());
+        assert!(!cb.record_success());
     }
 }

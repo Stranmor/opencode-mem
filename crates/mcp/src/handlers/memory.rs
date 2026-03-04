@@ -190,7 +190,7 @@ pub(super) async fn handle_save_memory(
 mod tests {
     use super::*;
     use opencode_mem_core::{Observation, ObservationType};
-    use opencode_mem_storage::{StorageBackend, traits::ObservationStore};
+    use opencode_mem_storage::{traits::ObservationStore, StorageBackend};
     use serde_json::json;
     use std::sync::Arc;
 
@@ -200,7 +200,7 @@ mod tests {
     }
 
     fn setup_search_service(backend: StorageBackend) -> SearchService {
-        SearchService::new(Arc::new(backend), None)
+        SearchService::new(Arc::new(backend), None, None)
     }
 
     fn setup_observation_service(

@@ -1,21 +1,20 @@
 use super::is_localhost;
 use crate::api_error::ApiError;
 use axum::{
-    Json,
     extract::{ConnectInfo, Query, State},
-    http::StatusCode,
+    Json,
 };
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use opencode_mem_service::default_visibility_timeout_secs;
 
-use crate::AppState;
 use crate::api_types::{
     ClearQueueResponse, PendingQueueResponse, ProcessQueueResponse, ProcessingStatusResponse,
     RetryQueueResponse, SearchQuery, SetProcessingRequest, SetProcessingResponse,
 };
+use crate::AppState;
 
 use super::queue_processor::{max_queue_workers, process_pending_message};
 
@@ -27,12 +26,8 @@ pub async fn get_pending_queue(
         .queue_service
         .get_all_pending_messages(query.capped_limit())
         .await
-        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))?;
-    let queue_stats = state
-        .queue_service
-        .get_queue_stats()
-        .await
-        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))?;
+        .map_err(ApiError::from)?;
+    let queue_stats = state.queue_service.get_queue_stats().await.map_err(ApiError::from)?;
     Ok(Json(PendingQueueResponse { messages, stats: queue_stats }))
 }
 
@@ -58,7 +53,7 @@ pub async fn process_pending_queue(
         .queue_service
         .claim_pending_messages(available_permits, default_visibility_timeout_secs())
         .await
-        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))?;
+        .map_err(ApiError::from)?;
 
     if messages.is_empty() {
         return Ok(Json(ProcessQueueResponse { processed: 0, failed: 0 }));
@@ -131,11 +126,7 @@ pub async fn clear_failed_queue(
     if !is_localhost(&addr) {
         return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
     }
-    let cleared = state
-        .queue_service
-        .clear_failed_messages()
-        .await
-        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))?;
+    let cleared = state.queue_service.clear_failed_messages().await.map_err(ApiError::from)?;
     Ok(Json(ClearQueueResponse { cleared }))
 }
 
@@ -147,11 +138,7 @@ pub async fn retry_failed_queue(
     if !is_localhost(&addr) {
         return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
     }
-    let retried = state
-        .queue_service
-        .retry_failed_messages()
-        .await
-        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))?;
+    let retried = state.queue_service.retry_failed_messages().await.map_err(ApiError::from)?;
     Ok(Json(RetryQueueResponse { retried }))
 }
 
@@ -163,11 +150,7 @@ pub async fn clear_all_queue(
     if !is_localhost(&addr) {
         return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
     }
-    let cleared = state
-        .queue_service
-        .clear_all_pending_messages()
-        .await
-        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))?;
+    let cleared = state.queue_service.clear_all_pending_messages().await.map_err(ApiError::from)?;
     Ok(Json(ClearQueueResponse { cleared }))
 }
 
@@ -175,11 +158,7 @@ pub async fn get_processing_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ProcessingStatusResponse>, crate::api_error::ApiError> {
     let active = state.processing_active.load(Ordering::SeqCst);
-    let pending_count = state
-        .queue_service
-        .get_pending_count()
-        .await
-        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))?;
+    let pending_count = state.queue_service.get_pending_count().await.map_err(ApiError::from)?;
     Ok(Json(ProcessingStatusResponse { active, pending_count }))
 }
 

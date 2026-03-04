@@ -1,20 +1,19 @@
 use crate::api_error::ApiError;
 use axum::{
-    Json,
     extract::{Query, State},
-    http::StatusCode,
+    Json,
 };
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    MAX_QUERY_LIMIT, SearchResult, SessionSummary, UserPrompt, sort_by_score_descending,
+    sort_by_score_descending, SearchResult, SessionSummary, UserPrompt, MAX_QUERY_LIMIT,
 };
 
-use crate::AppState;
 use crate::api_types::{
     FileSearchQuery, RankedItem, SearchQuery, TimelineResult, UnifiedSearchResult,
     UnifiedTimelineQuery,
 };
+use crate::AppState;
 
 pub async fn search(
     State(state): State<Arc<AppState>>,
@@ -36,7 +35,7 @@ pub async fn search(
                 .map(Json)
                 .map_err(|e| {
                     tracing::error!("Search error (hybrid fallback): {}", e);
-                    ApiError::Internal(anyhow::anyhow!("Internal Error"))
+                    ApiError::from(e)
                 });
         }
     }
@@ -55,7 +54,7 @@ pub async fn search(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Search error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         })
 }
 
@@ -66,7 +65,7 @@ pub async fn hybrid_search(
     state.search_service.hybrid_search(&query.q, query.capped_limit()).await.map(Json).map_err(
         |e| {
             tracing::error!("Hybrid search error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         },
     )
 }
@@ -86,7 +85,7 @@ pub async fn semantic_search(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Semantic search error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         })
 }
 
@@ -100,7 +99,7 @@ pub async fn search_sessions(
     state.search_service.search_sessions(&query.q, query.capped_limit()).await.map(Json).map_err(
         |e| {
             tracing::error!("Search sessions error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         },
     )
 }
@@ -115,7 +114,7 @@ pub async fn search_prompts(
     state.search_service.search_prompts(&query.q, query.capped_limit()).await.map(Json).map_err(
         |e| {
             tracing::error!("Search prompts error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         },
     )
 }
@@ -131,7 +130,7 @@ pub async fn search_by_file(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Search by file error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         })
 }
 

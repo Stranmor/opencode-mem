@@ -3,7 +3,11 @@ fn tokenize_tsquery(query: &str) -> Vec<String> {
         .split(|c: char| !c.is_alphanumeric() && c != '_')
         .filter_map(
             |w| {
-                if w.chars().any(char::is_alphanumeric) { Some(w.to_string()) } else { None }
+                if w.chars().any(char::is_alphanumeric) {
+                    Some(w.to_string())
+                } else {
+                    None
+                }
             },
         )
         .collect()

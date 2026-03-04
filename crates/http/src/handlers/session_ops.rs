@@ -1,11 +1,10 @@
 use crate::api_error::ApiError;
 use std::sync::Arc;
 
-use axum::http::StatusCode;
-use opencode_mem_core::{Session, SessionStatus, ToolCall, sanitize_input};
+use opencode_mem_core::{sanitize_input, Session, SessionStatus, ToolCall};
 
-use crate::AppState;
 use crate::api_types::{SessionInitResponse, SessionObservationsResponse};
+use crate::AppState;
 
 /// Create and persist a new session, returning the HTTP response.
 ///
@@ -32,7 +31,7 @@ pub(crate) async fn create_session(
     );
     state.session_service.init_session(session).await.map_err(|e| {
         tracing::error!("Session init failed: {}", e);
-        ApiError::Internal(anyhow::anyhow!("Internal Error"))
+        ApiError::from(e)
     })?;
     Ok(SessionInitResponse { session_id: session_db_id, status: "active".to_owned() })
 }
@@ -67,10 +66,7 @@ pub(crate) async fn enqueue_session_observations(
             Ok(_id) => queued = queued.saturating_add(1),
             Err(e) => {
                 tracing::error!("Failed to queue session observation {}: {}", tool_call.tool, e);
-                return Err(ApiError::Internal(anyhow::anyhow!(
-                    "Failed to queue observation: {}",
-                    e
-                )));
+                return Err(ApiError::from(e));
             },
         }
     }

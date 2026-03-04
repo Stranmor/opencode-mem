@@ -1,17 +1,17 @@
 use anyhow::Result;
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_http::{
-    AppState, Settings, create_router, run_startup_recovery, start_background_processor,
+    create_router, run_startup_recovery, start_background_processor, AppState, Settings,
 };
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_service::{
     KnowledgeService, ObservationService, QueueService, SearchService, SessionService,
 };
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::{RwLock, Semaphore, broadcast};
+use tokio::sync::{broadcast, RwLock, Semaphore};
 
 use crate::{get_api_key, get_base_url};
 
@@ -83,7 +83,8 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     ));
     let session_service = Arc::new(SessionService::new(storage.clone(), llm.clone()));
     let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));
-    let search_service = Arc::new(SearchService::new(storage.clone(), embeddings.clone()));
+    let search_service =
+        Arc::new(SearchService::new(storage.clone(), embeddings.clone(), infinite_mem.clone()));
     let queue_service = Arc::new(QueueService::new(storage.clone()));
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::broadcast::channel(1);
 

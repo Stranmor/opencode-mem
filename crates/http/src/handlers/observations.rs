@@ -1,21 +1,21 @@
 use crate::api_error::ApiError;
 use axum::{
-    Json,
     extract::{Path, Query, State},
     http::StatusCode,
+    Json,
 };
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall, UserPrompt, sanitize_input,
+    sanitize_input, Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall, UserPrompt,
 };
 use opencode_mem_service::PaginatedResult;
 
-use crate::AppState;
 use crate::api_types::{
     BatchRequest, ObserveBatchResponse, ObserveResponse, PaginationQuery, SaveMemoryRequest,
     SearchQuery, TimelineQuery,
 };
+use crate::AppState;
 
 pub async fn observe(
     State(state): State<Arc<AppState>>,
@@ -43,7 +43,7 @@ pub async fn observe(
         .await
         .map_err(|e| {
             tracing::error!("Queue message error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         })?;
 
     Ok(Json(ObserveResponse { id: message_id.to_string(), queued: true }))
@@ -79,10 +79,7 @@ pub async fn observe_batch(
             Ok(_id) => count = count.saturating_add(1),
             Err(e) => {
                 tracing::error!("Failed to queue tool call {}: {}", tool_call.tool, e);
-                return Err(ApiError::Internal(anyhow::anyhow!(
-                    "Failed to queue observation: {}",
-                    e
-                )));
+                return Err(ApiError::from(e));
             },
         }
     }
@@ -114,7 +111,7 @@ pub async fn save_memory(
         },
         Err(e) => {
             tracing::error!("Save memory error: {}", e);
-            Err(ApiError::Internal(anyhow::anyhow!("Internal Error")))
+            Err(ApiError::from(e))
         },
     }
 }
@@ -125,7 +122,7 @@ pub async fn get_observation(
 ) -> Result<Json<Option<Observation>>, ApiError> {
     state.search_service.get_observation_by_id(&id).await.map(Json).map_err(|e| {
         tracing::error!("Get observation error: {}", e);
-        ApiError::Internal(anyhow::anyhow!("Internal Error"))
+        ApiError::from(e)
     })
 }
 
@@ -136,7 +133,7 @@ pub async fn get_recent(
     state.search_service.get_recent_observations(query.capped_limit()).await.map(Json).map_err(
         |e| {
             tracing::error!("Get recent error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         },
     )
 }
@@ -152,7 +149,7 @@ pub async fn get_timeline(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get timeline error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         })
 }
 
@@ -166,7 +163,7 @@ pub async fn get_observations_batch(
     }
     state.search_service.get_observations_by_ids(&req.ids).await.map(Json).map_err(|e| {
         tracing::error!("Get observations batch error: {}", e);
-        ApiError::Internal(anyhow::anyhow!("Internal Error"))
+        ApiError::from(e)
     })
 }
 
@@ -182,7 +179,7 @@ pub async fn get_observations_paginated(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get observations paginated error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         })
 }
 
@@ -198,7 +195,7 @@ pub async fn get_summaries_paginated(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get summaries paginated error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         })
 }
 
@@ -214,7 +211,7 @@ pub async fn get_prompts_paginated(
         .map(Json)
         .map_err(|e| {
             tracing::error!("Get prompts paginated error: {}", e);
-            ApiError::Internal(anyhow::anyhow!("Internal Error"))
+            ApiError::from(e)
         })
 }
 
@@ -224,7 +221,7 @@ pub async fn get_session_by_id(
 ) -> Result<Json<Option<SessionSummary>>, ApiError> {
     state.search_service.get_session_summary(&id).await.map(Json).map_err(|e| {
         tracing::error!("Get session summary error: {}", e);
-        ApiError::Internal(anyhow::anyhow!("Internal Error"))
+        ApiError::from(e)
     })
 }
 
@@ -234,6 +231,6 @@ pub async fn get_prompt_by_id(
 ) -> Result<Json<Option<UserPrompt>>, ApiError> {
     state.search_service.get_prompt_by_id(&id).await.map(Json).map_err(|e| {
         tracing::error!("Get prompt error: {}", e);
-        ApiError::Internal(anyhow::anyhow!("Internal Error"))
+        ApiError::from(e)
     })
 }

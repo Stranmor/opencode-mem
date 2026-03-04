@@ -1,7 +1,7 @@
 use crate::error::StorageError;
 use opencode_mem_core::SearchResult;
 
-use super::super::{PgStorage, row_to_search_result, usize_to_i64};
+use super::super::{row_to_search_result, usize_to_i64, PgStorage};
 use super::utils::build_tsquery;
 
 pub(crate) async fn search(
