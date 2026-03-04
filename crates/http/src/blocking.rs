@@ -6,7 +6,7 @@
 //! 3. Handling storage/operation errors
 //! 4. Wrapping result in Json
 
-use axum::{http::StatusCode, Json};
+use axum::{Json, http::StatusCode};
 use serde::Serialize;
 use tokio::task::spawn_blocking;
 

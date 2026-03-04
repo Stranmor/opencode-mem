@@ -63,7 +63,7 @@ fn expand_home(pattern: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{expand_home, ProjectFilter};
+    use super::{ProjectFilter, expand_home};
     use std::sync::{Mutex, OnceLock};
 
     fn env_lock() -> &'static Mutex<()> {
@@ -106,16 +106,18 @@ mod tests {
     #[test]
     fn returns_none_for_empty_env_var() {
         let _guard = env_lock().lock().expect("lock");
-        std::env::set_var("OPENCODE_MEM_EXCLUDED_PROJECTS", " , ");
+        // SAFETY: Test-only, serialized by env_lock mutex
+        unsafe { std::env::set_var("OPENCODE_MEM_EXCLUDED_PROJECTS", " , ") };
         let filter = ProjectFilter::from_env();
-        std::env::remove_var("OPENCODE_MEM_EXCLUDED_PROJECTS");
+        unsafe { std::env::remove_var("OPENCODE_MEM_EXCLUDED_PROJECTS") };
         assert!(filter.is_none());
     }
 
     #[test]
     fn returns_none_for_missing_env_var() {
         let _guard = env_lock().lock().expect("lock");
-        std::env::remove_var("OPENCODE_MEM_EXCLUDED_PROJECTS");
+        // SAFETY: Test-only, serialized by env_lock mutex
+        unsafe { std::env::remove_var("OPENCODE_MEM_EXCLUDED_PROJECTS") };
         assert!(ProjectFilter::from_env().is_none());
     }
 }

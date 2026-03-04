@@ -1,16 +1,16 @@
 use crate::api_error::ApiError;
 use axum::{
-    extract::{Path, State},
     Json,
+    extract::{Path, State},
 };
 use std::sync::Arc;
 
+use crate::AppState;
 use crate::api_types::{
     SessionCompleteResponse, SessionDeleteResponse, SessionInitRequest, SessionInitResponse,
     SessionObservationsRequest, SessionObservationsResponse, SessionStatusResponse,
     SessionSummaryRequest,
 };
-use crate::AppState;
 use opencode_mem_core::SessionStatus;
 
 use super::session_ops::{create_session, enqueue_session_observations};

@@ -1,20 +1,20 @@
 use super::is_localhost;
 use crate::api_error::ApiError;
 use axum::{
-    extract::{ConnectInfo, Query, State},
     Json,
+    extract::{ConnectInfo, Query, State},
 };
 use std::net::SocketAddr;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use opencode_mem_service::default_visibility_timeout_secs;
 
+use crate::AppState;
 use crate::api_types::{
     ClearQueueResponse, PendingQueueResponse, ProcessQueueResponse, ProcessingStatusResponse,
     RetryQueueResponse, SearchQuery, SetProcessingRequest, SetProcessingResponse,
 };
-use crate::AppState;
 
 use super::queue_processor::{max_queue_workers, process_pending_message};
 

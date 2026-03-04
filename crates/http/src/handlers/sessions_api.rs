@@ -1,12 +1,12 @@
 use crate::api_error::ApiError;
-use axum::{extract::State, Json};
+use axum::{Json, extract::State};
 use std::sync::Arc;
 
+use crate::AppState;
 use crate::api_types::{
     SessionInitRequest, SessionInitResponse, SessionObservationsRequest,
     SessionObservationsResponse, SessionSummarizeRequest,
 };
-use crate::AppState;
 
 use super::session_ops::{create_session, enqueue_session_observations};
 

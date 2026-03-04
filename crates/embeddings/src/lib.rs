@@ -116,11 +116,7 @@ impl EmbeddingService {
         let default_threads = max_threads.saturating_sub(1).max(1);
         let configured =
             opencode_mem_core::env_parse_with_default("OPENCODE_MEM_EMBEDDING_THREADS", 0_usize);
-        if configured == 0 {
-            default_threads
-        } else {
-            configured.clamp(1, max_threads)
-        }
+        if configured == 0 { default_threads } else { configured.clamp(1, max_threads) }
     }
 }
 

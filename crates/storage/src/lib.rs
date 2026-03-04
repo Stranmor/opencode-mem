@@ -32,8 +32,8 @@ pub use backend::StorageBackend;
 pub use circuit_breaker::CircuitBreaker;
 pub use error::StorageError;
 pub use pending_queue::{
-    default_visibility_timeout_secs, max_retry_count, PaginatedResult, PendingMessage,
-    PendingMessageStatus, QueueStats, StorageStats,
+    PaginatedResult, PendingMessage, PendingMessageStatus, QueueStats, StorageStats,
+    default_visibility_timeout_secs, max_retry_count,
 };
 pub use pg_storage::PgStorage;
 pub use traits::{

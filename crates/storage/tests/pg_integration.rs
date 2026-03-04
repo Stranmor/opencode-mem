@@ -5,14 +5,14 @@
 
 use chrono::Utc;
 use opencode_mem_core::{
-    KnowledgeInput, KnowledgeType, NoiseLevel, Observation, ObservationType, Session,
-    SessionStatus, EMBEDDING_DIMENSION,
+    EMBEDDING_DIMENSION, KnowledgeInput, KnowledgeType, NoiseLevel, Observation, ObservationType,
+    Session, SessionStatus,
 };
+use opencode_mem_storage::PgStorage;
 use opencode_mem_storage::traits::{
     EmbeddingStore, KnowledgeStore, ObservationStore, PendingQueueStore, SearchStore, SessionStore,
     StatsStore,
 };
-use opencode_mem_storage::PgStorage;
 use uuid::Uuid;
 
 async fn create_pg_storage() -> PgStorage {
