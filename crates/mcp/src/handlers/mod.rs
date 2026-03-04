@@ -4,12 +4,13 @@ mod memory;
 
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_service::{
-    KnowledgeService, ObservationService, PendingWriteQueue, SearchService, ServiceError,
-    SessionService,
+    KnowledgeService, ObservationService, PendingWrite, PendingWriteQueue, SearchService,
+    ServiceError, SessionService,
 };
 use serde::Serialize;
 use serde_json::json;
 use std::fmt::Display;
+use std::sync::Arc;
 use tokio::runtime::Handle;
 
 use opencode_mem_core::{DEFAULT_QUERY_LIMIT, MAX_QUERY_LIMIT};
@@ -38,12 +39,48 @@ pub(crate) fn mcp_ok<T: Serialize>(data: &T) -> serde_json::Value {
     }
 }
 
+#[allow(dead_code, reason = "Used in tests and available for future handlers")]
 pub(crate) fn mcp_text(text: &str) -> serde_json::Value {
     json!({ "content": [{ "type": "text", "text": text }] })
 }
 
 pub(crate) fn mcp_err(msg: impl Display) -> serde_json::Value {
     json!({ "content": [{ "type": "text", "text": format!("Error: {}", msg) }], "isError": true })
+}
+
+/// Fast-fail check for MCP **read** handlers when the circuit breaker is open.
+///
+/// Returns `Some(empty_json_response)` if the CB is open (database unavailable),
+/// allowing the handler to return immediately without waiting for a 3s pool timeout.
+/// Returns `None` if the CB allows the request through (circuit closed or half-open probe).
+pub(crate) fn cb_fast_fail_read<T: Serialize + Default>(
+    cb: &opencode_mem_storage::CircuitBreaker,
+) -> Option<serde_json::Value> {
+    if !cb.should_allow() {
+        tracing::debug!(
+            "MCP read: circuit breaker blocking request, fast-failing with empty results"
+        );
+        Some(mcp_ok(&T::default()))
+    } else {
+        None
+    }
+}
+
+/// Fast-fail check for MCP **write** handlers when the circuit breaker is open.
+///
+/// Returns `Some(degraded_json_response)` if the CB is open, allowing the handler
+/// to return immediately. Returns `None` if the CB allows the request through.
+pub(crate) fn cb_fast_fail_write(
+    cb: &opencode_mem_storage::CircuitBreaker,
+) -> Option<serde_json::Value> {
+    if !cb.should_allow() {
+        tracing::debug!(
+            "MCP write: circuit breaker blocking request, fast-failing with degraded response"
+        );
+        Some(mcp_ok(&json!({ "success": false, "degraded": true })))
+    } else {
+        None
+    }
 }
 
 /// Handle a service error for **read** operations with graceful degradation.
@@ -84,15 +121,16 @@ pub(crate) fn degrade_write_err(
 #[expect(clippy::too_many_arguments, reason = "MCP handler needs all service references")]
 pub async fn handle_tool_call(
     infinite_mem: Option<&InfiniteMemory>,
-    observation_service: &ObservationService,
-    _session_service: &SessionService,
-    knowledge_service: &KnowledgeService,
-    search_service: &SearchService,
-    pending_writes: &PendingWriteQueue,
+    observation_service: &Arc<ObservationService>,
+    _session_service: &Arc<SessionService>,
+    knowledge_service: &Arc<KnowledgeService>,
+    search_service: &Arc<SearchService>,
+    pending_writes: &Arc<PendingWriteQueue>,
     handle: &Handle,
     params: &serde_json::Value,
     id: serde_json::Value,
 ) -> McpResponse {
+    let pre_cb_state = search_service.circuit_breaker().state_name();
     let tool_name_str = match params.get("name").and_then(|n| n.as_str()).filter(|s| !s.is_empty())
     {
         Some(name) => name,
@@ -174,5 +212,55 @@ pub async fn handle_tool_call(
         },
     };
 
+    if pre_cb_state != "closed" && search_service.circuit_breaker().state_name() == "closed" {
+        search_service.handle_recovery();
+        spawn_pending_flush(observation_service, pending_writes);
+    }
+
     McpResponse { jsonrpc: "2.0".to_owned(), id, result: Some(result), error: None }
+}
+
+fn spawn_pending_flush(
+    observation_service: &Arc<ObservationService>,
+    pending_writes: &Arc<PendingWriteQueue>,
+) {
+    if pending_writes.is_empty() {
+        return;
+    }
+    if !pending_writes.start_flush() {
+        return;
+    }
+
+    let observation_service = Arc::clone(observation_service);
+    let pending_writes = Arc::clone(pending_writes);
+    tokio::spawn(async move {
+        let pending_count = pending_writes.len();
+        tracing::info!(pending_count, "Flushing pending save_memory writes after DB recovery");
+
+        loop {
+            let Some(item) = pending_writes.pop_front() else {
+                break;
+            };
+
+            let PendingWrite::SaveMemory { text, title, project } = item;
+            match observation_service.save_memory(&text, title.as_deref(), project.as_deref()).await
+            {
+                Ok(_) => {},
+                Err(e) if e.is_db_unavailable() || e.is_transient() => {
+                    pending_writes.push_front(PendingWrite::SaveMemory { text, title, project });
+                    tracing::warn!(
+                        error = %e,
+                        remaining = pending_writes.len(),
+                        "Pending write flush paused: database became unavailable again"
+                    );
+                    break;
+                },
+                Err(e) => {
+                    tracing::warn!(error = %e, "Pending save_memory flush dropped one invalid item");
+                },
+            }
+        }
+
+        pending_writes.finish_flush();
+    });
 }

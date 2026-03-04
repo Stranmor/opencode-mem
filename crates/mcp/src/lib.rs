@@ -32,7 +32,9 @@ pub mod handlers;
 mod tools;
 
 use opencode_mem_infinite::InfiniteMemory;
-use opencode_mem_service::{KnowledgeService, ObservationService, SearchService, SessionService};
+use opencode_mem_service::{
+    KnowledgeService, ObservationService, PendingWriteQueue, SearchService, SessionService,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
@@ -79,6 +81,7 @@ pub async fn run_mcp_server(
     handle: Handle,
 ) {
     tracing::info!("MCP server starting on stdio");
+    let pending_writes = Arc::new(PendingWriteQueue::new());
     let stdin = tokio::io::stdin();
     let mut stdout = tokio::io::stdout();
     let mut reader = BufReader::new(stdin).lines();
@@ -149,6 +152,7 @@ pub async fn run_mcp_server(
             &session_service,
             &knowledge_service,
             &search_service,
+            &pending_writes,
             &handle,
             &request,
         )
@@ -170,10 +174,11 @@ pub async fn run_mcp_server(
 
 async fn handle_request(
     infinite_mem: Option<&InfiniteMemory>,
-    observation_service: &ObservationService,
-    session_service: &SessionService,
-    knowledge_service: &KnowledgeService,
-    search_service: &SearchService,
+    observation_service: &Arc<ObservationService>,
+    session_service: &Arc<SessionService>,
+    knowledge_service: &Arc<KnowledgeService>,
+    search_service: &Arc<SearchService>,
+    pending_writes: &Arc<PendingWriteQueue>,
     handle: &Handle,
     req: &McpRequest,
 ) -> Option<McpResponse> {
@@ -206,6 +211,7 @@ async fn handle_request(
                 session_service,
                 knowledge_service,
                 search_service,
+                pending_writes,
                 handle,
                 &req.params,
                 id,

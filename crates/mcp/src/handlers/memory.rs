@@ -1,21 +1,23 @@
 use opencode_mem_core::MAX_BATCH_IDS;
 use opencode_mem_service::{PendingWrite, PendingWriteQueue, SearchService};
 
-use super::{degrade_read_err, mcp_err, mcp_ok, mcp_text};
+use super::{cb_fast_fail_read, cb_fast_fail_write, degrade_read_err, mcp_err, mcp_ok};
 
 pub(super) async fn handle_search(
     search_service: &SearchService,
     args: &serde_json::Value,
     limit: usize,
 ) -> serde_json::Value {
+    let cb = search_service.circuit_breaker();
+    if let Some(degraded) = cb_fast_fail_read::<Vec<opencode_mem_core::SearchResult>>(cb) {
+        return degraded;
+    }
     let query = args.get("query").and_then(|q| q.as_str()).filter(|s| !s.is_empty());
 
     let project = args.get("project").and_then(|p| p.as_str());
     let obs_type = args.get("type").and_then(|t| t.as_str());
     let from = args.get("from").and_then(|f| f.as_str());
     let to = args.get("to").and_then(|t| t.as_str());
-
-    let cb = search_service.circuit_breaker();
 
     // Use semantic search when no filters are active and query is present
     if project.is_none() && obs_type.is_none() && from.is_none() && to.is_none() {
@@ -44,9 +46,12 @@ pub(super) async fn handle_timeline(
     args: &serde_json::Value,
     limit: usize,
 ) -> serde_json::Value {
+    let cb = search_service.circuit_breaker();
+    if let Some(degraded) = cb_fast_fail_read::<Vec<opencode_mem_core::SearchResult>>(cb) {
+        return degraded;
+    }
     let from = args.get("from").and_then(|f| f.as_str());
     let to = args.get("to").and_then(|t| t.as_str());
-    let cb = search_service.circuit_breaker();
 
     match search_service.get_timeline(from, to, limit).await {
         Ok(results) => {
@@ -73,6 +78,9 @@ pub(super) async fn handle_get_observations(
         return mcp_err(format!("ids array exceeds maximum of {MAX_BATCH_IDS} items"));
     }
     let cb = search_service.circuit_breaker();
+    if let Some(degraded) = cb_fast_fail_read::<Vec<opencode_mem_core::Observation>>(cb) {
+        return degraded;
+    }
     match search_service.get_observations_by_ids(&ids).await {
         Ok(results) => {
             cb.record_success();
@@ -90,6 +98,9 @@ pub(super) async fn handle_memory_get(
         return mcp_err("'id' parameter is required and must not be empty");
     };
     let cb = search_service.circuit_breaker();
+    if let Some(degraded) = cb_fast_fail_read::<Vec<opencode_mem_core::Observation>>(cb) {
+        return degraded;
+    }
     match search_service.get_observation_by_id(id_str).await {
         Ok(Some(obs)) => {
             cb.record_success();
@@ -97,12 +108,12 @@ pub(super) async fn handle_memory_get(
         },
         Ok(None) => {
             cb.record_success();
-            mcp_text(&format!("Observation not found: {id_str}"))
+            mcp_ok(&serde_json::Value::Null)
         },
         Err(e) if e.is_db_unavailable() || e.is_transient() => {
             cb.record_failure();
-            tracing::warn!(error = %e, "MCP read: database unavailable, returning null");
-            mcp_ok(&serde_json::Value::Null)
+            tracing::warn!(error = %e, "MCP read: database unavailable, returning empty array");
+            mcp_ok(&Vec::<opencode_mem_core::Observation>::new())
         },
         Err(e) => mcp_err(e),
     }
@@ -114,6 +125,9 @@ pub(super) async fn handle_memory_recent(
     limit: usize,
 ) -> serde_json::Value {
     let cb = search_service.circuit_breaker();
+    if let Some(degraded) = cb_fast_fail_read::<Vec<opencode_mem_core::Observation>>(cb) {
+        return degraded;
+    }
     match search_service.get_recent_observations(limit).await {
         Ok(results) => {
             cb.record_success();
@@ -132,6 +146,9 @@ pub(super) async fn handle_hybrid_search(
         return mcp_err("'query' parameter is required and must not be empty");
     };
     let cb = search_service.circuit_breaker();
+    if let Some(degraded) = cb_fast_fail_read::<Vec<opencode_mem_core::SearchResult>>(cb) {
+        return degraded;
+    }
     match search_service.hybrid_search(query, limit).await {
         Ok(results) => {
             cb.record_success();
@@ -150,6 +167,9 @@ pub(super) async fn handle_semantic_search(
         return mcp_err("'query' parameter is required and must not be empty");
     };
     let cb = search_service.circuit_breaker();
+    if let Some(degraded) = cb_fast_fail_read::<Vec<opencode_mem_core::SearchResult>>(cb) {
+        return degraded;
+    }
     match search_service.semantic_search_with_fallback(query, limit).await {
         Ok(results) => {
             cb.record_success();
@@ -175,11 +195,28 @@ pub(super) async fn handle_save_memory(
     let title = args.get("title").and_then(|t| t.as_str());
     let project = args.get("project").and_then(|p| p.as_str());
 
+    let cb = observation_service.circuit_breaker();
+    if let Some(degraded) = cb_fast_fail_write(cb) {
+        pending_writes.push(PendingWrite::SaveMemory {
+            text: raw_text.to_owned(),
+            title: title.map(ToOwned::to_owned),
+            project: project.map(ToOwned::to_owned),
+        });
+        return degraded;
+    }
+
     match observation_service.save_memory(raw_text, title, project).await {
-        Ok(opencode_mem_service::SaveMemoryResult::Created(obs)) => mcp_ok(&obs),
-        Ok(opencode_mem_service::SaveMemoryResult::Duplicate(obs)) => mcp_ok(&obs),
+        Ok(opencode_mem_service::SaveMemoryResult::Created(obs)) => {
+            cb.record_success();
+            mcp_ok(&obs)
+        },
+        Ok(opencode_mem_service::SaveMemoryResult::Duplicate(obs)) => {
+            cb.record_success();
+            mcp_ok(&obs)
+        },
         Ok(opencode_mem_service::SaveMemoryResult::Filtered) => {
-            mcp_text("Observation filtered as low-value")
+            cb.record_success();
+            mcp_ok(&serde_json::json!({ "filtered": true, "reason": "low-value" }))
         },
         Err(e) if e.is_db_unavailable() || e.is_transient() => {
             let cb = observation_service.circuit_breaker();
@@ -236,8 +273,9 @@ mod tests {
     async fn test_save_memory_missing_text() {
         let backend = setup_storage().await;
         let obs_service = setup_observation_service(backend);
+        let pending_writes = PendingWriteQueue::new();
         let args = json!({});
-        let result = handle_save_memory(&obs_service, &args).await;
+        let result = handle_save_memory(&obs_service, &pending_writes, &args).await;
 
         assert_eq!(result["isError"].as_bool(), Some(true));
         assert!(result["content"][0]["text"].as_str().unwrap().contains("text is required"));
@@ -248,8 +286,9 @@ mod tests {
     async fn test_save_memory_empty_text() {
         let backend = setup_storage().await;
         let obs_service = setup_observation_service(backend);
+        let pending_writes = PendingWriteQueue::new();
         let args = json!({ "text": "  " });
-        let result = handle_save_memory(&obs_service, &args).await;
+        let result = handle_save_memory(&obs_service, &pending_writes, &args).await;
 
         assert_eq!(result["isError"].as_bool(), Some(true));
         assert!(result["content"][0]["text"].as_str().unwrap().contains("must not be empty"));
@@ -260,11 +299,12 @@ mod tests {
     async fn test_save_memory_with_title() {
         let backend = setup_storage().await;
         let obs_service = setup_observation_service(backend);
+        let pending_writes = PendingWriteQueue::new();
         let args = json!({
             "text": "some narrative",
             "title": "custom title"
         });
-        let result = handle_save_memory(&obs_service, &args).await;
+        let result = handle_save_memory(&obs_service, &pending_writes, &args).await;
 
         assert!(result.get("isError").is_none());
         let obs_json = result["content"][0]["text"].as_str().unwrap();
@@ -278,11 +318,12 @@ mod tests {
     async fn test_save_memory_without_title() {
         let backend = setup_storage().await;
         let obs_service = setup_observation_service(backend);
+        let pending_writes = PendingWriteQueue::new();
         let long_text = "A very long text that should be truncated for the title because it is more than fifty characters long.";
         let args = json!({
             "text": long_text
         });
-        let result = handle_save_memory(&obs_service, &args).await;
+        let result = handle_save_memory(&obs_service, &pending_writes, &args).await;
 
         assert!(result.get("isError").is_none());
         let obs_json = result["content"][0]["text"].as_str().unwrap();
@@ -296,11 +337,12 @@ mod tests {
     async fn test_save_memory_with_project() {
         let backend = setup_storage().await;
         let obs_service = setup_observation_service(backend);
+        let pending_writes = PendingWriteQueue::new();
         let args = json!({
             "text": "narrative",
             "project": "test-project"
         });
-        let result = handle_save_memory(&obs_service, &args).await;
+        let result = handle_save_memory(&obs_service, &pending_writes, &args).await;
 
         assert!(result.get("isError").is_none());
         let obs_json = result["content"][0]["text"].as_str().unwrap();
@@ -313,10 +355,11 @@ mod tests {
     async fn test_save_memory_success_returns_observation() {
         let backend = setup_storage().await;
         let obs_service = setup_observation_service(backend);
+        let pending_writes = PendingWriteQueue::new();
         let args = json!({
             "text": "success test"
         });
-        let result = handle_save_memory(&obs_service, &args).await;
+        let result = handle_save_memory(&obs_service, &pending_writes, &args).await;
 
         assert!(result.get("isError").is_none());
         let content = &result["content"][0];

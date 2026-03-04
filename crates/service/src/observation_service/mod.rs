@@ -22,6 +22,7 @@ pub enum SaveMemoryResult {
     Duplicate(Observation),
     Filtered,
 }
+#[derive(Clone)]
 pub struct ObservationService {
     pub(crate) storage: Arc<StorageBackend>,
     pub(crate) llm: Arc<LlmClient>,
