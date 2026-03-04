@@ -28,17 +28,7 @@ jobs:
           components: rustfmt
           
       - name: Check code formatting
-        run: |
-          # Format all Rust files in the project
-          find . -name "*.rs" -exec rustfmt --edition 2024 {} \;
-          # For now, just format and warn, don't fail the build
-          # TODO: Re-enable strict formatting check once environment is consistent
-          if [ -n "$(git diff --stat)" ]; then
-            echo "Warning: formatting differences detected, applying fixes"
-            git diff --stat
-            git add -A
-            git diff --cached --stat || true
-          fi
+        run: cargo fmt --all -- --check
 
   clippy:
     name: Clippy
@@ -98,10 +88,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         
-      - name: Install MSRV toolchain (1.85.0)
+      - name: Install MSRV toolchain (1.88.0)
         uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: 1.85.0
+          toolchain: 1.88.0
           
       - name: Setup Rust caching
         uses: Swatinem/rust-cache@v2
