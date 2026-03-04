@@ -1,6 +1,7 @@
-//! Search service — read-only query facade over storage, embeddings, and hybrid search.
+//! Search service — read-only query facade over storage and embeddings.
 
 mod embedding_ops;
+mod hybrid_ops;
 
 use std::sync::Arc;
 
@@ -22,7 +23,6 @@ use crate::ServiceError;
 pub struct SearchService {
     pub(crate) storage: Arc<StorageBackend>,
     pub(crate) embeddings: Option<Arc<EmbeddingService>>,
-    hybrid_search: opencode_mem_search::HybridSearch,
     infinite_mem: Option<Arc<InfiniteMemory>>,
 }
 
@@ -33,12 +33,9 @@ impl SearchService {
         embeddings: Option<Arc<EmbeddingService>>,
         infinite_mem: Option<Arc<InfiniteMemory>>,
     ) -> Self {
-        let hybrid_search =
-            opencode_mem_search::HybridSearch::new(storage.clone(), embeddings.clone());
         Self {
             storage,
             embeddings,
-            hybrid_search,
             infinite_mem,
         }
     }
@@ -93,38 +90,6 @@ impl SearchService {
         }
     }
 
-    pub async fn search_with_filters(
-        &self,
-        query: Option<&str>,
-        project: Option<&str>,
-        obs_type: Option<&str>,
-        from: Option<&str>,
-        to: Option<&str>,
-        limit: usize,
-    ) -> Result<Vec<SearchResult>, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
-        let result = self
-            .hybrid_search
-            .search_with_filters(query, project, obs_type, from, to, limit)
-            .await
-            .map_err(ServiceError::Search);
-        self.with_cb(result).await
-    }
-
-    pub async fn hybrid_search(
-        &self,
-        query: &str,
-        limit: usize,
-    ) -> Result<Vec<SearchResult>, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
-        let result = self
-            .hybrid_search
-            .search(query, limit)
-            .await
-            .map_err(ServiceError::Search);
-        self.with_cb(result).await
-    }
-
     pub async fn get_timeline(
         &self,
         from: Option<&str>,
@@ -137,20 +102,6 @@ impl SearchService {
             .get_timeline(from, to, limit)
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
-    }
-
-    pub async fn semantic_search_with_fallback(
-        &self,
-        query: &str,
-        limit: usize,
-    ) -> Result<Vec<SearchResult>, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
-        let result = self
-            .hybrid_search
-            .semantic_search_with_fallback(query, limit)
-            .await
-            .map_err(ServiceError::Search);
         self.with_cb(result).await
     }
 

@@ -40,35 +40,17 @@ pub enum ServiceError {
     #[error("serialization: {0}")]
     Serialization(#[from] serde_json::Error),
 
-    /// Search operation failed (wraps anyhow from search crate).
-    #[error("search: {0}")]
-    Search(#[source] anyhow::Error),
-
     /// General system or unclassified errors.
     #[error("system: {0}")]
     System(#[from] anyhow::Error),
 }
 
 impl ServiceError {
-    fn has_connection_failure_pattern(msg: &str) -> bool {
-        msg.contains("No route to host")
-            || msg.contains("connection refused")
-            || msg.contains("Connection reset")
-            || msg.contains("broken pipe")
-            || msg.contains("PoolTimedOut")
-            || msg.contains("PoolClosed")
-            || msg.contains("WorkerCrashed")
-            || msg.contains("pool timed out while waiting for an open connection")
-    }
-
     /// Whether this error is likely transient (worth retrying).
     pub fn is_transient(&self) -> bool {
         match self {
             Self::Storage(e) => e.is_transient(),
             Self::Llm(e) => e.is_transient(),
-            Self::Search(e) => e
-                .downcast_ref::<StorageError>()
-                .is_some_and(StorageError::is_transient),
             _ => false,
         }
     }
@@ -85,29 +67,11 @@ impl ServiceError {
 
     /// Whether the database is completely unavailable.
     ///
-    /// Checks both explicit `Unavailable` and connection-level failures.
-    /// Also checks `Search(anyhow)` by downcasting and inspecting error message
-    /// for common connection failure patterns.
+    /// All storage calls now flow through typed `StorageError`,
+    /// so CB detection uses `StorageError::is_unavailable()` directly —
+    /// no string pattern matching needed.
     pub fn is_db_unavailable(&self) -> bool {
-        match self {
-            Self::Storage(e) => e.is_unavailable(),
-            Self::Search(e) => {
-                if e.downcast_ref::<StorageError>()
-                    .is_some_and(StorageError::is_unavailable)
-                {
-                    return true;
-                }
-                // anyhow chain may not contain StorageError directly —
-                // check the error string for connection failure patterns.
-                let msg = format!("{e:?}");
-                Self::has_connection_failure_pattern(&msg)
-            }
-            Self::System(e) => {
-                let msg = format!("{e:?}");
-                Self::has_connection_failure_pattern(&msg)
-            }
-            _ => false,
-        }
+        matches!(self, Self::Storage(e) if e.is_unavailable())
     }
 }
 
