@@ -1,6 +1,9 @@
 use anyhow::Result;
+use opencode_mem_core::ObservationId;
 use opencode_mem_embeddings::{EmbeddingProvider as _, EmbeddingService};
-use opencode_mem_storage::traits::{EmbeddingStore, ObservationStore, SearchStore, StatsStore};
+use opencode_mem_storage::traits::{
+    EmbeddingStore, KnowledgeStore, ObservationStore, SearchStore, StatsStore,
+};
 use std::collections::HashSet;
 
 pub(crate) async fn run_search(
@@ -61,7 +64,7 @@ pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
     let embeddings = EmbeddingService::new()?;
 
     let mut total = 0;
-    let mut failed_ids: HashSet<String> = HashSet::new();
+    let mut failed_ids: HashSet<ObservationId> = HashSet::new();
     loop {
         let all_observations = storage
             .get_observations_without_embeddings(batch_size)
@@ -116,5 +119,15 @@ pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
         );
     }
     println!("Backfill complete. Generated embeddings for {total} observations.");
+    Ok(())
+}
+
+pub(crate) async fn run_knowledge_lifecycle() -> Result<()> {
+    let storage = crate::create_storage_from_env().await?;
+    let decayed = storage.decay_confidence().await?;
+    let archived = storage.auto_archive(30).await?;
+    println!("Knowledge confidence lifecycle complete:");
+    println!("  Entries with decayed confidence: {decayed}");
+    println!("  Entries archived: {archived}");
     Ok(())
 }

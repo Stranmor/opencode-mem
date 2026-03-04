@@ -2,8 +2,9 @@
 
 use chrono::{DateTime, Utc};
 use opencode_mem_core::{
-    DiscoveryTokens, GlobalKnowledge, KnowledgeType, NoiseLevel, Observation, ObservationType,
-    PromptNumber, SearchResult, Session, SessionStatus, SessionSummary, UserPrompt,
+    ContentSessionId, DiscoveryTokens, GlobalKnowledge, KnowledgeType, NoiseLevel, Observation,
+    ObservationId, ObservationType, ProjectId, PromptNumber, SearchResult, Session, SessionId,
+    SessionStatus, SessionSummary, UserPrompt,
 };
 use sqlx::Row;
 
@@ -52,12 +53,12 @@ pub(crate) fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observat
     let keywords: serde_json::Value = row.try_get("keywords")?;
 
     Ok(Observation::builder(
-        row.try_get("id")?,
-        row.try_get("session_id")?,
+        row.try_get::<ObservationId, _>("id")?,
+        row.try_get::<SessionId, _>("session_id")?,
         obs_type,
         row.try_get("title")?,
     )
-    .maybe_project(row.try_get("project")?)
+    .maybe_project(row.try_get::<Option<ProjectId>, _>("project")?)
     .maybe_subtitle(row.try_get("subtitle")?)
     .maybe_narrative(row.try_get("narrative")?)
     .facts(parse_json_value(facts))
@@ -111,7 +112,7 @@ pub(crate) fn row_to_search_result(
         parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref())?;
     let score: f64 = row.try_get("score").unwrap_or(0.0);
     Ok(SearchResult::new(
-        row.try_get("id")?,
+        row.try_get::<ObservationId, _>("id")?,
         row.try_get("title")?,
         row.try_get("subtitle")?,
         obs_type,
@@ -129,7 +130,7 @@ pub(crate) fn row_to_search_result_with_score(
     let noise_level =
         parse_pg_noise_level(row.try_get::<Option<String>, _>("noise_level")?.as_deref())?;
     Ok(SearchResult::new(
-        row.try_get("id")?,
+        row.try_get::<ObservationId, _>("id")?,
         row.try_get("title")?,
         row.try_get("subtitle")?,
         obs_type,
@@ -150,10 +151,10 @@ pub(crate) fn row_to_session(row: &sqlx::postgres::PgRow) -> Result<Session, Sto
             source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
         })?;
     Ok(Session::new(
-        row.try_get("id")?,
-        row.try_get("content_session_id")?,
+        row.try_get::<SessionId, _>("id")?,
+        row.try_get::<ContentSessionId, _>("content_session_id")?,
         row.try_get("memory_session_id")?,
-        row.try_get("project")?,
+        row.try_get::<ProjectId, _>("project")?,
         row.try_get("user_prompt")?,
         started_at,
         ended_at,
@@ -172,8 +173,8 @@ pub(crate) fn row_to_summary(row: &sqlx::postgres::PgRow) -> Result<SessionSumma
     let files_read: serde_json::Value = row.try_get("files_read")?;
     let files_edited: serde_json::Value = row.try_get("files_edited")?;
     Ok(SessionSummary::new(
-        row.try_get("session_id")?,
-        row.try_get("project")?,
+        row.try_get::<SessionId, _>("session_id")?,
+        row.try_get::<ProjectId, _>("project")?,
         row.try_get("request")?,
         row.try_get("investigated")?,
         row.try_get("learned")?,
@@ -221,6 +222,7 @@ pub(crate) fn row_to_knowledge(
     let created_at: DateTime<Utc> = row.try_get("created_at")?;
     let updated_at: DateTime<Utc> = row.try_get("updated_at")?;
     let last_used_at: Option<DateTime<Utc>> = row.try_get("last_used_at")?;
+    let archived_at: Option<DateTime<Utc>> = row.try_get("archived_at")?;
     Ok(GlobalKnowledge::new(
         row.try_get("id")?,
         knowledge_type,
@@ -235,6 +237,7 @@ pub(crate) fn row_to_knowledge(
         last_used_at.map(|d| d.to_rfc3339()),
         created_at.to_rfc3339(),
         updated_at.to_rfc3339(),
+        archived_at.map(|d| d.to_rfc3339()),
     ))
 }
 
@@ -242,7 +245,7 @@ pub(crate) fn row_to_prompt(row: &sqlx::postgres::PgRow) -> Result<UserPrompt, S
     let created_at: DateTime<Utc> = row.try_get("created_at")?;
     Ok(UserPrompt::new(
         row.try_get("id")?,
-        row.try_get("content_session_id")?,
+        row.try_get::<ContentSessionId, _>("content_session_id")?,
         PromptNumber(
             u32::try_from(row.try_get::<i32, _>("prompt_number")?).map_err(|e| {
                 StorageError::DataCorruption {
@@ -252,7 +255,7 @@ pub(crate) fn row_to_prompt(row: &sqlx::postgres::PgRow) -> Result<UserPrompt, S
             })?,
         ),
         row.try_get("prompt_text")?,
-        row.try_get("project")?,
+        row.try_get::<Option<ProjectId>, _>("project")?,
         created_at,
     ))
 }

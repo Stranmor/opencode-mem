@@ -37,4 +37,12 @@ pub trait KnowledgeStore: Send + Sync {
 
     /// Increment usage count and bump confidence.
     async fn update_knowledge_usage(&self, id: &str) -> Result<(), StorageError>;
+
+    /// Decay confidence for all non-archived entries based on time since last use.
+    /// Returns the number of entries updated.
+    async fn decay_confidence(&self) -> Result<u64, StorageError>;
+
+    /// Archive entries with low confidence, zero usage, and older than the given age in days.
+    /// Returns the number of entries archived.
+    async fn auto_archive(&self, min_age_days: i64) -> Result<u64, StorageError>;
 }

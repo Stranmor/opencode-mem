@@ -88,6 +88,8 @@ pub struct GlobalKnowledge {
     pub created_at: String,
     /// When this knowledge was last updated
     pub updated_at: String,
+    /// When this knowledge was archived (soft-deleted), None if active
+    pub archived_at: Option<String>,
 }
 
 impl GlobalKnowledge {
@@ -108,6 +110,7 @@ impl GlobalKnowledge {
         last_used_at: Option<String>,
         created_at: String,
         updated_at: String,
+        archived_at: Option<String>,
     ) -> Self {
         Self {
             id,
@@ -123,6 +126,7 @@ impl GlobalKnowledge {
             last_used_at,
             created_at,
             updated_at,
+            archived_at,
         }
     }
 }

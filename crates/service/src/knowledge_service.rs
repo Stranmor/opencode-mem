@@ -72,4 +72,20 @@ impl KnowledgeService {
         self.fast_fail_if_db_unavailable()?;
         Ok(self.storage.update_knowledge_usage(id).await?)
     }
+
+    pub async fn decay_confidence(&self) -> Result<u64, ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
+        Ok(self.storage.decay_confidence().await?)
+    }
+
+    pub async fn auto_archive(&self, min_age_days: i64) -> Result<u64, ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
+        Ok(self.storage.auto_archive(min_age_days).await?)
+    }
+
+    pub async fn run_confidence_lifecycle(&self) -> Result<(u64, u64), ServiceError> {
+        let decayed = self.decay_confidence().await?;
+        let archived = self.auto_archive(30).await?;
+        Ok((decayed, archived))
+    }
 }

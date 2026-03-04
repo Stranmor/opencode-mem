@@ -104,6 +104,7 @@ impl PgStorage {
                 last_used_at.map(|d| d.to_rfc3339()),
                 created_at.to_rfc3339(),
                 now.to_rfc3339(),
+                None,
             ))
         } else {
             let id = uuid::Uuid::new_v4().to_string();
@@ -120,7 +121,7 @@ impl PgStorage {
 
             sqlx::query(&format!(
                 "INSERT INTO global_knowledge ({KNOWLEDGE_COLUMNS})
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)"
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)"
             ))
             .bind(&id)
             .bind(input.knowledge_type.as_str())
@@ -135,6 +136,7 @@ impl PgStorage {
             .bind(Option::<DateTime<Utc>>::None)
             .bind(now)
             .bind(now)
+            .bind(Option::<DateTime<Utc>>::None)
             .execute(&mut *tx)
             .await?;
 
@@ -154,6 +156,7 @@ impl PgStorage {
                 None,
                 now.to_rfc3339(),
                 now.to_rfc3339(),
+                None,
             ))
         }
     }
@@ -215,6 +218,7 @@ impl KnowledgeStore for PgStorage {
                     ts_rank_cd(search_vec, to_tsquery('simple', $1))::float8 as score
              FROM global_knowledge
              WHERE search_vec @@ to_tsquery('simple', $1)
+               AND archived_at IS NULL
              ORDER BY score DESC
              LIMIT $2"
         ))
@@ -251,7 +255,7 @@ impl KnowledgeStore for PgStorage {
         let rows = if let Some(kt) = knowledge_type {
             sqlx::query(&format!(
                 "SELECT {KNOWLEDGE_COLUMNS} FROM global_knowledge
-                 WHERE knowledge_type = $1
+                 WHERE knowledge_type = $1 AND archived_at IS NULL
                  ORDER BY confidence DESC, usage_count DESC LIMIT $2"
             ))
             .bind(kt.as_str())
@@ -261,6 +265,7 @@ impl KnowledgeStore for PgStorage {
         } else {
             sqlx::query(&format!(
                 "SELECT {KNOWLEDGE_COLUMNS} FROM global_knowledge
+                 WHERE archived_at IS NULL
                  ORDER BY confidence DESC, usage_count DESC LIMIT $1"
             ))
             .bind(usize_to_i64(limit))
@@ -276,8 +281,8 @@ impl KnowledgeStore for PgStorage {
             "UPDATE global_knowledge
              SET usage_count = usage_count + 1,
                  last_used_at = $1, updated_at = $1,
-                 confidence = LEAST(1.0, confidence + 0.05)
-             WHERE id = $2",
+                 confidence = LEAST(1.0, confidence + 0.1)
+             WHERE id = $2 AND archived_at IS NULL",
         )
         .bind(now)
         .bind(id)
@@ -292,11 +297,47 @@ impl KnowledgeStore for PgStorage {
     ) -> Result<bool, StorageError> {
         let json_array = serde_json::json!([observation_id]);
         let row: Option<(i32,)> = sqlx::query_as(
-            "SELECT 1 FROM global_knowledge WHERE source_observations @> $1::jsonb LIMIT 1",
+            "SELECT 1 FROM global_knowledge
+             WHERE source_observations @> $1::jsonb
+               AND archived_at IS NULL
+             LIMIT 1",
         )
         .bind(&json_array)
         .fetch_optional(&self.pool)
         .await?;
         Ok(row.is_some())
+    }
+
+    async fn decay_confidence(&self) -> Result<u64, StorageError> {
+        // Formula: new_confidence = max(0.1, confidence - 0.05 * weeks_since_last_use)
+        // Uses COALESCE(last_used_at, created_at) as the reference timestamp
+        let result = sqlx::query(
+            "UPDATE global_knowledge
+             SET confidence = GREATEST(0.1,
+                 confidence - 0.05 * EXTRACT(EPOCH FROM (NOW() - COALESCE(last_used_at, created_at))) / 604800.0
+             ),
+             updated_at = NOW()
+             WHERE archived_at IS NULL
+               AND confidence > 0.1
+               AND EXTRACT(EPOCH FROM (NOW() - COALESCE(last_used_at, created_at))) > 604800.0",
+        )
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    async fn auto_archive(&self, min_age_days: i64) -> Result<u64, StorageError> {
+        let result = sqlx::query(
+            "UPDATE global_knowledge
+             SET archived_at = NOW(), updated_at = NOW()
+             WHERE archived_at IS NULL
+               AND confidence < 0.2
+               AND usage_count = 0
+               AND created_at < NOW() - ($1 || ' days')::INTERVAL",
+        )
+        .bind(min_age_days.to_string())
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
     }
 }

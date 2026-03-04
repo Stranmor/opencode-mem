@@ -107,6 +107,7 @@ enum Commands {
     },
     #[command(subcommand)]
     Hook(HookCommands),
+    KnowledgeLifecycle,
 }
 
 pub async fn create_storage(url: &str) -> Result<StorageBackend> {
@@ -192,6 +193,9 @@ async fn async_main() -> Result<()> {
         }
         Commands::Hook(hook_cmd) => {
             commands::hook::run(hook_cmd).await?;
+        }
+        Commands::KnowledgeLifecycle => {
+            commands::search::run_knowledge_lifecycle().await?;
         }
     }
 

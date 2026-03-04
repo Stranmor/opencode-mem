@@ -66,9 +66,17 @@ pub async fn get_knowledge_by_id(
             tracing::error!("Get knowledge error: {}", e);
             ApiError::from(e)
         })?;
-    knowledge
-        .map(Json)
-        .ok_or(ApiError::NotFound("Not Found".into()))
+    match knowledge {
+        Some(k) => {
+            let knowledge_service = state.knowledge_service.clone();
+            let entry_id = id.clone();
+            tokio::spawn(async move {
+                let _ = knowledge_service.update_knowledge_usage(&entry_id).await;
+            });
+            Ok(Json(k))
+        }
+        None => Err(ApiError::NotFound("Not Found".into())),
+    }
 }
 
 pub async fn delete_knowledge(
@@ -130,4 +138,22 @@ pub async fn record_knowledge_usage(
             ApiError::from(e)
         })?;
     Ok(Json(KnowledgeUsageResponse { success: true, id }))
+}
+
+pub async fn run_confidence_lifecycle(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    if !is_localhost(&addr) {
+        return Err(ApiError::Forbidden("Forbidden".into()));
+    }
+    let (decayed, archived) = state
+        .knowledge_service
+        .run_confidence_lifecycle()
+        .await
+        .map_err(|e| {
+            tracing::error!("Knowledge confidence lifecycle error: {}", e);
+            ApiError::from(e)
+        })?;
+    Ok(Json(json!({ "decayed": decayed, "archived": archived })))
 }

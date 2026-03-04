@@ -53,9 +53,9 @@ use std::time::Instant;
 use tokio::sync::{RwLock, Semaphore, broadcast};
 
 use opencode_mem_core::AppConfig;
-use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_service::{
-    KnowledgeService, ObservationService, QueueService, SearchService, SessionService,
+    InfiniteMemoryService, KnowledgeService, ObservationService, QueueService, SearchService,
+    SessionService,
 };
 
 pub use api_types::{HealthResponse, ReadinessResponse, Settings, VersionResponse};
@@ -75,7 +75,7 @@ pub struct AppState {
     /// Runtime-configurable settings
     pub settings: RwLock<Settings>,
     /// Optional `PostgreSQL` backend for infinite memory
-    pub infinite_mem: Option<Arc<InfiniteMemory>>,
+    pub infinite_mem: Option<Arc<InfiniteMemoryService>>,
     /// Service for processing observations
     pub observation_service: Arc<ObservationService>,
     /// Service for session management
@@ -111,7 +111,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/semantic-search", get(handlers::search::semantic_search))
         .route(
             "/observations/{id}",
-            get(handlers::observations::get_observation),
+            get(handlers::observations::get_observation)
+                .delete(handlers::observations::delete_observation),
         )
         .route(
             "/observations/batch",
@@ -233,10 +234,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/mcp/toggle", post(handlers::admin::toggle_mcp))
         .route(
             "/api/branch/status",
-            get(handlers::admin::get_branch_status),
+            get(handlers::branch::get_branch_status),
         )
-        .route("/api/branch/switch", post(handlers::admin::switch_branch))
-        .route("/api/branch/update", post(handlers::admin::update_branch))
+        .route("/api/branch/switch", post(handlers::branch::switch_branch))
+        .route("/api/branch/update", post(handlers::branch::update_branch))
         .route("/api/instructions", get(handlers::admin::get_instructions))
         .route("/api/admin/restart", post(handlers::admin::admin_restart))
         .route("/api/admin/shutdown", post(handlers::admin::admin_shutdown))
@@ -282,6 +283,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/knowledge/{id}/usage",
             put(handlers::knowledge::record_knowledge_usage),
+        )
+        .route(
+            "/api/knowledge/lifecycle",
+            post(handlers::knowledge::run_confidence_lifecycle),
         )
         .route(
             "/api/infinite/expand_summary/{id}",

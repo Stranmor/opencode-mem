@@ -14,6 +14,7 @@
 )]
 
 mod embeddings;
+pub mod infinite_memory;
 mod injections;
 mod knowledge;
 mod observations;
@@ -200,7 +201,7 @@ pub(crate) const SESSION_COLUMNS: &str =
 pub(crate) const KNOWLEDGE_COLUMNS: &str =
     "id, knowledge_type, title, description, instructions, triggers,
      source_projects, source_observations, confidence, usage_count,
-     last_used_at, created_at, updated_at";
+     last_used_at, created_at, updated_at, archived_at";
 
 pub(crate) const SUMMARY_COLUMNS: &str =
     "session_id, project, request, investigated, learned, completed, next_steps, notes,
