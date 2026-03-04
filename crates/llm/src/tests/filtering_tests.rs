@@ -13,9 +13,9 @@ fn create_client() -> Option<LlmClient> {
             api_key,
             env::var("OPENCODE_MEM_API_URL")
                 .unwrap_or_else(|_| "https://api.openai.com".to_owned()),
+            env::var("OPENCODE_MEM_MODEL").unwrap_or_else(|_| "gpt-4o".to_owned()),
         )
-        .ok()?
-        .with_model(env::var("OPENCODE_MEM_MODEL").unwrap_or_else(|_| "gpt-4o".to_owned())),
+        .ok()?,
     )
 }
 

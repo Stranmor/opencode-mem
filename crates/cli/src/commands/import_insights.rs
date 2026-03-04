@@ -188,7 +188,7 @@ async fn import_file(storage: &StorageBackend, path: &Path) -> Result<(usize, us
 
 /// Run import-insights command
 pub(crate) async fn run(file: Option<String>, dir: Option<String>) -> Result<()> {
-    let storage = crate::create_storage().await?;
+    let storage = crate::create_storage_from_env().await?;
 
     let mut total_imported = 0;
     let mut total_skipped = 0;

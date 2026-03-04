@@ -67,6 +67,7 @@ mod migrations;
 mod pipeline;
 mod summary_queries;
 
+pub use compression::init_compression_config;
 pub use event_types::{
     EventType, RawEvent, StoredEvent, Summary, SummaryEntities, assistant_event, tool_event,
     user_event,

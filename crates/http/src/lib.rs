@@ -52,6 +52,7 @@ use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 use tokio::sync::{RwLock, Semaphore, broadcast};
 
+use opencode_mem_core::AppConfig;
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_service::{
     KnowledgeService, ObservationService, QueueService, SearchService, SessionService,
@@ -86,8 +87,8 @@ pub struct AppState {
     /// Service for pending message queue operations
     pub queue_service: Arc<QueueService>,
     pub shutdown_tx: tokio::sync::broadcast::Sender<bool>,
-    /// Timestamp when the server started (for uptime calculation)
     pub started_at: Instant,
+    pub config: Arc<AppConfig>,
 }
 
 pub fn create_router(state: Arc<AppState>) -> Router {

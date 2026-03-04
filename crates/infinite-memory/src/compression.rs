@@ -4,17 +4,37 @@ use crate::event_types::{StoredEvent, Summary, SummaryEntities};
 use anyhow::Result;
 use opencode_mem_core::strip_markdown_json;
 use opencode_mem_llm::LlmClient;
+use std::sync::OnceLock;
+
+static MAX_CONTENT_CHARS: OnceLock<usize> = OnceLock::new();
+static MAX_TOTAL_CHARS: OnceLock<usize> = OnceLock::new();
+static MAX_EVENTS: OnceLock<usize> = OnceLock::new();
+
+pub fn init_compression_config(
+    max_content_chars: usize,
+    max_total_chars: usize,
+    max_events: usize,
+) {
+    let _ = MAX_CONTENT_CHARS.set(max_content_chars);
+    let _ = MAX_TOTAL_CHARS.set(max_total_chars);
+    let _ = MAX_EVENTS.set(max_events);
+}
 
 fn max_content_chars() -> usize {
-    opencode_mem_core::env_parse_with_default("OPENCODE_MEM_MAX_CONTENT_CHARS", 500)
+    *MAX_CONTENT_CHARS.get_or_init(|| {
+        opencode_mem_core::env_parse_with_default("OPENCODE_MEM_MAX_CONTENT_CHARS", 500)
+    })
 }
 
 fn max_total_chars() -> usize {
-    opencode_mem_core::env_parse_with_default("OPENCODE_MEM_MAX_TOTAL_CHARS", 8000)
+    *MAX_TOTAL_CHARS.get_or_init(|| {
+        opencode_mem_core::env_parse_with_default("OPENCODE_MEM_MAX_TOTAL_CHARS", 8000)
+    })
 }
 
 fn max_events() -> usize {
-    opencode_mem_core::env_parse_with_default("OPENCODE_MEM_MAX_EVENTS", 200)
+    *MAX_EVENTS
+        .get_or_init(|| opencode_mem_core::env_parse_with_default("OPENCODE_MEM_MAX_EVENTS", 200))
 }
 
 pub async fn compress_events(

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use opencode_mem_core::AppConfig;
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
@@ -7,19 +8,22 @@ use opencode_mem_service::{KnowledgeService, ObservationService, SearchService, 
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
-use crate::{get_api_key, get_base_url};
+pub(crate) async fn run(config: Arc<AppConfig>) -> Result<()> {
+    opencode_mem_storage::init_queue_config(config.max_retry, config.visibility_timeout_secs);
+    opencode_mem_infinite::init_compression_config(
+        config.max_content_chars,
+        config.max_total_chars,
+        config.max_events,
+    );
+    let storage = Arc::new(crate::create_storage(&config.database_url).await?);
 
-pub(crate) async fn run() -> Result<()> {
-    let storage = Arc::new(crate::create_storage().await?);
+    let llm = Arc::new(LlmClient::new(
+        config.api_key.clone(),
+        config.api_url.clone(),
+        config.model.clone(),
+    )?);
 
-    let api_key = get_api_key()?;
-    let llm = Arc::new(LlmClient::new(api_key, get_base_url())?);
-
-    let embeddings_disabled = std::env::var("OPENCODE_MEM_DISABLE_EMBEDDINGS")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-
-    let embeddings = if embeddings_disabled {
+    let embeddings = if config.disable_embeddings {
         eprintln!("Embeddings disabled via OPENCODE_MEM_DISABLE_EMBEDDINGS");
         None
     } else {
@@ -32,15 +36,13 @@ pub(crate) async fn run() -> Result<()> {
         }
     };
 
-    let infinite_mem = if let Ok(url) = std::env::var("INFINITE_MEMORY_URL")
-        .or_else(|_| std::env::var("OPENCODE_MEM_INFINITE_MEMORY"))
-    {
+    let infinite_mem = if let Some(ref url) = config.infinite_memory_url {
         let pool = sqlx::postgres::PgPoolOptions::new()
             .max_connections(5)
             .acquire_timeout(std::time::Duration::from_secs(
                 opencode_mem_core::PG_POOL_ACQUIRE_TIMEOUT_SECS,
             ))
-            .connect_lazy(&url);
+            .connect_lazy(url);
 
         match pool {
             Ok(p) => match InfiniteMemory::new(p, llm.clone()).await {
@@ -63,7 +65,6 @@ pub(crate) async fn run() -> Result<()> {
         None
     };
 
-    // Event channel for SSE (MCP doesn't serve SSE, but services require it)
     let (event_tx, _) = broadcast::channel(100);
 
     let observation_service = Arc::new(ObservationService::new(
@@ -72,6 +73,7 @@ pub(crate) async fn run() -> Result<()> {
         infinite_mem.clone(),
         event_tx,
         embeddings.clone(),
+        &config,
     ));
     let session_service = Arc::new(SessionService::new(storage.clone(), llm.clone()));
     let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));

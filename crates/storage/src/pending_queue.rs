@@ -119,16 +119,29 @@ pub struct PendingMessage {
     pub project: Option<String>,
 }
 
-/// Returns the maximum retry count from environment or default (3).
-#[must_use]
-pub fn max_retry_count() -> i32 {
-    opencode_mem_core::env_parse_with_default("OPENCODE_MEM_MAX_RETRY", 3i32)
+use std::sync::OnceLock;
+
+static MAX_RETRY: OnceLock<i32> = OnceLock::new();
+static VISIBILITY_TIMEOUT: OnceLock<i64> = OnceLock::new();
+
+/// Initialize queue config from `AppConfig` at startup.
+/// Must be called before any queue operations.
+pub fn init_queue_config(max_retry: i32, visibility_timeout_secs: i64) {
+    let _ = MAX_RETRY.set(max_retry);
+    let _ = VISIBILITY_TIMEOUT.set(visibility_timeout_secs);
 }
 
-/// Returns the default visibility timeout in seconds from environment or default (300).
+#[must_use]
+pub fn max_retry_count() -> i32 {
+    *MAX_RETRY
+        .get_or_init(|| opencode_mem_core::env_parse_with_default("OPENCODE_MEM_MAX_RETRY", 3i32))
+}
+
 #[must_use]
 pub fn default_visibility_timeout_secs() -> i64 {
-    opencode_mem_core::env_parse_with_default("OPENCODE_MEM_VISIBILITY_TIMEOUT", 300i64)
+    *VISIBILITY_TIMEOUT.get_or_init(|| {
+        opencode_mem_core::env_parse_with_default("OPENCODE_MEM_VISIBILITY_TIMEOUT", 300i64)
+    })
 }
 
 /// Statistics about the pending message queue.

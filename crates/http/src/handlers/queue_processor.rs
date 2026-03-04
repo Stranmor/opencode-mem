@@ -3,12 +3,12 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use opencode_mem_core::{ProjectFilter, ToolCall};
-use opencode_mem_service::{PendingMessage, default_visibility_timeout_secs};
+use opencode_mem_service::PendingMessage;
 
 use crate::AppState;
 
-pub(crate) fn max_queue_workers() -> usize {
-    opencode_mem_core::env_parse_with_default("OPENCODE_MEM_QUEUE_WORKERS", 10)
+pub(crate) fn max_queue_workers(state: &AppState) -> usize {
+    state.config.queue_workers
 }
 
 pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> anyhow::Result<()> {
@@ -103,7 +103,7 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
 
         tracing::debug!("Background processor: checking queue...");
 
-        let max_workers = max_queue_workers();
+        let max_workers = max_queue_workers(&state);
         let available_permits = state.semaphore.available_permits().min(max_workers);
 
         if available_permits == 0 {
@@ -112,7 +112,7 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
 
         let messages = match state
             .queue_service
-            .claim_pending_messages(available_permits, default_visibility_timeout_secs())
+            .claim_pending_messages(available_permits, state.config.visibility_timeout_secs)
             .await
         {
             Ok(msgs) => msgs,
@@ -265,9 +265,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
         }
 
         if loop_count.is_multiple_of(17280) {
-            let ttl_secs =
-                opencode_mem_core::env_parse_with_default("OPENCODE_MEM_DLQ_TTL_DAYS", 7_i64)
-                    * 86400;
+            let ttl_secs = state.config.dlq_ttl_secs();
             let state_clone = Arc::clone(&state);
             tokio::spawn(async move {
                 match state_clone
@@ -310,7 +308,7 @@ pub fn start_background_processor(state: Arc<AppState>) {
 pub async fn run_startup_recovery(state: &AppState) -> anyhow::Result<usize> {
     let released = state
         .queue_service
-        .release_stale_messages(default_visibility_timeout_secs())
+        .release_stale_messages(state.config.visibility_timeout_secs)
         .await?;
     if released > 0 {
         tracing::info!(

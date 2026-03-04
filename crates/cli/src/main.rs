@@ -56,6 +56,7 @@ mod commands;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use commands::hook::HookCommands;
+use opencode_mem_core::AppConfig;
 use opencode_mem_storage::StorageBackend;
 use tracing_subscriber::EnvFilter;
 
@@ -108,30 +109,21 @@ enum Commands {
     Hook(HookCommands),
 }
 
-pub fn get_api_key() -> Result<String> {
-    std::env::var("OPENCODE_MEM_API_KEY")
-        .or_else(|_| std::env::var("ANTIGRAVITY_API_KEY"))
-        .map_err(|_| {
-            anyhow::anyhow!(
-                "OPENCODE_MEM_API_KEY or ANTIGRAVITY_API_KEY environment variable must be set"
-            )
-        })
+pub async fn create_storage(url: &str) -> Result<StorageBackend> {
+    tracing::info!("Connecting to PostgreSQL");
+    StorageBackend::new(url).await.map_err(Into::into)
 }
 
-#[must_use]
-pub fn get_base_url() -> String {
-    std::env::var("OPENCODE_MEM_API_URL").unwrap_or_else(|_| "https://api.openai.com".to_owned())
-}
-
-pub async fn create_storage() -> Result<StorageBackend> {
+pub async fn create_storage_from_env() -> Result<StorageBackend> {
     let url = std::env::var("DATABASE_URL")
         .map_err(|_| anyhow::anyhow!("DATABASE_URL environment variable must be set"))?;
-    tracing::info!("Connecting to PostgreSQL");
-    StorageBackend::new(&url).await.map_err(Into::into)
+    create_storage(&url).await
 }
 
 fn main() -> Result<()> {
-    // Set OMP_NUM_THREADS before any threads are spawned to avoid unsafe concurrent env mutation.
+    // Load config early (before tokio) to set OMP_NUM_THREADS.
+    // Config loading may fail for commands that don't need full config (search, hook),
+    // so we only validate required vars for serve/mcp inside async_main.
     let thread_count = opencode_mem_core::env_parse_with_default(
         "OPENCODE_MEM_EMBEDDING_THREADS",
         std::thread::available_parallelism()
@@ -141,8 +133,7 @@ fn main() -> Result<()> {
             .max(1),
     );
     if std::env::var("OMP_NUM_THREADS").is_err() {
-        // Safe here: called before tokio runtime starts spawning threads.
-        // In edition 2024, set_var is unsafe, so we wrap it.
+        // SAFETY: Called before tokio runtime starts — no other threads exist yet.
         #[allow(unused_unsafe, reason = "set_var is unsafe in edition 2024")]
         unsafe {
             std::env::set_var("OMP_NUM_THREADS", thread_count.to_string());
@@ -166,10 +157,12 @@ async fn async_main() -> Result<()> {
 
     match cli.command {
         Commands::Serve { port, host } => {
-            commands::serve::run(port, host).await?;
+            let config = std::sync::Arc::new(AppConfig::from_env()?);
+            commands::serve::run(port, host, config).await?;
         }
         Commands::Mcp => {
-            commands::mcp::run().await?;
+            let config = std::sync::Arc::new(AppConfig::from_env()?);
+            commands::mcp::run(config).await?;
         }
         Commands::Search {
             query,

@@ -9,7 +9,7 @@ pub(crate) async fn run_search(
     project: Option<String>,
     obs_type: Option<String>,
 ) -> Result<()> {
-    let storage = crate::create_storage().await?;
+    let storage = crate::create_storage_from_env().await?;
     let results = storage
         .search_with_filters(
             Some(&query),
@@ -25,28 +25,28 @@ pub(crate) async fn run_search(
 }
 
 pub(crate) async fn run_stats() -> Result<()> {
-    let storage = crate::create_storage().await?;
+    let storage = crate::create_storage_from_env().await?;
     let stats = storage.get_stats().await?;
     println!("{}", serde_json::to_string_pretty(&stats)?);
     Ok(())
 }
 
 pub(crate) async fn run_projects() -> Result<()> {
-    let storage = crate::create_storage().await?;
+    let storage = crate::create_storage_from_env().await?;
     let projects = storage.get_all_projects().await?;
     println!("{}", serde_json::to_string_pretty(&projects)?);
     Ok(())
 }
 
 pub(crate) async fn run_recent(limit: usize) -> Result<()> {
-    let storage = crate::create_storage().await?;
+    let storage = crate::create_storage_from_env().await?;
     let results = storage.get_recent(limit).await?;
     println!("{}", serde_json::to_string_pretty(&results)?);
     Ok(())
 }
 
 pub(crate) async fn run_get(id: String) -> Result<()> {
-    let storage = crate::create_storage().await?;
+    let storage = crate::create_storage_from_env().await?;
     match storage.get_by_id(&id).await? {
         Some(obs) => println!("{}", serde_json::to_string_pretty(&obs)?),
         None => println!("Observation not found: {id}"),
@@ -55,7 +55,7 @@ pub(crate) async fn run_get(id: String) -> Result<()> {
 }
 
 pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
-    let storage = crate::create_storage().await?;
+    let storage = crate::create_storage_from_env().await?;
 
     println!("Initializing embedding model (first run downloads ~100MB)...");
     let embeddings = EmbeddingService::new()?;

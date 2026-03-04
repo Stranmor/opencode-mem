@@ -6,7 +6,7 @@ mod side_effects;
 
 use std::sync::Arc;
 
-use opencode_mem_core::{Observation, ToolCall, env_parse_with_default};
+use opencode_mem_core::{AppConfig, Observation, ToolCall};
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
@@ -51,26 +51,10 @@ impl ObservationService {
         infinite_mem: Option<Arc<InfiniteMemory>>,
         event_tx: broadcast::Sender<String>,
         embeddings: Option<Arc<EmbeddingService>>,
+        config: &AppConfig,
     ) -> Self {
-        let raw_dedup = env_parse_with_default("OPENCODE_MEM_DEDUP_THRESHOLD", 0.85_f32);
-        let dedup_threshold = raw_dedup.clamp(0.0, 1.0);
-        if (dedup_threshold - raw_dedup).abs() > f32::EPSILON {
-            tracing::warn!(
-                original = raw_dedup,
-                clamped = dedup_threshold,
-                "OPENCODE_MEM_DEDUP_THRESHOLD clamped to [0.0, 1.0]"
-            );
-        }
-        let raw_injection =
-            env_parse_with_default("OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD", 0.80_f32);
-        let injection_dedup_threshold = raw_injection.clamp(0.0, 1.0);
-        if (injection_dedup_threshold - raw_injection).abs() > f32::EPSILON {
-            tracing::warn!(
-                original = raw_injection,
-                clamped = injection_dedup_threshold,
-                "OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD clamped to [0.0, 1.0]"
-            );
-        }
+        let dedup_threshold = config.dedup_threshold;
+        let injection_dedup_threshold = config.injection_dedup_threshold;
         if injection_dedup_threshold > 0.0 && embeddings.is_none() {
             tracing::warn!(
                 threshold = %injection_dedup_threshold,
@@ -123,7 +107,14 @@ impl ObservationService {
                 .noise_level(opencode_mem_core::NoiseLevel::Negligible)
                 .noise_reason(format!("Tombstone: merged into {}", obs.id))
                 .build();
-                let _ = self.storage.save_observation(&tombstone).await;
+                if let Err(e) = self.storage.save_observation(&tombstone).await {
+                    tracing::warn!(
+                        tombstone_id = %id,
+                        merged_into = %obs.id,
+                        error = %e,
+                        "Failed to save tombstone observation — stale original may remain visible"
+                    );
+                }
             }
             Ok::<_, crate::ServiceError>(result)
         };

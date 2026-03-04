@@ -5,8 +5,6 @@ use crate::error::LlmError;
 
 /// Maximum output length for truncation.
 pub const MAX_OUTPUT_LEN: usize = 2000;
-/// Default LLM model to use.
-pub const DEFAULT_MODEL: &str = "gpt-4o";
 
 /// Client for LLM API calls.
 pub struct LlmClient {
@@ -34,13 +32,11 @@ impl std::fmt::Debug for LlmClient {
 }
 
 impl LlmClient {
-    /// Creates a new LLM client with the given API key and base URL.
+    /// Creates a new LLM client with the given API key, base URL, and model.
     ///
     /// # Errors
     /// Returns an error if the HTTP client cannot be built (TLS backend failure).
-    pub fn new(api_key: String, base_url: String) -> Result<Self, LlmError> {
-        let model =
-            std::env::var("OPENCODE_MEM_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_owned());
+    pub fn new(api_key: String, base_url: String, model: String) -> Result<Self, LlmError> {
         let base_url = base_url.trim_end_matches('/').to_owned();
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(60))

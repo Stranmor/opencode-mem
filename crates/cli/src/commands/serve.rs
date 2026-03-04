@@ -1,4 +1,5 @@
 use anyhow::Result;
+use opencode_mem_core::AppConfig;
 use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_http::{
     AppState, Settings, create_router, run_startup_recovery, start_background_processor,
@@ -13,25 +14,29 @@ use std::sync::atomic::AtomicBool;
 use std::time::Instant;
 use tokio::sync::{RwLock, Semaphore, broadcast};
 
-use crate::{get_api_key, get_base_url};
+pub(crate) async fn run(port: u16, host: String, config: Arc<AppConfig>) -> Result<()> {
+    opencode_mem_storage::init_queue_config(config.max_retry, config.visibility_timeout_secs);
+    opencode_mem_infinite::init_compression_config(
+        config.max_content_chars,
+        config.max_total_chars,
+        config.max_events,
+    );
+    let storage = Arc::new(crate::create_storage(&config.database_url).await?);
 
-pub(crate) async fn run(port: u16, host: String) -> Result<()> {
-    let storage = Arc::new(crate::create_storage().await?);
-
-    let api_key = get_api_key()?;
-    let llm = Arc::new(LlmClient::new(api_key.clone(), get_base_url())?);
-    // Initial receiver dropped immediately - subscribers use event_tx.subscribe()
+    let llm = Arc::new(LlmClient::new(
+        config.api_key.clone(),
+        config.api_url.clone(),
+        config.model.clone(),
+    )?);
     let (event_tx, _) = broadcast::channel(100);
 
-    let infinite_mem = if let Ok(url) = std::env::var("INFINITE_MEMORY_URL")
-        .or_else(|_| std::env::var("OPENCODE_MEM_INFINITE_MEMORY"))
-    {
+    let infinite_mem = if let Some(ref url) = config.infinite_memory_url {
         let pool = sqlx::postgres::PgPoolOptions::new()
             .max_connections(5)
             .acquire_timeout(std::time::Duration::from_secs(
                 opencode_mem_core::PG_POOL_ACQUIRE_TIMEOUT_SECS,
             ))
-            .connect_lazy(&url);
+            .connect_lazy(url);
 
         match pool {
             Ok(p) => match InfiniteMemory::new(p, llm.clone()).await {
@@ -54,11 +59,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         None
     };
 
-    let embeddings_disabled = std::env::var("OPENCODE_MEM_DISABLE_EMBEDDINGS")
-        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
-        .unwrap_or(false);
-
-    let embeddings = if embeddings_disabled {
+    let embeddings = if config.disable_embeddings {
         tracing::info!("Embeddings disabled via OPENCODE_MEM_DISABLE_EMBEDDINGS");
         None
     } else {
@@ -80,6 +81,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         infinite_mem.clone(),
         event_tx.clone(),
         embeddings.clone(),
+        &config,
     ));
     let session_service = Arc::new(SessionService::new(storage.clone(), llm.clone()));
     let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));
@@ -92,10 +94,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::broadcast::channel(1);
 
     let state = Arc::new(AppState {
-        semaphore: Arc::new(Semaphore::new(opencode_mem_core::env_parse_with_default(
-            "OPENCODE_MEM_QUEUE_WORKERS",
-            10,
-        ))),
+        semaphore: Arc::new(Semaphore::new(config.queue_workers)),
         event_tx,
         processing_active: AtomicBool::new(true),
         settings: RwLock::new(Settings::default()),
@@ -107,6 +106,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
         queue_service,
         shutdown_tx,
         started_at: Instant::now(),
+        config: config.clone(),
     });
 
     if let Err(e) = run_startup_recovery(&state).await {
@@ -136,7 +136,7 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
             anyhow::anyhow!(
                 "Port {} is already in use.\n\n\
 Another instance of opencode-mem is likely running.\n\
-To stop it, run:
+To stop it, run:\n\
   curl -X POST http://127.0.0.1:{}/api/admin/shutdown\n\
 Or kill the process manually before starting a new server.",
                 port,
@@ -169,7 +169,6 @@ Or kill the process manually before starting a new server.",
     .await?;
 
     tracing::info!("Waiting for background tasks to finish...");
-    // let _ = tokio::join!(poller_handle, cron_handle);
     tracing::info!("Background tasks finished.");
 
     if is_restart.load(std::sync::atomic::Ordering::Relaxed) {
