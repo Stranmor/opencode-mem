@@ -157,14 +157,43 @@ impl InfiniteMemory {
                 });
             }
         } else if let Err(e) = result {
-            let msg = e.to_string();
-            // Do not trip circuit breaker on validation or logical errors
-            if msg.contains("Invalid entity_type") {
-                tracing::debug!("Validation error, ignoring for circuit breaker: {}", msg);
-            } else {
+            if Self::is_transient_error(e) {
                 self.circuit_breaker.record_failure();
+            } else {
+                tracing::debug!("Non-transient error, not tripping circuit breaker: {}", e);
             }
         }
+    }
+
+    /// Classify whether an error indicates a transient infrastructure problem
+    /// (connection failure, pool exhaustion, network error) that should trip
+    /// the circuit breaker, versus a permanent/validation error that should not.
+    fn is_transient_error(err: &anyhow::Error) -> bool {
+        // Check the error chain for sqlx errors — the most common source
+        if let Some(sqlx_err) = err.downcast_ref::<sqlx::Error>() {
+            return matches!(
+                sqlx_err,
+                sqlx::Error::PoolTimedOut
+                    | sqlx::Error::PoolClosed
+                    | sqlx::Error::WorkerCrashed
+                    | sqlx::Error::Io(_)
+            ) || matches!(sqlx_err, sqlx::Error::Database(db_err)
+            if db_err.code().as_deref().is_some_and(|c|
+                // PostgreSQL class 08 = connection exception
+                // PostgreSQL class 53 = insufficient resources
+                // PostgreSQL class 57 = operator intervention (crash recovery)
+                c.starts_with("08") || c.starts_with("53") || c.starts_with("57")
+            ));
+        }
+
+        // Fallback: check the stringified error for connection-related patterns
+        let msg = err.to_string();
+        msg.contains("connection refused")
+            || msg.contains("connection reset")
+            || msg.contains("broken pipe")
+            || msg.contains("pool timed out")
+            || msg.contains("PoolTimedOut")
+            || msg.contains("timed out while waiting")
     }
 
     pub async fn store_event(&self, event: RawEvent) -> Result<i64> {

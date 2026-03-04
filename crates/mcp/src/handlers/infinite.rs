@@ -11,7 +11,7 @@ fn degrade_infinite_read(
     id: serde_json::Value,
 ) -> McpResponse {
     let cb = mem.circuit_breaker();
-    cb.record_failure();
+
     if cb.is_open() {
         tracing::warn!(error = %err, "Infinite memory: database unavailable, returning empty results");
         McpResponse {
@@ -77,15 +77,12 @@ pub(super) async fn handle_infinite_expand(
                 .unwrap_or(1000)
                 .min(MAX_QUERY_LIMIT_I64);
             match mem.get_events_by_summary_id(summary_id, limit).await {
-                Ok(events) => {
-                    mem.circuit_breaker().record_success();
-                    McpResponse {
-                        jsonrpc: "2.0".to_owned(),
-                        id,
-                        result: Some(mcp_ok(&events)),
-                        error: None,
-                    }
-                }
+                Ok(events) => McpResponse {
+                    jsonrpc: "2.0".to_owned(),
+                    id,
+                    result: Some(mcp_ok(&events)),
+                    error: None,
+                },
                 Err(e) => degrade_infinite_read(e, mem, id),
             }
         }
@@ -143,15 +140,12 @@ pub(super) async fn handle_infinite_time_range(
                 .get_events_by_time_range(start, end, session_id, limit)
                 .await
             {
-                Ok(events) => {
-                    mem.circuit_breaker().record_success();
-                    McpResponse {
-                        jsonrpc: "2.0".to_owned(),
-                        id,
-                        result: Some(mcp_ok(&events)),
-                        error: None,
-                    }
-                }
+                Ok(events) => McpResponse {
+                    jsonrpc: "2.0".to_owned(),
+                    id,
+                    result: Some(mcp_ok(&events)),
+                    error: None,
+                },
                 Err(e) => degrade_infinite_read(e, mem, id),
             }
         }
@@ -189,15 +183,12 @@ pub(super) async fn handle_infinite_drill_hour(
                 .unwrap_or(100)
                 .min(MAX_QUERY_LIMIT_I64);
             match mem.get_hour_summaries_by_day_id(day_id, limit).await {
-                Ok(summaries) => {
-                    mem.circuit_breaker().record_success();
-                    McpResponse {
-                        jsonrpc: "2.0".to_owned(),
-                        id,
-                        result: Some(mcp_ok(&summaries)),
-                        error: None,
-                    }
-                }
+                Ok(summaries) => McpResponse {
+                    jsonrpc: "2.0".to_owned(),
+                    id,
+                    result: Some(mcp_ok(&summaries)),
+                    error: None,
+                },
                 Err(e) => degrade_infinite_read(e, mem, id),
             }
         }
@@ -235,15 +226,12 @@ pub(super) async fn handle_infinite_drill_minute(
                 .unwrap_or(100)
                 .min(MAX_QUERY_LIMIT_I64);
             match mem.get_5min_summaries_by_hour_id(hour_id, limit).await {
-                Ok(summaries) => {
-                    mem.circuit_breaker().record_success();
-                    McpResponse {
-                        jsonrpc: "2.0".to_owned(),
-                        id,
-                        result: Some(mcp_ok(&summaries)),
-                        error: None,
-                    }
-                }
+                Ok(summaries) => McpResponse {
+                    jsonrpc: "2.0".to_owned(),
+                    id,
+                    result: Some(mcp_ok(&summaries)),
+                    error: None,
+                },
                 Err(e) => degrade_infinite_read(e, mem, id),
             }
         }
