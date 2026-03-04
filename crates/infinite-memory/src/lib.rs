@@ -156,8 +156,14 @@ impl InfiniteMemory {
                     let _ = this.try_run_migrations().await;
                 });
             }
-        } else {
-            self.circuit_breaker.record_failure();
+        } else if let Err(e) = result {
+            let msg = e.to_string();
+            // Do not trip circuit breaker on validation or logical errors
+            if msg.contains("Invalid entity_type") {
+                tracing::debug!("Validation error, ignoring for circuit breaker: {}", msg);
+            } else {
+                self.circuit_breaker.record_failure();
+            }
         }
     }
 

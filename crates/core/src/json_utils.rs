@@ -15,9 +15,9 @@ pub fn strip_markdown_json(content: &str) -> &str {
     let Some(close_pos) = trimmed.rfind("```") else {
         return trimmed;
     };
-    
+
     let content_start = open_pos.saturating_add(3);
-    
+
     // open and close must not overlap
     if close_pos < content_start {
         return trimmed;
@@ -94,7 +94,7 @@ mod tests {
     fn test_overlapping_backticks_no_panic() {
         let input = "````";
         assert_eq!(strip_markdown_json(input), "````");
-        
+
         let input2 = "`````";
         assert_eq!(strip_markdown_json(input2), "`````");
     }
