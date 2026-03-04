@@ -19,6 +19,7 @@
 pub mod error;
 mod knowledge_service;
 mod observation_service;
+mod pending_write_queue;
 mod queue_service;
 mod search_service;
 mod session_service;
@@ -26,11 +27,12 @@ mod session_service;
 pub use error::ServiceError;
 pub use knowledge_service::KnowledgeService;
 pub use observation_service::{ObservationService, SaveMemoryResult};
+pub use pending_write_queue::{PendingWrite, PendingWriteQueue};
 pub use queue_service::QueueService;
 pub use search_service::SearchService;
 pub use session_service::SessionService;
 
 // Re-export storage types used by HTTP handlers so they don't need direct storage dependency.
 pub use opencode_mem_storage::{
-    default_visibility_timeout_secs, PaginatedResult, PendingMessage, QueueStats, StorageStats,
+    PaginatedResult, PendingMessage, QueueStats, StorageStats, default_visibility_timeout_secs,
 };

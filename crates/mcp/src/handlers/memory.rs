@@ -1,7 +1,7 @@
 use opencode_mem_core::MAX_BATCH_IDS;
-use opencode_mem_service::SearchService;
+use opencode_mem_service::{PendingWrite, PendingWriteQueue, SearchService};
 
-use super::{degrade_read_err, degrade_write_err, mcp_err, mcp_ok, mcp_text};
+use super::{degrade_read_err, mcp_err, mcp_ok, mcp_text};
 
 pub(super) async fn handle_search(
     search_service: &SearchService,
@@ -161,6 +161,7 @@ pub(super) async fn handle_semantic_search(
 
 pub(super) async fn handle_save_memory(
     observation_service: &opencode_mem_service::ObservationService,
+    pending_writes: &PendingWriteQueue,
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let raw_text = match args.get("text").and_then(|t| t.as_str()) {
@@ -180,7 +181,21 @@ pub(super) async fn handle_save_memory(
         Ok(opencode_mem_service::SaveMemoryResult::Filtered) => {
             mcp_text("Observation filtered as low-value")
         },
-        Err(e) => degrade_write_err(e, observation_service.circuit_breaker()),
+        Err(e) if e.is_db_unavailable() || e.is_transient() => {
+            let cb = observation_service.circuit_breaker();
+            cb.record_failure();
+            pending_writes.push(PendingWrite::SaveMemory {
+                text: raw_text.to_owned(),
+                title: title.map(ToOwned::to_owned),
+                project: project.map(ToOwned::to_owned),
+            });
+            tracing::warn!(
+                pending_count = pending_writes.len(),
+                "MCP write: database unavailable, buffered save_memory for later flush"
+            );
+            mcp_ok(&serde_json::json!({ "success": false, "degraded": true, "buffered": true }))
+        },
+        Err(e) => mcp_err(e),
     }
 }
 
@@ -190,7 +205,7 @@ pub(super) async fn handle_save_memory(
 mod tests {
     use super::*;
     use opencode_mem_core::{Observation, ObservationType};
-    use opencode_mem_storage::{traits::ObservationStore, StorageBackend};
+    use opencode_mem_storage::{StorageBackend, traits::ObservationStore};
     use serde_json::json;
     use std::sync::Arc;
 

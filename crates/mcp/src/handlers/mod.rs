@@ -4,7 +4,8 @@ mod memory;
 
 use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_service::{
-    KnowledgeService, ObservationService, SearchService, ServiceError, SessionService,
+    KnowledgeService, ObservationService, PendingWriteQueue, SearchService, ServiceError,
+    SessionService,
 };
 use serde::Serialize;
 use serde_json::json;
@@ -87,6 +88,7 @@ pub async fn handle_tool_call(
     _session_service: &SessionService,
     knowledge_service: &KnowledgeService,
     search_service: &SearchService,
+    pending_writes: &PendingWriteQueue,
     handle: &Handle,
     params: &serde_json::Value,
     id: serde_json::Value,
@@ -144,7 +146,9 @@ pub async fn handle_tool_call(
         McpTool::MemorySemanticSearch => {
             memory::handle_semantic_search(search_service, &args, parse_limit(&args)).await
         },
-        McpTool::SaveMemory => memory::handle_save_memory(observation_service, &args).await,
+        McpTool::SaveMemory => {
+            memory::handle_save_memory(observation_service, pending_writes, &args).await
+        },
         McpTool::KnowledgeSearch => {
             knowledge::handle_knowledge_search(knowledge_service, &args, parse_limit(&args)).await
         },
