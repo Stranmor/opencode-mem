@@ -53,7 +53,7 @@ impl FromStr for EventType {
             "delegation" => Ok(Self::Delegation),
             unknown => {
                 anyhow::bail!("Unknown event type: '{}'", unknown)
-            },
+            }
         }
     }
 }

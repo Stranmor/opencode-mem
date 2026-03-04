@@ -78,12 +78,12 @@ impl CircuitBreaker {
                 } else {
                     false
                 }
-            },
+            }
             STATE_HALF_OPEN => {
                 // Only one probe at a time — additional requests during half-open fast-fail
                 // to avoid hammering a recovering database.
                 false
-            },
+            }
             _ => true, // Unknown state — allow through
         }
     }
@@ -109,7 +109,10 @@ impl CircuitBreaker {
     /// Increments failure count. If threshold is reached, opens the circuit
     /// with exponential backoff.
     pub fn record_failure(&self) {
-        let count = self.failure_count.fetch_add(1, Ordering::Relaxed).saturating_add(1);
+        let count = self
+            .failure_count
+            .fetch_add(1, Ordering::Relaxed)
+            .saturating_add(1);
         let state = self.state.load(Ordering::Acquire);
 
         if state == STATE_HALF_OPEN {
@@ -117,14 +120,16 @@ impl CircuitBreaker {
             let current_backoff = self.backoff_secs.load(Ordering::Relaxed);
             let new_backoff = current_backoff.saturating_mul(2).min(MAX_BACKOFF_SECS);
             self.backoff_secs.store(new_backoff, Ordering::Relaxed);
-            self.last_failure_time.store(Self::now_secs(), Ordering::Relaxed);
+            self.last_failure_time
+                .store(Self::now_secs(), Ordering::Relaxed);
             self.state.store(STATE_OPEN, Ordering::Release);
             tracing::warn!(
                 backoff_secs = new_backoff,
                 "Circuit breaker: HalfOpen → Open (probe failed, increasing backoff)"
             );
         } else if count >= FAILURE_THRESHOLD {
-            self.last_failure_time.store(Self::now_secs(), Ordering::Relaxed);
+            self.last_failure_time
+                .store(Self::now_secs(), Ordering::Relaxed);
             let prev = self.state.swap(STATE_OPEN, Ordering::Release);
             if prev != STATE_OPEN {
                 let backoff = self.backoff_secs.load(Ordering::Relaxed);
@@ -168,7 +173,10 @@ impl CircuitBreaker {
     }
 
     fn now_secs() -> u64 {
-        SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or(Duration::ZERO).as_secs()
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::ZERO)
+            .as_secs()
     }
 }
 

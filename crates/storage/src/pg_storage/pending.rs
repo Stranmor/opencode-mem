@@ -63,7 +63,9 @@ impl PendingQueueStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_pending_message).collect::<Result<_, StorageError>>()
+        rows.iter()
+            .map(row_to_pending_message)
+            .collect::<Result<_, StorageError>>()
     }
 
     async fn complete_message(&self, id: i64) -> Result<(), StorageError> {
@@ -151,7 +153,9 @@ impl PendingQueueStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_pending_message).collect::<Result<_, StorageError>>()
+        rows.iter()
+            .map(row_to_pending_message)
+            .collect::<Result<_, StorageError>>()
     }
 
     async fn get_all_pending_messages(
@@ -169,7 +173,9 @@ impl PendingQueueStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_pending_message).collect::<Result<_, StorageError>>()
+        rows.iter()
+            .map(row_to_pending_message)
+            .collect::<Result<_, StorageError>>()
     }
 
     async fn get_queue_stats(&self) -> Result<QueueStats, StorageError> {
@@ -221,7 +227,9 @@ impl PendingQueueStore for PgStorage {
     }
 
     async fn clear_all_pending_messages(&self) -> Result<usize, StorageError> {
-        let result = sqlx::query("DELETE FROM pending_messages").execute(&self.pool).await?;
+        let result = sqlx::query("DELETE FROM pending_messages")
+            .execute(&self.pool)
+            .await?;
         Ok(usize::try_from(result.rows_affected()).unwrap_or(usize::MAX))
     }
 }

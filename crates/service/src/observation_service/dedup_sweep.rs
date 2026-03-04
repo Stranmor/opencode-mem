@@ -77,8 +77,11 @@ impl ObservationService {
 
                     // Lower NoiseLevel ord value = more important (Critical < High < Medium < Low < Negligible).
                     // Keep the more important observation (lower ord = keeper).
-                    let (keeper_id, duplicate_id) =
-                        if noise_a <= noise_b { (id_a, id_b) } else { (id_b, id_a) };
+                    let (keeper_id, duplicate_id) = if noise_a <= noise_b {
+                        (id_a, id_b)
+                    } else {
+                        (id_b, id_a)
+                    };
 
                     pairs.push((keeper_id.to_string(), duplicate_id.to_string(), sim));
                     deleted_ids.insert(duplicate_id.to_string());
@@ -103,7 +106,10 @@ impl ObservationService {
 
         let mut merged_count: usize = 0;
         for (keeper_id, duplicate_id, sim) in merge_pairs {
-            if let Err(e) = self.merge_and_delete_duplicate(&keeper_id, &duplicate_id, sim).await {
+            if let Err(e) = self
+                .merge_and_delete_duplicate(&keeper_id, &duplicate_id, sim)
+                .await
+            {
                 tracing::warn!(
                     keeper = %keeper_id,
                     duplicate = %duplicate_id,
@@ -128,7 +134,10 @@ impl ObservationService {
     }
 
     async fn load_observation_summaries(&self) -> Result<Vec<ObservationSummary>, ServiceError> {
-        let observations = self.storage.get_recent(DEDUP_SWEEP_MAX_OBSERVATIONS).await?;
+        let observations = self
+            .storage
+            .get_recent(DEDUP_SWEEP_MAX_OBSERVATIONS)
+            .await?;
         Ok(observations
             .into_iter()
             .map(|obs| ObservationSummary {

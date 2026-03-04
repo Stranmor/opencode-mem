@@ -8,30 +8,57 @@
     unreachable_pub,
     reason = "pub items in private modules are re-exported via pub use in lib.rs"
 )]
-#![allow(unused_results, reason = "SQL execute() returns row count which is often unused")]
-#![allow(clippy::indexing_slicing, reason = "SQL query results have known structure")]
+#![allow(
+    unused_results,
+    reason = "SQL execute() returns row count which is often unused"
+)]
+#![allow(
+    clippy::indexing_slicing,
+    reason = "SQL query results have known structure"
+)]
 #![allow(
     clippy::arithmetic_side_effects,
     reason = "Timestamp arithmetic is safe within reasonable bounds"
 )]
-#![allow(clippy::as_conversions, reason = "i64 to u64 conversions for timestamps are safe")]
-#![allow(clippy::needless_raw_strings, reason = "SQL strings use raw for readability")]
+#![allow(
+    clippy::as_conversions,
+    reason = "i64 to u64 conversions for timestamps are safe"
+)]
+#![allow(
+    clippy::needless_raw_strings,
+    reason = "SQL strings use raw for readability"
+)]
 #![allow(clippy::str_to_string, reason = "to_string on &str is idiomatic")]
 #![allow(clippy::expect_used, reason = "Expects are used for known-valid data")]
 #![allow(clippy::absolute_paths, reason = "Explicit paths for clarity")]
-#![allow(clippy::cast_possible_wrap, reason = "usize to i64 is safe for reasonable sizes")]
-#![allow(clippy::non_ascii_literal, reason = "Unicode in strings is intentional")]
+#![allow(
+    clippy::cast_possible_wrap,
+    reason = "usize to i64 is safe for reasonable sizes"
+)]
+#![allow(
+    clippy::non_ascii_literal,
+    reason = "Unicode in strings is intentional"
+)]
 #![allow(missing_debug_implementations, reason = "Internal types")]
 #![allow(missing_copy_implementations, reason = "Types may grow")]
 #![allow(clippy::cast_possible_truncation, reason = "Sizes are within bounds")]
-#![allow(clippy::missing_docs_in_private_items, reason = "Internal crate modules")]
+#![allow(
+    clippy::missing_docs_in_private_items,
+    reason = "Internal crate modules"
+)]
 #![allow(clippy::implicit_return, reason = "Implicit return is idiomatic Rust")]
 #![allow(clippy::question_mark_used, reason = "? operator is idiomatic Rust")]
 #![allow(clippy::min_ident_chars, reason = "Short closure params are idiomatic")]
-#![allow(clippy::shadow_reuse, reason = "Shadowing for transformations is idiomatic")]
+#![allow(
+    clippy::shadow_reuse,
+    reason = "Shadowing for transformations is idiomatic"
+)]
 #![allow(clippy::exhaustive_enums, reason = "Internal event types are stable")]
 #![allow(clippy::exhaustive_structs, reason = "Internal event types are stable")]
-#![allow(clippy::single_call_fn, reason = "Helper functions improve readability")]
+#![allow(
+    clippy::single_call_fn,
+    reason = "Helper functions improve readability"
+)]
 
 mod compression;
 mod event_queries;
@@ -69,13 +96,13 @@ impl InfiniteMemory {
             Ok(()) => {
                 tracing::info!("Infinite Memory migrations completed");
                 false
-            },
+            }
             Err(e) => {
                 tracing::warn!(
                     "Infinite Memory started without migrations (DB may be unavailable): {e}"
                 );
                 true
-            },
+            }
         };
 
         Ok(Self {
@@ -106,12 +133,12 @@ impl InfiniteMemory {
             Ok(()) => {
                 tracing::info!("Infinite Memory deferred migrations completed successfully");
                 true
-            },
+            }
             Err(e) => {
                 self.migrations_pending.store(true, Ordering::Release);
                 tracing::warn!("Infinite Memory deferred migration attempt failed: {e}");
                 false
-            },
+            }
         }
     }
 

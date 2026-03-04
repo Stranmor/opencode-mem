@@ -12,10 +12,17 @@ pub(crate) fn max_queue_workers() -> usize {
 }
 
 pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> anyhow::Result<()> {
-    if let Some(project) = msg.project.as_deref().filter(|p| !p.is_empty() && *p != "unknown")
+    if let Some(project) = msg
+        .project
+        .as_deref()
+        .filter(|p| !p.is_empty() && *p != "unknown")
         && ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project))
     {
-        tracing::debug!("Skipping excluded project '{}' for message {}", project, msg.id);
+        tracing::debug!(
+            "Skipping excluded project '{}' for message {}",
+            project,
+            msg.id
+        );
         return Ok(());
     }
 
@@ -62,7 +69,11 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
     let result = state.observation_service.process(&id, tool_call).await?;
 
     if let Some(observation) = result {
-        tracing::info!("Processed pending message {} -> observation {}", msg.id, observation.id);
+        tracing::info!(
+            "Processed pending message {} -> observation {}",
+            msg.id,
+            observation.id
+        );
     } else {
         tracing::debug!("Observation filtered as trivial for message {}", msg.id);
     }
@@ -108,7 +119,7 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
             Err(e) => {
                 tracing::error!("Background processor: claim failed: {}", e);
                 continue;
-            },
+            }
         };
 
         if messages.is_empty() {
@@ -124,7 +135,7 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
                 Err(_) => {
                     unspawned.push(msg);
                     continue;
-                },
+                }
             };
 
             spawned += 1;
@@ -137,13 +148,13 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
                         if let Err(e) = state_clone.queue_service.complete_message(msg.id).await {
                             tracing::error!("Background: complete message {} error: {}", msg.id, e);
                         }
-                    },
+                    }
                     Err(e) => {
                         tracing::error!("Background: process message {} failed: {}", msg.id, e);
                         if let Err(e) = state_clone.queue_service.fail_message(msg.id, true).await {
                             tracing::error!("Background: fail message {} error: {}", msg.id, e);
                         }
-                    },
+                    }
                 }
             });
         }
@@ -207,7 +218,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
                                 day,
                             );
                         }
-                    },
+                    }
                     Err(e) => tracing::warn!("Cron: infinite memory error: {e:?}"),
                 }
             });
@@ -220,8 +231,8 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
                 match state_clone.search_service.run_embedding_backfill(100).await {
                     Ok(generated) if generated > 0 => {
                         tracing::info!("Cron: generated {} embeddings", generated);
-                    },
-                    Ok(_) => {},
+                    }
+                    Ok(_) => {}
                     Err(e) => tracing::warn!("Cron: embedding backfill failed: {}", e),
                 }
             });
@@ -233,8 +244,8 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
                 match state_clone.observation_service.run_dedup_sweep().await {
                     Ok(merged) if merged > 0 => {
                         tracing::info!(merged, "Cron: dedup sweep completed");
-                    },
-                    Ok(_) => {},
+                    }
+                    Ok(_) => {}
                     Err(e) => tracing::warn!(error = %e, "Cron: dedup sweep failed"),
                 }
             });
@@ -243,7 +254,11 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
         if loop_count.is_multiple_of(720) {
             let state_clone = Arc::clone(&state);
             tokio::spawn(async move {
-                if let Err(e) = state_clone.observation_service.cleanup_old_injections().await {
+                if let Err(e) = state_clone
+                    .observation_service
+                    .cleanup_old_injections()
+                    .await
+                {
                     tracing::warn!(error = %e, "Cron: injection cleanup failed");
                 }
             });
@@ -255,11 +270,15 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
                     * 86400;
             let state_clone = Arc::clone(&state);
             tokio::spawn(async move {
-                match state_clone.queue_service.clear_stale_failed_messages(ttl_secs).await {
+                match state_clone
+                    .queue_service
+                    .clear_stale_failed_messages(ttl_secs)
+                    .await
+                {
                     Ok(deleted) if deleted > 0 => {
                         tracing::info!(deleted, "Cron: DLQ garbage collection completed");
-                    },
-                    Ok(_) => {},
+                    }
+                    Ok(_) => {}
                     Err(e) => tracing::warn!(error = %e, "Cron: DLQ garbage collection failed"),
                 }
             });
@@ -289,25 +308,36 @@ pub fn start_background_processor(state: Arc<AppState>) {
 /// # Errors
 /// Returns error if database operation fails.
 pub async fn run_startup_recovery(state: &AppState) -> anyhow::Result<usize> {
-    let released =
-        state.queue_service.release_stale_messages(default_visibility_timeout_secs()).await?;
+    let released = state
+        .queue_service
+        .release_stale_messages(default_visibility_timeout_secs())
+        .await?;
     if released > 0 {
-        tracing::info!("Startup recovery: released {} stale messages back to pending", released);
+        tracing::info!(
+            "Startup recovery: released {} stale messages back to pending",
+            released
+        );
     }
 
     let closed = state.session_service.close_stale_sessions(24).await?;
     if closed > 0 {
-        tracing::info!("Startup recovery: closed {} stale sessions (>24h active)", closed);
+        tracing::info!(
+            "Startup recovery: closed {} stale sessions (>24h active)",
+            closed
+        );
     }
 
     match state.observation_service.cleanup_old_injections().await {
         Ok(cleaned) if cleaned > 0 => {
-            tracing::info!("Startup recovery: cleaned {} stale injection records", cleaned);
-        },
-        Ok(_) => {},
+            tracing::info!(
+                "Startup recovery: cleaned {} stale injection records",
+                cleaned
+            );
+        }
+        Ok(_) => {}
         Err(e) => {
             tracing::warn!("Failed to clean up old injection records: {}", e);
-        },
+        }
     }
 
     Ok(released)

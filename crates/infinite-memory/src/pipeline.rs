@@ -84,8 +84,14 @@ pub async fn create_hour_summary(
         return Ok(0);
     }
 
-    let ts_start = summaries.first().expect("BUG: empty summaries after check").ts_start;
-    let ts_end = summaries.last().expect("BUG: empty summaries after check").ts_end;
+    let ts_start = summaries
+        .first()
+        .expect("BUG: empty summaries after check")
+        .ts_start;
+    let ts_end = summaries
+        .last()
+        .expect("BUG: empty summaries after check")
+        .ts_end;
     let session_id = summaries.first().and_then(|s| s.session_id.clone());
     let project = summaries.first().and_then(|s| s.project.clone());
     let total_events: i32 = summaries.iter().map(|s| s.event_count).sum();
@@ -132,8 +138,14 @@ pub async fn create_day_summary(
         return Ok(0);
     }
 
-    let ts_start = summaries.first().expect("BUG: empty summaries after check").ts_start;
-    let ts_end = summaries.last().expect("BUG: empty summaries after check").ts_end;
+    let ts_start = summaries
+        .first()
+        .expect("BUG: empty summaries after check")
+        .ts_start;
+    let ts_end = summaries
+        .last()
+        .expect("BUG: empty summaries after check")
+        .ts_end;
     let session_id = summaries.first().and_then(|s| s.session_id.clone());
     let project = summaries.first().and_then(|s| s.project.clone());
     let total_events: i32 = summaries.iter().map(|s| s.event_count).sum();
@@ -189,8 +201,10 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
         }
 
         for session_id in seen_sessions {
-            let mut session_events: Vec<&StoredEvent> =
-                events.iter().filter(|e| e.session_id == session_id).collect();
+            let mut session_events: Vec<&StoredEvent> = events
+                .iter()
+                .filter(|e| e.session_id == session_id)
+                .collect();
 
             if session_events.is_empty() {
                 continue;
@@ -307,7 +321,10 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
                 let result: Result<()> = async {
                     let content = compress_summaries(llm, &bucket).await?;
                     let merged_entities = SummaryEntities::merge(
-                        &bucket.iter().map(|s| s.entities.clone()).collect::<Vec<_>>(),
+                        &bucket
+                            .iter()
+                            .map(|s| s.entities.clone())
+                            .collect::<Vec<_>>(),
                     );
                     create_hour_summary(pool, &bucket, &content, merged_entities.as_ref()).await?;
                     Ok(())
@@ -375,7 +392,10 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
                 let result: Result<()> = async {
                     let content = compress_summaries(llm, &bucket).await?;
                     let merged_entities = SummaryEntities::merge(
-                        &bucket.iter().map(|s| s.entities.clone()).collect::<Vec<_>>(),
+                        &bucket
+                            .iter()
+                            .map(|s| s.entities.clone())
+                            .collect::<Vec<_>>(),
                     );
                     create_day_summary(pool, &bucket, &content, merged_entities.as_ref()).await?;
                     Ok(())

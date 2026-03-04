@@ -45,7 +45,10 @@ impl QueueService {
         max: usize,
         visibility_timeout_secs: i64,
     ) -> Result<Vec<PendingMessage>, ServiceError> {
-        Ok(self.storage.claim_pending_messages(max, visibility_timeout_secs).await?)
+        Ok(self
+            .storage
+            .claim_pending_messages(max, visibility_timeout_secs)
+            .await?)
     }
 
     pub async fn complete_message(&self, id: i64) -> Result<(), ServiceError> {
@@ -80,7 +83,10 @@ impl QueueService {
         &self,
         visibility_timeout_secs: i64,
     ) -> Result<usize, ServiceError> {
-        Ok(self.storage.release_stale_messages(visibility_timeout_secs).await?)
+        Ok(self
+            .storage
+            .release_stale_messages(visibility_timeout_secs)
+            .await?)
     }
 
     pub async fn release_messages(&self, ids: &[i64]) -> Result<usize, ServiceError> {

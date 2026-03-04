@@ -28,7 +28,7 @@ pub(crate) async fn run() -> Result<()> {
             Err(e) => {
                 eprintln!("Warning: Embeddings not available: {e}. Semantic search disabled.");
                 None
-            },
+            }
         }
     };
 
@@ -47,16 +47,16 @@ pub(crate) async fn run() -> Result<()> {
                 Ok(mem) => {
                     eprintln!("Connected to infinite memory");
                     Some(Arc::new(mem))
-                },
+                }
                 Err(e) => {
                     eprintln!("Warning: Failed to initialize infinite memory: {e}");
                     None
-                },
+                }
             },
             Err(e) => {
                 eprintln!("Warning: Failed to create infinite memory pool: {e}");
                 None
-            },
+            }
         }
     } else {
         eprintln!("INFINITE_MEMORY_URL not set, infinite memory disabled");
@@ -75,7 +75,11 @@ pub(crate) async fn run() -> Result<()> {
     ));
     let session_service = Arc::new(SessionService::new(storage.clone(), llm.clone()));
     let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));
-    let search_service = Arc::new(SearchService::new(storage, embeddings, infinite_mem.clone()));
+    let search_service = Arc::new(SearchService::new(
+        storage,
+        embeddings,
+        infinite_mem.clone(),
+    ));
 
     let handle = tokio::runtime::Handle::current();
 

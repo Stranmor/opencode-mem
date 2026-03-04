@@ -73,7 +73,7 @@ fn format_part(output: &mut String, part: &serde_json::Value) {
                 output.push_str(preview);
                 output.push('\n');
             }
-        },
+        }
         "tool-invocation" => {
             let name = part.get("name").and_then(|n| n.as_str()).unwrap_or("tool");
             _ = writeln!(output, "[Tool: {name}]");
@@ -89,8 +89,8 @@ fn format_part(output: &mut String, part: &serde_json::Value) {
                 let preview = truncate(&out_str, 500);
                 _ = writeln!(output, "Output: {preview}");
             }
-        },
-        _ => {},
+        }
+        _ => {}
     }
 }
 
@@ -155,9 +155,11 @@ impl LlmClient {
         project_path: &str,
         session_id: &str,
     ) -> Result<Vec<Observation>, LlmError> {
-        let parsed: serde_json::Value = serde_json::from_str(session_json).map_err(|e| {
-            LlmError::JsonParse { context: "session JSON input".to_owned(), source: e }
-        })?;
+        let parsed: serde_json::Value =
+            serde_json::from_str(session_json).map_err(|e| LlmError::JsonParse {
+                context: "session JSON input".to_owned(),
+                source: e,
+            })?;
 
         let formatted = format_session_for_llm(&parsed);
 
@@ -167,7 +169,11 @@ impl LlmClient {
 
         let insights_response = self.call_llm_for_insights(&formatted, project_path).await?;
 
-        Ok(insights_to_observations(insights_response.insights, session_id, project_path))
+        Ok(insights_to_observations(
+            insights_response.insights,
+            session_id,
+            project_path,
+        ))
     }
 
     async fn call_llm_for_insights(
@@ -179,8 +185,13 @@ impl LlmClient {
 
         let request = ChatRequest {
             model: self.model(),
-            messages: vec![Message { role: "user".to_owned(), content: prompt }],
-            response_format: ResponseFormat { format_type: ResponseFormatType::JsonObject },
+            messages: vec![Message {
+                role: "user".to_owned(),
+                content: prompt,
+            }],
+            response_format: ResponseFormat {
+                format_type: ResponseFormatType::JsonObject,
+            },
             max_tokens: None,
         };
 

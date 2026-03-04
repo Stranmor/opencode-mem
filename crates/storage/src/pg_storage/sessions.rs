@@ -32,20 +32,24 @@ impl SessionStore for PgStorage {
         .bind(session.started_at)
         .bind(session.ended_at)
         .bind(session.status.as_str())
-        .bind(i32::try_from(session.prompt_counter).map_err(|e| StorageError::DataCorruption {
-            context: "prompt_counter exceeds i32::MAX".into(),
-            source: Box::new(e),
-        })?)
+        .bind(
+            i32::try_from(session.prompt_counter).map_err(|e| StorageError::DataCorruption {
+                context: "prompt_counter exceeds i32::MAX".into(),
+                source: Box::new(e),
+            })?,
+        )
         .execute(&self.pool)
         .await?;
         Ok(())
     }
 
     async fn get_session(&self, id: &str) -> Result<Option<Session>, StorageError> {
-        let row = sqlx::query(&format!("SELECT {SESSION_COLUMNS} FROM sessions WHERE id = $1"))
-            .bind(id)
-            .fetch_optional(&self.pool)
-            .await?;
+        let row = sqlx::query(&format!(
+            "SELECT {SESSION_COLUMNS} FROM sessions WHERE id = $1"
+        ))
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
         row.map(|r| row_to_session(&r)).transpose()
     }
 

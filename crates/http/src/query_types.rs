@@ -77,7 +77,9 @@ impl BatchRequest {
             return Err("ids array must not be empty".to_owned());
         }
         if self.ids.len() > MAX_BATCH_IDS {
-            return Err(format!("ids array exceeds maximum of {MAX_BATCH_IDS} items"));
+            return Err(format!(
+                "ids array exceeds maximum of {MAX_BATCH_IDS} items"
+            ));
         }
         Ok(())
     }

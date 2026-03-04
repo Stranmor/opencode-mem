@@ -29,11 +29,18 @@ pub(crate) async fn create_session(
         SessionStatus::Active,
         0,
     );
-    state.session_service.init_session(session).await.map_err(|e| {
-        tracing::error!("Session init failed: {}", e);
-        ApiError::from(e)
-    })?;
-    Ok(SessionInitResponse { session_id: session_db_id, status: "active".to_owned() })
+    state
+        .session_service
+        .init_session(session)
+        .await
+        .map_err(|e| {
+            tracing::error!("Session init failed: {}", e);
+            ApiError::from(e)
+        })?;
+    Ok(SessionInitResponse {
+        session_id: session_db_id,
+        status: "active".to_owned(),
+    })
 }
 
 /// Enqueue session observations into the persistent DB queue for durable processing.
@@ -65,9 +72,13 @@ pub(crate) async fn enqueue_session_observations(
         {
             Ok(_id) => queued = queued.saturating_add(1),
             Err(e) => {
-                tracing::error!("Failed to queue session observation {}: {}", tool_call.tool, e);
+                tracing::error!(
+                    "Failed to queue session observation {}: {}",
+                    tool_call.tool,
+                    e
+                );
                 return Err(ApiError::from(e));
-            },
+            }
         }
     }
     Ok(SessionObservationsResponse { queued, session_id })

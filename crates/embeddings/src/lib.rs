@@ -44,7 +44,9 @@ static ORT_INIT: Once = Once::new();
 
 impl Debug for EmbeddingService {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        f.debug_struct("EmbeddingService").field("model", &"<TextEmbedding>").finish()
+        f.debug_struct("EmbeddingService")
+            .field("model", &"<TextEmbedding>")
+            .finish()
     }
 }
 
@@ -108,15 +110,23 @@ impl EmbeddingService {
             "Embedding service initialized"
         );
 
-        Ok(Self { model: Mutex::new(model) })
+        Ok(Self {
+            model: Mutex::new(model),
+        })
     }
 
     fn get_thread_count() -> usize {
-        let max_threads = std::thread::available_parallelism().map(|p| p.get()).unwrap_or(1);
+        let max_threads = std::thread::available_parallelism()
+            .map(|p| p.get())
+            .unwrap_or(1);
         let default_threads = max_threads.saturating_sub(1).max(1);
         let configured =
             opencode_mem_core::env_parse_with_default("OPENCODE_MEM_EMBEDDING_THREADS", 0_usize);
-        if configured == 0 { default_threads } else { configured.clamp(1, max_threads) }
+        if configured == 0 {
+            default_threads
+        } else {
+            configured.clamp(1, max_threads)
+        }
     }
 }
 
@@ -128,7 +138,10 @@ impl EmbeddingProvider for EmbeddingService {
             .map_err(|_| EmbeddingError::LockPoisoned)?
             .embed(vec![text], None)
             .map_err(|e| EmbeddingError::Generation(e.to_string()))?;
-        embeddings.into_iter().next().ok_or(EmbeddingError::EmptyResult)
+        embeddings
+            .into_iter()
+            .next()
+            .ok_or(EmbeddingError::EmptyResult)
     }
 
     fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
@@ -151,7 +164,10 @@ mod tests {
     use super::*;
 
     #[test]
-    #[expect(clippy::expect_used, reason = "test code - panic on failure is acceptable")]
+    #[expect(
+        clippy::expect_used,
+        reason = "test code - panic on failure is acceptable"
+    )]
     fn test_embedding_dimension() {
         let service = EmbeddingService::new().expect("Failed to create service");
         assert_eq!(service.dimension(), EMBEDDING_DIMENSION);

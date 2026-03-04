@@ -183,17 +183,21 @@ pub async fn search(pool: &PgPool, query: &str, limit: i64) -> Result<Vec<Stored
 }
 
 pub async fn stats(pool: &PgPool) -> Result<serde_json::Value> {
-    let event_count: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM raw_events").fetch_one(pool).await?;
+    let event_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM raw_events")
+        .fetch_one(pool)
+        .await?;
 
-    let summary_5min_count: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM summaries_5min").fetch_one(pool).await?;
+    let summary_5min_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM summaries_5min")
+        .fetch_one(pool)
+        .await?;
 
-    let summary_hour_count: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM summaries_hour").fetch_one(pool).await?;
+    let summary_hour_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM summaries_hour")
+        .fetch_one(pool)
+        .await?;
 
-    let summary_day_count: (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM summaries_day").fetch_one(pool).await?;
+    let summary_day_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM summaries_day")
+        .fetch_one(pool)
+        .await?;
 
     Ok(serde_json::json!({
         "raw_events": event_count.0,
@@ -220,6 +224,6 @@ fn row_to_stored_event(row: StoredEventRow) -> Option<StoredEvent> {
         Err(_) => {
             tracing::warn!("Unknown event type in DB row {}: '{}'", id, event_type_str);
             None
-        },
+        }
     }
 }

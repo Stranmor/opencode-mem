@@ -16,7 +16,10 @@ mod tests {
     fn identical_vectors_returns_1() {
         let v = vec![1.0_f32, 2.0, 3.0];
         let result = cosine_similarity(&v, &v);
-        assert!((result - 1.0).abs() < COMPUTED_EPSILON, "expected ≈1.0, got {result}");
+        assert!(
+            (result - 1.0).abs() < COMPUTED_EPSILON,
+            "expected ≈1.0, got {result}"
+        );
     }
 
     #[test]
@@ -24,7 +27,10 @@ mod tests {
         let a = vec![1.0_f32, 0.0, 0.0];
         let b = vec![0.0_f32, 1.0, 0.0];
         let result = cosine_similarity(&a, &b);
-        assert!(result.abs() < COMPUTED_EPSILON, "expected ≈0.0, got {result}");
+        assert!(
+            result.abs() < COMPUTED_EPSILON,
+            "expected ≈0.0, got {result}"
+        );
     }
 
     #[test]
@@ -32,13 +38,19 @@ mod tests {
         let a = vec![1.0_f32, 0.0];
         let b = vec![-1.0_f32, 0.0];
         let result = cosine_similarity(&a, &b);
-        assert!((result - (-1.0)).abs() < COMPUTED_EPSILON, "expected ≈-1.0, got {result}");
+        assert!(
+            (result - (-1.0)).abs() < COMPUTED_EPSILON,
+            "expected ≈-1.0, got {result}"
+        );
     }
 
     #[test]
     fn empty_vectors_returns_0() {
         let result = cosine_similarity(&[], &[]);
-        assert!(result.abs() < EXACT_ZERO_EPSILON, "expected 0.0, got {result}");
+        assert!(
+            result.abs() < EXACT_ZERO_EPSILON,
+            "expected 0.0, got {result}"
+        );
     }
 
     #[test]
@@ -57,7 +69,10 @@ mod tests {
         let a = vec![0.0_f32, 0.0, 0.0];
         let b = vec![0.0_f32, 0.0, 0.0];
         let result = cosine_similarity(&a, &b);
-        assert!(result.abs() < EXACT_ZERO_EPSILON, "expected 0.0 for zero vectors, got {result}");
+        assert!(
+            result.abs() < EXACT_ZERO_EPSILON,
+            "expected 0.0 for zero vectors, got {result}"
+        );
     }
 
     #[test]
@@ -67,7 +82,10 @@ mod tests {
         let b = vec![1.0_f32, 0.0, 0.0];
         let result = cosine_similarity(&a, &b);
         let expected = 1.0_f32 / 2.0_f32.sqrt();
-        assert!((result - expected).abs() < COMPUTED_EPSILON, "expected ≈{expected}, got {result}");
+        assert!(
+            (result - expected).abs() < COMPUTED_EPSILON,
+            "expected ≈{expected}, got {result}"
+        );
     }
 
     #[test]
@@ -75,7 +93,10 @@ mod tests {
         let a = vec![f32::NAN, 1.0];
         let b = vec![1.0, 1.0];
         let result = cosine_similarity(&a, &b);
-        assert!(result.abs() < EXACT_ZERO_EPSILON, "expected 0.0 for NaN input, got {result}");
+        assert!(
+            result.abs() < EXACT_ZERO_EPSILON,
+            "expected 0.0 for NaN input, got {result}"
+        );
     }
 
     #[test]
@@ -83,7 +104,10 @@ mod tests {
         let a = vec![f32::INFINITY, 1.0];
         let b = vec![1.0, 1.0];
         let result = cosine_similarity(&a, &b);
-        assert!(result.abs() < EXACT_ZERO_EPSILON, "expected 0.0 for infinity input, got {result}");
+        assert!(
+            result.abs() < EXACT_ZERO_EPSILON,
+            "expected 0.0 for infinity input, got {result}"
+        );
     }
 
     #[test]
@@ -155,7 +179,10 @@ mod tests {
         assert!(contains_non_finite(&[f32::INFINITY]), "INFINITY");
         assert!(contains_non_finite(&[f32::NEG_INFINITY]), "NEG_INFINITY");
         assert!(contains_non_finite(&[1.0, f32::NAN, 3.0]), "NaN in middle");
-        assert!(contains_non_finite(&[1.0, 2.0, f32::INFINITY]), "INFINITY at end");
+        assert!(
+            contains_non_finite(&[1.0, 2.0, f32::INFINITY]),
+            "INFINITY at end"
+        );
 
         assert!(!contains_non_finite(&[]), "empty");
         assert!(!contains_non_finite(&[0.0]), "zero");
@@ -166,7 +193,10 @@ mod tests {
 
         // Subnormal numbers are finite and should pass
         let subnormal = f32::MIN_POSITIVE / 2.0;
-        assert!(!contains_non_finite(&[subnormal]), "subnormal must be finite");
+        assert!(
+            !contains_non_finite(&[subnormal]),
+            "subnormal must be finite"
+        );
     }
 
     // ─── Property: is_zero_vector identity ──────────────────────────
@@ -176,8 +206,14 @@ mod tests {
 
         assert!(is_zero_vector(&[]), "empty is vacuously all-zero");
         assert!(is_zero_vector(&[0.0, 0.0, 0.0]), "all zeros");
-        assert!(!is_zero_vector(&[0.0, f32::MIN_POSITIVE, 0.0]), "MIN_POSITIVE is not zero");
-        assert!(!is_zero_vector(&[0.0, -0.0, f32::MIN_POSITIVE]), "includes non-zero");
+        assert!(
+            !is_zero_vector(&[0.0, f32::MIN_POSITIVE, 0.0]),
+            "MIN_POSITIVE is not zero"
+        );
+        assert!(
+            !is_zero_vector(&[0.0, -0.0, f32::MIN_POSITIVE]),
+            "includes non-zero"
+        );
 
         // -0.0 == 0.0 in IEEE 754, so vec of -0.0 IS a zero vector
         assert!(is_zero_vector(&[-0.0, -0.0]), "negative zeros are zeros");

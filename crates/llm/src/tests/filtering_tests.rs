@@ -5,8 +5,9 @@ use crate::observation::CompressionResult;
 use opencode_mem_core::{NoiseLevel, Observation, ObservationInput, ObservationType, ToolOutput};
 
 fn create_client() -> Option<LlmClient> {
-    let api_key =
-        env::var("OPENCODE_MEM_API_KEY").or_else(|_| env::var("ANTIGRAVITY_API_KEY")).ok()?;
+    let api_key = env::var("OPENCODE_MEM_API_KEY")
+        .or_else(|_| env::var("ANTIGRAVITY_API_KEY"))
+        .ok()?;
     Some(
         LlmClient::new(
             api_key,
@@ -51,24 +52,33 @@ To:
 Standard fix for race condition - use RwLock instead of direct access.",
     );
 
-    let result =
-        client.compress_to_observation("test-generic", &input, Some("test-project"), &[]).await;
+    let result = client
+        .compress_to_observation("test-generic", &input, Some("test-project"), &[])
+        .await;
 
     match result {
-        Ok(CompressionResult::Create(obs) | CompressionResult::Update { observation: obs, .. }) => {
+        Ok(
+            CompressionResult::Create(obs)
+            | CompressionResult::Update {
+                observation: obs, ..
+            },
+        ) => {
             let is_low = matches!(obs.noise_level, NoiseLevel::Low | NoiseLevel::Negligible);
             if is_low {
-                println!("[PASS] Generic pattern has low noise_level: {:?}", obs.noise_level);
+                println!(
+                    "[PASS] Generic pattern has low noise_level: {:?}",
+                    obs.noise_level
+                );
             } else {
                 println!(
                     "[INFO] Generic pattern has noise_level {:?} (expected Low/Negligible)",
                     obs.noise_level
                 );
             }
-        },
+        }
         Ok(CompressionResult::Skip { .. }) => {
             println!("[PASS] Generic pattern correctly filtered")
-        },
+        }
         Err(e) => panic!("[ERROR] {e}"),
     }
 }
@@ -99,20 +109,26 @@ We chose pgvector instead of ChromaDB because:
 Trade-off: ChromaDB has a nicer API, but we prioritize infrastructure simplicity.",
     );
 
-    let result =
-        client.compress_to_observation("test-decision", &input, Some("opencode-mem"), &[]).await;
+    let result = client
+        .compress_to_observation("test-decision", &input, Some("opencode-mem"), &[])
+        .await;
 
     match result {
-        Ok(CompressionResult::Create(obs) | CompressionResult::Update { observation: obs, .. }) => {
+        Ok(
+            CompressionResult::Create(obs)
+            | CompressionResult::Update {
+                observation: obs, ..
+            },
+        ) => {
             println!(
                 "[PASS] Project decision saved: {} (noise_level: {:?})",
                 obs.title, obs.noise_level
             );
             assert!(obs.narrative.is_some(), "Decision should have reasoning");
-        },
+        }
         Ok(CompressionResult::Skip { .. }) => {
             println!("[WARN] Project-specific decision was skipped: Skipped")
-        },
+        }
         Err(e) => panic!("[ERROR] {e}"),
     }
 }
@@ -144,19 +160,25 @@ This is because Cargo.toml defines:
 Anyone new to this project would expect opencode-mem-cli based on crate name."#,
     );
 
-    let result =
-        client.compress_to_observation("test-gotcha", &input, Some("opencode-mem"), &[]).await;
+    let result = client
+        .compress_to_observation("test-gotcha", &input, Some("opencode-mem"), &[])
+        .await;
 
     match result {
-        Ok(CompressionResult::Create(obs) | CompressionResult::Update { observation: obs, .. }) => {
+        Ok(
+            CompressionResult::Create(obs)
+            | CompressionResult::Update {
+                observation: obs, ..
+            },
+        ) => {
             println!(
                 "[PASS] Project gotcha saved: {} (noise_level: {:?})",
                 obs.title, obs.noise_level
             );
-        },
+        }
         Ok(CompressionResult::Skip { .. }) => {
             println!("[WARN] Project-specific gotcha was skipped: Skipped")
-        },
+        }
         Err(e) => panic!("[ERROR] {e}"),
     }
 }
@@ -203,20 +225,28 @@ async fn test_duplicate_marked_negligible_with_context() {
         .await;
 
     match result {
-        Ok(CompressionResult::Create(obs) | CompressionResult::Update { observation: obs, .. }) => {
+        Ok(
+            CompressionResult::Create(obs)
+            | CompressionResult::Update {
+                observation: obs, ..
+            },
+        ) => {
             let is_negligible = matches!(obs.noise_level, NoiseLevel::Negligible);
             if is_negligible {
-                println!("[PASS] Duplicate correctly marked negligible: {:?}", obs.noise_level);
+                println!(
+                    "[PASS] Duplicate correctly marked negligible: {:?}",
+                    obs.noise_level
+                );
             } else {
                 println!(
                     "[WARN] Duplicate was NOT marked negligible: {:?} (expected Negligible)",
                     obs.noise_level
                 );
             }
-        },
+        }
         Ok(CompressionResult::Skip { .. }) => {
             println!("[PASS] Duplicate correctly filtered out")
-        },
+        }
         Err(e) => panic!("[ERROR] {e}"),
     }
 }
@@ -257,11 +287,21 @@ async fn test_new_insight_saved_despite_existing_titles() {
     );
 
     let result = client
-        .compress_to_observation("test-new", &input, Some("test-project"), &[unrelated_candidate])
+        .compress_to_observation(
+            "test-new",
+            &input,
+            Some("test-project"),
+            &[unrelated_candidate],
+        )
         .await;
 
     match result {
-        Ok(CompressionResult::Create(obs) | CompressionResult::Update { observation: obs, .. }) => {
+        Ok(
+            CompressionResult::Create(obs)
+            | CompressionResult::Update {
+                observation: obs, ..
+            },
+        ) => {
             let is_saved = !matches!(obs.noise_level, NoiseLevel::Negligible);
             if is_saved {
                 println!(
@@ -269,12 +309,15 @@ async fn test_new_insight_saved_despite_existing_titles() {
                     obs.title, obs.noise_level
                 );
             } else {
-                panic!("[FAIL] New insight was incorrectly marked negligible: {}", obs.title);
+                panic!(
+                    "[FAIL] New insight was incorrectly marked negligible: {}",
+                    obs.title
+                );
             }
-        },
+        }
         Ok(CompressionResult::Skip { .. }) => {
             panic!("[FAIL] New insight was incorrectly filtered out")
-        },
+        }
         Err(e) => panic!("[ERROR] {e}"),
     }
 }
@@ -304,23 +347,33 @@ edition = "2021"
 tokio = "1.0""#,
     );
 
-    let result = client.compress_to_observation("test-4", &input, Some("test-project"), &[]).await;
+    let result = client
+        .compress_to_observation("test-4", &input, Some("test-project"), &[])
+        .await;
 
     match result {
-        Ok(CompressionResult::Create(obs) | CompressionResult::Update { observation: obs, .. }) => {
+        Ok(
+            CompressionResult::Create(obs)
+            | CompressionResult::Update {
+                observation: obs, ..
+            },
+        ) => {
             let is_low = matches!(obs.noise_level, NoiseLevel::Low | NoiseLevel::Negligible);
             if is_low {
-                println!("[PASS] Simple file read has low noise_level: {:?}", obs.noise_level);
+                println!(
+                    "[PASS] Simple file read has low noise_level: {:?}",
+                    obs.noise_level
+                );
             } else {
                 println!(
                     "[INFO] Simple file read has noise_level {:?} (expected Low/Negligible)",
                     obs.noise_level
                 );
             }
-        },
+        }
         Ok(CompressionResult::Skip { .. }) => {
             println!("[PASS] Simple file read correctly filtered")
-        },
+        }
         Err(e) => panic!("[ERROR] {e}"),
     }
 }
@@ -374,16 +427,16 @@ async fn test_context_aware_skip_with_duplicate_candidates() {
     match result {
         Ok(CompressionResult::Skip { reason }) => {
             println!("[PASS] Duplicate correctly skipped: {reason}");
-        },
+        }
         Ok(CompressionResult::Update { target_id, .. }) => {
             println!("[PASS] Duplicate correctly merged into existing: {target_id}");
-        },
+        }
         Ok(CompressionResult::Create(obs)) => {
             println!(
                 "[WARN] Expected skip/update but got create: {} ({:?})",
                 obs.title, obs.noise_level
             );
-        },
+        }
         Err(e) => panic!("[ERROR] {e}"),
     }
 }
@@ -442,15 +495,18 @@ async fn test_context_aware_create_with_unrelated_candidates() {
                     obs.title, obs.noise_level
                 );
             } else {
-                panic!("[FAIL] New insight incorrectly marked negligible: {}", obs.title);
+                panic!(
+                    "[FAIL] New insight incorrectly marked negligible: {}",
+                    obs.title
+                );
             }
-        },
+        }
         Ok(CompressionResult::Update { target_id, .. }) => {
             panic!("[FAIL] New unrelated insight should not update existing: {target_id}");
-        },
+        }
         Ok(CompressionResult::Skip { reason }) => {
             panic!("[FAIL] New unrelated insight should not be skipped: {reason}");
-        },
+        }
         Err(e) => panic!("[ERROR] {e}"),
     }
 }

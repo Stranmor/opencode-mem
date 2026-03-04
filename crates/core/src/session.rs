@@ -197,6 +197,13 @@ impl UserPrompt {
         project: Option<String>,
         created_at: DateTime<Utc>,
     ) -> Self {
-        Self { id, content_session_id, prompt_number, prompt_text, project, created_at }
+        Self {
+            id,
+            content_session_id,
+            prompt_number,
+            prompt_text,
+            project,
+            created_at,
+        }
     }
 }

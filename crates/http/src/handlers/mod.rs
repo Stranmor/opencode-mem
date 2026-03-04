@@ -1,7 +1,16 @@
 #![allow(clippy::shadow_reuse, reason = "Shadowing for Arc clones is idiomatic")]
-#![allow(clippy::shadow_unrelated, reason = "Shadowing in async blocks is idiomatic")]
-#![allow(clippy::cognitive_complexity, reason = "Complex async handlers are inherent")]
-#![allow(clippy::single_call_fn, reason = "HTTP handlers are called once from router")]
+#![allow(
+    clippy::shadow_unrelated,
+    reason = "Shadowing in async blocks is idiomatic"
+)]
+#![allow(
+    clippy::cognitive_complexity,
+    reason = "Complex async handlers are inherent"
+)]
+#![allow(
+    clippy::single_call_fn,
+    reason = "HTTP handlers are called once from router"
+)]
 
 pub(crate) const fn is_localhost(addr: &std::net::SocketAddr) -> bool {
     addr.ip().is_loopback()

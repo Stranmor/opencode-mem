@@ -52,7 +52,7 @@ impl ObservationService {
                             "Merged observation disappeared after merge, saving as new"
                         );
                         self.save_and_notify(observation, embedding_vec).await
-                    },
+                    }
                 };
             }
         }
@@ -73,7 +73,11 @@ impl ObservationService {
 
         let existing = match self
             .storage
-            .find_similar(embedding, self.dedup_threshold, observation.project.as_deref())
+            .find_similar(
+                embedding,
+                self.dedup_threshold,
+                observation.project.as_deref(),
+            )
             .await
         {
             Ok(Some(m)) => m,
@@ -81,7 +85,7 @@ impl ObservationService {
             Err(e) => {
                 tracing::warn!("Semantic dedup search failed, proceeding without: {}", e);
                 return Ok(None);
-            },
+            }
         };
 
         tracing::info!(
@@ -92,12 +96,19 @@ impl ObservationService {
             "Semantic dedup: merging into existing observation"
         );
 
-        match self.storage.merge_into_existing(&existing.observation_id, observation).await {
+        match self
+            .storage
+            .merge_into_existing(&existing.observation_id, observation)
+            .await
+        {
             Ok(()) => Ok(Some(existing.observation_id)),
             Err(e) => {
-                tracing::warn!("Merge failed (target may have been deleted), saving as new: {}", e);
+                tracing::warn!(
+                    "Merge failed (target may have been deleted), saving as new: {}",
+                    e
+                );
                 Ok(None)
-            },
+            }
         }
     }
 
@@ -105,13 +116,20 @@ impl ObservationService {
         let merged_obs = match self.storage.get_by_id(observation_id).await {
             Ok(Some(obs)) => obs,
             Ok(None) => {
-                tracing::warn!("Merged observation {} not found after merge", observation_id);
+                tracing::warn!(
+                    "Merged observation {} not found after merge",
+                    observation_id
+                );
                 return;
-            },
+            }
             Err(e) => {
-                tracing::warn!("Failed to re-read merged observation {}: {}", observation_id, e);
+                tracing::warn!(
+                    "Failed to re-read merged observation {}: {}",
+                    observation_id,
+                    e
+                );
                 return;
-            },
+            }
         };
 
         if let Some(emb) = self.generate_embedding(&merged_obs).await
@@ -136,12 +154,15 @@ impl ObservationService {
                     inserted = is_new;
                     last_was_title_collision = false;
                     break;
-                },
+                }
                 Err(opencode_mem_storage::StorageError::Duplicate(msg)) => {
-                    tracing::warn!("Title collision (23505): {}, mutating title and retrying", msg);
+                    tracing::warn!(
+                        "Title collision (23505): {}, mutating title and retrying",
+                        msg
+                    );
                     obs.title = format!("{} ({})", observation.title, i.saturating_add(1));
                     last_was_title_collision = true;
-                },
+                }
                 Err(e) => return Err(e.into()),
             }
         }
@@ -154,9 +175,12 @@ impl ObservationService {
                 obs.id,
                 obs.title
             );
-            return Err(ServiceError::Storage(opencode_mem_storage::StorageError::Duplicate(
-                format!("Title collision retries exhausted: '{}'", obs.title),
-            )));
+            return Err(ServiceError::Storage(
+                opencode_mem_storage::StorageError::Duplicate(format!(
+                    "Title collision retries exhausted: '{}'",
+                    obs.title
+                )),
+            ));
         }
 
         if !inserted {
@@ -174,10 +198,10 @@ impl ObservationService {
             match self.storage.store_embedding(&obs.id, &vec).await {
                 Ok(()) => {
                     tracing::info!("Stored embedding for {}", obs.id);
-                },
+                }
                 Err(e) => {
                     tracing::warn!("Failed to store embedding for {}: {}", obs.id, e);
-                },
+                }
             }
         }
 

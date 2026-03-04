@@ -72,7 +72,11 @@ fn build_session_init_request(
     user_prompt: Option<String>,
 ) -> Result<SessionInitHookRequest> {
     let session_id = content_session_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    Ok(SessionInitHookRequest::new(session_id, project, user_prompt))
+    Ok(SessionInitHookRequest::new(
+        session_id,
+        project,
+        user_prompt,
+    ))
 }
 
 fn build_observation_request(
@@ -94,10 +98,12 @@ fn build_observation_request(
                 serde_json::from_str(&filtered)
                     .map_err(|e| anyhow::anyhow!("Failed to parse input_json: {}", e))?,
             )
-        },
+        }
         None => None,
     };
-    Ok(ObservationHookRequest::new(tool_name, session_id, None, project, input, output_str))
+    Ok(ObservationHookRequest::new(
+        tool_name, session_id, None, project, input, output_str,
+    ))
 }
 
 fn build_summarize_request(
@@ -111,7 +117,11 @@ pub(crate) async fn run(cmd: HookCommands) -> Result<()> {
     let client = reqwest::Client::new();
 
     match cmd {
-        HookCommands::Context { project, limit, endpoint } => {
+        HookCommands::Context {
+            project,
+            limit,
+            endpoint,
+        } => {
             let project = match project {
                 Some(p) => Some(p),
                 None => get_project_from_stdin()?,
@@ -127,15 +137,26 @@ pub(crate) async fn run(cmd: HookCommands) -> Result<()> {
                 .await?;
             let body: serde_json::Value = resp.json().await?;
             println!("{}", serde_json::to_string_pretty(&body)?);
-        },
-        HookCommands::SessionInit { content_session_id, project, user_prompt, endpoint } => {
+        }
+        HookCommands::SessionInit {
+            content_session_id,
+            project,
+            user_prompt,
+            endpoint,
+        } => {
             let req = build_session_init_request(content_session_id, project, user_prompt)?;
             let url = format!("{endpoint}/api/sessions/init");
             let resp = client.post(&url).json(&req).send().await?;
             let body: serde_json::Value = resp.json().await?;
             println!("{}", serde_json::to_string_pretty(&body)?);
-        },
-        HookCommands::Observe { tool, session_id, project, input, endpoint } => {
+        }
+        HookCommands::Observe {
+            tool,
+            session_id,
+            project,
+            input,
+            endpoint,
+        } => {
             let req = build_observation_request(tool, session_id, project, input)?;
             if let Some(project) = req.project.as_deref()
                 && ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project))
@@ -154,14 +175,18 @@ pub(crate) async fn run(cmd: HookCommands) -> Result<()> {
             let resp = client.post(&url).json(&req).send().await?;
             let body: serde_json::Value = resp.json().await?;
             println!("{}", serde_json::to_string_pretty(&body)?);
-        },
-        HookCommands::Summarize { content_session_id, session_id, endpoint } => {
+        }
+        HookCommands::Summarize {
+            content_session_id,
+            session_id,
+            endpoint,
+        } => {
             let req = build_summarize_request(content_session_id, session_id)?;
             let url = format!("{endpoint}/api/sessions/summarize");
             let resp = client.post(&url).json(&req).send().await?;
             let body: serde_json::Value = resp.json().await?;
             println!("{}", serde_json::to_string_pretty(&body)?);
-        },
+        }
     }
 
     Ok(())

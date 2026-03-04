@@ -21,7 +21,12 @@ pub struct SimilarMatch {
 /// suitable for vector embedding.
 #[must_use]
 pub fn observation_embedding_text(obs: &Observation) -> String {
-    format!("{} {} {}", obs.title, obs.narrative.as_deref().unwrap_or(""), obs.facts.join(" "))
+    format!(
+        "{} {} {}",
+        obs.title,
+        obs.narrative.as_deref().unwrap_or(""),
+        obs.facts.join(" ")
+    )
 }
 
 /// Merges two string slices, removing duplicates while preserving order.

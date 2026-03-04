@@ -14,7 +14,10 @@ async fn test_process_skips_infinite_memory_on_retry() {
     // 6. `store_infinite_memory` is NEVER called. Data loss in long-term memory.
 
     let is_vulnerable = true;
-    assert!(is_vulnerable, "Vulnerability: store_infinite_memory is skipped on queue retry");
+    assert!(
+        is_vulnerable,
+        "Vulnerability: store_infinite_memory is skipped on queue retry"
+    );
 }
 
 #[tokio::test]
@@ -48,5 +51,8 @@ async fn test_save_observation_silent_data_loss_duplicate_title() {
     // 8. Queue deletes the message. The knowledge is permanently lost without any error log!
 
     let is_vulnerable = true;
-    assert!(is_vulnerable, "Vulnerability: 23505 on duplicate title causes silent data loss");
+    assert!(
+        is_vulnerable,
+        "Vulnerability: 23505 on duplicate title causes silent data loss"
+    );
 }

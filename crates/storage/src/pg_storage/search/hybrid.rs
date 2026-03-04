@@ -59,17 +59,20 @@ pub(crate) async fn hybrid_search(
         })
         .collect::<Result<_, StorageError>>()?;
 
-    let (min_fts, max_fts) =
-        raw_results.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(mn, mx), (_, fts, _)| {
-            (mn.min(*fts), mx.max(*fts))
-        });
+    let (min_fts, max_fts) = raw_results.iter().fold(
+        (f64::INFINITY, f64::NEG_INFINITY),
+        |(mn, mx), (_, fts, _)| (mn.min(*fts), mx.max(*fts)),
+    );
     let fts_range = max_fts - min_fts;
 
     let mut results: Vec<(SearchResult, f64)> = raw_results
         .into_iter()
         .map(|(mut result, fts_score, obs_kw)| {
-            let fts_normalized: f64 =
-                if fts_range > 0.0 { (fts_score - min_fts) / fts_range } else { 1.0 };
+            let fts_normalized: f64 = if fts_range > 0.0 {
+                (fts_score - min_fts) / fts_range
+            } else {
+                1.0
+            };
             #[expect(
                 clippy::cast_precision_loss,
                 reason = "keyword count will never exceed f64 precision"
@@ -79,8 +82,11 @@ pub(crate) async fn hybrid_search(
                 clippy::cast_precision_loss,
                 reason = "keyword count will never exceed f64 precision"
             )]
-            let keyword_score =
-                if keywords.is_empty() { 0.0 } else { keyword_overlap / keywords.len() as f64 };
+            let keyword_score = if keywords.is_empty() {
+                0.0
+            } else {
+                keyword_overlap / keywords.len() as f64
+            };
             result.score = fts_normalized.mul_add(0.7, keyword_score * 0.3);
             let score = result.score;
             (result, score)
@@ -166,8 +172,10 @@ pub(crate) async fn hybrid_search_v2_with_filters(
             q = q.bind(&tsquery);
             q = q.bind(fetch_limit);
             let rows = q.fetch_all(&storage.pool).await?;
-            rows.iter().map(row_to_search_result).collect::<Result<Vec<_>, StorageError>>()?
-        },
+            rows.iter()
+                .map(row_to_search_result)
+                .collect::<Result<Vec<_>, StorageError>>()?
+        }
         None => Vec::new(),
     };
 
@@ -193,7 +201,9 @@ pub(crate) async fn hybrid_search_v2_with_filters(
         q = q.bind(&query_vector);
         q = q.bind(fetch_limit);
         let rows = q.fetch_all(&storage.pool).await?;
-        rows.iter().map(row_to_search_result).collect::<Result<Vec<_>, StorageError>>()?
+        rows.iter()
+            .map(row_to_search_result)
+            .collect::<Result<Vec<_>, StorageError>>()?
     };
 
     Ok(merge_and_rank(fts_results, vector_results, limit))
@@ -220,27 +230,47 @@ fn merge_and_rank(
     let fts_vals: Vec<f64> = fts_scores.values().map(|(_, s)| *s).collect();
     let (fts_min, fts_max) = fts_vals
         .iter()
-        .fold((f64::INFINITY, f64::NEG_INFINITY), |(mn, mx), s| (mn.min(*s), mx.max(*s)));
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(mn, mx), s| {
+            (mn.min(*s), mx.max(*s))
+        });
     let fts_range = fts_max - fts_min;
 
     let vec_vals: Vec<f64> = vec_scores.values().map(|(_, s)| *s).collect();
     let (vec_min, vec_max) = vec_vals
         .iter()
-        .fold((f64::INFINITY, f64::NEG_INFINITY), |(mn, mx), s| (mn.min(*s), mx.max(*s)));
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(mn, mx), s| {
+            (mn.min(*s), mx.max(*s))
+        });
     let vec_range = vec_max - vec_min;
 
-    let all_ids: HashSet<String> = fts_scores.keys().chain(vec_scores.keys()).cloned().collect();
+    let all_ids: HashSet<String> = fts_scores
+        .keys()
+        .chain(vec_scores.keys())
+        .cloned()
+        .collect();
 
     let mut combined: Vec<(SearchResult, f64)> = all_ids
         .into_iter()
         .map(|id| {
             let fts_norm = fts_scores
                 .get(&id)
-                .map(|(_, s)| if fts_range > 0.0 { (*s - fts_min) / fts_range } else { 1.0 })
+                .map(|(_, s)| {
+                    if fts_range > 0.0 {
+                        (*s - fts_min) / fts_range
+                    } else {
+                        1.0
+                    }
+                })
                 .unwrap_or(0.0);
             let vec_norm = vec_scores
                 .get(&id)
-                .map(|(_, s)| if vec_range > 0.0 { (*s - vec_min) / vec_range } else { 1.0 })
+                .map(|(_, s)| {
+                    if vec_range > 0.0 {
+                        (*s - vec_min) / vec_range
+                    } else {
+                        1.0
+                    }
+                })
                 .unwrap_or(0.0);
             let final_score = fts_norm.mul_add(0.5, vec_norm * 0.5);
 

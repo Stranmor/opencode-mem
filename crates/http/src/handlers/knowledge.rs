@@ -58,11 +58,17 @@ pub async fn get_knowledge_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<GlobalKnowledge>, ApiError> {
-    let knowledge = state.knowledge_service.get_knowledge(&id).await.map_err(|e| {
-        tracing::error!("Get knowledge error: {}", e);
-        ApiError::from(e)
-    })?;
-    knowledge.map(Json).ok_or(ApiError::NotFound("Not Found".into()))
+    let knowledge = state
+        .knowledge_service
+        .get_knowledge(&id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Get knowledge error: {}", e);
+            ApiError::from(e)
+        })?;
+    knowledge
+        .map(Json)
+        .ok_or(ApiError::NotFound("Not Found".into()))
 }
 
 pub async fn delete_knowledge(
@@ -73,11 +79,17 @@ pub async fn delete_knowledge(
     if !is_localhost(&addr) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
-    let deleted = state.knowledge_service.delete_knowledge(&id).await.map_err(|e| {
-        tracing::error!("Delete knowledge error: {}", e);
-        ApiError::from(e)
-    })?;
-    Ok(Json(json!({ "success": deleted, "id": id, "deleted": deleted })))
+    let deleted = state
+        .knowledge_service
+        .delete_knowledge(&id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Delete knowledge error: {}", e);
+            ApiError::from(e)
+        })?;
+    Ok(Json(
+        json!({ "success": deleted, "id": id, "deleted": deleted }),
+    ))
 }
 
 pub async fn save_knowledge(
@@ -94,19 +106,28 @@ pub async fn save_knowledge(
         req.source_observation,
     );
 
-    state.knowledge_service.save_knowledge(input).await.map(Json).map_err(|e| {
-        tracing::error!("Save knowledge error: {}", e);
-        ApiError::from(e)
-    })
+    state
+        .knowledge_service
+        .save_knowledge(input)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Save knowledge error: {}", e);
+            ApiError::from(e)
+        })
 }
 
 pub async fn record_knowledge_usage(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<KnowledgeUsageResponse>, ApiError> {
-    state.knowledge_service.update_knowledge_usage(&id).await.map_err(|e| {
-        tracing::error!("Update knowledge usage error: {}", e);
-        ApiError::from(e)
-    })?;
+    state
+        .knowledge_service
+        .update_knowledge_usage(&id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Update knowledge usage error: {}", e);
+            ApiError::from(e)
+        })?;
     Ok(Json(KnowledgeUsageResponse { success: true, id }))
 }

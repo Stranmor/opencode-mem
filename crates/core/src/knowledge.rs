@@ -185,7 +185,10 @@ impl KnowledgeSearchResult {
     /// Creates a new knowledge search result.
     #[must_use]
     pub const fn new(knowledge: GlobalKnowledge, relevance_score: f64) -> Self {
-        Self { knowledge, relevance_score }
+        Self {
+            knowledge,
+            relevance_score,
+        }
     }
 }
 

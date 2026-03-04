@@ -14,8 +14,13 @@ mod tests {
     fn create_test_request() -> ChatRequest {
         ChatRequest {
             model: "test-model".to_owned(),
-            messages: vec![Message { role: "user".to_owned(), content: "hello".to_owned() }],
-            response_format: ResponseFormat { format_type: ResponseFormatType::Text },
+            messages: vec![Message {
+                role: "user".to_owned(),
+                content: "hello".to_owned(),
+            }],
+            response_format: ResponseFormat {
+                format_type: ResponseFormatType::Text,
+            },
             max_tokens: None,
         }
     }
@@ -40,7 +45,10 @@ mod tests {
             .mount(&server)
             .await;
 
-        let result = client.chat_completion(&request).await.expect("first attempt should succeed");
+        let result = client
+            .chat_completion(&request)
+            .await
+            .expect("first attempt should succeed");
         assert_eq!(result, "test response");
     }
 
@@ -70,8 +78,10 @@ mod tests {
             .mount(&server)
             .await;
 
-        let result =
-            client.chat_completion(&request).await.expect("should succeed after 429 retry");
+        let result = client
+            .chat_completion(&request)
+            .await
+            .expect("should succeed after 429 retry");
         assert_eq!(result, "success after retry");
     }
 
@@ -101,8 +111,10 @@ mod tests {
             .mount(&server)
             .await;
 
-        let result =
-            client.chat_completion(&request).await.expect("should succeed after 503 retry");
+        let result = client
+            .chat_completion(&request)
+            .await
+            .expect("should succeed after 503 retry");
         assert_eq!(result, "success after 503");
     }
 

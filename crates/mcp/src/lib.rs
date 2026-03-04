@@ -5,7 +5,10 @@
 #![allow(clippy::cast_possible_truncation, reason = "Sizes are within bounds")]
 #![allow(clippy::option_if_let_else, reason = "if let is clearer")]
 #![allow(clippy::needless_pass_by_value, reason = "API design choice")]
-#![allow(clippy::let_underscore_must_use, reason = "Intentionally ignoring results")]
+#![allow(
+    clippy::let_underscore_must_use,
+    reason = "Intentionally ignoring results"
+)]
 #![allow(let_underscore_drop, reason = "Intentionally dropping values")]
 #![allow(unreachable_pub, reason = "pub items are re-exported")]
 #![allow(clippy::redundant_pub_crate, reason = "Explicit visibility")]
@@ -22,11 +25,17 @@
 #![allow(clippy::implicit_return, reason = "Implicit return is idiomatic Rust")]
 #![allow(clippy::question_mark_used, reason = "? operator is idiomatic Rust")]
 #![allow(clippy::min_ident_chars, reason = "Short error vars are idiomatic")]
-#![allow(clippy::shadow_unrelated, reason = "Shadowing in match arms is idiomatic")]
+#![allow(
+    clippy::shadow_unrelated,
+    reason = "Shadowing in match arms is idiomatic"
+)]
 #![allow(clippy::shadow_reuse, reason = "Shadowing for unwrapping is idiomatic")]
 #![allow(clippy::exhaustive_enums, reason = "MCP tools are stable")]
 #![allow(clippy::exhaustive_structs, reason = "MCP types are stable")]
-#![allow(clippy::single_call_fn, reason = "Handler functions improve readability")]
+#![allow(
+    clippy::single_call_fn,
+    reason = "Handler functions improve readability"
+)]
 
 pub mod handlers;
 mod tools;
@@ -98,7 +107,10 @@ pub async fn run_mcp_server(
                     jsonrpc: "2.0".to_owned(),
                     id: json!(null),
                     result: None,
-                    error: Some(McpError { code: -32700, message: format!("Parse error: {e}") }),
+                    error: Some(McpError {
+                        code: -32700,
+                        message: format!("Parse error: {e}"),
+                    }),
                 };
                 if let Ok(json) = serde_json::to_string(&error_response) {
                     if let Err(e) = stdout.write_all(format!("{json}\n").as_bytes()).await {
@@ -111,7 +123,7 @@ pub async fn run_mcp_server(
                     }
                 }
                 continue;
-            },
+            }
         };
 
         let request: McpRequest = match serde_json::from_value(json_value.clone()) {
@@ -143,7 +155,7 @@ pub async fn run_mcp_server(
                     }
                 }
                 continue;
-            },
+            }
         };
 
         if let Some(response) = handle_request(
@@ -159,7 +171,10 @@ pub async fn run_mcp_server(
         .await
             && let Ok(response_json) = serde_json::to_string(&response)
         {
-            if let Err(e) = stdout.write_all(format!("{response_json}\n").as_bytes()).await {
+            if let Err(e) = stdout
+                .write_all(format!("{response_json}\n").as_bytes())
+                .await
+            {
                 tracing::error!("MCP stdout write error: {}", e);
                 break;
             }
@@ -171,7 +186,10 @@ pub async fn run_mcp_server(
     }
 }
 
-#[expect(clippy::too_many_arguments, reason = "MCP request dispatch needs shared service refs")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "MCP request dispatch needs shared service refs"
+)]
 async fn handle_request(
     infinite_mem: Option<&InfiniteMemory>,
     observation_service: &Arc<ObservationService>,
@@ -217,7 +235,7 @@ async fn handle_request(
                 id,
             )
             .await
-        },
+        }
         _ => McpResponse {
             jsonrpc: "2.0".to_owned(),
             id,
@@ -239,21 +257,51 @@ mod tests {
     fn test_mcp_tool_parse_valid() {
         assert_eq!(McpTool::parse("search"), Some(McpTool::Search));
         assert_eq!(McpTool::parse("timeline"), Some(McpTool::Timeline));
-        assert_eq!(McpTool::parse("get_observations"), Some(McpTool::GetObservations));
+        assert_eq!(
+            McpTool::parse("get_observations"),
+            Some(McpTool::GetObservations)
+        );
         assert_eq!(McpTool::parse("memory_get"), Some(McpTool::MemoryGet));
         assert_eq!(McpTool::parse("memory_recent"), Some(McpTool::MemoryRecent));
-        assert_eq!(McpTool::parse("memory_hybrid_search"), Some(McpTool::MemoryHybridSearch));
-        assert_eq!(McpTool::parse("memory_semantic_search"), Some(McpTool::MemorySemanticSearch));
+        assert_eq!(
+            McpTool::parse("memory_hybrid_search"),
+            Some(McpTool::MemoryHybridSearch)
+        );
+        assert_eq!(
+            McpTool::parse("memory_semantic_search"),
+            Some(McpTool::MemorySemanticSearch)
+        );
         assert_eq!(McpTool::parse("save_memory"), Some(McpTool::SaveMemory));
         assert_eq!(McpTool::parse("__IMPORTANT"), Some(McpTool::Important));
-        assert_eq!(McpTool::parse("knowledge_search"), Some(McpTool::KnowledgeSearch));
-        assert_eq!(McpTool::parse("knowledge_save"), Some(McpTool::KnowledgeSave));
+        assert_eq!(
+            McpTool::parse("knowledge_search"),
+            Some(McpTool::KnowledgeSearch)
+        );
+        assert_eq!(
+            McpTool::parse("knowledge_save"),
+            Some(McpTool::KnowledgeSave)
+        );
         assert_eq!(McpTool::parse("knowledge_get"), Some(McpTool::KnowledgeGet));
-        assert_eq!(McpTool::parse("knowledge_list"), Some(McpTool::KnowledgeList));
-        assert_eq!(McpTool::parse("infinite_expand"), Some(McpTool::InfiniteExpand));
-        assert_eq!(McpTool::parse("infinite_time_range"), Some(McpTool::InfiniteTimeRange));
-        assert_eq!(McpTool::parse("infinite_drill_hour"), Some(McpTool::InfiniteDrillHour));
-        assert_eq!(McpTool::parse("infinite_drill_minute"), Some(McpTool::InfiniteDrillMinute));
+        assert_eq!(
+            McpTool::parse("knowledge_list"),
+            Some(McpTool::KnowledgeList)
+        );
+        assert_eq!(
+            McpTool::parse("infinite_expand"),
+            Some(McpTool::InfiniteExpand)
+        );
+        assert_eq!(
+            McpTool::parse("infinite_time_range"),
+            Some(McpTool::InfiniteTimeRange)
+        );
+        assert_eq!(
+            McpTool::parse("infinite_drill_hour"),
+            Some(McpTool::InfiniteDrillHour)
+        );
+        assert_eq!(
+            McpTool::parse("infinite_drill_minute"),
+            Some(McpTool::InfiniteDrillMinute)
+        );
     }
 
     #[test]

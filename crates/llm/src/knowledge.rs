@@ -27,20 +27,25 @@ impl LlmClient {
             return Ok(None);
         }
 
-        let dominated_by_generalizable =
-            matches!(observation.observation_type, opencode_mem_core::ObservationType::Gotcha)
-                || observation
-                    .concepts
-                    .iter()
-                    .any(|c| matches!(c, Concept::Pattern | Concept::Gotcha | Concept::HowItWorks));
+        let dominated_by_generalizable = matches!(
+            observation.observation_type,
+            opencode_mem_core::ObservationType::Gotcha
+        ) || observation
+            .concepts
+            .iter()
+            .any(|c| matches!(c, Concept::Pattern | Concept::Gotcha | Concept::HowItWorks));
 
         if !dominated_by_generalizable {
             return Ok(None);
         }
 
         let facts_str = observation.facts.join("\n- ");
-        let concepts_str =
-            observation.concepts.iter().map(|c| format!("{c:?}")).collect::<Vec<_>>().join(", ");
+        let concepts_str = observation
+            .concepts
+            .iter()
+            .map(|c| format!("{c:?}"))
+            .collect::<Vec<_>>()
+            .join(", ");
 
         let prompt = format!(
             r#"Analyze this observation and decide if it contains generalizable knowledge that would help in OTHER projects (not just this one).
@@ -68,8 +73,13 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
 
         let request = ChatRequest {
             model: self.model(),
-            messages: vec![Message { role: "user".to_owned(), content: prompt }],
-            response_format: ResponseFormat { format_type: ResponseFormatType::JsonObject },
+            messages: vec![Message {
+                role: "user".to_owned(),
+                content: prompt,
+            }],
+            response_format: ResponseFormat {
+                format_type: ResponseFormatType::JsonObject,
+            },
             max_tokens: None,
         };
 
@@ -97,7 +107,9 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
 
         Ok(Some(KnowledgeInput::new(
             knowledge_type,
-            extraction.title.unwrap_or_else(|| observation.title.clone()),
+            extraction
+                .title
+                .unwrap_or_else(|| observation.title.clone()),
             extraction
                 .description
                 .unwrap_or_else(|| observation.narrative.clone().unwrap_or_default()),

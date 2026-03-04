@@ -10,22 +10,26 @@ impl ObservationService {
         observation: &Observation,
     ) -> Result<(), crate::ServiceError> {
         // Prevent duplicate extraction if knowledge is already present.
-        match self.storage.has_knowledge_for_observation(&observation.id).await {
+        match self
+            .storage
+            .has_knowledge_for_observation(&observation.id)
+            .await
+        {
             Ok(true) => {
                 tracing::debug!(
                     "Knowledge already extracted for observation {}, skipping",
                     observation.id
                 );
                 return Ok(());
-            },
+            }
             Err(e) => {
                 tracing::warn!(
                     "Failed to check existing knowledge for observation {}: {}",
                     observation.id,
                     e
                 );
-            },
-            Ok(false) => {},
+            }
+            Ok(false) => {}
         }
 
         match self.llm.maybe_extract_knowledge(observation).await {
@@ -37,17 +41,17 @@ impl ObservationService {
                         knowledge.title
                     );
                     Ok(())
-                },
+                }
                 Err(e) => {
                     tracing::warn!("Failed to save extracted knowledge: {}", e);
                     Err(crate::ServiceError::Storage(e))
-                },
+                }
             },
             Ok(None) => Ok(()),
             Err(e) => {
                 tracing::warn!(error = %e, observation_id = %observation.id, "Knowledge extraction failed — knowledge will be missing for this observation");
                 Err(crate::ServiceError::Llm(e))
-            },
+            }
         }
     }
 

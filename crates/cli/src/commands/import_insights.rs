@@ -8,18 +8,27 @@ use regex::Regex;
 use std::path::Path;
 use std::sync::LazyLock;
 
-#[expect(clippy::unwrap_used, reason = "static regex patterns are compile-time validated")]
+#[expect(
+    clippy::unwrap_used,
+    reason = "static regex patterns are compile-time validated"
+)]
 static INSIGHT_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"###\s*\u{418}\u{43d}\u{441}\u{430}\u{439}\u{442}\s*\d+:\s*\[([^\]]+)\]").unwrap()
 });
 
-#[expect(clippy::unwrap_used, reason = "static regex patterns are compile-time validated")]
+#[expect(
+    clippy::unwrap_used,
+    reason = "static regex patterns are compile-time validated"
+)]
 static CATEGORY_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\*\*\u{41a}\u{430}\u{442}\u{435}\u{433}\u{43e}\u{440}\u{438}\u{44f}:\*\*\s*(.+)")
         .unwrap()
 });
 
-#[expect(clippy::unwrap_used, reason = "static regex patterns are compile-time validated")]
+#[expect(
+    clippy::unwrap_used,
+    reason = "static regex patterns are compile-time validated"
+)]
 static OBSERVATION_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r"(?s)\*\*\u{41d}\u{430}\u{431}\u{43b}\u{44e}\u{434}\u{435}\u{43d}\u{438}\u{435}:\*\*\s*(.*?)(?:\*\*|$)",
@@ -27,12 +36,18 @@ static OBSERVATION_RE: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
-#[expect(clippy::unwrap_used, reason = "static regex patterns are compile-time validated")]
+#[expect(
+    clippy::unwrap_used,
+    reason = "static regex patterns are compile-time validated"
+)]
 static IMPLICATION_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?s)\*\*\u{418}\u{43c}\u{43f}\u{43b}\u{438}\u{43a}\u{430}\u{446}\u{438}\u{44f} \u{434}\u{43b}\u{44f} AGI:\*\*\s*(.*?)(?:\*\*|$)").unwrap()
 });
 
-#[expect(clippy::unwrap_used, reason = "static regex patterns are compile-time validated")]
+#[expect(
+    clippy::unwrap_used,
+    reason = "static regex patterns are compile-time validated"
+)]
 static RECOMMENDATION_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?s)\*\*\u{420}\u{435}\u{43a}\u{43e}\u{43c}\u{435}\u{43d}\u{434}\u{430}\u{446}\u{438}\u{44f}:\*\*\s*(.*?)(?:\*\*|$)").unwrap()
 });
@@ -66,7 +81,10 @@ fn extract_triggers(title: &str) -> Vec<String> {
     title
         .split_whitespace()
         .filter(|w| w.len() > 3)
-        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase())
+        .map(|w| {
+            w.trim_matches(|c: char| !c.is_alphanumeric())
+                .to_lowercase()
+        })
         .filter(|w| !w.is_empty())
         .collect()
 }
@@ -74,8 +92,9 @@ fn extract_triggers(title: &str) -> Vec<String> {
 /// Parse markdown content and extract insights
 fn parse_insights(content: &str) -> Vec<ParsedInsight> {
     let mut insights = Vec::new();
-    let sections: Vec<&str> =
-        content.split("### \u{418}\u{43d}\u{441}\u{430}\u{439}\u{442}").collect();
+    let sections: Vec<&str> = content
+        .split("### \u{418}\u{43d}\u{441}\u{430}\u{439}\u{442}")
+        .collect();
 
     for section in sections.iter().skip(1) {
         let full_section = format!("### \u{418}\u{43d}\u{441}\u{430}\u{439}\u{442}{section}");
@@ -146,7 +165,7 @@ async fn import_file(storage: &StorageBackend, path: &Path) -> Result<(usize, us
                     "{}\n\n\u{418}\u{43c}\u{43f}\u{43b}\u{438}\u{43a}\u{430}\u{446}\u{438}\u{44f} \u{434}\u{43b}\u{44f} AGI: {}",
                     insight.observation, impl_text
                 )
-            },
+            }
             None => insight.observation.clone(),
         };
 
@@ -193,10 +212,10 @@ pub(crate) async fn run(file: Option<String>, dir: Option<String>) -> Result<()>
                         total_imported += imported;
                         total_skipped += skipped;
                         println!("Processed: {}", path.display());
-                    },
+                    }
                     Err(e) => {
                         eprintln!("Error processing {}: {}", path.display(), e);
-                    },
+                    }
                 }
             }
         }

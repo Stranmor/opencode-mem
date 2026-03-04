@@ -28,7 +28,9 @@ pub(crate) fn parse_limit(args: &serde_json::Value, default: usize) -> usize {
         .get("limit")
         .and_then(serde_json::Value::as_u64)
         .unwrap_or(u64::try_from(default).unwrap_or(u64::MAX));
-    usize::try_from(raw).unwrap_or(MAX_QUERY_LIMIT).min(MAX_QUERY_LIMIT)
+    usize::try_from(raw)
+        .unwrap_or(MAX_QUERY_LIMIT)
+        .min(MAX_QUERY_LIMIT)
 }
 
 pub(crate) fn mcp_ok<T: Serialize>(data: &T) -> serde_json::Value {
@@ -36,7 +38,7 @@ pub(crate) fn mcp_ok<T: Serialize>(data: &T) -> serde_json::Value {
         Ok(json) => json!({ "content": [{ "type": "text", "text": json }] }),
         Err(e) => {
             json!({ "content": [{ "type": "text", "text": format!("Serialization error: {}", e) }], "isError": true })
-        },
+        }
     }
 }
 
@@ -119,7 +121,10 @@ pub(crate) fn degrade_write_err(
     }
 }
 
-#[expect(clippy::too_many_arguments, reason = "MCP handler needs all service references")]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "MCP handler needs all service references"
+)]
 pub async fn handle_tool_call(
     infinite_mem: Option<&InfiniteMemory>,
     observation_service: &Arc<ObservationService>,
@@ -132,7 +137,10 @@ pub async fn handle_tool_call(
     id: serde_json::Value,
 ) -> McpResponse {
     let pre_cb_state = search_service.circuit_breaker().state_name();
-    let tool_name_str = match params.get("name").and_then(|n| n.as_str()).filter(|s| !s.is_empty())
+    let tool_name_str = match params
+        .get("name")
+        .and_then(|n| n.as_str())
+        .filter(|s| !s.is_empty())
     {
         Some(name) => name,
         None => {
@@ -145,7 +153,7 @@ pub async fn handle_tool_call(
                     message: "Tool name is required and must not be empty".to_owned(),
                 }),
             };
-        },
+        }
     };
     let args = params.get("arguments").cloned().unwrap_or(json!({}));
 
@@ -163,24 +171,24 @@ pub async fn handle_tool_call(
                     ),
                 }),
             };
-        },
+        }
     };
 
     let result = match tool {
         McpTool::Important => {
             json!({ "content": [{ "type": "text", "text": WORKFLOW_DOCS }] })
-        },
+        }
         McpTool::Search => {
             memory::handle_search(search_service, &args, parse_limit(&args, 50)).await
-        },
+        }
         McpTool::Timeline => {
             memory::handle_timeline(search_service, &args, parse_limit(&args, 50)).await
-        },
+        }
         McpTool::GetObservations => memory::handle_get_observations(search_service, &args).await,
         McpTool::MemoryGet => memory::handle_memory_get(search_service, &args).await,
         McpTool::MemoryRecent => {
             memory::handle_memory_recent(search_service, &args, parse_limit(&args, 10)).await
-        },
+        }
         McpTool::MemoryHybridSearch => {
             memory::handle_hybrid_search(
                 search_service,
@@ -188,7 +196,7 @@ pub async fn handle_tool_call(
                 parse_limit(&args, DEFAULT_QUERY_LIMIT),
             )
             .await
-        },
+        }
         McpTool::MemorySemanticSearch => {
             memory::handle_semantic_search(
                 search_service,
@@ -196,14 +204,14 @@ pub async fn handle_tool_call(
                 parse_limit(&args, DEFAULT_QUERY_LIMIT),
             )
             .await
-        },
+        }
         McpTool::SaveMemory => {
             memory::handle_save_memory(observation_service, pending_writes, &args).await
-        },
+        }
         McpTool::KnowledgeSearch => {
             knowledge::handle_knowledge_search(knowledge_service, &args, parse_limit(&args, 10))
                 .await
-        },
+        }
         McpTool::KnowledgeSave => knowledge::handle_knowledge_save(knowledge_service, &args).await,
         McpTool::KnowledgeGet => knowledge::handle_knowledge_get(knowledge_service, &args).await,
         McpTool::KnowledgeList => {
@@ -213,22 +221,22 @@ pub async fn handle_tool_call(
                 parse_limit(&args, DEFAULT_QUERY_LIMIT),
             )
             .await
-        },
+        }
         McpTool::KnowledgeDelete => {
             knowledge::handle_knowledge_delete(knowledge_service, &args).await
-        },
+        }
         McpTool::InfiniteExpand => {
             return infinite::handle_infinite_expand(infinite_mem, handle, &args, id).await;
-        },
+        }
         McpTool::InfiniteTimeRange => {
             return infinite::handle_infinite_time_range(infinite_mem, handle, &args, id).await;
-        },
+        }
         McpTool::InfiniteDrillHour => {
             return infinite::handle_infinite_drill_hour(infinite_mem, handle, &args, id).await;
-        },
+        }
         McpTool::InfiniteDrillMinute => {
             return infinite::handle_infinite_drill_minute(infinite_mem, handle, &args, id).await;
-        },
+        }
     };
 
     if pre_cb_state != "closed" && search_service.circuit_breaker().state_name() == "closed" {
@@ -236,7 +244,12 @@ pub async fn handle_tool_call(
         spawn_pending_flush(observation_service, pending_writes);
     }
 
-    McpResponse { jsonrpc: "2.0".to_owned(), id, result: Some(result), error: None }
+    McpResponse {
+        jsonrpc: "2.0".to_owned(),
+        id,
+        result: Some(result),
+        error: None,
+    }
 }
 
 fn spawn_pending_flush(
@@ -254,29 +267,42 @@ fn spawn_pending_flush(
     let pending_writes = Arc::clone(pending_writes);
     tokio::spawn(async move {
         let pending_count = pending_writes.len();
-        tracing::info!(pending_count, "Flushing pending save_memory writes after DB recovery");
+        tracing::info!(
+            pending_count,
+            "Flushing pending save_memory writes after DB recovery"
+        );
 
         loop {
             let Some(item) = pending_writes.pop_front() else {
                 break;
             };
 
-            let PendingWrite::SaveMemory { text, title, project } = item;
-            match observation_service.save_memory(&text, title.as_deref(), project.as_deref()).await
+            let PendingWrite::SaveMemory {
+                text,
+                title,
+                project,
+            } = item;
+            match observation_service
+                .save_memory(&text, title.as_deref(), project.as_deref())
+                .await
             {
-                Ok(_) => {},
+                Ok(_) => {}
                 Err(e) if e.is_db_unavailable() || e.is_transient() => {
-                    pending_writes.push_front(PendingWrite::SaveMemory { text, title, project });
+                    pending_writes.push_front(PendingWrite::SaveMemory {
+                        text,
+                        title,
+                        project,
+                    });
                     tracing::warn!(
                         error = %e,
                         remaining = pending_writes.len(),
                         "Pending write flush paused: database became unavailable again"
                     );
                     break;
-                },
+                }
                 Err(e) => {
                     tracing::warn!(error = %e, "Pending save_memory flush dropped one invalid item");
-                },
+                }
             }
         }
 

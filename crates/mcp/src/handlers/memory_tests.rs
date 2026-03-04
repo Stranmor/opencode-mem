@@ -7,7 +7,9 @@ use std::sync::Arc;
 
 async fn setup_storage() -> StorageBackend {
     let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
-    StorageBackend::new(&url).await.expect("Failed to connect to PG")
+    StorageBackend::new(&url)
+        .await
+        .expect("Failed to connect to PG")
 }
 
 fn setup_search_service(backend: StorageBackend) -> SearchService {
@@ -35,7 +37,12 @@ async fn test_save_memory_missing_text() {
     let result = handle_save_memory(&obs_service, &pending_writes, &args).await;
 
     assert_eq!(result["isError"].as_bool(), Some(true));
-    assert!(result["content"][0]["text"].as_str().unwrap().contains("text is required"));
+    assert!(
+        result["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("text is required")
+    );
 }
 
 #[tokio::test]
@@ -48,7 +55,12 @@ async fn test_save_memory_empty_text() {
     let result = handle_save_memory(&obs_service, &pending_writes, &args).await;
 
     assert_eq!(result["isError"].as_bool(), Some(true));
-    assert!(result["content"][0]["text"].as_str().unwrap().contains("must not be empty"));
+    assert!(
+        result["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("must not be empty")
+    );
 }
 
 #[tokio::test]
@@ -134,7 +146,12 @@ async fn test_memory_get_empty_id() {
     let args = json!({"id": ""});
     let result = handle_memory_get(&search_svc, &args).await;
     assert_eq!(result["isError"].as_bool(), Some(true));
-    assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
+    assert!(
+        result["content"][0]["text"]
+            .as_str()
+            .unwrap_or("")
+            .contains("required")
+    );
 }
 
 #[tokio::test]
@@ -145,7 +162,12 @@ async fn test_memory_get_missing_id() {
     let args = json!({});
     let result = handle_memory_get(&search_svc, &args).await;
     assert_eq!(result["isError"].as_bool(), Some(true));
-    assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
+    assert!(
+        result["content"][0]["text"]
+            .as_str()
+            .unwrap_or("")
+            .contains("required")
+    );
 }
 
 #[tokio::test]
@@ -156,7 +178,12 @@ async fn test_hybrid_search_empty_query() {
     let args = json!({"query": ""});
     let result = handle_hybrid_search(&search_svc, &args, 20).await;
     assert_eq!(result["isError"].as_bool(), Some(true));
-    assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
+    assert!(
+        result["content"][0]["text"]
+            .as_str()
+            .unwrap_or("")
+            .contains("required")
+    );
 }
 
 #[tokio::test]
@@ -167,7 +194,12 @@ async fn test_hybrid_search_missing_query() {
     let args = json!({});
     let result = handle_hybrid_search(&search_svc, &args, 20).await;
     assert_eq!(result["isError"].as_bool(), Some(true));
-    assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
+    assert!(
+        result["content"][0]["text"]
+            .as_str()
+            .unwrap_or("")
+            .contains("required")
+    );
 }
 
 #[tokio::test]
@@ -178,7 +210,12 @@ async fn test_semantic_search_empty_query() {
     let args = json!({"query": ""});
     let result = handle_semantic_search(&search_svc, &args, 20).await;
     assert_eq!(result["isError"].as_bool(), Some(true));
-    assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("required"));
+    assert!(
+        result["content"][0]["text"]
+            .as_str()
+            .unwrap_or("")
+            .contains("required")
+    );
 }
 
 #[tokio::test]
@@ -190,7 +227,12 @@ async fn test_get_observations_too_many_ids() {
     let args = json!({"ids": ids});
     let result = handle_get_observations(&search_svc, &args).await;
     assert_eq!(result["isError"].as_bool(), Some(true));
-    assert!(result["content"][0]["text"].as_str().unwrap_or("").contains("500"));
+    assert!(
+        result["content"][0]["text"]
+            .as_str()
+            .unwrap_or("")
+            .contains("500")
+    );
 }
 
 #[tokio::test]
@@ -220,17 +262,23 @@ async fn test_search_with_date_filters() {
 
     let search_svc = setup_search_service(backend);
 
-    let result =
-        handle_search(&search_svc, &json!({"query": "date filter test", "from": "2020-01-01"}), 50)
-            .await;
+    let result = handle_search(
+        &search_svc,
+        &json!({"query": "date filter test", "from": "2020-01-01"}),
+        50,
+    )
+    .await;
     assert!(result.get("isError").is_none());
     let content_text = result["content"][0]["text"].as_str().unwrap();
     let results: Vec<serde_json::Value> = serde_json::from_str(content_text).unwrap();
     assert_eq!(results.len(), 1);
 
-    let result =
-        handle_search(&search_svc, &json!({"query": "date filter test", "to": "2020-01-01"}), 50)
-            .await;
+    let result = handle_search(
+        &search_svc,
+        &json!({"query": "date filter test", "to": "2020-01-01"}),
+        50,
+    )
+    .await;
     assert!(result.get("isError").is_none());
     let content_text = result["content"][0]["text"].as_str().unwrap();
     let results: Vec<serde_json::Value> = serde_json::from_str(content_text).unwrap();

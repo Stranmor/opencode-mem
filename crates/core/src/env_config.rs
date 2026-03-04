@@ -22,7 +22,7 @@ pub fn env_parse_with_default<T: std::str::FromStr + std::fmt::Display>(
                     "invalid env var value, using default"
                 );
                 default
-            },
+            }
         },
         Err(_) => default,
     }

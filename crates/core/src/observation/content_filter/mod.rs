@@ -121,12 +121,18 @@ fn strip_nested_blocks(text: &str, tag_prefix: &str) -> String {
 }
 
 /// Regex for unclosed private tags (truncation safety).
-#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
+#[expect(
+    clippy::unwrap_used,
+    reason = "static regex pattern is compile-time validated"
+)]
 static PRIVATE_UNCLOSED_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?is)<private(?:>|\s[^>]*>).*$").unwrap());
 
 /// Regex for orphaned closing private tags left after nested tag stripping.
-#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
+#[expect(
+    clippy::unwrap_used,
+    reason = "static regex pattern is compile-time validated"
+)]
 static PRIVATE_ORPHAN_CLOSE_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)</private>").unwrap());
 
@@ -135,12 +141,17 @@ static PRIVATE_ORPHAN_CLOSE_REGEX: LazyLock<Regex> =
 pub fn filter_private_content(text: &str) -> String {
     let stripped = strip_nested_blocks(text, "private");
     let after_unclosed = PRIVATE_UNCLOSED_REGEX.replace_all(&stripped, "");
-    PRIVATE_ORPHAN_CLOSE_REGEX.replace_all(&after_unclosed, "").into_owned()
+    PRIVATE_ORPHAN_CLOSE_REGEX
+        .replace_all(&after_unclosed, "")
+        .into_owned()
 }
 
 /// Regex for unclosed memory tags (truncation safety).
 /// Strips from opening tag to end-of-string when no closing tag exists.
-#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
+#[expect(
+    clippy::unwrap_used,
+    reason = "static regex pattern is compile-time validated"
+)]
 static MEMORY_UNCLOSED_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?is)<memory-[\w-]+(?:>|\s[^>]*>).*$").unwrap());
 
@@ -148,7 +159,10 @@ static MEMORY_UNCLOSED_REGEX: LazyLock<Regex> =
 /// When nested tags like `<memory-global><memory-project>...</memory-project></memory-global>`
 /// are processed, the lazy `.*?` in `MEMORY_TAG_REGEX` strips the inner pair, leaving
 /// `</memory-global>` as an orphan. This third pass catches those remnants.
-#[expect(clippy::unwrap_used, reason = "static regex pattern is compile-time validated")]
+#[expect(
+    clippy::unwrap_used,
+    reason = "static regex pattern is compile-time validated"
+)]
 static MEMORY_ORPHAN_CLOSE_REGEX: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)</memory-[\w-]+>").unwrap());
 
@@ -158,7 +172,9 @@ static MEMORY_ORPHAN_CLOSE_REGEX: LazyLock<Regex> =
 pub fn filter_injected_memory(text: &str) -> String {
     let stripped = strip_nested_blocks(text, "memory-");
     let after_unclosed = MEMORY_UNCLOSED_REGEX.replace_all(&stripped, "");
-    MEMORY_ORPHAN_CLOSE_REGEX.replace_all(&after_unclosed, "").into_owned()
+    MEMORY_ORPHAN_CLOSE_REGEX
+        .replace_all(&after_unclosed, "")
+        .into_owned()
 }
 
 /// Standardized sanitization pipeline. Applies all required filters in the correct order.
@@ -181,14 +197,14 @@ pub fn sanitize_json_values(val: &serde_json::Value) -> serde_json::Value {
         serde_json::Value::String(s) => serde_json::Value::String(sanitize_input(s)),
         serde_json::Value::Array(arr) => {
             serde_json::Value::Array(arr.iter().map(sanitize_json_values).collect())
-        },
+        }
         serde_json::Value::Object(obj) => {
             let mut new_obj = serde_json::Map::new();
             for (k, v) in obj {
                 new_obj.insert(k.clone(), sanitize_json_values(v));
             }
             serde_json::Value::Object(new_obj)
-        },
+        }
         _ => val.clone(),
     }
 }

@@ -35,7 +35,12 @@ impl SearchService {
     ) -> Self {
         let hybrid_search =
             opencode_mem_search::HybridSearch::new(storage.clone(), embeddings.clone());
-        Self { storage, embeddings, hybrid_search, infinite_mem }
+        Self {
+            storage,
+            embeddings,
+            hybrid_search,
+            infinite_mem,
+        }
     }
 
     pub fn circuit_breaker(&self) -> &CircuitBreaker {
@@ -63,9 +68,9 @@ impl SearchService {
                 if recovered {
                     self.handle_recovery();
                 }
-            },
+            }
             Err(e) if e.is_db_unavailable() => self.storage.circuit_breaker().record_failure(),
-            Err(_) => {},
+            Err(_) => {}
         }
         result
     }
@@ -112,7 +117,11 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
         self.fast_fail_if_db_unavailable()?;
-        let result = self.hybrid_search.search(query, limit).await.map_err(ServiceError::Search);
+        let result = self
+            .hybrid_search
+            .search(query, limit)
+            .await
+            .map_err(ServiceError::Search);
         self.with_cb(result).await
     }
 
@@ -123,7 +132,11 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
         self.fast_fail_if_db_unavailable()?;
-        let result = self.storage.get_timeline(from, to, limit).await.map_err(ServiceError::from);
+        let result = self
+            .storage
+            .get_timeline(from, to, limit)
+            .await
+            .map_err(ServiceError::from);
         self.with_cb(result).await
     }
 
@@ -155,7 +168,11 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<Observation>, ServiceError> {
         self.fast_fail_if_db_unavailable()?;
-        let result = self.storage.get_recent(limit).await.map_err(ServiceError::from);
+        let result = self
+            .storage
+            .get_recent(limit)
+            .await
+            .map_err(ServiceError::from);
         self.with_cb(result).await
     }
 
@@ -164,7 +181,11 @@ impl SearchService {
         ids: &[String],
     ) -> Result<Vec<Observation>, ServiceError> {
         self.fast_fail_if_db_unavailable()?;
-        let result = self.storage.get_observations_by_ids(ids).await.map_err(ServiceError::from);
+        let result = self
+            .storage
+            .get_observations_by_ids(ids)
+            .await
+            .map_err(ServiceError::from);
         self.with_cb(result).await
     }
 
@@ -173,8 +194,11 @@ impl SearchService {
         project: &str,
         limit: usize,
     ) -> Result<Vec<Observation>, ServiceError> {
-        let result =
-            self.storage.get_context_for_project(project, limit).await.map_err(ServiceError::from);
+        let result = self
+            .storage
+            .get_context_for_project(project, limit)
+            .await
+            .map_err(ServiceError::from);
         let observations = self.with_cb(result).await?;
         self.deduplicate_by_embedding(observations).await
     }
@@ -184,8 +208,11 @@ impl SearchService {
         file_path: &str,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
-        let result =
-            self.storage.search_by_file(file_path, limit).await.map_err(ServiceError::from);
+        let result = self
+            .storage
+            .search_by_file(file_path, limit)
+            .await
+            .map_err(ServiceError::from);
         self.with_cb(result).await
     }
 
@@ -195,7 +222,11 @@ impl SearchService {
     }
 
     pub async fn get_all_projects(&self) -> Result<Vec<String>, ServiceError> {
-        let result = self.storage.get_all_projects().await.map_err(ServiceError::from);
+        let result = self
+            .storage
+            .get_all_projects()
+            .await
+            .map_err(ServiceError::from);
         self.with_cb(result).await
     }
 
@@ -218,7 +249,11 @@ impl SearchService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<SessionSummary>, ServiceError> {
-        let result = self.storage.search_sessions(query, limit).await.map_err(ServiceError::from);
+        let result = self
+            .storage
+            .search_sessions(query, limit)
+            .await
+            .map_err(ServiceError::from);
         self.with_cb(result).await
     }
 
@@ -226,7 +261,11 @@ impl SearchService {
         &self,
         session_id: &str,
     ) -> Result<Option<SessionSummary>, ServiceError> {
-        let result = self.storage.get_session_summary(session_id).await.map_err(ServiceError::from);
+        let result = self
+            .storage
+            .get_session_summary(session_id)
+            .await
+            .map_err(ServiceError::from);
         self.with_cb(result).await
     }
 
@@ -249,12 +288,20 @@ impl SearchService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<UserPrompt>, ServiceError> {
-        let result = self.storage.search_prompts(query, limit).await.map_err(ServiceError::from);
+        let result = self
+            .storage
+            .search_prompts(query, limit)
+            .await
+            .map_err(ServiceError::from);
         self.with_cb(result).await
     }
 
     pub async fn get_prompt_by_id(&self, id: &str) -> Result<Option<UserPrompt>, ServiceError> {
-        let result = self.storage.get_prompt_by_id(id).await.map_err(ServiceError::from);
+        let result = self
+            .storage
+            .get_prompt_by_id(id)
+            .await
+            .map_err(ServiceError::from);
         self.with_cb(result).await
     }
 
@@ -277,7 +324,11 @@ impl SearchService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<KnowledgeSearchResult>, ServiceError> {
-        let result = self.storage.search_knowledge(query, limit).await.map_err(ServiceError::from);
+        let result = self
+            .storage
+            .search_knowledge(query, limit)
+            .await
+            .map_err(ServiceError::from);
         self.with_cb(result).await
     }
 
@@ -286,13 +337,20 @@ impl SearchService {
         knowledge_type: Option<KnowledgeType>,
         limit: usize,
     ) -> Result<Vec<GlobalKnowledge>, ServiceError> {
-        let result =
-            self.storage.list_knowledge(knowledge_type, limit).await.map_err(ServiceError::from);
+        let result = self
+            .storage
+            .list_knowledge(knowledge_type, limit)
+            .await
+            .map_err(ServiceError::from);
         self.with_cb(result).await
     }
 
     pub async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, ServiceError> {
-        let result = self.storage.get_knowledge(id).await.map_err(ServiceError::from);
+        let result = self
+            .storage
+            .get_knowledge(id)
+            .await
+            .map_err(ServiceError::from);
         self.with_cb(result).await
     }
 }

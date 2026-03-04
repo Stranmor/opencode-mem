@@ -107,7 +107,10 @@ fn test_observation_embedding_text_many_facts() {
     assert!(text.ends_with("fact-99"));
     // Verify all 100 facts are present
     for i in 0..100 {
-        assert!(text.contains(&format!("fact-{i}")), "missing fact-{i} in embedding text");
+        assert!(
+            text.contains(&format!("fact-{i}")),
+            "missing fact-{i} in embedding text"
+        );
     }
 }
 

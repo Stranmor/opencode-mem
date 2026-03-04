@@ -63,7 +63,14 @@ impl ToolCall {
         input: serde_json::Value,
         output: String,
     ) -> Self {
-        Self { tool, session_id, call_id, project, input, output }
+        Self {
+            tool,
+            session_id,
+            call_id,
+            project,
+            input,
+            output,
+        }
     }
 
     /// Creates a new tool call with a different session ID.
@@ -91,7 +98,12 @@ impl ObservationInput {
     /// Creates a new observation input.
     #[must_use]
     pub fn new(tool: String, session_id: String, call_id: String, output: ToolOutput) -> Self {
-        Self { tool, session_id, call_id, output }
+        Self {
+            tool,
+            session_id,
+            call_id,
+            output,
+        }
     }
 }
 
@@ -112,7 +124,11 @@ impl ToolOutput {
     /// Creates a new tool output.
     #[must_use]
     pub fn new(title: String, output: String, metadata: serde_json::Value) -> Self {
-        Self { title, output, metadata }
+        Self {
+            title,
+            output,
+            metadata,
+        }
     }
 }
 
@@ -165,7 +181,14 @@ impl SearchResult {
         noise_level: NoiseLevel,
         score: f64,
     ) -> Self {
-        Self { id, title, subtitle, observation_type, noise_level, score }
+        Self {
+            id,
+            title,
+            subtitle,
+            observation_type,
+            noise_level,
+            score,
+        }
     }
 
     /// Converts a full Observation into a compact SearchResult with default score.

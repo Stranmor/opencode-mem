@@ -71,7 +71,9 @@ impl EmbeddingStore for PgStorage {
     }
 
     async fn clear_embeddings(&self) -> Result<(), StorageError> {
-        sqlx::query("UPDATE observations SET embedding = NULL").execute(&self.pool).await?;
+        sqlx::query("UPDATE observations SET embedding = NULL")
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 
@@ -117,7 +119,7 @@ impl EmbeddingStore for PgStorage {
                 } else {
                     Ok(None)
                 }
-            },
+            }
             None => Ok(None),
         }
     }

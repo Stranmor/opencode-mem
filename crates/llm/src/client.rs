@@ -18,7 +18,11 @@ pub struct LlmClient {
 
 impl std::fmt::Debug for LlmClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let base_url = self.base_url.read().unwrap_or_else(|e| e.into_inner()).clone();
+        let base_url = self
+            .base_url
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
         let model = self.model.read().unwrap_or_else(|e| e.into_inner()).clone();
         f.debug_struct("LlmClient")
             .field("client", &self.client)
@@ -91,13 +95,19 @@ impl LlmClient {
     /// Returns the base URL.
     #[must_use]
     pub fn base_url(&self) -> String {
-        self.base_url.read().unwrap_or_else(|e| e.into_inner()).clone()
+        self.base_url
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Returns the API key.
     #[must_use]
     pub fn api_key(&self) -> String {
-        self.api_key.read().unwrap_or_else(|e| e.into_inner()).clone()
+        self.api_key
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     /// Returns the model name.
@@ -146,7 +156,7 @@ impl LlmClient {
                 Err(e) => {
                     last_error = Some(LlmError::HttpRequest(e));
                     continue;
-                },
+                }
             };
 
             let status = response.status();
@@ -156,7 +166,7 @@ impl LlmClient {
                     Err(e) => {
                         last_error = Some(LlmError::HttpRequest(e));
                         continue;
-                    },
+                    }
                 };
 
                 let chat_response: ChatResponse =
@@ -168,16 +178,24 @@ impl LlmClient {
                         source: e,
                     })?;
 
-                let first_choice = chat_response.choices.first().ok_or(LlmError::EmptyResponse)?;
+                let first_choice = chat_response
+                    .choices
+                    .first()
+                    .ok_or(LlmError::EmptyResponse)?;
 
                 return Ok(first_choice.message.content.clone());
             }
 
             let status_code = status.as_u16();
-            let body =
-                response.text().await.unwrap_or_else(|_| "Could not read error body".to_string());
+            let body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Could not read error body".to_string());
 
-            let err = LlmError::HttpStatus { code: status_code, body };
+            let err = LlmError::HttpStatus {
+                code: status_code,
+                body,
+            };
             if err.is_transient() {
                 last_error = Some(err);
                 continue;
@@ -185,7 +203,9 @@ impl LlmClient {
             return Err(err);
         }
 
-        Err(LlmError::RetriesExhausted(Box::new(last_error.unwrap_or(LlmError::EmptyResponse))))
+        Err(LlmError::RetriesExhausted(Box::new(
+            last_error.unwrap_or(LlmError::EmptyResponse),
+        )))
     }
 }
 

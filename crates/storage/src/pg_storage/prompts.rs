@@ -45,7 +45,9 @@ impl PromptStore for PgStorage {
             .fetch_one(&self.pool)
             .await?
         } else {
-            sqlx::query_scalar("SELECT COUNT(*) FROM user_prompts").fetch_one(&self.pool).await?
+            sqlx::query_scalar("SELECT COUNT(*) FROM user_prompts")
+                .fetch_one(&self.pool)
+                .await?
         };
 
         let rows = if let Some(p) = project {
@@ -69,8 +71,10 @@ impl PromptStore for PgStorage {
             .await?
         };
 
-        let items: Vec<UserPrompt> =
-            rows.iter().map(row_to_prompt).collect::<Result<_, StorageError>>()?;
+        let items: Vec<UserPrompt> = rows
+            .iter()
+            .map(row_to_prompt)
+            .collect::<Result<_, StorageError>>()?;
         Ok(PaginatedResult::new(items, total, offset, limit))
     }
 
@@ -105,6 +109,8 @@ impl PromptStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        rows.iter().map(row_to_prompt).collect::<Result<_, StorageError>>()
+        rows.iter()
+            .map(row_to_prompt)
+            .collect::<Result<_, StorageError>>()
     }
 }

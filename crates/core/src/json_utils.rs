@@ -15,16 +15,21 @@ pub fn strip_markdown_json(content: &str) -> &str {
     let Some(close_pos) = trimmed.rfind("```") else {
         return trimmed;
     };
-    // open and close must be different positions (not the same ```)
-    if close_pos <= open_pos {
+    
+    let content_start = open_pos.saturating_add(3);
+    
+    // open and close must not overlap
+    if close_pos < content_start {
         return trimmed;
     }
 
     // Content between opening ``` (skip past the ```) and closing ```
-    let after_open = &trimmed[open_pos.saturating_add(3)..close_pos];
+    let after_open = &trimmed[content_start..close_pos];
 
     // Skip the language identifier on the first line (e.g. "json", "json5", " json")
-    after_open.split_once('\n').map_or_else(|| after_open.trim(), |(_, rest)| rest.trim())
+    after_open
+        .split_once('\n')
+        .map_or_else(|| after_open.trim(), |(_, rest)| rest.trim())
 }
 
 #[cfg(test)]
@@ -83,5 +88,14 @@ mod tests {
     fn test_preamble_plain_block() {
         let input = "Result:\n```\n{\"key\": \"value\"}\n```";
         assert_eq!(strip_markdown_json(input), "{\"key\": \"value\"}");
+    }
+
+    #[test]
+    fn test_overlapping_backticks_no_panic() {
+        let input = "````";
+        assert_eq!(strip_markdown_json(input), "````");
+        
+        let input2 = "`````";
+        assert_eq!(strip_markdown_json(input2), "`````");
     }
 }

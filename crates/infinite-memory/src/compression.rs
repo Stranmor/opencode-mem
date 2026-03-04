@@ -41,15 +41,25 @@ pub async fn compress_events(
         let content_str = serde_json::to_string(&e.content).unwrap_or_default();
         let max_content = max_content_chars();
         let truncated = if content_str.chars().count() > max_content {
-            format!("{}...(truncated)", content_str.chars().take(max_content).collect::<String>())
+            format!(
+                "{}...(truncated)",
+                content_str.chars().take(max_content).collect::<String>()
+            )
         } else {
             content_str
         };
-        let line = format!("[{}] {}: {}", e.event_type, e.ts.format("%H:%M:%S"), truncated);
+        let line = format!(
+            "[{}] {}: {}",
+            e.event_type,
+            e.ts.format("%H:%M:%S"),
+            truncated
+        );
         total_chars += line.len();
         if total_chars > max_total_chars() {
-            events_text
-                .push(format!("...({} more events truncated)", events.len() - events_text.len()));
+            events_text.push(format!(
+                "...({} more events truncated)",
+                events.len() - events_text.len()
+            ));
             break;
         }
         events_text.push(line);
@@ -76,7 +86,10 @@ pub async fn compress_events(
 
     let request = opencode_mem_llm::ChatRequest {
         model: llm.model().to_owned(),
-        messages: vec![opencode_mem_llm::Message { role: "user".to_owned(), content: prompt }],
+        messages: vec![opencode_mem_llm::Message {
+            role: "user".to_owned(),
+            content: prompt,
+        }],
         response_format: opencode_mem_llm::ResponseFormat {
             format_type: opencode_mem_llm::ResponseFormatType::JsonObject,
         },
@@ -90,7 +103,11 @@ pub async fn compress_events(
 
     let content = strip_markdown_json(&content);
     let parsed: serde_json::Value = serde_json::from_str(content).map_err(|e| {
-        anyhow::anyhow!("Failed to parse AI JSON response: {}. Content: {}", e, content)
+        anyhow::anyhow!(
+            "Failed to parse AI JSON response: {}. Content: {}",
+            e,
+            content
+        )
     })?;
 
     let summary = parsed["summary"]
@@ -98,8 +115,9 @@ pub async fn compress_events(
         .filter(|s| !s.is_empty())
         .ok_or_else(|| anyhow::anyhow!("LLM returned response without summary field"))?
         .to_string();
-    let entities: Option<SummaryEntities> =
-        parsed.get("entities").and_then(|e| serde_json::from_value(e.clone()).ok());
+    let entities: Option<SummaryEntities> = parsed
+        .get("entities")
+        .and_then(|e| serde_json::from_value(e.clone()).ok());
 
     Ok((summary, entities))
 }
@@ -112,7 +130,12 @@ pub async fn compress_summaries(llm: &LlmClient, summaries: &[Summary]) -> Resul
     let summaries_text: Vec<String> = summaries
         .iter()
         .map(|s| {
-            format!("[{} - {}] {}", s.ts_start.format("%H:%M"), s.ts_end.format("%H:%M"), s.content)
+            format!(
+                "[{} - {}] {}",
+                s.ts_start.format("%H:%M"),
+                s.ts_end.format("%H:%M"),
+                s.content
+            )
         })
         .collect();
 
@@ -125,7 +148,10 @@ pub async fn compress_summaries(llm: &LlmClient, summaries: &[Summary]) -> Resul
 
     let request = opencode_mem_llm::ChatRequest {
         model: llm.model().to_owned(),
-        messages: vec![opencode_mem_llm::Message { role: "user".to_owned(), content: prompt }],
+        messages: vec![opencode_mem_llm::Message {
+            role: "user".to_owned(),
+            content: prompt,
+        }],
         response_format: opencode_mem_llm::ResponseFormat {
             format_type: opencode_mem_llm::ResponseFormatType::Text,
         },

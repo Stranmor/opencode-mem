@@ -28,7 +28,7 @@ impl ObservationService {
             Err(e) => {
                 tracing::warn!("Failed to get injected observation IDs: {}", e);
                 return false;
-            },
+            }
         };
 
         if injected_ids.is_empty() {
@@ -46,7 +46,7 @@ impl ObservationService {
             Err(e) => {
                 tracing::warn!("Failed to get embeddings for injected observations: {}", e);
                 return false;
-            },
+            }
         };
 
         for (obs_id, inj_emb) in &injected_embeddings {
@@ -75,7 +75,10 @@ impl ObservationService {
         session_id: &str,
         observation_ids: &[String],
     ) -> Result<(), crate::ServiceError> {
-        Ok(self.storage.save_injected_observations(session_id, observation_ids).await?)
+        Ok(self
+            .storage
+            .save_injected_observations(session_id, observation_ids)
+            .await?)
     }
 
     pub(crate) async fn generate_embedding(&self, observation: &Observation) -> Option<Vec<f32>> {
@@ -88,11 +91,11 @@ impl ObservationService {
             Ok(Err(e)) => {
                 tracing::warn!("Failed to generate embedding for {}: {}", observation.id, e);
                 None
-            },
+            }
             Err(e) => {
                 tracing::warn!("Embedding task panicked for {}: {}", observation.id, e);
                 None
-            },
+            }
         }
     }
 }

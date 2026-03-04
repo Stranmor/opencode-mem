@@ -11,12 +11,21 @@
     unreachable_pub,
     reason = "pub items in private modules are re-exported via pub use in lib.rs"
 )]
-#![allow(clippy::missing_docs_in_private_items, reason = "Internal storage modules")]
+#![allow(
+    clippy::missing_docs_in_private_items,
+    reason = "Internal storage modules"
+)]
 #![allow(clippy::implicit_return, reason = "Implicit return is idiomatic Rust")]
 #![allow(clippy::question_mark_used, reason = "? operator is idiomatic Rust")]
 #![allow(clippy::min_ident_chars, reason = "Short closure params are idiomatic")]
-#![allow(clippy::shadow_reuse, reason = "Shadowing for owned copies is idiomatic")]
-#![allow(clippy::single_call_fn, reason = "Helper functions improve readability")]
+#![allow(
+    clippy::shadow_reuse,
+    reason = "Shadowing for owned copies is idiomatic"
+)]
+#![allow(
+    clippy::single_call_fn,
+    reason = "Helper functions improve readability"
+)]
 
 pub mod backend;
 pub mod circuit_breaker;

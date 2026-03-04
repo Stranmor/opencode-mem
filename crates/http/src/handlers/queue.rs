@@ -27,8 +27,15 @@ pub async fn get_pending_queue(
         .get_all_pending_messages(query.capped_limit())
         .await
         .map_err(ApiError::from)?;
-    let queue_stats = state.queue_service.get_queue_stats().await.map_err(ApiError::from)?;
-    Ok(Json(PendingQueueResponse { messages, stats: queue_stats }))
+    let queue_stats = state
+        .queue_service
+        .get_queue_stats()
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(PendingQueueResponse {
+        messages,
+        stats: queue_stats,
+    }))
 }
 
 pub async fn process_pending_queue(
@@ -40,13 +47,19 @@ pub async fn process_pending_queue(
         return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
     }
     if !state.processing_active.load(Ordering::SeqCst) {
-        return Ok(Json(ProcessQueueResponse { processed: 0, failed: 0 }));
+        return Ok(Json(ProcessQueueResponse {
+            processed: 0,
+            failed: 0,
+        }));
     }
     let max_workers = max_queue_workers();
     let available_permits = state.semaphore.available_permits().min(max_workers);
 
     if available_permits == 0 {
-        return Ok(Json(ProcessQueueResponse { processed: 0, failed: 0 }));
+        return Ok(Json(ProcessQueueResponse {
+            processed: 0,
+            failed: 0,
+        }));
     }
 
     let messages = state
@@ -56,7 +69,10 @@ pub async fn process_pending_queue(
         .map_err(ApiError::from)?;
 
     if messages.is_empty() {
-        return Ok(Json(ProcessQueueResponse { processed: 0, failed: 0 }));
+        return Ok(Json(ProcessQueueResponse {
+            processed: 0,
+            failed: 0,
+        }));
     }
 
     let mut handles = Vec::with_capacity(messages.len());
@@ -74,7 +90,7 @@ pub async fn process_pending_queue(
                     tracing::error!("Failed to release un-acquired messages: {}", e);
                 }
                 break;
-            },
+            }
         };
 
         let state_clone = Arc::clone(&state);
@@ -92,14 +108,14 @@ pub async fn process_pending_queue(
                         return false;
                     }
                     true
-                },
+                }
                 Err(e) => {
                     tracing::error!("Process message {} failed: {}", msg.id, e);
                     if let Err(e) = state_clone.queue_service.fail_message(msg.id, true).await {
                         tracing::error!("Fail message {} error: {}", msg.id, e);
                     }
                     false
-                },
+                }
             }
         });
         handles.push(handle);
@@ -109,7 +125,7 @@ pub async fn process_pending_queue(
     let mut failed = 0usize;
     for handle in handles {
         match handle.await {
-            Ok(true) => {},
+            Ok(true) => {}
             Ok(false) => failed = failed.saturating_add(1),
             Err(_join_err) => failed = failed.saturating_add(1),
         }
@@ -126,7 +142,11 @@ pub async fn clear_failed_queue(
     if !is_localhost(&addr) {
         return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
     }
-    let cleared = state.queue_service.clear_failed_messages().await.map_err(ApiError::from)?;
+    let cleared = state
+        .queue_service
+        .clear_failed_messages()
+        .await
+        .map_err(ApiError::from)?;
     Ok(Json(ClearQueueResponse { cleared }))
 }
 
@@ -138,7 +158,11 @@ pub async fn retry_failed_queue(
     if !is_localhost(&addr) {
         return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
     }
-    let retried = state.queue_service.retry_failed_messages().await.map_err(ApiError::from)?;
+    let retried = state
+        .queue_service
+        .retry_failed_messages()
+        .await
+        .map_err(ApiError::from)?;
     Ok(Json(RetryQueueResponse { retried }))
 }
 
@@ -150,7 +174,11 @@ pub async fn clear_all_queue(
     if !is_localhost(&addr) {
         return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
     }
-    let cleared = state.queue_service.clear_all_pending_messages().await.map_err(ApiError::from)?;
+    let cleared = state
+        .queue_service
+        .clear_all_pending_messages()
+        .await
+        .map_err(ApiError::from)?;
     Ok(Json(ClearQueueResponse { cleared }))
 }
 
@@ -158,8 +186,15 @@ pub async fn get_processing_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<ProcessingStatusResponse>, crate::api_error::ApiError> {
     let active = state.processing_active.load(Ordering::SeqCst);
-    let pending_count = state.queue_service.get_pending_count().await.map_err(ApiError::from)?;
-    Ok(Json(ProcessingStatusResponse { active, pending_count }))
+    let pending_count = state
+        .queue_service
+        .get_pending_count()
+        .await
+        .map_err(ApiError::from)?;
+    Ok(Json(ProcessingStatusResponse {
+        active,
+        pending_count,
+    }))
 }
 
 pub async fn set_processing_status(

@@ -73,10 +73,17 @@ fn test_union_dedup_case_sensitive() {
 #[test]
 fn test_union_dedup_unicode_and_special_chars() {
     let existing = vec!["日本語".to_owned(), "émoji: 🦀".to_owned()];
-    let newer = vec!["émoji: 🦀".to_owned(), "中文".to_owned(), "path/with spaces".to_owned()];
+    let newer = vec![
+        "émoji: 🦀".to_owned(),
+        "中文".to_owned(),
+        "path/with spaces".to_owned(),
+    ];
 
     let result = union_dedup(&existing, &newer);
-    assert_eq!(result, vec!["日本語", "émoji: 🦀", "中文", "path/with spaces"]);
+    assert_eq!(
+        result,
+        vec!["日本語", "émoji: 🦀", "中文", "path/with spaces"]
+    );
 }
 
 #[test]
@@ -99,7 +106,10 @@ fn test_union_dedup_empty_strings() {
     assert_eq!(result, vec!["", "a", "b"]);
 }
 
-#[expect(clippy::indexing_slicing, reason = "test code — length verified by assert_eq above")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test code — length verified by assert_eq above"
+)]
 #[test]
 fn test_union_dedup_very_long_strings() {
     let long_a = "x".repeat(10_000);
@@ -113,7 +123,10 @@ fn test_union_dedup_very_long_strings() {
     assert_eq!(result[1], long_b);
 }
 
-#[expect(clippy::indexing_slicing, reason = "test code — length verified by assert_eq above")]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test code — length verified by assert_eq above"
+)]
 #[test]
 fn test_union_dedup_large_input_count() {
     // 1000 items — verify no performance pathology and correctness.

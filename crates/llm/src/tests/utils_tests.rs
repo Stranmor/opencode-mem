@@ -32,7 +32,10 @@ fn test_truncate_empty() {
 
 #[test]
 fn test_strip_markdown_json_clean() {
-    assert_eq!(strip_markdown_json(r#"{"key": "value"}"#), r#"{"key": "value"}"#);
+    assert_eq!(
+        strip_markdown_json(r#"{"key": "value"}"#),
+        r#"{"key": "value"}"#
+    );
 }
 
 #[test]
@@ -55,7 +58,10 @@ fn test_strip_markdown_json_with_whitespace() {
 
 #[test]
 fn test_parse_concept_valid() {
-    assert_eq!(Concept::from_str("how-it-works").ok(), Some(Concept::HowItWorks));
+    assert_eq!(
+        Concept::from_str("how-it-works").ok(),
+        Some(Concept::HowItWorks)
+    );
     assert_eq!(Concept::from_str("pattern").ok(), Some(Concept::Pattern));
     assert_eq!(Concept::from_str("gotcha").ok(), Some(Concept::Gotcha));
     assert_eq!(Concept::from_str("trade-off").ok(), Some(Concept::TradeOff));
@@ -63,7 +69,10 @@ fn test_parse_concept_valid() {
 
 #[test]
 fn test_parse_concept_case_insensitive() {
-    assert_eq!(Concept::from_str("HOW-IT-WORKS").ok(), Some(Concept::HowItWorks));
+    assert_eq!(
+        Concept::from_str("HOW-IT-WORKS").ok(),
+        Some(Concept::HowItWorks)
+    );
     assert_eq!(Concept::from_str("Pattern").ok(), Some(Concept::Pattern));
 }
 

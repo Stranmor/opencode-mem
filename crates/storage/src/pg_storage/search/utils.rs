@@ -1,11 +1,13 @@
 fn tokenize_tsquery(query: &str) -> Vec<String> {
     query
         .split(|c: char| !c.is_alphanumeric() && c != '_')
-        .filter_map(
-            |w| {
-                if w.chars().any(char::is_alphanumeric) { Some(w.to_string()) } else { None }
-            },
-        )
+        .filter_map(|w| {
+            if w.chars().any(char::is_alphanumeric) {
+                Some(w.to_string())
+            } else {
+                None
+            }
+        })
         .collect()
 }
 
@@ -13,7 +15,13 @@ fn build_joined_tsquery(words: Vec<String>, operator: &str) -> Option<String> {
     if words.is_empty() {
         return None;
     }
-    Some(words.into_iter().map(|w| format!("{}:*", w)).collect::<Vec<_>>().join(operator))
+    Some(
+        words
+            .into_iter()
+            .map(|w| format!("{}:*", w))
+            .collect::<Vec<_>>()
+            .join(operator),
+    )
 }
 
 pub(crate) fn build_tsquery(query: &str) -> Option<String> {

@@ -28,7 +28,7 @@ pub(super) async fn handle_knowledge_search(
                 }
             });
             mcp_ok(&results)
-        },
+        }
         Err(e) => degrade_read_err::<Vec<opencode_mem_core::KnowledgeSearchResult>>(e, cb),
     }
 }
@@ -50,16 +50,16 @@ pub(super) async fn handle_knowledge_get(
             cb.record_success();
             let _ = knowledge_service.update_knowledge_usage(id_str).await;
             mcp_ok(&knowledge)
-        },
+        }
         Ok(None) => {
             cb.record_success();
             mcp_ok(&serde_json::Value::Null)
-        },
+        }
         Err(e) if e.is_db_unavailable() || e.is_transient() => {
             cb.record_failure();
             tracing::warn!(error = %e, "MCP read: database unavailable, returning empty array for knowledge");
             mcp_ok(&Vec::<opencode_mem_core::GlobalKnowledge>::new())
-        },
+        }
         Err(e) => mcp_err(e),
     }
 }
@@ -80,11 +80,14 @@ pub(super) async fn handle_knowledge_list(
     if let Some(degraded) = cb_fast_fail_read::<Vec<opencode_mem_core::GlobalKnowledge>>(cb) {
         return degraded;
     }
-    match knowledge_service.list_knowledge(knowledge_type, limit).await {
+    match knowledge_service
+        .list_knowledge(knowledge_type, limit)
+        .await
+    {
         Ok(results) => {
             cb.record_success();
             mcp_ok(&results)
-        },
+        }
         Err(e) => degrade_read_err::<Vec<opencode_mem_core::GlobalKnowledge>>(e, cb),
     }
 }
@@ -105,7 +108,7 @@ pub(super) async fn handle_knowledge_delete(
         Ok(deleted) => {
             cb.record_success();
             mcp_ok(&json!({ "success": deleted, "id": id_str, "deleted": deleted }))
-        },
+        }
         Err(e) => degrade_write_err(e, cb),
     }
 }
@@ -114,7 +117,10 @@ pub(super) async fn handle_knowledge_save(
     knowledge_service: &KnowledgeService,
     args: &serde_json::Value,
 ) -> serde_json::Value {
-    let knowledge_type_str = args.get("knowledge_type").and_then(|t| t.as_str()).unwrap_or("skill");
+    let knowledge_type_str = args
+        .get("knowledge_type")
+        .and_then(|t| t.as_str())
+        .unwrap_or("skill");
     let knowledge_type = match knowledge_type_str.parse::<opencode_mem_core::KnowledgeType>() {
         Ok(kt) => kt,
         Err(e) => return mcp_err(format!("Invalid knowledge_type: {e}")),
@@ -127,15 +133,27 @@ pub(super) async fn handle_knowledge_save(
         Some(d) if !d.is_empty() => d.to_owned(),
         _ => return mcp_err("description is required and cannot be empty"),
     };
-    let instructions = args.get("instructions").and_then(|i| i.as_str()).map(ToOwned::to_owned);
+    let instructions = args
+        .get("instructions")
+        .and_then(|i| i.as_str())
+        .map(ToOwned::to_owned);
     let triggers: Vec<String> = args
         .get("triggers")
         .and_then(|t| t.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(ToOwned::to_owned)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(ToOwned::to_owned))
+                .collect()
+        })
         .unwrap_or_default();
-    let source_project = args.get("source_project").and_then(|p| p.as_str()).map(ToOwned::to_owned);
-    let source_observation =
-        args.get("source_observation").and_then(|o| o.as_str()).map(ToOwned::to_owned);
+    let source_project = args
+        .get("source_project")
+        .and_then(|p| p.as_str())
+        .map(ToOwned::to_owned);
+    let source_observation = args
+        .get("source_observation")
+        .and_then(|o| o.as_str())
+        .map(ToOwned::to_owned);
 
     let input = opencode_mem_core::KnowledgeInput::new(
         knowledge_type,
@@ -155,7 +173,7 @@ pub(super) async fn handle_knowledge_save(
         Ok(knowledge) => {
             cb.record_success();
             mcp_ok(&knowledge)
-        },
+        }
         Err(e) => degrade_write_err(e, cb),
     }
 }

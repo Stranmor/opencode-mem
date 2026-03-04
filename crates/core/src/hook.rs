@@ -87,7 +87,11 @@ impl SessionInitHookRequest {
         project: Option<String>,
         user_prompt: Option<String>,
     ) -> Self {
-        Self { content_session_id, project, user_prompt }
+        Self {
+            content_session_id,
+            project,
+            user_prompt,
+        }
     }
 }
 
@@ -122,7 +126,14 @@ impl ObservationHookRequest {
         input: Option<serde_json::Value>,
         output: String,
     ) -> Self {
-        Self { tool, session_id, call_id, project, input, output }
+        Self {
+            tool,
+            session_id,
+            call_id,
+            project,
+            input,
+            output,
+        }
     }
 }
 
@@ -142,6 +153,9 @@ impl SummarizeHookRequest {
     /// Creates a new summarize hook request.
     #[must_use]
     pub const fn new(content_session_id: Option<String>, session_id: Option<String>) -> Self {
-        Self { content_session_id, session_id }
+        Self {
+            content_session_id,
+            session_id,
+        }
     }
 }

@@ -30,18 +30,24 @@ impl ObservationStore for PgStorage {
         .bind(serde_json::to_value(&obs.files_read)?)
         .bind(serde_json::to_value(&obs.files_modified)?)
         .bind(serde_json::to_value(&obs.keywords)?)
-        .bind(obs.prompt_number.map(|v| v.as_pg_i32()).transpose().map_err(|e| {
-            StorageError::DataCorruption {
-                context: "prompt_number exceeds i32::MAX".into(),
-                source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
-            }
-        })?)
-        .bind(obs.discovery_tokens.map(|v| v.as_pg_i32()).transpose().map_err(|e| {
-            StorageError::DataCorruption {
-                context: "discovery_tokens exceeds i32::MAX".into(),
-                source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
-            }
-        })?)
+        .bind(
+            obs.prompt_number
+                .map(|v| v.as_pg_i32())
+                .transpose()
+                .map_err(|e| StorageError::DataCorruption {
+                    context: "prompt_number exceeds i32::MAX".into(),
+                    source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+                })?,
+        )
+        .bind(
+            obs.discovery_tokens
+                .map(|v| v.as_pg_i32())
+                .transpose()
+                .map_err(|e| StorageError::DataCorruption {
+                    context: "discovery_tokens exceeds i32::MAX".into(),
+                    source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+                })?,
+        )
         .bind(obs.noise_level.as_str())
         .bind(&obs.noise_reason)
         .bind(obs.created_at)
@@ -54,7 +60,7 @@ impl ObservationStore for PgStorage {
                     "Observation title '{}' already exists",
                     obs.title
                 )))
-            },
+            }
             Err(e) => Err(e.into()),
         }
     }
@@ -196,9 +202,13 @@ impl ObservationStore for PgStorage {
         .fetch_optional(&mut *tx)
         .await?;
 
-        let existing = row.map(|r| row_to_observation(&r)).transpose()?.ok_or_else(|| {
-            StorageError::NotFound { entity: "observation", id: existing_id.to_owned() }
-        })?;
+        let existing = row
+            .map(|r| row_to_observation(&r))
+            .transpose()?
+            .ok_or_else(|| StorageError::NotFound {
+                entity: "observation",
+                id: existing_id.to_owned(),
+            })?;
 
         let merged = opencode_mem_core::compute_merge(&existing, newer);
 
@@ -219,18 +229,26 @@ impl ObservationStore for PgStorage {
         .bind(merged.noise_level.as_str())
         .bind(&merged.subtitle)
         .bind(&merged.noise_reason)
-        .bind(merged.prompt_number.map(|v| v.as_pg_i32()).transpose().map_err(|e| {
-            StorageError::DataCorruption {
-                context: "prompt_number exceeds i32::MAX".into(),
-                source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
-            }
-        })?)
-        .bind(merged.discovery_tokens.map(|v| v.as_pg_i32()).transpose().map_err(|e| {
-            StorageError::DataCorruption {
-                context: "discovery_tokens exceeds i32::MAX".into(),
-                source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
-            }
-        })?)
+        .bind(
+            merged
+                .prompt_number
+                .map(|v| v.as_pg_i32())
+                .transpose()
+                .map_err(|e| StorageError::DataCorruption {
+                    context: "prompt_number exceeds i32::MAX".into(),
+                    source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+                })?,
+        )
+        .bind(
+            merged
+                .discovery_tokens
+                .map(|v| v.as_pg_i32())
+                .transpose()
+                .map_err(|e| StorageError::DataCorruption {
+                    context: "discovery_tokens exceeds i32::MAX".into(),
+                    source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+                })?,
+        )
         .bind(existing_id)
         .bind(&merged.title)
         .bind(merged.observation_type.as_str())

@@ -19,7 +19,11 @@ pub async fn search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, ApiError> {
-    let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
+    let q = if query.q.is_empty() {
+        None
+    } else {
+        Some(query.q.as_str())
+    };
 
     // Use hybrid search if no exact filters are applied
     if query.project.is_none()
@@ -61,12 +65,15 @@ pub async fn hybrid_search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, ApiError> {
-    state.search_service.hybrid_search(&query.q, query.capped_limit()).await.map(Json).map_err(
-        |e| {
+    state
+        .search_service
+        .hybrid_search(&query.q, query.capped_limit())
+        .await
+        .map(Json)
+        .map_err(|e| {
             tracing::error!("Hybrid search error: {}", e);
             ApiError::from(e)
-        },
-    )
+        })
 }
 
 pub async fn semantic_search(
@@ -95,12 +102,15 @@ pub async fn search_sessions(
     if query.q.is_empty() {
         return Ok(Json(Vec::new()));
     }
-    state.search_service.search_sessions(&query.q, query.capped_limit()).await.map(Json).map_err(
-        |e| {
+    state
+        .search_service
+        .search_sessions(&query.q, query.capped_limit())
+        .await
+        .map(Json)
+        .map_err(|e| {
             tracing::error!("Search sessions error: {}", e);
             ApiError::from(e)
-        },
-    )
+        })
 }
 
 pub async fn search_prompts(
@@ -110,12 +120,15 @@ pub async fn search_prompts(
     if query.q.is_empty() {
         return Ok(Json(Vec::new()));
     }
-    state.search_service.search_prompts(&query.q, query.capped_limit()).await.map(Json).map_err(
-        |e| {
+    state
+        .search_service
+        .search_prompts(&query.q, query.capped_limit())
+        .await
+        .map(Json)
+        .map_err(|e| {
             tracing::error!("Search prompts error: {}", e);
             ApiError::from(e)
-        },
-    )
+        })
 }
 
 pub async fn search_by_file(
@@ -227,7 +240,12 @@ pub async fn unified_search(
     // Sort by score descending
     sort_by_score_descending(&mut ranked);
 
-    Ok(Json(UnifiedSearchResult { observations, sessions, prompts, ranked }))
+    Ok(Json(UnifiedSearchResult {
+        observations,
+        sessions,
+        prompts,
+        ranked,
+    }))
 }
 
 pub async fn unified_timeline(
@@ -286,8 +304,12 @@ pub async fn unified_timeline(
         let after_limit = query.after.saturating_add(1);
 
         let (before_result, after_result) = tokio::join!(
-            state.search_service.get_timeline(None, Some(&anchor_time), before_limit),
-            state.search_service.get_timeline(Some(&anchor_time), None, after_limit),
+            state
+                .search_service
+                .get_timeline(None, Some(&anchor_time), before_limit),
+            state
+                .search_service
+                .get_timeline(Some(&anchor_time), None, after_limit),
         );
 
         let anchor_id = anchor_sr.id.clone();
@@ -316,5 +338,9 @@ pub async fn unified_timeline(
         (None, Vec::new(), Vec::new())
     };
 
-    Ok(Json(TimelineResult { anchor: anchor_sr, before, after }))
+    Ok(Json(TimelineResult {
+        anchor: anchor_sr,
+        before,
+        after,
+    }))
 }

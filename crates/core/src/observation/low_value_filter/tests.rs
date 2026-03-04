@@ -35,7 +35,11 @@ fn test_filtering() {
         "Refactor plan for splitting IsolationManager",
     ];
     for title in low {
-        assert!(is_low_value_observation(title), "Should be low value: {}", title);
+        assert!(
+            is_low_value_observation(title),
+            "Should be low value: {}",
+            title
+        );
     }
     let high = [
         "Database migration v10 added session_summaries",
@@ -45,7 +49,11 @@ fn test_filtering() {
         "",
     ];
     for title in high {
-        assert!(!is_low_value_observation(title), "Should be high value: {}", title);
+        assert!(
+            !is_low_value_observation(title),
+            "Should be high value: {}",
+            title
+        );
     }
 }
 

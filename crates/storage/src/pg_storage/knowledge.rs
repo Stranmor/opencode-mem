@@ -107,10 +107,16 @@ impl PgStorage {
             ))
         } else {
             let id = uuid::Uuid::new_v4().to_string();
-            let source_projects: Vec<String> =
-                input.source_project.as_ref().map(|p| vec![p.clone()]).unwrap_or_default();
-            let source_observations: Vec<String> =
-                input.source_observation.as_ref().map(|o| vec![o.clone()]).unwrap_or_default();
+            let source_projects: Vec<String> = input
+                .source_project
+                .as_ref()
+                .map(|p| vec![p.clone()])
+                .unwrap_or_default();
+            let source_observations: Vec<String> = input
+                .source_observation
+                .as_ref()
+                .map(|o| vec![o.clone()])
+                .unwrap_or_default();
 
             sqlx::query(&format!(
                 "INSERT INTO global_knowledge ({KNOWLEDGE_COLUMNS})
@@ -166,7 +172,7 @@ impl KnowledgeStore for PgStorage {
                         "knowledge save hit unique constraint, retrying"
                     );
                     continue;
-                },
+                }
                 Err(e) => return Err(e),
             }
         }
@@ -174,11 +180,12 @@ impl KnowledgeStore for PgStorage {
     }
 
     async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, StorageError> {
-        let row =
-            sqlx::query(&format!("SELECT {KNOWLEDGE_COLUMNS} FROM global_knowledge WHERE id = $1"))
-                .bind(id)
-                .fetch_optional(&self.pool)
-                .await?;
+        let row = sqlx::query(&format!(
+            "SELECT {KNOWLEDGE_COLUMNS} FROM global_knowledge WHERE id = $1"
+        ))
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
         row.map(|r| row_to_knowledge(&r)).transpose()
     }
 
@@ -197,7 +204,10 @@ impl KnowledgeStore for PgStorage {
     ) -> Result<Vec<KnowledgeSearchResult>, StorageError> {
         let Some(tsquery) = build_tsquery(query) else {
             return self.list_knowledge(None, limit).await.map(|items| {
-                items.into_iter().map(|k| KnowledgeSearchResult::new(k, 1.0)).collect()
+                items
+                    .into_iter()
+                    .map(|k| KnowledgeSearchResult::new(k, 1.0))
+                    .collect()
             });
         };
         let rows = sqlx::query(&format!(

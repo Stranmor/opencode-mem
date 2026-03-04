@@ -21,7 +21,12 @@ fn degrade_infinite_read(
             error: None,
         }
     } else {
-        McpResponse { jsonrpc: "2.0".to_owned(), id, result: Some(mcp_err(err)), error: None }
+        McpResponse {
+            jsonrpc: "2.0".to_owned(),
+            id,
+            result: Some(mcp_err(err)),
+            error: None,
+        }
     }
 }
 
@@ -80,10 +85,10 @@ pub(super) async fn handle_infinite_expand(
                         result: Some(mcp_ok(&events)),
                         error: None,
                     }
-                },
+                }
                 Err(e) => degrade_infinite_read(e, mem, id),
             }
-        },
+        }
         None => McpResponse {
             jsonrpc: "2.0".to_owned(),
             id,
@@ -121,7 +126,7 @@ pub(super) async fn handle_infinite_time_range(
                         result: Some(mcp_err("Invalid 'from' datetime format (use RFC3339)")),
                         error: None,
                     };
-                },
+                }
             };
             let end = match chrono::DateTime::parse_from_rfc3339(to) {
                 Ok(dt) => dt.with_timezone(&chrono::Utc),
@@ -132,9 +137,12 @@ pub(super) async fn handle_infinite_time_range(
                         result: Some(mcp_err("Invalid 'to' datetime format (use RFC3339)")),
                         error: None,
                     };
-                },
+                }
             };
-            match mem.get_events_by_time_range(start, end, session_id, limit).await {
+            match mem
+                .get_events_by_time_range(start, end, session_id, limit)
+                .await
+            {
                 Ok(events) => {
                     mem.circuit_breaker().record_success();
                     McpResponse {
@@ -143,10 +151,10 @@ pub(super) async fn handle_infinite_time_range(
                         result: Some(mcp_ok(&events)),
                         error: None,
                     }
-                },
+                }
                 Err(e) => degrade_infinite_read(e, mem, id),
             }
-        },
+        }
         None => McpResponse {
             jsonrpc: "2.0".to_owned(),
             id,
@@ -189,10 +197,10 @@ pub(super) async fn handle_infinite_drill_hour(
                         result: Some(mcp_ok(&summaries)),
                         error: None,
                     }
-                },
+                }
                 Err(e) => degrade_infinite_read(e, mem, id),
             }
-        },
+        }
         None => McpResponse {
             jsonrpc: "2.0".to_owned(),
             id,
@@ -235,10 +243,10 @@ pub(super) async fn handle_infinite_drill_minute(
                         result: Some(mcp_ok(&summaries)),
                         error: None,
                     }
-                },
+                }
                 Err(e) => degrade_infinite_read(e, mem, id),
             }
-        },
+        }
         None => McpResponse {
             jsonrpc: "2.0".to_owned(),
             id,

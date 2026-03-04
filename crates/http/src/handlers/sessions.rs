@@ -20,14 +20,17 @@ pub async fn generate_summary(
     Json(req): Json<SessionSummaryRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     // Legacy API: session_id serves as both UUID and content_session_id
-    let summary =
-        state.session_service.summarize_session(&req.session_id, &req.session_id).await.map_err(
-            |e| {
-                tracing::error!("Generate summary failed: {}", e);
-                ApiError::from(e)
-            },
-        )?;
-    Ok(Json(serde_json::json!({"session_id": req.session_id, "summary": summary})))
+    let summary = state
+        .session_service
+        .summarize_session(&req.session_id, &req.session_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Generate summary failed: {}", e);
+            ApiError::from(e)
+        })?;
+    Ok(Json(
+        serde_json::json!({"session_id": req.session_id, "summary": summary}),
+    ))
 }
 
 pub async fn session_init_legacy(
@@ -35,10 +38,17 @@ pub async fn session_init_legacy(
     Path(session_db_id): Path<String>,
     Json(req): Json<SessionInitRequest>,
 ) -> Result<Json<SessionInitResponse>, ApiError> {
-    let content_session_id = req.content_session_id.unwrap_or_else(|| session_db_id.clone());
-    let resp =
-        create_session(&state, session_db_id, content_session_id, req.project, req.user_prompt)
-            .await?;
+    let content_session_id = req
+        .content_session_id
+        .unwrap_or_else(|| session_db_id.clone());
+    let resp = create_session(
+        &state,
+        session_db_id,
+        content_session_id,
+        req.project,
+        req.user_prompt,
+    )
+    .await?;
     Ok(Json(resp))
 }
 
@@ -56,24 +66,31 @@ pub async fn session_summarize_legacy(
     Path(session_db_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     // Legacy API: session_db_id serves as both UUID and content_session_id
-    let summary =
-        state.session_service.summarize_session(&session_db_id, &session_db_id).await.map_err(
-            |e| {
-                tracing::error!("Generate summary failed: {}", e);
-                ApiError::from(e)
-            },
-        )?;
-    Ok(Json(serde_json::json!({"session_id": session_db_id, "summary": summary, "queued": true})))
+    let summary = state
+        .session_service
+        .summarize_session(&session_db_id, &session_db_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Generate summary failed: {}", e);
+            ApiError::from(e)
+        })?;
+    Ok(Json(
+        serde_json::json!({"session_id": session_db_id, "summary": summary, "queued": true}),
+    ))
 }
 
 pub async fn session_status(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
 ) -> Result<Json<SessionStatusResponse>, ApiError> {
-    let session = state.session_service.get_session(&session_db_id).await.map_err(|e| {
-        tracing::error!("Get session error: {}", e);
-        ApiError::from(e)
-    })?;
+    let session = state
+        .session_service
+        .get_session(&session_db_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Get session error: {}", e);
+            ApiError::from(e)
+        })?;
     match session {
         Some(s) => {
             let obs_count = state
@@ -88,7 +105,7 @@ pub async fn session_status(
                 started_at: s.started_at.to_rfc3339(),
                 ended_at: s.ended_at.map(|d| d.to_rfc3339()),
             }))
-        },
+        }
         None => Err(ApiError::NotFound("Not Found".into())),
     }
 }
@@ -97,21 +114,32 @@ pub async fn session_delete(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
 ) -> Result<Json<SessionDeleteResponse>, ApiError> {
-    let deleted = state.session_service.delete_session(&session_db_id).await.map_err(|e| {
-        tracing::error!("Delete session error: {}", e);
-        ApiError::from(e)
-    })?;
-    Ok(Json(SessionDeleteResponse { deleted, session_id: session_db_id }))
+    let deleted = state
+        .session_service
+        .delete_session(&session_db_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Delete session error: {}", e);
+            ApiError::from(e)
+        })?;
+    Ok(Json(SessionDeleteResponse {
+        deleted,
+        session_id: session_db_id,
+    }))
 }
 
 pub async fn session_complete(
     State(state): State<Arc<AppState>>,
     Path(session_db_id): Path<String>,
 ) -> Result<Json<SessionCompleteResponse>, ApiError> {
-    let summary = state.session_service.complete_session(&session_db_id).await.map_err(|e| {
-        tracing::error!("Complete session failed: {}", e);
-        ApiError::from(e)
-    })?;
+    let summary = state
+        .session_service
+        .complete_session(&session_db_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Complete session failed: {}", e);
+            ApiError::from(e)
+        })?;
     Ok(Json(SessionCompleteResponse {
         session_id: session_db_id,
         status: SessionStatus::Completed,

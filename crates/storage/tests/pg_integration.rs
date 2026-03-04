@@ -18,7 +18,9 @@ use uuid::Uuid;
 async fn create_pg_storage() -> PgStorage {
     let url = std::env::var("DATABASE_URL")
         .expect("DATABASE_URL must be set for PgStorage integration tests");
-    PgStorage::new(&url).await.expect("Failed to connect to PostgreSQL")
+    PgStorage::new(&url)
+        .await
+        .expect("Failed to connect to PostgreSQL")
 }
 
 fn unique_id() -> String {
@@ -79,7 +81,10 @@ async fn pg_save_and_get_observation() {
     assert_eq!(fetched.id, id);
     assert_eq!(fetched.title, title);
     assert_eq!(fetched.project.as_deref(), Some(project.as_str()));
-    assert_eq!(fetched.narrative.as_deref(), Some("Test narrative for integration"));
+    assert_eq!(
+        fetched.narrative.as_deref(),
+        Some("Test narrative for integration")
+    );
     assert_eq!(fetched.facts, vec!["fact1", "fact2"]);
     assert_eq!(fetched.keywords, vec!["integration", "test"]);
 }
@@ -118,7 +123,10 @@ async fn pg_get_recent_observations() {
     // get_recent returns across ALL observations, not project-filtered,
     // so we just verify it returns at least some results.
     let recent = storage.get_recent(2).await.unwrap();
-    assert!(recent.len() >= 2, "Should return at least 2 recent observations");
+    assert!(
+        recent.len() >= 2,
+        "Should return at least 2 recent observations"
+    );
 }
 
 // ── Session Tests ────────────────────────────────────────────────
@@ -155,11 +163,17 @@ async fn pg_session_status_update() {
 
     storage.save_session(&session).await.unwrap();
 
-    storage.update_session_status(&id, SessionStatus::Completed).await.unwrap();
+    storage
+        .update_session_status(&id, SessionStatus::Completed)
+        .await
+        .unwrap();
 
     let fetched = storage.get_session(&id).await.unwrap().unwrap();
     assert_eq!(fetched.status, SessionStatus::Completed);
-    assert!(fetched.ended_at.is_some(), "ended_at should be set when status is non-Active");
+    assert!(
+        fetched.ended_at.is_some(),
+        "ended_at should be set when status is non-Active"
+    );
 
     // Cleanup
     storage.delete_session(&id).await.unwrap();
@@ -231,8 +245,14 @@ async fn pg_knowledge_dedup() {
 
     // Triggers should be merged
     let fetched = storage.get_knowledge(&saved2.id).await.unwrap().unwrap();
-    assert!(fetched.triggers.contains(&"trigger1".to_owned()), "First trigger should be preserved");
-    assert!(fetched.triggers.contains(&"trigger2".to_owned()), "Second trigger should be merged");
+    assert!(
+        fetched.triggers.contains(&"trigger1".to_owned()),
+        "First trigger should be preserved"
+    );
+    assert!(
+        fetched.triggers.contains(&"trigger2".to_owned()),
+        "Second trigger should be merged"
+    );
 
     // Description updated to latest
     assert_eq!(fetched.description, "Second description");
@@ -291,7 +311,10 @@ async fn pg_search_observations() {
     // FTS search for the distinctive word
     let results = storage.search("xylophone", 10).await.unwrap();
     let found = results.iter().any(|r| r.id == id);
-    assert!(found, "Observation should be found via FTS search for 'xylophone'");
+    assert!(
+        found,
+        "Observation should be found via FTS search for 'xylophone'"
+    );
 }
 
 // ── Stats Tests ──────────────────────────────────────────────────
@@ -304,8 +327,12 @@ async fn pg_stats() {
     // Insert at least one observation and session so counts are > 0
     let obs_id = unique_id();
     let project = unique_id();
-    let obs =
-        make_observation(&obs_id, "pg-test-session", &project, &format!("Stats test {obs_id}"));
+    let obs = make_observation(
+        &obs_id,
+        "pg-test-session",
+        &project,
+        &format!("Stats test {obs_id}"),
+    );
     storage.save_observation(&obs).await.unwrap();
 
     let sess_id = unique_id();
@@ -313,7 +340,10 @@ async fn pg_stats() {
     storage.save_session(&session).await.unwrap();
 
     let stats = storage.get_stats().await.unwrap();
-    assert!(stats.observation_count > 0, "Should have at least 1 observation");
+    assert!(
+        stats.observation_count > 0,
+        "Should have at least 1 observation"
+    );
     assert!(stats.session_count > 0, "Should have at least 1 session");
 
     // Cleanup session (observations lack a delete API, but they use unique IDs so no interference)
@@ -346,12 +376,21 @@ async fn pg_store_and_search_embedding() {
     storage.store_embedding(&id, &embedding).await.unwrap();
 
     // Verify observation no longer appears in "without embeddings"
-    let without = storage.get_observations_without_embeddings(1000).await.unwrap();
+    let without = storage
+        .get_observations_without_embeddings(1000)
+        .await
+        .unwrap();
     let still_missing = without.iter().any(|o| o.id == id);
-    assert!(!still_missing, "Observation should no longer be in 'without embeddings' list");
+    assert!(
+        !still_missing,
+        "Observation should no longer be in 'without embeddings' list"
+    );
 
     // Semantic search with same vector should find it
     let results = storage.semantic_search(&embedding, 10).await.unwrap();
     let found = results.iter().any(|r| r.id == id);
-    assert!(found, "Observation should be found via semantic search with matching vector");
+    assert!(
+        found,
+        "Observation should be found via semantic search with matching vector"
+    );
 }

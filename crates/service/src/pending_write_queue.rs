@@ -12,7 +12,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 const MAX_QUEUE_SIZE: usize = 1000;
 
 pub enum PendingWrite {
-    SaveMemory { text: String, title: Option<String>, project: Option<String> },
+    SaveMemory {
+        text: String,
+        title: Option<String>,
+        project: Option<String>,
+    },
 }
 
 /// In-memory buffer for write operations when the database is unavailable.
@@ -27,7 +31,10 @@ pub struct PendingWriteQueue {
 impl PendingWriteQueue {
     #[must_use]
     pub fn new() -> Self {
-        Self { queue: Mutex::new(VecDeque::new()), flushing: AtomicBool::new(false) }
+        Self {
+            queue: Mutex::new(VecDeque::new()),
+            flushing: AtomicBool::new(false),
+        }
     }
 
     /// Returns `false` if the queue was full (oldest item was dropped to make room).
@@ -38,7 +45,10 @@ impl PendingWriteQueue {
         };
         if queue.len() >= MAX_QUEUE_SIZE {
             queue.pop_front();
-            tracing::warn!(max = MAX_QUEUE_SIZE, "Pending write queue full, dropping oldest item");
+            tracing::warn!(
+                max = MAX_QUEUE_SIZE,
+                "Pending write queue full, dropping oldest item"
+            );
             queue.push_back(item);
             false
         } else {
@@ -72,7 +82,9 @@ impl PendingWriteQueue {
     }
 
     pub fn start_flush(&self) -> bool {
-        self.flushing.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok()
+        self.flushing
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
     }
 
     pub fn finish_flush(&self) {
@@ -103,7 +115,11 @@ mod tests {
         let q = PendingWriteQueue::new();
         assert!(q.is_empty());
 
-        q.push(PendingWrite::SaveMemory { text: "hello".into(), title: None, project: None });
+        q.push(PendingWrite::SaveMemory {
+            text: "hello".into(),
+            title: None,
+            project: None,
+        });
         assert_eq!(q.len(), 1);
 
         let items = q.drain_all();

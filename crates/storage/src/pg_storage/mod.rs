@@ -8,7 +8,10 @@
     reason = "DB row counts and pagination are bounded by PostgreSQL limits"
 )]
 // Absolute paths in error handling are acceptable
-#![allow(clippy::absolute_paths, reason = "std paths in error handling are clear")]
+#![allow(
+    clippy::absolute_paths,
+    reason = "std paths in error handling are clear"
+)]
 
 mod embeddings;
 mod injections;
@@ -70,13 +73,13 @@ impl PgStorage {
             Ok(()) => {
                 tracing::info!("PgStorage initialized with migrations");
                 false
-            },
+            }
             Err(e) => {
                 tracing::warn!(
                     "PgStorage initialized without migrations (DB may be unavailable): {e}"
                 );
                 true
-            },
+            }
         };
 
         Ok(Self {
@@ -101,12 +104,12 @@ impl PgStorage {
             Ok(()) => {
                 tracing::info!("Deferred migrations completed successfully");
                 Ok(true)
-            },
+            }
             Err(e) => {
                 self.migrations_pending.store(true, Ordering::Release);
                 tracing::debug!("Deferred migration attempt failed (DB may still be down): {e}");
                 Ok(false)
-            },
+            }
         }
     }
 
@@ -179,11 +182,11 @@ impl PgStorage {
             Ok(val) => {
                 self.record_success();
                 Ok(val)
-            },
+            }
             Err(e) => {
                 self.record_failure_if_connection_error(&e);
                 Err(e)
-            },
+            }
         }
     }
 }

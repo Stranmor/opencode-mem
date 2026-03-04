@@ -38,16 +38,16 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
                 Ok(mem) => {
                     tracing::info!("Connected to infinite memory");
                     Some(Arc::new(mem))
-                },
+                }
                 Err(e) => {
                     tracing::warn!("Failed to initialize infinite memory: {}", e);
                     None
-                },
+                }
             },
             Err(e) => {
                 tracing::warn!("Failed to create infinite memory pool: {}", e);
                 None
-            },
+            }
         }
     } else {
         tracing::info!("INFINITE_MEMORY_URL not set, infinite memory disabled");
@@ -66,11 +66,11 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
             Ok(emb) => {
                 tracing::info!("Embedding service initialized (BGE-M3, 1024 dimensions)");
                 Some(Arc::new(emb))
-            },
+            }
             Err(e) => {
                 tracing::warn!("Failed to initialize embeddings: {}", e);
                 None
-            },
+            }
         }
     };
 
@@ -83,8 +83,11 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     ));
     let session_service = Arc::new(SessionService::new(storage.clone(), llm.clone()));
     let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));
-    let search_service =
-        Arc::new(SearchService::new(storage.clone(), embeddings.clone(), infinite_mem.clone()));
+    let search_service = Arc::new(SearchService::new(
+        storage.clone(),
+        embeddings.clone(),
+        infinite_mem.clone(),
+    ));
     let queue_service = Arc::new(QueueService::new(storage.clone()));
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::broadcast::channel(1);
 
@@ -116,7 +119,11 @@ pub(crate) async fn run(port: u16, host: String) -> Result<()> {
     let addr_str = format!("{host}:{port}");
     let addr: std::net::SocketAddr = addr_str.parse()?;
 
-    let domain = if addr.is_ipv6() { socket2::Domain::IPV6 } else { socket2::Domain::IPV4 };
+    let domain = if addr.is_ipv6() {
+        socket2::Domain::IPV6
+    } else {
+        socket2::Domain::IPV4
+    };
 
     let socket = socket2::Socket::new(domain, socket2::Type::STREAM, None)?;
 
@@ -149,14 +156,17 @@ Or kill the process manually before starting a new server.",
     tracing::info!("Starting HTTP server on {}", addr_str);
     let is_restart = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let is_restart_clone = is_restart.clone();
-    axum::serve(listener, router.into_make_service_with_connect_info::<std::net::SocketAddr>())
-        .with_graceful_shutdown(async move {
-            is_restart_clone.store(
-                shutdown_rx.recv().await.unwrap_or(false),
-                std::sync::atomic::Ordering::Relaxed,
-            );
-        })
-        .await?;
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .with_graceful_shutdown(async move {
+        is_restart_clone.store(
+            shutdown_rx.recv().await.unwrap_or(false),
+            std::sync::atomic::Ordering::Relaxed,
+        );
+    })
+    .await?;
 
     tracing::info!("Waiting for background tasks to finish...");
     // let _ = tokio::join!(poller_handle, cron_handle);

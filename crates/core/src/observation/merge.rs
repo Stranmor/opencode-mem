@@ -55,20 +55,34 @@ pub fn compute_merge(existing: &Observation, newer: &Observation) -> MergeResult
     // it was found later. We should prefer the title/type/reason of the observation with the higher
     // noise level (i.e. more important), or the newer one if equal.
     let (title, observation_type, noise_reason) = if existing.noise_level < newer.noise_level {
-        (existing.title.clone(), existing.observation_type, existing.noise_reason.clone())
+        (
+            existing.title.clone(),
+            existing.observation_type,
+            existing.noise_reason.clone(),
+        )
     } else if newer.noise_level < existing.noise_level {
-        (newer.title.clone(), newer.observation_type, newer.noise_reason.clone())
+        (
+            newer.title.clone(),
+            newer.observation_type,
+            newer.noise_reason.clone(),
+        )
     } else if newer.created_at >= existing.created_at {
         (
             newer.title.clone(),
             newer.observation_type,
-            newer.noise_reason.clone().or_else(|| existing.noise_reason.clone()),
+            newer
+                .noise_reason
+                .clone()
+                .or_else(|| existing.noise_reason.clone()),
         )
     } else {
         (
             existing.title.clone(),
             existing.observation_type,
-            existing.noise_reason.clone().or_else(|| newer.noise_reason.clone()),
+            existing
+                .noise_reason
+                .clone()
+                .or_else(|| newer.noise_reason.clone()),
         )
     };
 

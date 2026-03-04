@@ -50,7 +50,7 @@ impl IntoResponse for ApiError {
                     Json(body),
                 )
                     .into_response()
-            },
+            }
             _ => {
                 let (status, message) = match self {
                     Self::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
@@ -59,14 +59,17 @@ impl IntoResponse for ApiError {
                     Self::UnprocessableEntity(msg) => (StatusCode::UNPROCESSABLE_ENTITY, msg),
                     Self::Internal(err) => {
                         tracing::error!(error = ?err, "internal server error");
-                        (StatusCode::INTERNAL_SERVER_ERROR, "internal server error".to_owned())
-                    },
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "internal server error".to_owned(),
+                        )
+                    }
                     Self::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
                     Self::Degraded => unreachable!(),
                 };
                 let body = serde_json::json!({"error": message});
                 (status, Json(body)).into_response()
-            },
+            }
         }
     }
 }
@@ -88,10 +91,10 @@ impl From<opencode_mem_service::ServiceError> for ApiError {
         match err {
             ServiceError::Storage(ref e) if e.is_duplicate() => {
                 Self::UnprocessableEntity(err.to_string())
-            },
+            }
             ServiceError::Storage(StorageError::NotFound { entity, id }) => {
                 Self::NotFound(format!("{entity} '{id}' not found"))
-            },
+            }
             ServiceError::InvalidInput(msg) => Self::BadRequest(msg),
             ServiceError::NotConfigured(msg) => Self::ServiceUnavailable(msg),
             _ => Self::Internal(err.into()),

@@ -16,7 +16,11 @@ const DEDUP_SIMILARITY_THRESHOLD: f32 = 0.85;
 
 impl SearchService {
     pub async fn clear_embeddings(&self) -> Result<(), ServiceError> {
-        let result = self.storage.clear_embeddings().await.map_err(ServiceError::from);
+        let result = self
+            .storage
+            .clear_embeddings()
+            .await
+            .map_err(ServiceError::from);
         self.with_cb(result).await
     }
 
@@ -32,11 +36,17 @@ impl SearchService {
         let mut total = 0;
         let mut failed_ids = std::collections::HashSet::new();
         loop {
-            let all_obs = self.storage.get_observations_without_embeddings(batch_size).await?;
+            let all_obs = self
+                .storage
+                .get_observations_without_embeddings(batch_size)
+                .await?;
             if all_obs.is_empty() {
                 break;
             }
-            let obs: Vec<_> = all_obs.into_iter().filter(|o| !failed_ids.contains(&o.id)).collect();
+            let obs: Vec<_> = all_obs
+                .into_iter()
+                .filter(|o| !failed_ids.contains(&o.id))
+                .collect();
             if obs.is_empty() {
                 break;
             }
@@ -48,8 +58,9 @@ impl SearchService {
                     o.facts.join(" ")
                 );
                 let emb = Arc::clone(embeddings);
-                let embed_result =
-                    tokio::task::spawn_blocking(move || emb.embed(&text)).await.unwrap_or_else(
+                let embed_result = tokio::task::spawn_blocking(move || emb.embed(&text))
+                    .await
+                    .unwrap_or_else(
                         |e| Err(anyhow::anyhow!("spawn_blocking failed: {}", e).into()),
                     );
 
@@ -60,11 +71,11 @@ impl SearchService {
                         } else {
                             failed_ids.insert(o.id.clone());
                         }
-                    },
+                    }
                     Err(e) => {
                         tracing::warn!("Failed to generate embedding for {}: {}", o.id, e);
                         failed_ids.insert(o.id.clone());
-                    },
+                    }
                 }
             }
         }
@@ -92,8 +103,10 @@ impl SearchService {
             return Ok(observations);
         }
 
-        let embedding_map: HashMap<&str, &[f32]> =
-            embedding_pairs.iter().map(|(id, vec)| (id.as_str(), vec.as_slice())).collect();
+        let embedding_map: HashMap<&str, &[f32]> = embedding_pairs
+            .iter()
+            .map(|(id, vec)| (id.as_str(), vec.as_slice()))
+            .collect();
 
         // Union-find for grouping similar observations
         let obs_count = observations.len();
@@ -117,15 +130,21 @@ impl SearchService {
 
         // Compare all pairs and union those above threshold
         for i in 0..obs_count {
-            let Some(emb_a) =
-                embedding_map.get(observations.get(i).map(|o| o.id.as_str()).unwrap_or_default())
-            else {
+            let Some(emb_a) = embedding_map.get(
+                observations
+                    .get(i)
+                    .map(|o| o.id.as_str())
+                    .unwrap_or_default(),
+            ) else {
                 continue;
             };
             for j in (i.checked_add(1).unwrap_or(obs_count))..obs_count {
-                let Some(emb_b) = embedding_map
-                    .get(observations.get(j).map(|o| o.id.as_str()).unwrap_or_default())
-                else {
+                let Some(emb_b) = embedding_map.get(
+                    observations
+                        .get(j)
+                        .map(|o| o.id.as_str())
+                        .unwrap_or_default(),
+                ) else {
                     continue;
                 };
                 let sim = cosine_similarity(emb_a, emb_b);
@@ -152,9 +171,14 @@ impl SearchService {
         // (smallest ordinal: Critical < High < Medium), then most recent as tiebreaker
         let mut kept: Vec<&Observation> = Vec::with_capacity(groups.len());
         for members in groups.values() {
-            let best = members.iter().filter_map(|&idx| observations.get(idx)).min_by(|a, b| {
-                a.noise_level.cmp(&b.noise_level).then_with(|| b.created_at.cmp(&a.created_at))
-            });
+            let best = members
+                .iter()
+                .filter_map(|&idx| observations.get(idx))
+                .min_by(|a, b| {
+                    a.noise_level
+                        .cmp(&b.noise_level)
+                        .then_with(|| b.created_at.cmp(&a.created_at))
+                });
             if let Some(obs) = best {
                 kept.push(obs);
             }

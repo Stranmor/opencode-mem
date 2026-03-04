@@ -63,12 +63,16 @@ pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
     let mut total = 0;
     let mut failed_ids: HashSet<String> = HashSet::new();
     loop {
-        let all_observations = storage.get_observations_without_embeddings(batch_size).await?;
+        let all_observations = storage
+            .get_observations_without_embeddings(batch_size)
+            .await?;
         if all_observations.is_empty() {
             break;
         }
-        let observations: Vec<_> =
-            all_observations.into_iter().filter(|obs| !failed_ids.contains(&obs.id)).collect();
+        let observations: Vec<_> = all_observations
+            .into_iter()
+            .filter(|obs| !failed_ids.contains(&obs.id))
+            .collect();
         if observations.is_empty() {
             eprintln!(
                 "Remaining {} observations all previously failed — stopping",
@@ -96,17 +100,20 @@ pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
                             println!("Processed {total} observations...");
                         }
                     }
-                },
+                }
                 Err(e) => {
                     eprintln!("Failed to generate embedding for {}: {}", obs.id, e);
                     failed_ids.insert(obs.id.clone());
-                },
+                }
             }
         }
     }
 
     if !failed_ids.is_empty() {
-        eprintln!("Warning: {} observations failed to process", failed_ids.len());
+        eprintln!(
+            "Warning: {} observations failed to process",
+            failed_ids.len()
+        );
     }
     println!("Backfill complete. Generated embeddings for {total} observations.");
     Ok(())

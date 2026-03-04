@@ -92,7 +92,10 @@ mod tests {
     #[test]
     fn filter_memory_preserves_private_tags() {
         let input = "A <private>secret</private> B <memory-global>mem</memory-global> C";
-        assert_eq!(filter_injected_memory(input), "A <private>secret</private> B  C");
+        assert_eq!(
+            filter_injected_memory(input),
+            "A <private>secret</private> B  C"
+        );
     }
 
     // ========================================================================
@@ -229,7 +232,11 @@ mod tests {
         let result = filter_injected_memory(&input);
         let elapsed = start.elapsed();
         assert_eq!(result, "");
-        assert!(elapsed.as_secs() < 2, "Parser took {:?} — potential perf issue", elapsed);
+        assert!(
+            elapsed.as_secs() < 2,
+            "Parser took {:?} — potential perf issue",
+            elapsed
+        );
     }
 
     #[test]

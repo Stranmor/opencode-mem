@@ -25,19 +25,22 @@ pub async fn get_context_recent(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextQuery>,
 ) -> Result<Json<Vec<Observation>>, ApiError> {
-    let observations =
-        state.search_service.get_context_for_project(&query.project, query.limit).await.map_err(
-            |e| {
-                tracing::error!("Get context error: {}", e);
-                ApiError::from(e)
-            },
-        )?;
+    let observations = state
+        .search_service
+        .get_context_for_project(&query.project, query.limit)
+        .await
+        .map_err(|e| {
+            tracing::error!("Get context error: {}", e);
+            ApiError::from(e)
+        })?;
 
     if let Some(ref session_id) = query.session_id {
         let ids: Vec<String> = observations.iter().map(|o| o.id.clone()).collect();
         if !ids.is_empty()
-            && let Err(e) =
-                state.observation_service.save_injected_observations(session_id, &ids).await
+            && let Err(e) = state
+                .observation_service
+                .save_injected_observations(session_id, &ids)
+                .await
         {
             tracing::warn!("Failed to record injected observations: {}", e);
         }
@@ -49,17 +52,27 @@ pub async fn get_context_recent(
 pub async fn get_projects(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<String>>, ApiError> {
-    state.search_service.get_all_projects().await.map(Json).map_err(|e| {
-        tracing::error!("Get projects error: {}", e);
-        ApiError::from(e)
-    })
+    state
+        .search_service
+        .get_all_projects()
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Get projects error: {}", e);
+            ApiError::from(e)
+        })
 }
 
 pub async fn get_stats(State(state): State<Arc<AppState>>) -> Result<Json<StorageStats>, ApiError> {
-    state.search_service.get_stats().await.map(Json).map_err(|e| {
-        tracing::error!("Get stats error: {}", e);
-        ApiError::from(e)
-    })
+    state
+        .search_service
+        .get_stats()
+        .await
+        .map(Json)
+        .map_err(|e| {
+            tracing::error!("Get stats error: {}", e);
+            ApiError::from(e)
+        })
 }
 
 pub async fn sse_events(
@@ -84,7 +97,11 @@ pub async fn get_decisions(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, ApiError> {
-    let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
+    let q = if query.q.is_empty() {
+        None
+    } else {
+        Some(query.q.as_str())
+    };
     state
         .search_service
         .search_with_filters(
@@ -107,7 +124,11 @@ pub async fn get_changes(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, ApiError> {
-    let q = if query.q.is_empty() { None } else { Some(query.q.as_str()) };
+    let q = if query.q.is_empty() {
+        None
+    } else {
+        Some(query.q.as_str())
+    };
     state
         .search_service
         .search_with_filters(
@@ -135,12 +156,15 @@ pub async fn get_how_it_works(
     } else {
         format!("{} how-it-works", query.q)
     };
-    state.search_service.hybrid_search(&search_query, query.capped_limit()).await.map(Json).map_err(
-        |e| {
+    state
+        .search_service
+        .hybrid_search(&search_query, query.capped_limit())
+        .await
+        .map(Json)
+        .map_err(|e| {
             tracing::error!("How it works search error: {}", e);
             ApiError::from(e)
-        },
-    )
+        })
 }
 
 pub async fn context_timeline(
@@ -154,13 +178,14 @@ pub async fn context_preview(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextPreviewQuery>,
 ) -> Result<Json<ContextPreview>, ApiError> {
-    let observations =
-        state.search_service.get_context_for_project(&query.project, query.limit).await.map_err(
-            |e| {
-                tracing::error!("Context preview error: {}", e);
-                ApiError::from(e)
-            },
-        )?;
+    let observations = state
+        .search_service
+        .get_context_for_project(&query.project, query.limit)
+        .await
+        .map_err(|e| {
+            tracing::error!("Context preview error: {}", e);
+            ApiError::from(e)
+        })?;
     let preview = if query.format == "full" {
         observations
             .iter()
@@ -175,7 +200,11 @@ pub async fn context_preview(
             .collect::<Vec<_>>()
             .join("\n\n")
     } else {
-        observations.iter().map(|o| format!("\u{2022} {}", o.title)).collect::<Vec<_>>().join("\n")
+        observations
+            .iter()
+            .map(|o| format!("\u{2022} {}", o.title))
+            .collect::<Vec<_>>()
+            .join("\n")
     };
     Ok(Json(ContextPreview {
         project: query.project,

@@ -31,7 +31,10 @@ impl SessionService {
         &self,
         session_id: &str,
     ) -> Result<usize, ServiceError> {
-        Ok(self.storage.get_session_observation_count(session_id).await?)
+        Ok(self
+            .storage
+            .get_session_observation_count(session_id)
+            .await?)
     }
 
     pub async fn delete_session(&self, session_id: &str) -> Result<bool, ServiceError> {
@@ -42,7 +45,10 @@ impl SessionService {
         &self,
         content_session_id: &str,
     ) -> Result<Option<Session>, ServiceError> {
-        Ok(self.storage.get_session_by_content_id(content_session_id).await?)
+        Ok(self
+            .storage
+            .get_session_by_content_id(content_session_id)
+            .await?)
     }
 
     pub async fn close_stale_sessions(&self, max_age_hours: i64) -> Result<usize, ServiceError> {

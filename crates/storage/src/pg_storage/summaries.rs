@@ -33,18 +33,26 @@ impl SummaryStore for PgStorage {
         .bind(&summary.notes)
         .bind(serde_json::to_value(&summary.files_read)?)
         .bind(serde_json::to_value(&summary.files_edited)?)
-        .bind(summary.prompt_number.map(|v| v.as_pg_i32()).transpose().map_err(|e| {
-            crate::StorageError::DataCorruption {
-                context: e.into(),
-                source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
-            }
-        })?)
-        .bind(summary.discovery_tokens.map(|v| v.as_pg_i32()).transpose().map_err(|e| {
-            crate::StorageError::DataCorruption {
-                context: e.into(),
-                source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
-            }
-        })?)
+        .bind(
+            summary
+                .prompt_number
+                .map(|v| v.as_pg_i32())
+                .transpose()
+                .map_err(|e| crate::StorageError::DataCorruption {
+                    context: e.into(),
+                    source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+                })?,
+        )
+        .bind(
+            summary
+                .discovery_tokens
+                .map(|v| v.as_pg_i32())
+                .transpose()
+                .map_err(|e| crate::StorageError::DataCorruption {
+                    context: e.into(),
+                    source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+                })?,
+        )
         .bind(summary.created_at)
         .execute(&self.pool)
         .await?;
@@ -83,7 +91,10 @@ impl SummaryStore for PgStorage {
                 .rows_affected();
 
         if rows_affected == 0 {
-            tracing::warn!(session_id, "update_session_status_with_summary: session not found");
+            tracing::warn!(
+                session_id,
+                "update_session_status_with_summary: session not found"
+            );
         }
 
         if let Some(s) = summary {
@@ -166,8 +177,10 @@ impl SummaryStore for PgStorage {
             .await?
         };
 
-        let items: Vec<SessionSummary> =
-            rows.iter().map(row_to_summary).collect::<Result<_, StorageError>>()?;
+        let items: Vec<SessionSummary> = rows
+            .iter()
+            .map(row_to_summary)
+            .collect::<Result<_, StorageError>>()?;
         Ok(PaginatedResult::new(items, total, offset, limit))
     }
 

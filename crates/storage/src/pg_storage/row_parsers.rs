@@ -15,13 +15,15 @@ pub(crate) fn parse_json_value<T: serde::de::DeserializeOwned>(val: serde_json::
 }
 
 pub(crate) fn parse_pg_observation_type(s: &str) -> Result<ObservationType, StorageError> {
-    serde_json::from_str(s).or_else(|_| s.parse::<ObservationType>()).map_err(|e| {
-        tracing::warn!("Invalid observation_type '{}' in DB: {}", s, e);
-        StorageError::DataCorruption {
-            context: format!("invalid observation_type in DB: '{s}'"),
-            source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
-        }
-    })
+    serde_json::from_str(s)
+        .or_else(|_| s.parse::<ObservationType>())
+        .map_err(|e| {
+            tracing::warn!("Invalid observation_type '{}' in DB: {}", s, e);
+            StorageError::DataCorruption {
+                context: format!("invalid observation_type in DB: '{s}'"),
+                source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+            }
+        })
 }
 
 pub(crate) fn parse_pg_noise_level(s: Option<&str>) -> Result<NoiseLevel, StorageError> {
@@ -92,7 +94,9 @@ pub(crate) fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observat
 }
 
 pub(crate) fn escape_like(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 pub(crate) fn usize_to_i64(val: usize) -> i64 {
@@ -205,10 +209,12 @@ pub(crate) fn row_to_knowledge(
 ) -> Result<GlobalKnowledge, StorageError> {
     let kt_str: String = row.try_get("knowledge_type")?;
     let knowledge_type: KnowledgeType =
-        kt_str.parse::<KnowledgeType>().map_err(|e| StorageError::DataCorruption {
-            context: format!("invalid knowledge_type in DB: {}", kt_str),
-            source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
-        })?;
+        kt_str
+            .parse::<KnowledgeType>()
+            .map_err(|e| StorageError::DataCorruption {
+                context: format!("invalid knowledge_type in DB: {}", kt_str),
+                source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+            })?;
     let triggers: serde_json::Value = row.try_get("triggers")?;
     let source_projects: serde_json::Value = row.try_get("source_projects")?;
     let source_observations: serde_json::Value = row.try_get("source_observations")?;
@@ -237,12 +243,14 @@ pub(crate) fn row_to_prompt(row: &sqlx::postgres::PgRow) -> Result<UserPrompt, S
     Ok(UserPrompt::new(
         row.try_get("id")?,
         row.try_get("content_session_id")?,
-        PromptNumber(u32::try_from(row.try_get::<i32, _>("prompt_number")?).map_err(|e| {
-            StorageError::DataCorruption {
-                context: "prompt_number negative in DB".into(),
-                source: Box::new(e),
-            }
-        })?),
+        PromptNumber(
+            u32::try_from(row.try_get::<i32, _>("prompt_number")?).map_err(|e| {
+                StorageError::DataCorruption {
+                    context: "prompt_number negative in DB".into(),
+                    source: Box::new(e),
+                }
+            })?,
+        ),
         row.try_get("prompt_text")?,
         row.try_get("project")?,
         created_at,
@@ -254,10 +262,12 @@ pub(crate) fn row_to_pending_message(
 ) -> Result<PendingMessage, StorageError> {
     let status_str: String = row.try_get("status")?;
     let status =
-        status_str.parse::<PendingMessageStatus>().map_err(|e| StorageError::DataCorruption {
-            context: format!("invalid pending message status in DB: {}", status_str),
-            source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
-        })?;
+        status_str
+            .parse::<PendingMessageStatus>()
+            .map_err(|e| StorageError::DataCorruption {
+                context: format!("invalid pending message status in DB: {}", status_str),
+                source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+            })?;
     Ok(PendingMessage {
         id: row.try_get("id")?,
         session_id: row.try_get("session_id")?,

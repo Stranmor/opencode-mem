@@ -42,8 +42,13 @@ Return JSON: {{"summary": "..."}}"#
 
         let request = ChatRequest {
             model: self.model(),
-            messages: vec![Message { role: "user".to_owned(), content: prompt }],
-            response_format: ResponseFormat { format_type: ResponseFormatType::JsonObject },
+            messages: vec![Message {
+                role: "user".to_owned(),
+                content: prompt,
+            }],
+            response_format: ResponseFormat {
+                format_type: ResponseFormatType::JsonObject,
+            },
             max_tokens: None,
         };
 

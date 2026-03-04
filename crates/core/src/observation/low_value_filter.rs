@@ -171,7 +171,11 @@ impl LowValueFilter {
             filter.prefixes.extend(parsed.prefixes);
             filter.exact.extend(parsed.exact);
         }
-        for v in [&mut filter.contains, &mut filter.prefixes, &mut filter.exact] {
+        for v in [
+            &mut filter.contains,
+            &mut filter.prefixes,
+            &mut filter.exact,
+        ] {
             v.sort_unstable();
             v.dedup();
         }
@@ -179,7 +183,11 @@ impl LowValueFilter {
     }
 
     fn from_pattern_str(patterns: &str) -> Self {
-        let mut filter = Self { contains: Vec::new(), prefixes: Vec::new(), exact: Vec::new() };
+        let mut filter = Self {
+            contains: Vec::new(),
+            prefixes: Vec::new(),
+            exact: Vec::new(),
+        };
         for raw in patterns.split(',') {
             let token = raw.trim();
             if token.is_empty() {
@@ -192,16 +200,20 @@ impl LowValueFilter {
                     if let Some(v) = Some(chars.as_str().trim()).filter(|s| !s.is_empty()) {
                         filter.prefixes.push((*v).into());
                     }
-                },
+                }
                 Some('=') => {
                     if let Some(v) = Some(chars.as_str().trim()).filter(|s| !s.is_empty()) {
                         filter.exact.push((*v).into());
                     }
-                },
+                }
                 _ => filter.contains.push(token.into()),
             }
         }
-        for v in [&mut filter.contains, &mut filter.prefixes, &mut filter.exact] {
+        for v in [
+            &mut filter.contains,
+            &mut filter.prefixes,
+            &mut filter.exact,
+        ] {
             v.sort_unstable();
             v.dedup();
         }

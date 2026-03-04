@@ -12,8 +12,13 @@ use crate::error::LlmError;
 #[derive(Debug)]
 pub enum CompressionResult {
     Create(Observation),
-    Update { target_id: String, observation: Observation },
-    Skip { reason: String },
+    Update {
+        target_id: String,
+        observation: Observation,
+    },
+    Skip {
+        reason: String,
+    },
 }
 
 /// Build the LLM prompt for compressing tool output into an observation.
@@ -27,7 +32,10 @@ fn build_compression_prompt(
     candidates: &[Observation],
 ) -> String {
     let mut types_prompt = String::new();
-    for (i, variant) in opencode_mem_core::ObservationType::ALL_VARIANTS.iter().enumerate() {
+    for (i, variant) in opencode_mem_core::ObservationType::ALL_VARIANTS
+        .iter()
+        .enumerate()
+    {
         types_prompt.push_str(&format!(
             "{}. {}: {}\n",
             i.saturating_add(1),
@@ -45,8 +53,13 @@ fn build_compression_prompt(
     } else {
         let mut entries = String::new();
         for (i, obs) in candidates.iter().enumerate() {
-            let narrative_preview =
-                obs.narrative.as_deref().unwrap_or("").chars().take(200).collect::<String>();
+            let narrative_preview = obs
+                .narrative
+                .as_deref()
+                .unwrap_or("")
+                .chars()
+                .take(200)
+                .collect::<String>();
             entries.push_str(&format!(
                 "[{}] id=\"{}\" title=\"{}\" | {}\n",
                 i.saturating_add(1),
@@ -192,7 +205,9 @@ fn parse_observation_response(
         LlmError::MissingField(format!("unknown noise level: {}", obs_json.noise_level))
     })?;
     if noise_level == NoiseLevel::Negligible {
-        let reason = obs_json.noise_reason.unwrap_or_else(|| "negligible noise level".to_owned());
+        let reason = obs_json
+            .noise_reason
+            .unwrap_or_else(|| "negligible noise level".to_owned());
         tracing::debug!(title = %obs_json.title, "Negligible noise → skip");
         return Ok(CompressionResult::Skip { reason });
     }
@@ -203,8 +218,11 @@ fn parse_observation_response(
         obs_json.title
     );
 
-    let concepts: Vec<Concept> =
-        obs_json.concepts.iter().filter_map(|s| Concept::from_str(s).ok()).collect();
+    let concepts: Vec<Concept> = obs_json
+        .concepts
+        .iter()
+        .filter_map(|s| Concept::from_str(s).ok())
+        .collect();
 
     let observation_type = ObservationType::from_str(&obs_json.observation_type).map_err(|e| {
         LlmError::MissingField(format!(
@@ -236,7 +254,10 @@ fn parse_observation_response(
     if action == "update" {
         if let Some(ref target_id) = obs_json.target_id {
             if candidate_ids.contains(target_id.as_str()) {
-                return Ok(CompressionResult::Update { target_id: target_id.clone(), observation });
+                return Ok(CompressionResult::Update {
+                    target_id: target_id.clone(),
+                    observation,
+                });
             }
             tracing::warn!(
                 target_id = %target_id,
@@ -277,8 +298,13 @@ impl LlmClient {
 
         let request = ChatRequest {
             model: self.model(),
-            messages: vec![Message { role: "user".to_owned(), content: prompt }],
-            response_format: ResponseFormat { format_type: ResponseFormatType::JsonObject },
+            messages: vec![Message {
+                role: "user".to_owned(),
+                content: prompt,
+            }],
+            response_format: ResponseFormat {
+                format_type: ResponseFormatType::JsonObject,
+            },
             max_tokens: None,
         };
 

@@ -11,15 +11,18 @@ use opencode_mem_core::Observation;
 #[async_trait]
 impl StatsStore for PgStorage {
     async fn get_stats(&self) -> Result<StorageStats, StorageError> {
-        let observation_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM observations").fetch_one(&self.pool).await?;
-        let session_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM sessions").fetch_one(&self.pool).await?;
+        let observation_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM observations")
+            .fetch_one(&self.pool)
+            .await?;
+        let session_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM sessions")
+            .fetch_one(&self.pool)
+            .await?;
         let summary_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM session_summaries")
             .fetch_one(&self.pool)
             .await?;
-        let prompt_count: i64 =
-            sqlx::query_scalar("SELECT COUNT(*) FROM user_prompts").fetch_one(&self.pool).await?;
+        let prompt_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM user_prompts")
+            .fetch_one(&self.pool)
+            .await?;
         let project_count: i64 = sqlx::query_scalar(
             "SELECT COUNT(DISTINCT project) FROM observations WHERE project IS NOT NULL",
         )
@@ -57,7 +60,9 @@ impl StatsStore for PgStorage {
             .fetch_one(&self.pool)
             .await?
         } else {
-            sqlx::query_scalar("SELECT COUNT(*) FROM observations").fetch_one(&self.pool).await?
+            sqlx::query_scalar("SELECT COUNT(*) FROM observations")
+                .fetch_one(&self.pool)
+                .await?
         };
 
         let rows = if let Some(p) = project {
@@ -84,8 +89,10 @@ impl StatsStore for PgStorage {
             .fetch_all(&self.pool)
             .await?
         };
-        let items: Vec<Observation> =
-            rows.iter().map(row_to_observation).collect::<Result<_, StorageError>>()?;
+        let items: Vec<Observation> = rows
+            .iter()
+            .map(row_to_observation)
+            .collect::<Result<_, StorageError>>()?;
         Ok(PaginatedResult::new(items, total, offset, limit))
     }
 }

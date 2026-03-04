@@ -66,9 +66,9 @@ impl ServiceError {
         match self {
             Self::Storage(e) => e.is_transient(),
             Self::Llm(e) => e.is_transient(),
-            Self::Search(e) => {
-                e.downcast_ref::<StorageError>().is_some_and(StorageError::is_transient)
-            },
+            Self::Search(e) => e
+                .downcast_ref::<StorageError>()
+                .is_some_and(StorageError::is_transient),
             _ => false,
         }
     }
@@ -92,18 +92,20 @@ impl ServiceError {
         match self {
             Self::Storage(e) => e.is_unavailable(),
             Self::Search(e) => {
-                if e.downcast_ref::<StorageError>().is_some_and(StorageError::is_unavailable) {
+                if e.downcast_ref::<StorageError>()
+                    .is_some_and(StorageError::is_unavailable)
+                {
                     return true;
                 }
                 // anyhow chain may not contain StorageError directly —
                 // check the error string for connection failure patterns.
                 let msg = format!("{e:?}");
                 Self::has_connection_failure_pattern(&msg)
-            },
+            }
             Self::System(e) => {
                 let msg = format!("{e:?}");
                 Self::has_connection_failure_pattern(&msg)
-            },
+            }
             _ => false,
         }
     }

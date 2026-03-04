@@ -4,8 +4,14 @@
 #![allow(missing_docs, reason = "test code")]
 #![allow(clippy::implicit_return, reason = "test code")]
 #![allow(clippy::question_mark_used, reason = "test code")]
-#![allow(clippy::panic, reason = "test assertions use panic for descriptive failure messages")]
-#![allow(clippy::needless_borrow, reason = "borrow needed for contains() on &str slice")]
+#![allow(
+    clippy::panic,
+    reason = "test assertions use panic for descriptive failure messages"
+)]
+#![allow(
+    clippy::needless_borrow,
+    reason = "borrow needed for contains() on &str slice"
+)]
 
 use opencode_mem_mcp::McpTool;
 use opencode_mem_service::{
@@ -22,20 +28,32 @@ fn setup_degraded_services() -> (
     Arc<SearchService>,
     Arc<PendingWriteQueue>,
 ) {
-    let backend =
-        Arc::new(StorageBackend::new_degraded("postgres://bogus:bogus@127.0.0.1:1/bogus"));
+    let backend = Arc::new(StorageBackend::new_degraded(
+        "postgres://bogus:bogus@127.0.0.1:1/bogus",
+    ));
 
     let (event_tx, _rx) = tokio::sync::broadcast::channel(16);
     let llm = Arc::new(opencode_mem_llm::LlmClient::new(String::new(), String::new()).unwrap());
 
-    let observation_service =
-        Arc::new(ObservationService::new(backend.clone(), llm.clone(), None, event_tx, None));
+    let observation_service = Arc::new(ObservationService::new(
+        backend.clone(),
+        llm.clone(),
+        None,
+        event_tx,
+        None,
+    ));
     let session_service = Arc::new(SessionService::new(backend.clone(), llm));
     let knowledge_service = Arc::new(KnowledgeService::new(backend.clone()));
     let search_service = Arc::new(SearchService::new(backend, None, None));
     let pending_writes = Arc::new(PendingWriteQueue::new());
 
-    (observation_service, session_service, knowledge_service, search_service, pending_writes)
+    (
+        observation_service,
+        session_service,
+        knowledge_service,
+        search_service,
+        pending_writes,
+    )
 }
 
 fn tool_args(tool_name: &str) -> serde_json::Value {
@@ -69,8 +87,12 @@ fn tool_args(tool_name: &str) -> serde_json::Value {
     }
 }
 
-const INFINITE_TOOLS: [&str; 4] =
-    ["infinite_expand", "infinite_time_range", "infinite_drill_hour", "infinite_drill_minute"];
+const INFINITE_TOOLS: [&str; 4] = [
+    "infinite_expand",
+    "infinite_time_range",
+    "infinite_drill_hour",
+    "infinite_drill_minute",
+];
 
 #[tokio::test]
 async fn all_tools_degrade_gracefully_without_database() {
@@ -99,10 +121,16 @@ async fn all_tools_degrade_gracefully_without_database() {
         .await;
 
         let result = response.result.as_ref().unwrap_or_else(|| {
-            panic!("Tool '{tool_name}' returned no result (has error: {:?})", response.error)
+            panic!(
+                "Tool '{tool_name}' returned no result (has error: {:?})",
+                response.error
+            )
         });
 
-        let is_error = result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false);
+        let is_error = result
+            .get("isError")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         // Infinite tools return isError when not configured (INFINITE_MEMORY_URL not set)
         // — this is a config error, not a degradation failure
@@ -133,7 +161,10 @@ async fn all_tools_degrade_gracefully_without_database() {
             .get("text")
             .and_then(|t| t.as_str())
             .expect("content[0] should have text field");
-        assert!(!text.is_empty(), "Tool '{tool_name}' returned empty text in degraded mode");
+        assert!(
+            !text.is_empty(),
+            "Tool '{tool_name}' returned empty text in degraded mode"
+        );
     }
 }
 
@@ -211,8 +242,14 @@ async fn read_tools_return_empty_results_in_degraded_mode() {
         .await;
 
         let result = response.result.as_ref().unwrap();
-        let is_error = result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false);
-        assert!(!is_error, "Read tool '{tool_name}' returned isError=true in degraded mode");
+        let is_error = result
+            .get("isError")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        assert!(
+            !is_error,
+            "Read tool '{tool_name}' returned isError=true in degraded mode"
+        );
 
         let text = result["content"][0]["text"].as_str().unwrap();
         let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
@@ -258,8 +295,14 @@ async fn write_tools_return_degraded_message() {
         .await;
 
         let result = response.result.as_ref().unwrap();
-        let is_error = result.get("isError").and_then(|v| v.as_bool()).unwrap_or(false);
-        assert!(!is_error, "Write tool '{tool_name}' returned isError=true in degraded mode");
+        let is_error = result
+            .get("isError")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        assert!(
+            !is_error,
+            "Write tool '{tool_name}' returned isError=true in degraded mode"
+        );
 
         let text = result["content"][0]["text"].as_str().unwrap();
         assert!(

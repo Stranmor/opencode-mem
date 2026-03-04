@@ -49,25 +49,33 @@ impl ObservationService {
             ),
         );
 
-        let parsed_project =
-            tool_call.project.as_deref().filter(|p| !p.is_empty() && *p != "unknown");
+        let parsed_project = tool_call
+            .project
+            .as_deref()
+            .filter(|p| !p.is_empty() && *p != "unknown");
         let candidates = self
             .find_candidate_observations(&filtered_output, &tool_call.session_id, parsed_project)
             .await;
 
-        let compression_result =
-            self.llm.compress_to_observation(id, &input, parsed_project, &candidates).await?;
+        let compression_result = self
+            .llm
+            .compress_to_observation(id, &input, parsed_project, &candidates)
+            .await?;
 
         match compression_result {
             CompressionResult::Skip { reason } => {
                 tracing::debug!(reason = %reason, "Observation skipped by LLM");
                 Ok(None)
-            },
+            }
             CompressionResult::Create(mut observation) => {
                 observation.title = sanitize_input(&observation.title);
-                self.persist_and_notify(&observation, Some(&tool_call.session_id)).await
-            },
-            CompressionResult::Update { target_id, mut observation } => {
+                self.persist_and_notify(&observation, Some(&tool_call.session_id))
+                    .await
+            }
+            CompressionResult::Update {
+                target_id,
+                mut observation,
+            } => {
                 observation.title = sanitize_input(&observation.title);
                 let candidate_ids: HashSet<&str> =
                     candidates.iter().map(|o| o.id.as_str()).collect();
@@ -81,7 +89,11 @@ impl ObservationService {
                         .await;
                 }
 
-                match self.storage.merge_into_existing(&target_id, &observation).await {
+                match self
+                    .storage
+                    .merge_into_existing(&target_id, &observation)
+                    .await
+                {
                     Ok(()) => {
                         tracing::info!(
                             target_id = %target_id,
@@ -99,19 +111,20 @@ impl ObservationService {
                                 );
                                 self.persist_and_notify(&observation, Some(&tool_call.session_id))
                                     .await
-                            },
+                            }
                         }
-                    },
+                    }
                     Err(e) => {
                         tracing::warn!(
                             target_id = %target_id,
                             error = %e,
                             "Merge failed, falling back to create"
                         );
-                        self.persist_and_notify(&observation, Some(&tool_call.session_id)).await
-                    },
+                        self.persist_and_notify(&observation, Some(&tool_call.session_id))
+                            .await
+                    }
                 }
-            },
+            }
         }
     }
 
@@ -162,40 +175,47 @@ impl ObservationService {
                                         Ok(obs) => hybrid_candidates = obs,
                                         Err(e) => {
                                             tracing::warn!(error = %e, "Failed to fetch hybrid candidate observations by ids")
-                                        },
+                                        }
                                     }
                                 }
-                            },
+                            }
                             Err(e) => {
                                 tracing::warn!(error = %e, "Hybrid search for candidates failed")
-                            },
+                            }
                         }
-                    },
+                    }
                     Ok(Err(e)) => {
                         tracing::warn!(error = %e, "Failed to generate embedding for candidates")
-                    },
+                    }
                     Err(e) => {
                         tracing::warn!(error = %e, "Spawn blocking failed for candidate embedding generation")
-                    },
+                    }
                 }
             }
         }
 
         let fts_candidates = self.find_fts_candidates(raw_text, project).await;
 
-        let session_candidates =
-            match self.storage.get_recent_session_observations(session_id, 3).await {
-                Ok(obs) => obs,
-                Err(e) => {
-                    tracing::warn!(error = %e, "Failed to get session observations for candidates");
-                    Vec::new()
-                },
-            };
+        let session_candidates = match self
+            .storage
+            .get_recent_session_observations(session_id, 3)
+            .await
+        {
+            Ok(obs) => obs,
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to get session observations for candidates");
+                Vec::new()
+            }
+        };
 
         let mut seen_ids: HashSet<String> = HashSet::new();
         let mut result: Vec<Observation> = Vec::new();
 
-        for obs in hybrid_candidates.into_iter().chain(fts_candidates).chain(session_candidates) {
+        for obs in hybrid_candidates
+            .into_iter()
+            .chain(fts_candidates)
+            .chain(session_candidates)
+        {
             if seen_ids.insert(obs.id.clone()) {
                 result.push(obs);
             }
@@ -236,7 +256,7 @@ impl ObservationService {
             Err(e) => {
                 tracing::warn!(error = %e, "FTS search for candidates failed");
                 return Vec::new();
-            },
+            }
         };
 
         if search_results.is_empty() {
@@ -249,7 +269,7 @@ impl ObservationService {
             Err(e) => {
                 tracing::warn!(error = %e, "Failed to fetch candidate observations by ids");
                 Vec::new()
-            },
+            }
         }
     }
 
@@ -261,7 +281,9 @@ impl ObservationService {
     ) -> Result<SaveMemoryResult, ServiceError> {
         let text = sanitize_input(text.trim());
         if text.is_empty() {
-            return Err(ServiceError::InvalidInput("Text is required for save_memory".into()));
+            return Err(ServiceError::InvalidInput(
+                "Text is required for save_memory".into(),
+            ));
         }
 
         let title_str = match title {
@@ -269,7 +291,10 @@ impl ObservationService {
             _ => text.chars().take(50).collect(),
         };
 
-        let project_str = project.map(str::trim).filter(|p| !p.is_empty()).map(ToOwned::to_owned);
+        let project_str = project
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .map(ToOwned::to_owned);
 
         let obs = Observation::builder(
             uuid::Uuid::new_v4().to_string(),

@@ -5,7 +5,10 @@
 #![allow(clippy::print_stderr, reason = "CLI error output")]
 #![allow(clippy::absolute_paths, reason = "Explicit paths for clarity")]
 #![allow(clippy::clone_on_ref_ptr, reason = "Arc cloning is intentional")]
-#![allow(clippy::arithmetic_side_effects, reason = "Arithmetic is safe in context")]
+#![allow(
+    clippy::arithmetic_side_effects,
+    reason = "Arithmetic is safe in context"
+)]
 #![allow(clippy::pattern_type_mismatch, reason = "Pattern matching style")]
 #![allow(clippy::missing_errors_doc, reason = "CLI functions")]
 #![allow(clippy::map_err_ignore, reason = "Error context is added")]
@@ -17,18 +20,36 @@
 #![allow(clippy::unused_async, reason = "Async for consistency")]
 #![allow(clippy::unnecessary_wraps, reason = "Result for consistency")]
 #![allow(unused_results, reason = "Some results are intentionally ignored")]
-#![allow(unused_crate_dependencies, reason = "Dependencies used in other modules")]
+#![allow(
+    unused_crate_dependencies,
+    reason = "Dependencies used in other modules"
+)]
 #![allow(clippy::pub_use, reason = "Re-exports are intentional")]
-#![allow(clippy::redundant_pub_crate, reason = "pub(crate) is intentional for module visibility")]
+#![allow(
+    clippy::redundant_pub_crate,
+    reason = "pub(crate) is intentional for module visibility"
+)]
 #![allow(clippy::missing_docs_in_private_items, reason = "CLI binary")]
 #![allow(clippy::implicit_return, reason = "Implicit return is idiomatic Rust")]
 #![allow(clippy::question_mark_used, reason = "? operator is idiomatic Rust")]
 #![allow(clippy::min_ident_chars, reason = "Short closure params are idiomatic")]
-#![allow(clippy::missing_const_for_fn, reason = "Const fn not always beneficial")]
+#![allow(
+    clippy::missing_const_for_fn,
+    reason = "Const fn not always beneficial"
+)]
 #![allow(clippy::shadow_reuse, reason = "Shadowing for unwrapping is idiomatic")]
-#![allow(clippy::shadow_unrelated, reason = "Shadowing in different scopes is clear")]
-#![allow(clippy::cognitive_complexity, reason = "CLI command handlers are inherently complex")]
-#![allow(clippy::single_call_fn, reason = "CLI command functions are called once from main")]
+#![allow(
+    clippy::shadow_unrelated,
+    reason = "Shadowing in different scopes is clear"
+)]
+#![allow(
+    clippy::cognitive_complexity,
+    reason = "CLI command handlers are inherently complex"
+)]
+#![allow(
+    clippy::single_call_fn,
+    reason = "CLI command functions are called once from main"
+)]
 
 mod commands;
 
@@ -88,13 +109,13 @@ enum Commands {
 }
 
 pub fn get_api_key() -> Result<String> {
-    std::env::var("OPENCODE_MEM_API_KEY").or_else(|_| std::env::var("ANTIGRAVITY_API_KEY")).map_err(
-        |_| {
+    std::env::var("OPENCODE_MEM_API_KEY")
+        .or_else(|_| std::env::var("ANTIGRAVITY_API_KEY"))
+        .map_err(|_| {
             anyhow::anyhow!(
                 "OPENCODE_MEM_API_KEY or ANTIGRAVITY_API_KEY environment variable must be set"
             )
-        },
-    )
+        })
 }
 
 #[must_use]
@@ -128,7 +149,11 @@ fn main() -> Result<()> {
         }
     }
 
-    tokio::runtime::Builder::new_multi_thread().enable_all().build().unwrap().block_on(async_main())
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async_main())
 }
 
 async fn async_main() -> Result<()> {
@@ -142,34 +167,39 @@ async fn async_main() -> Result<()> {
     match cli.command {
         Commands::Serve { port, host } => {
             commands::serve::run(port, host).await?;
-        },
+        }
         Commands::Mcp => {
             commands::mcp::run().await?;
-        },
-        Commands::Search { query, limit, project, obs_type } => {
+        }
+        Commands::Search {
+            query,
+            limit,
+            project,
+            obs_type,
+        } => {
             commands::search::run_search(query, limit, project, obs_type).await?;
-        },
+        }
         Commands::Stats => {
             commands::search::run_stats().await?;
-        },
+        }
         Commands::Projects => {
             commands::search::run_projects().await?;
-        },
+        }
         Commands::Recent { limit } => {
             commands::search::run_recent(limit).await?;
-        },
+        }
         Commands::Get { id } => {
             commands::search::run_get(id).await?;
-        },
+        }
         Commands::BackfillEmbeddings { batch_size } => {
             commands::search::run_backfill_embeddings(batch_size).await?;
-        },
+        }
         Commands::ImportInsights { file, dir } => {
             commands::import_insights::run(file, dir).await?;
-        },
+        }
         Commands::Hook(hook_cmd) => {
             commands::hook::run(hook_cmd).await?;
-        },
+        }
     }
 
     Ok(())

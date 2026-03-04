@@ -30,7 +30,11 @@ pub(crate) async fn get_timeline(
         format!("WHERE {}", conditions.join(" AND "))
     };
 
-    let order_direction = if from.is_some() && to.is_none() { "ASC" } else { "DESC" };
+    let order_direction = if from.is_some() && to.is_none() {
+        "ASC"
+    } else {
+        "DESC"
+    };
 
     let sql = format!(
         "SELECT id, title, subtitle, observation_type, noise_level
@@ -45,8 +49,10 @@ pub(crate) async fn get_timeline(
     }
     q = q.bind(usize_to_i64(limit));
     let rows = q.fetch_all(&storage.pool).await?;
-    let mut results: Vec<SearchResult> =
-        rows.iter().map(row_to_search_result).collect::<Result<_, StorageError>>()?;
+    let mut results: Vec<SearchResult> = rows
+        .iter()
+        .map(row_to_search_result)
+        .collect::<Result<_, StorageError>>()?;
 
     if order_direction == "ASC" {
         results.reverse();

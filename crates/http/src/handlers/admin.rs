@@ -86,20 +86,26 @@ pub async fn update_settings(
             .cloned();
         let model = env.get("OPENCODE_MEM_MODEL").cloned();
 
-        state.observation_service.update_llm_config(api_key, base_url, model);
+        state
+            .observation_service
+            .update_llm_config(api_key, base_url, model);
 
         settings.env = env;
     }
     let mut response_settings = settings.clone();
     redact_sensitive_env(&mut response_settings.env);
-    Ok(Json(SettingsResponse { settings: response_settings }))
+    Ok(Json(SettingsResponse {
+        settings: response_settings,
+    }))
 }
 
 pub async fn get_mcp_status(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<McpStatusResponse>, ApiError> {
     let settings = state.settings.read().await;
-    Ok(Json(McpStatusResponse { enabled: settings.mcp_enabled }))
+    Ok(Json(McpStatusResponse {
+        enabled: settings.mcp_enabled,
+    }))
 }
 
 pub async fn toggle_mcp(
@@ -112,7 +118,9 @@ pub async fn toggle_mcp(
     }
     let mut settings = state.settings.write().await;
     settings.mcp_enabled = req.enabled;
-    Ok(Json(McpStatusResponse { enabled: settings.mcp_enabled }))
+    Ok(Json(McpStatusResponse {
+        enabled: settings.mcp_enabled,
+    }))
 }
 
 pub async fn get_branch_status(
@@ -137,7 +145,9 @@ fn validate_branch_name(branch: &str) -> Result<(), &'static str> {
     if branch.starts_with('-') {
         return Err("Branch name cannot start with dash");
     }
-    if !branch.chars().all(|c| c.is_alphanumeric() || c == '/' || c == '-' || c == '_' || c == '.')
+    if !branch
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == '/' || c == '-' || c == '_' || c == '.')
     {
         return Err("Branch name contains invalid characters");
     }
@@ -167,7 +177,12 @@ pub async fn switch_branch(
         .map_err(anyhow::Error::from)?;
 
     if result.status.success() {
-        state.settings.write().await.current_branch.clone_from(&req.branch);
+        state
+            .settings
+            .write()
+            .await
+            .current_branch
+            .clone_from(&req.branch);
         Ok(Json(SwitchBranchResponse {
             success: true,
             branch: req.branch,
@@ -233,7 +248,10 @@ pub async fn get_instructions(
     } else {
         content
     };
-    Ok(Json(InstructionsResponse { sections, content: filtered_content }))
+    Ok(Json(InstructionsResponse {
+        sections,
+        content: filtered_content,
+    }))
 }
 
 fn extract_section(content: &str, section: &str) -> String {
@@ -281,7 +299,11 @@ pub async fn rebuild_embeddings(
     if !is_localhost(&addr) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
-    state.search_service.clear_embeddings().await.map_err(anyhow::Error::from)?;
+    state
+        .search_service
+        .clear_embeddings()
+        .await
+        .map_err(anyhow::Error::from)?;
     Ok(Json(AdminResponse {
         success: true,
         message: "Embeddings cleared. Run `opencode-mem backfill-embeddings` to regenerate."
@@ -302,5 +324,8 @@ pub async fn admin_shutdown(
         let _ = tx.send(false);
     });
 
-    Ok(Json(AdminResponse { success: true, message: "Shutdown initiated".to_owned() }))
+    Ok(Json(AdminResponse {
+        success: true,
+        message: "Shutdown initiated".to_owned(),
+    }))
 }

@@ -25,5 +25,7 @@ pub(crate) async fn semantic_search(
     .bind(usize_to_i64(limit))
     .fetch_all(&storage.pool)
     .await?;
-    rows.iter().map(row_to_search_result).collect::<Result<_, StorageError>>()
+    rows.iter()
+        .map(row_to_search_result)
+        .collect::<Result<_, StorageError>>()
 }

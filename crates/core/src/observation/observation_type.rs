@@ -51,10 +51,10 @@ impl ObservationType {
             Self::Gotcha => "Something that broke, surprised you, or behaved unexpectedly.",
             Self::Bugfix => {
                 "A bug was found AND fixed. What was wrong, why, and how it was solved."
-            },
+            }
             Self::Decision => {
                 "(critical only) An irreversible architectural choice with clear reasoning."
-            },
+            }
             Self::Feature => "(critical only) A significant new capability was completed.",
             Self::Refactor => "Code structure was changed without altering external behavior.",
             Self::Change => "A general code change that is not a bugfix or a feature.",
@@ -73,23 +73,23 @@ impl ObservationType {
             ],
             Self::Bugfix => {
                 &["\"Advisory lock leak on connection drop — fixed with after_release hook\""]
-            },
+            }
             Self::Decision => {
                 &["\"Chose pgvector over ChromaDB for vector storage — no external dependency\""]
-            },
+            }
             Self::Feature => {
                 &["\"Implemented hybrid search: tsvector BM25 50% + vector cosine similarity 50%\""]
-            },
+            }
             Self::Refactor => {
                 &["\"Extracted memory filtering logic into core crate for reuse in CLI and MCP\""]
-            },
+            }
             Self::Change => &["\"Updated Rust version to 1.76 and bumped dependencies\""],
             Self::Discovery => {
                 &["\"GitHub search API limits results to 1000 items max regardless of pagination\""]
-            },
+            }
             Self::Preference => {
                 &["\"User prefers early returns over deeply nested if statements\""]
-            },
+            }
         }
     }
 
@@ -188,7 +188,10 @@ impl FromStr for Concept {
             "gotcha" => Ok(Self::Gotcha),
             "pattern" => Ok(Self::Pattern),
             "trade-off" => Ok(Self::TradeOff),
-            _ => Err(CoreError::InvalidObservationType(format!("Unknown concept: {}", s))),
+            _ => Err(CoreError::InvalidObservationType(format!(
+                "Unknown concept: {}",
+                s
+            ))),
         }
     }
 }

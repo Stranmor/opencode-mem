@@ -5,7 +5,10 @@
 //! 2. timeline(from/to) → Get context around interesting results
 //! 3. `get_full(ids)` → Fetch full observations ONLY for filtered IDs
 
-#![allow(clippy::missing_errors_doc, reason = "Errors are self-explanatory from Result types")]
+#![allow(
+    clippy::missing_errors_doc,
+    reason = "Errors are self-explanatory from Result types"
+)]
 #![allow(clippy::pattern_type_mismatch, reason = "Pattern matching style")]
 #![allow(missing_debug_implementations, reason = "Internal types")]
 #![allow(clippy::missing_docs_in_private_items, reason = "Internal crate")]
@@ -38,7 +41,10 @@ impl HybridSearch {
     /// * `embeddings` - Optional embedding service for semantic search
     #[must_use]
     pub fn new(storage: Arc<StorageBackend>, embeddings: Option<Arc<EmbeddingService>>) -> Self {
-        Self { storage, embeddings }
+        Self {
+            storage,
+            embeddings,
+        }
     }
 
     /// Step 1: Search and return lightweight index results.
@@ -56,8 +62,11 @@ impl HybridSearch {
                 let query_str = query.to_owned();
                 let query_vec =
                     tokio::task::spawn_blocking(move || emb_clone.embed(&query_str)).await??;
-                Ok(self.storage.hybrid_search_v2(query, &query_vec, limit).await?)
-            },
+                Ok(self
+                    .storage
+                    .hybrid_search_v2(query, &query_vec, limit)
+                    .await?)
+            }
             None => Ok(self.storage.hybrid_search(query, limit).await?),
         }
     }
@@ -77,7 +86,10 @@ impl HybridSearch {
         to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>> {
-        self.storage.get_timeline(from, to, limit).await.map_err(Into::into)
+        self.storage
+            .get_timeline(from, to, limit)
+            .await
+            .map_err(Into::into)
     }
 
     /// Step 3: Fetch full observations by IDs.
@@ -88,7 +100,10 @@ impl HybridSearch {
     /// # Arguments
     /// * `ids` - List of observation IDs to fetch
     pub async fn get_full(&self, ids: &[String]) -> Result<Vec<Observation>> {
-        self.storage.get_observations_by_ids(ids).await.map_err(Into::into)
+        self.storage
+            .get_observations_by_ids(ids)
+            .await
+            .map_err(Into::into)
     }
 
     /// Get recent observations (convenience method).
@@ -156,7 +171,7 @@ impl HybridSearch {
                     tokio::task::spawn_blocking(move || emb_clone.embed(&query_str)).await??;
                 let results = self.storage.semantic_search(&query_vec, limit).await?;
                 Ok(Some(results))
-            },
+            }
             None => Ok(None),
         }
     }
@@ -194,7 +209,10 @@ impl HybridSearch {
     ///
     /// Finds observations that mention the given file path in `files_read` or `files_modified`.
     pub async fn search_by_file(&self, file_path: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        self.storage.search_by_file(file_path, limit).await.map_err(Into::into)
+        self.storage
+            .search_by_file(file_path, limit)
+            .await
+            .map_err(Into::into)
     }
 }
 
@@ -218,22 +236,34 @@ pub async fn run_semantic_search_with_fallback(
             match embed_result {
                 Ok(query_vec) => match storage.semantic_search(&query_vec, limit).await {
                     Ok(results) if !results.is_empty() => Ok(results),
-                    Ok(_) => storage.hybrid_search(query, limit).await.map_err(Into::into),
+                    Ok(_) => storage
+                        .hybrid_search(query, limit)
+                        .await
+                        .map_err(Into::into),
                     Err(e) => {
                         tracing::warn!(
                             "Semantic search storage error, falling back to hybrid: {}",
                             e
                         );
-                        storage.hybrid_search(query, limit).await.map_err(Into::into)
-                    },
+                        storage
+                            .hybrid_search(query, limit)
+                            .await
+                            .map_err(Into::into)
+                    }
                 },
                 Err(e) => {
                     tracing::warn!("Failed to embed query, falling back to hybrid: {}", e);
-                    storage.hybrid_search(query, limit).await.map_err(Into::into)
-                },
+                    storage
+                        .hybrid_search(query, limit)
+                        .await
+                        .map_err(Into::into)
+                }
             }
-        },
-        None => storage.hybrid_search(query, limit).await.map_err(Into::into),
+        }
+        None => storage
+            .hybrid_search(query, limit)
+            .await
+            .map_err(Into::into),
     }
 }
 
@@ -244,7 +274,9 @@ mod tests {
     #[expect(clippy::expect_used, reason = "test code")]
     async fn create_test_storage() -> Arc<StorageBackend> {
         let url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
-        let storage = StorageBackend::new(&url).await.expect("Failed to connect to PG");
+        let storage = StorageBackend::new(&url)
+            .await
+            .expect("Failed to connect to PG");
         Arc::new(storage)
     }
 
@@ -264,7 +296,10 @@ mod tests {
         let search = HybridSearch::new(storage, None);
 
         // Should not panic, returns empty results
-        let results = search.search("test query", 10).await.expect("Search failed");
+        let results = search
+            .search("test query", 10)
+            .await
+            .expect("Search failed");
         assert!(results.is_empty());
     }
 
@@ -275,7 +310,10 @@ mod tests {
         let storage = create_test_storage().await;
         let search = HybridSearch::new(storage, None);
 
-        let results = search.timeline(None, None, 10).await.expect("Timeline failed");
+        let results = search
+            .timeline(None, None, 10)
+            .await
+            .expect("Timeline failed");
         assert!(results.is_empty());
     }
 
@@ -297,7 +335,10 @@ mod tests {
         let storage = create_test_storage().await;
         let search = HybridSearch::new(storage, None);
 
-        let result = search.semantic_search("test", 10).await.expect("Semantic search failed");
+        let result = search
+            .semantic_search("test", 10)
+            .await
+            .expect("Semantic search failed");
         assert!(result.is_none());
     }
 }

@@ -55,8 +55,10 @@ fn expand_home(pattern: &str) -> String {
         return dirs::home_dir().map_or_else(|| pattern.to_owned(), |p| p.display().to_string());
     }
     if let Some(rest) = pattern.strip_prefix("~/") {
-        return dirs::home_dir()
-            .map_or_else(|| pattern.to_owned(), |p| format!("{}/{}", p.display(), rest));
+        return dirs::home_dir().map_or_else(
+            || pattern.to_owned(),
+            |p| format!("{}/{}", p.display(), rest),
+        );
     }
     pattern.to_owned()
 }
