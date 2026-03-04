@@ -172,6 +172,7 @@ pub async fn run_mcp_server(
     }
 }
 
+#[expect(clippy::too_many_arguments, reason = "MCP request dispatch needs shared service refs")]
 async fn handle_request(
     infinite_mem: Option<&InfiniteMemory>,
     observation_service: &Arc<ObservationService>,
