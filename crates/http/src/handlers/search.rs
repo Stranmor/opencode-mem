@@ -1,19 +1,19 @@
 use crate::api_error::ApiError;
 use axum::{
-    extract::{Query, State},
     Json,
+    extract::{Query, State},
 };
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    sort_by_score_descending, SearchResult, SessionSummary, UserPrompt, MAX_QUERY_LIMIT,
+    MAX_QUERY_LIMIT, SearchResult, SessionSummary, UserPrompt, sort_by_score_descending,
 };
 
+use crate::AppState;
 use crate::api_types::{
     FileSearchQuery, RankedItem, SearchQuery, TimelineResult, UnifiedSearchResult,
     UnifiedTimelineQuery,
 };
-use crate::AppState;
 
 pub async fn search(
     State(state): State<Arc<AppState>>,
@@ -26,18 +26,17 @@ pub async fn search(
         && query.obs_type.is_none()
         && query.from.is_none()
         && query.to.is_none()
+        && let Some(query_str) = q
     {
-        if let Some(query_str) = q {
-            return state
-                .search_service
-                .hybrid_search(query_str, query.capped_limit())
-                .await
-                .map(Json)
-                .map_err(|e| {
-                    tracing::error!("Search error (hybrid fallback): {}", e);
-                    ApiError::from(e)
-                });
-        }
+        return state
+            .search_service
+            .hybrid_search(query_str, query.capped_limit())
+            .await
+            .map(Json)
+            .map_err(|e| {
+                tracing::error!("Search error (hybrid fallback): {}", e);
+                ApiError::from(e)
+            });
     }
 
     state

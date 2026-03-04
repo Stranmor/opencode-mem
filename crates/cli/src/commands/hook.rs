@@ -137,18 +137,18 @@ pub(crate) async fn run(cmd: HookCommands) -> Result<()> {
         },
         HookCommands::Observe { tool, session_id, project, input, endpoint } => {
             let req = build_observation_request(tool, session_id, project, input)?;
-            if let Some(project) = req.project.as_deref() {
-                if ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project)) {
-                    println!(
-                        "{}",
-                        serde_json::json!({
-                            "queued": false,
-                            "skipped": true,
-                            "reason": "project excluded",
-                        })
-                    );
-                    return Ok(());
-                }
+            if let Some(project) = req.project.as_deref()
+                && ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project))
+            {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "queued": false,
+                        "skipped": true,
+                        "reason": "project excluded",
+                    })
+                );
+                return Ok(());
             }
             let url = format!("{endpoint}/observe");
             let resp = client.post(&url).json(&req).send().await?;
