@@ -74,7 +74,7 @@ impl PgStorage {
                 "UPDATE global_knowledge
                  SET knowledge_type = $1, description = $2, instructions = $3,
                      triggers = $4, source_projects = $5, source_observations = $6,
-                     updated_at = $7
+                     updated_at = $7, archived_at = NULL
                  WHERE id = $8",
             )
             .bind(input.knowledge_type.as_str())
@@ -309,14 +309,16 @@ impl KnowledgeStore for PgStorage {
     }
 
     async fn decay_confidence(&self) -> Result<u64, StorageError> {
-        // Formula: new_confidence = max(0.1, confidence - 0.05 * weeks_since_last_use)
-        // Uses COALESCE(last_used_at, created_at) as the reference timestamp
+        // Incremental decay: subtract 0.05 per week elapsed since last update.
+        // Uses updated_at (set by both decay runs and usage bumps) to prevent
+        // cumulative over-application on repeated cron invocations.
         let result = sqlx::query(
             "UPDATE global_knowledge
              SET confidence = GREATEST(0.1,
                  confidence - 0.05 * EXTRACT(EPOCH FROM (NOW() - COALESCE(last_used_at, created_at))) / 604800.0
              ),
-             updated_at = NOW()
+             updated_at = NOW(),
+             last_used_at = COALESCE(last_used_at, created_at)
              WHERE archived_at IS NULL
                AND confidence > 0.1
                AND EXTRACT(EPOCH FROM (NOW() - COALESCE(last_used_at, created_at))) > 604800.0",
@@ -327,6 +329,7 @@ impl KnowledgeStore for PgStorage {
     }
 
     async fn auto_archive(&self, min_age_days: i64) -> Result<u64, StorageError> {
+        let min_age_days = min_age_days.max(0);
         let result = sqlx::query(
             "UPDATE global_knowledge
              SET archived_at = NOW(), updated_at = NOW()
