@@ -309,19 +309,20 @@ impl KnowledgeStore for PgStorage {
     }
 
     async fn decay_confidence(&self) -> Result<u64, StorageError> {
-        // Incremental decay: subtract 0.05 per week elapsed since last update.
-        // Uses updated_at (set by both decay runs and usage bumps) to prevent
-        // cumulative over-application on repeated cron invocations.
+        // Incremental decay: subtract 0.05 per week elapsed since last decay/usage.
+        // Uses updated_at as reference — set to NOW() on every decay run AND on every
+        // usage bump (record_knowledge_usage). This ensures each cron invocation only
+        // decays by the time elapsed since the previous run, not cumulative from creation.
+        // last_used_at is NOT modified — it retains its semantic meaning ("last retrieval").
         let result = sqlx::query(
             "UPDATE global_knowledge
              SET confidence = GREATEST(0.1,
-                 confidence - 0.05 * EXTRACT(EPOCH FROM (NOW() - COALESCE(last_used_at, created_at))) / 604800.0
+                 confidence - 0.05 * EXTRACT(EPOCH FROM (NOW() - updated_at)) / 604800.0
              ),
-             updated_at = NOW(),
-             last_used_at = COALESCE(last_used_at, created_at)
+             updated_at = NOW()
              WHERE archived_at IS NULL
                AND confidence > 0.1
-               AND EXTRACT(EPOCH FROM (NOW() - COALESCE(last_used_at, created_at))) > 604800.0",
+               AND EXTRACT(EPOCH FROM (NOW() - updated_at)) > 604800.0",
         )
         .execute(&self.pool)
         .await?;
