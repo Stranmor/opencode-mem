@@ -4,14 +4,13 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    NoiseLevel, Observation, ObservationInput, ObservationType, ToolCall, ToolOutput,
-    is_trivial_tool_call, sanitize_input,
+    Observation, ObservationInput, ToolCall, ToolOutput, is_trivial_tool_call, sanitize_input,
 };
 use opencode_mem_embeddings::EmbeddingProvider;
 use opencode_mem_llm::CompressionResult;
 use opencode_mem_storage::traits::{ObservationStore, SearchStore};
 
-use super::{ObservationService, SaveMemoryResult};
+use super::ObservationService;
 use crate::ServiceError;
 
 impl ObservationService {
@@ -281,67 +280,6 @@ impl ObservationService {
                 tracing::warn!(error = %e, "Failed to fetch candidate observations by ids");
                 Vec::new()
             }
-        }
-    }
-
-    pub async fn save_memory(
-        &self,
-        text: &str,
-        title: Option<&str>,
-        project: Option<&str>,
-        observation_type: Option<ObservationType>,
-        noise_level: Option<NoiseLevel>,
-    ) -> Result<SaveMemoryResult, ServiceError> {
-        let text = sanitize_input(text.trim());
-        if text.is_empty() {
-            return Err(ServiceError::InvalidInput(
-                "Text is required for save_memory".into(),
-            ));
-        }
-
-        let title_str = match title {
-            Some(t) if !t.trim().is_empty() => sanitize_input(t.trim()),
-            _ => text.chars().take(50).collect(),
-        };
-
-        let project_str = project
-            .map(str::trim)
-            .filter(|p| !p.is_empty())
-            .map(ToOwned::to_owned);
-
-        let resolved_observation_type = observation_type.unwrap_or(ObservationType::Discovery);
-        let resolved_noise_level = noise_level.unwrap_or(NoiseLevel::Medium);
-
-        let obs = Observation::builder(
-            uuid::Uuid::new_v4().to_string(),
-            "manual".to_owned(),
-            resolved_observation_type,
-            title_str,
-        )
-        .maybe_project(project_str.clone().map(Into::into))
-        .narrative(text.to_owned())
-        .noise_level(resolved_noise_level)
-        .build();
-
-        if let Some(ref infinite_mem) = self.infinite_mem {
-            let event = opencode_mem_core::tool_event(
-                "manual",
-                project_str.as_deref(),
-                "save_memory",
-                serde_json::json!({"text": text}),
-                serde_json::json!({"output": "saved manually"}),
-                vec![],
-                None,
-            );
-            if let Err(e) = infinite_mem.store_event(event).await {
-                tracing::warn!(error = %e, "Failed to store manual save_memory event in infinite memory");
-            }
-        }
-
-        let result = self.persist_and_notify(&obs, None).await?;
-        match result {
-            Some((persisted_obs, _was_new)) => Ok(SaveMemoryResult::Created(persisted_obs)),
-            None => Ok(SaveMemoryResult::Duplicate(obs)),
         }
     }
 }

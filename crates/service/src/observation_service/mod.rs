@@ -2,6 +2,7 @@ mod compression;
 mod dedup_sweep;
 mod injection;
 mod persistence;
+mod save_memory;
 mod side_effects;
 
 use std::sync::Arc;

@@ -5,126 +5,12 @@ use axum::{
 };
 use std::sync::Arc;
 
-use opencode_mem_core::{SearchResult, SessionSummary, UserPrompt, sort_by_score_descending};
+use opencode_mem_core::{SearchResult, sort_by_score_descending};
 
 use crate::AppState;
 use crate::api_types::{
-    FileSearchQuery, RankedItem, SearchQuery, TimelineResult, UnifiedSearchResult,
-    UnifiedTimelineQuery,
+    RankedItem, SearchQuery, TimelineResult, UnifiedSearchResult, UnifiedTimelineQuery,
 };
-
-pub async fn search(
-    State(state): State<Arc<AppState>>,
-    Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, ApiError> {
-    let q = if query.q.is_empty() {
-        None
-    } else {
-        Some(query.q.as_str())
-    };
-
-    state
-        .search_service
-        .smart_search(
-            q,
-            query.project.as_deref(),
-            query.obs_type.as_deref(),
-            query.from.as_deref(),
-            query.to.as_deref(),
-            query.capped_limit(),
-        )
-        .await
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Search error: {}", e);
-            ApiError::from(e)
-        })
-}
-
-pub async fn hybrid_search(
-    State(state): State<Arc<AppState>>,
-    Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, ApiError> {
-    state
-        .search_service
-        .hybrid_search(&query.q, query.capped_limit())
-        .await
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Hybrid search error: {}", e);
-            ApiError::from(e)
-        })
-}
-
-pub async fn semantic_search(
-    State(state): State<Arc<AppState>>,
-    Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, ApiError> {
-    if query.q.is_empty() {
-        return Ok(Json(Vec::new()));
-    }
-
-    state
-        .search_service
-        .semantic_search_with_fallback(&query.q, query.capped_limit())
-        .await
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Semantic search error: {}", e);
-            ApiError::from(e)
-        })
-}
-
-pub async fn search_sessions(
-    State(state): State<Arc<AppState>>,
-    Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<SessionSummary>>, ApiError> {
-    if query.q.is_empty() {
-        return Ok(Json(Vec::new()));
-    }
-    state
-        .search_service
-        .search_sessions(&query.q, query.capped_limit())
-        .await
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Search sessions error: {}", e);
-            ApiError::from(e)
-        })
-}
-
-pub async fn search_prompts(
-    State(state): State<Arc<AppState>>,
-    Query(query): Query<SearchQuery>,
-) -> Result<Json<Vec<UserPrompt>>, ApiError> {
-    if query.q.is_empty() {
-        return Ok(Json(Vec::new()));
-    }
-    state
-        .search_service
-        .search_prompts(&query.q, query.capped_limit())
-        .await
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Search prompts error: {}", e);
-            ApiError::from(e)
-        })
-}
-
-pub async fn search_by_file(
-    State(state): State<Arc<AppState>>,
-    Query(query): Query<FileSearchQuery>,
-) -> Result<Json<Vec<SearchResult>>, ApiError> {
-    state
-        .search_service
-        .search_by_file(&query.file_path, query.limit)
-        .await
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Search by file error: {}", e);
-            ApiError::from(e)
-        })
-}
 
 #[expect(
     clippy::cast_precision_loss,
@@ -158,7 +44,6 @@ pub async fn unified_search(
         state.search_service.search_prompts(q, limit),
     );
 
-    // Partial failures are acceptable in unified search; one failed source should not block the others.
     let observations = obs_result.unwrap_or_else(|e| {
         tracing::error!("Unified search observation query failed: {e}");
         Vec::new()
@@ -171,10 +56,9 @@ pub async fn unified_search(
         tracing::error!("Unified search prompt query failed: {e}");
         Vec::new()
     });
-    // Build ranked list from all collections
+
     let mut ranked: Vec<RankedItem> = Vec::new();
 
-    // Observations already have relevance scores
     for obs in &observations {
         ranked.push(RankedItem {
             id: obs.id.to_string(),
@@ -185,7 +69,6 @@ pub async fn unified_search(
         });
     }
 
-    // Sessions: position-based scoring (first = 1.0, last = 0.1)
     for (i, session) in sessions.iter().enumerate() {
         let position_score = if sessions.len() <= 1 {
             1.0
@@ -201,7 +84,6 @@ pub async fn unified_search(
         });
     }
 
-    // Prompts: position-based scoring
     for (i, prompt) in prompts.iter().enumerate() {
         let position_score = if prompts.len() <= 1 {
             1.0
@@ -217,7 +99,6 @@ pub async fn unified_search(
         });
     }
 
-    // Sort by score descending
     sort_by_score_descending(&mut ranked);
 
     Ok(Json(UnifiedSearchResult {
@@ -238,7 +119,10 @@ pub async fn unified_timeline(
             .get_observation_by_id(id)
             .await
             .map_err(|e| {
-                tracing::warn!(error = %e, "Failed to fetch anchor observation");
+                tracing::warn!(
+                    error = %e,
+                    "Failed to fetch anchor observation"
+                );
             })
             .ok()
             .flatten()
@@ -248,7 +132,10 @@ pub async fn unified_timeline(
             .hybrid_search(q, 1)
             .await
             .map_err(|e| {
-                tracing::warn!(error = %e, "Failed to perform hybrid search for anchor");
+                tracing::warn!(
+                    error = %e,
+                    "Failed to perform hybrid search for anchor"
+                );
             })
             .ok()
             .and_then(|r| r.into_iter().next());
@@ -258,7 +145,11 @@ pub async fn unified_timeline(
                 .get_observation_by_id(&sr.id)
                 .await
                 .map_err(|e| {
-                    tracing::warn!(error = %e, "Failed to fetch observation from hybrid search result");
+                    tracing::warn!(
+                        error = %e,
+                        "Failed to fetch observation from \
+                         hybrid search result"
+                    );
                 })
                 .ok()
                 .flatten()
@@ -295,7 +186,10 @@ pub async fn unified_timeline(
         let anchor_id = anchor_sr.id.clone();
         let before_items = before_result
             .unwrap_or_else(|e| {
-                tracing::error!("Unified timeline before query failed: {e}");
+                tracing::error!(
+                    "Unified timeline before query \
+                         failed: {e}"
+                );
                 Vec::new()
             })
             .into_iter()
@@ -305,7 +199,10 @@ pub async fn unified_timeline(
 
         let after_items: Vec<_> = after_result
             .unwrap_or_else(|e| {
-                tracing::error!("Unified timeline after query failed: {e}");
+                tracing::error!(
+                    "Unified timeline after query \
+                         failed: {e}"
+                );
                 Vec::new()
             })
             .into_iter()

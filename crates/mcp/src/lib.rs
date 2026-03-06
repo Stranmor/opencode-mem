@@ -38,6 +38,7 @@
 )]
 
 pub mod handlers;
+mod tool_schemas;
 mod tools;
 
 use opencode_mem_service::{
@@ -53,7 +54,7 @@ use tokio::runtime::Handle;
 pub use tools::McpTool;
 
 pub use handlers::handle_tool_call;
-use tools::get_tools_json;
+use tool_schemas::get_tools_json;
 
 #[derive(Deserialize)]
 struct McpRequest {
