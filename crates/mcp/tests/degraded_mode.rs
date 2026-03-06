@@ -98,6 +98,7 @@ fn tool_args(tool_name: &str) -> serde_json::Value {
         "knowledge_get" => json!({"id": "nonexistent-id"}),
         "knowledge_list" => json!({}),
         "knowledge_delete" => json!({"id": "nonexistent-id"}),
+        "memory_delete" => json!({"id": "nonexistent-id"}),
         "infinite_expand" => json!({"id": 1}),
         "infinite_time_range" => json!({
             "start": "2025-01-01T00:00:00Z",
