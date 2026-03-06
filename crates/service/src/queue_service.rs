@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use opencode_mem_core::{ProjectFilter, ToolCall, sanitize_input};
+use opencode_mem_core::{ProjectFilter, ToolCall, cap_query_limit, sanitize_input};
 use opencode_mem_storage::traits::PendingQueueStore;
 use opencode_mem_storage::{PendingMessage, QueueStats, StorageBackend};
 
@@ -82,6 +82,16 @@ impl QueueService {
         false
     }
 
+    #[must_use]
+    pub fn should_skip_project(project: Option<&str>) -> bool {
+        if let Some(value) = project
+            && (value.is_empty() || value == "unknown")
+        {
+            return true;
+        }
+        Self::is_project_excluded(project)
+    }
+
     pub async fn queue_message(
         &self,
         session_id: &str,
@@ -100,6 +110,7 @@ impl QueueService {
         &self,
         limit: usize,
     ) -> Result<Vec<PendingMessage>, ServiceError> {
+        let limit = cap_query_limit(limit);
         Ok(self.storage.get_all_pending_messages(limit).await?)
     }
 

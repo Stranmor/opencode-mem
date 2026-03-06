@@ -225,37 +225,43 @@ pub(super) async fn handle_save_memory(
 
     let title = args.get("title").and_then(|t| t.as_str());
     let project = args.get("project").and_then(|p| p.as_str());
-    let observation_type = match args
-        .get("observation_type")
-        .and_then(|t| t.as_str())
-        .filter(|s| !s.is_empty())
-    {
-        Some(raw) => match ObservationType::from_str(raw) {
-            Ok(value) => Some(value),
-            Err(_) => {
-                return mcp_err(format!(
-                    "invalid observation_type: {raw} (allowed: {})",
-                    ObservationType::ALL_VARIANTS_STR
-                ));
+    let observation_type = match args.get("observation_type") {
+        Some(serde_json::Value::Null) | None => None,
+        Some(serde_json::Value::String(raw)) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return mcp_err("observation_type cannot be empty if provided");
             }
-        },
-        None => None,
+            match ObservationType::from_str(trimmed) {
+                Ok(value) => Some(value),
+                Err(_) => {
+                    return mcp_err(format!(
+                        "invalid observation_type: {trimmed} (allowed: {})",
+                        ObservationType::ALL_VARIANTS_STR
+                    ));
+                }
+            }
+        }
+        Some(_) => return mcp_err("observation_type must be a string"),
     };
-    let noise_level = match args
-        .get("noise_level")
-        .and_then(|n| n.as_str())
-        .filter(|s| !s.is_empty())
-    {
-        Some(raw) => match NoiseLevel::from_str(raw) {
-            Ok(value) => Some(value),
-            Err(_) => {
-                return mcp_err(format!(
-                    "invalid noise_level: {raw} (allowed: {})",
-                    NoiseLevel::ALL_VARIANTS_STR
-                ));
+    let noise_level = match args.get("noise_level") {
+        Some(serde_json::Value::Null) | None => None,
+        Some(serde_json::Value::String(raw)) => {
+            let trimmed = raw.trim();
+            if trimmed.is_empty() {
+                return mcp_err("noise_level cannot be empty if provided");
             }
-        },
-        None => None,
+            match NoiseLevel::from_str(trimmed) {
+                Ok(value) => Some(value),
+                Err(_) => {
+                    return mcp_err(format!(
+                        "invalid noise_level: {trimmed} (allowed: {})",
+                        NoiseLevel::ALL_VARIANTS_STR
+                    ));
+                }
+            }
+        }
+        Some(_) => return mcp_err("noise_level must be a string"),
     };
 
     let cb = observation_service.circuit_breaker();

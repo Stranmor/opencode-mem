@@ -117,10 +117,7 @@ pub async fn search_by_file(
 ) -> Result<Json<Vec<SearchResult>>, ApiError> {
     state
         .search_service
-        .search_by_file(
-            &query.file_path,
-            opencode_mem_core::cap_query_limit(query.limit),
-        )
+        .search_by_file(&query.file_path, query.limit)
         .await
         .map(Json)
         .map_err(|e| {

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{NoiseLevel, ObservationType};
 use crate::identifiers::{ObservationId, SessionId};
+use crate::session::{SessionSummary, UserPrompt};
 
 /// Trait for types that carry a relevance score (NaN-safe descending sort).
 pub trait Scored {
@@ -113,6 +114,33 @@ impl ToolOutput {
             metadata,
         }
     }
+}
+
+/// Ranked item from unified search across observations, sessions, and prompts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct RankedItem {
+    pub id: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub collection: String,
+    pub score: f64,
+}
+
+impl Scored for RankedItem {
+    fn score(&self) -> f64 {
+        self.score
+    }
+}
+
+/// Combined search result across observations, sessions, and prompts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct UnifiedSearchResult {
+    pub observations: Vec<SearchResult>,
+    pub sessions: Vec<SessionSummary>,
+    pub prompts: Vec<UserPrompt>,
+    pub ranked: Vec<RankedItem>,
 }
 
 /// Compact observation for search results (index layer)

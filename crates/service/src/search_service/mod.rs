@@ -2,17 +2,13 @@
 
 mod embedding_ops;
 mod hybrid_ops;
+mod query_ops;
 
 use std::sync::Arc;
 
-use opencode_mem_core::{
-    GlobalKnowledge, KnowledgeSearchResult, KnowledgeType, Observation, SearchResult,
-    SessionSummary, UserPrompt,
-};
+use opencode_mem_core::{Observation, SearchResult, cap_query_limit};
 use opencode_mem_embeddings::EmbeddingService;
-use opencode_mem_storage::traits::{
-    KnowledgeStore, ObservationStore, PromptStore, SearchStore, StatsStore, SummaryStore,
-};
+use opencode_mem_storage::traits::{ObservationStore, SearchStore, StatsStore};
 use opencode_mem_storage::{
     CircuitBreaker, PaginatedResult, StorageBackend, StorageError, StorageStats,
 };
@@ -42,6 +38,10 @@ impl SearchService {
 
     pub fn circuit_breaker(&self) -> &CircuitBreaker {
         self.storage.circuit_breaker()
+    }
+
+    pub(crate) fn normalize_limit(limit: usize) -> usize {
+        cap_query_limit(limit)
     }
 
     pub(crate) fn fast_fail_if_db_unavailable(&self) -> Result<(), ServiceError> {
@@ -96,6 +96,7 @@ impl SearchService {
         to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
+        let limit = Self::normalize_limit(limit);
         self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
@@ -118,6 +119,7 @@ impl SearchService {
         &self,
         limit: usize,
     ) -> Result<Vec<Observation>, ServiceError> {
+        let limit = Self::normalize_limit(limit);
         self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
@@ -145,6 +147,7 @@ impl SearchService {
         project: &str,
         limit: usize,
     ) -> Result<Vec<Observation>, ServiceError> {
+        let limit = Self::normalize_limit(limit);
         let result = self
             .storage
             .get_context_for_project(project, limit)
@@ -159,6 +162,7 @@ impl SearchService {
         file_path: &str,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
+        let limit = Self::normalize_limit(limit);
         let result = self
             .storage
             .search_by_file(file_path, limit)
@@ -187,119 +191,10 @@ impl SearchService {
         limit: usize,
         project: Option<&str>,
     ) -> Result<PaginatedResult<Observation>, ServiceError> {
+        let limit = Self::normalize_limit(limit);
         let result = self
             .storage
             .get_observations_paginated(offset, limit, project)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result).await
-    }
-
-    pub async fn search_sessions(
-        &self,
-        query: &str,
-        limit: usize,
-    ) -> Result<Vec<SessionSummary>, ServiceError> {
-        let result = self
-            .storage
-            .search_sessions(query, limit)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result).await
-    }
-
-    pub async fn get_session_summary(
-        &self,
-        session_id: &str,
-    ) -> Result<Option<SessionSummary>, ServiceError> {
-        let result = self
-            .storage
-            .get_session_summary(session_id)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result).await
-    }
-
-    pub async fn get_summaries_paginated(
-        &self,
-        offset: usize,
-        limit: usize,
-        project: Option<&str>,
-    ) -> Result<PaginatedResult<SessionSummary>, ServiceError> {
-        let result = self
-            .storage
-            .get_summaries_paginated(offset, limit, project)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result).await
-    }
-
-    pub async fn search_prompts(
-        &self,
-        query: &str,
-        limit: usize,
-    ) -> Result<Vec<UserPrompt>, ServiceError> {
-        let result = self
-            .storage
-            .search_prompts(query, limit)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result).await
-    }
-
-    pub async fn get_prompt_by_id(&self, id: &str) -> Result<Option<UserPrompt>, ServiceError> {
-        let result = self
-            .storage
-            .get_prompt_by_id(id)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result).await
-    }
-
-    pub async fn get_prompts_paginated(
-        &self,
-        offset: usize,
-        limit: usize,
-        project: Option<&str>,
-    ) -> Result<PaginatedResult<UserPrompt>, ServiceError> {
-        let result = self
-            .storage
-            .get_prompts_paginated(offset, limit, project)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result).await
-    }
-
-    pub async fn search_knowledge(
-        &self,
-        query: &str,
-        limit: usize,
-    ) -> Result<Vec<KnowledgeSearchResult>, ServiceError> {
-        let result = self
-            .storage
-            .search_knowledge(query, limit)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result).await
-    }
-
-    pub async fn list_knowledge(
-        &self,
-        knowledge_type: Option<KnowledgeType>,
-        limit: usize,
-    ) -> Result<Vec<GlobalKnowledge>, ServiceError> {
-        let result = self
-            .storage
-            .list_knowledge(knowledge_type, limit)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result).await
-    }
-
-    pub async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, ServiceError> {
-        let result = self
-            .storage
-            .get_knowledge(id)
             .await
             .map_err(ServiceError::from);
         self.with_cb(result).await

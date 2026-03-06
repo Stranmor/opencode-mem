@@ -1,4 +1,4 @@
-use super::helpers::{create_pg_storage, make_observation, unique_id};
+use super::test_fixtures::{create_pg_storage, make_observation, unique_id};
 use opencode_mem_core::EMBEDDING_DIMENSION;
 use opencode_mem_storage::traits::{EmbeddingStore, ObservationStore, SearchStore};
 

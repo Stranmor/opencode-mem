@@ -11,17 +11,10 @@ pub(crate) fn max_queue_workers(state: &AppState) -> usize {
 }
 
 pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> anyhow::Result<()> {
-    if let Some(project) = msg
-        .project
-        .as_deref()
-        .filter(|p| !p.is_empty() && *p != "unknown")
-        && QueueService::is_project_excluded(Some(project))
+    if QueueService::should_skip_project(msg.project.as_deref())
+        && let Some(project) = msg.project.as_deref()
     {
-        tracing::debug!(
-            "Skipping excluded project '{}' for message {}",
-            project,
-            msg.id
-        );
+        tracing::debug!("Skipping project '{}' for message {}", project, msg.id);
         return Ok(());
     }
 

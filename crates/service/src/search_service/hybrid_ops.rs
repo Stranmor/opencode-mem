@@ -25,6 +25,7 @@ impl SearchService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
+        let limit = Self::normalize_limit(limit);
         self.fast_fail_if_db_unavailable()?;
         let result = self.run_hybrid_search(query, limit).await;
         self.with_cb(result).await
@@ -40,6 +41,7 @@ impl SearchService {
         to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
+        let limit = Self::normalize_limit(limit);
         self.fast_fail_if_db_unavailable()?;
         let result = self
             .run_search_with_filters(query, project, obs_type, from, to, limit)
@@ -62,6 +64,7 @@ impl SearchService {
         to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
+        let limit = Self::normalize_limit(limit);
         let has_filters = project.is_some() || obs_type.is_some() || from.is_some() || to.is_some();
         if !has_filters && let Some(q) = query.filter(|s| !s.is_empty()) {
             return self.hybrid_search(q, limit).await;
@@ -79,6 +82,7 @@ impl SearchService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
+        let limit = Self::normalize_limit(limit);
         self.fast_fail_if_db_unavailable()?;
         let result = self.run_semantic_search_with_fallback(query, limit).await;
         self.with_cb(result).await

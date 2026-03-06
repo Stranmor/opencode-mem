@@ -1,6 +1,6 @@
 //! Request/query types (Deserialize)
 
-use opencode_mem_core::{DEFAULT_QUERY_LIMIT, KnowledgeType, MAX_BATCH_IDS, cap_query_limit};
+use opencode_mem_core::{DEFAULT_QUERY_LIMIT, KnowledgeType, MAX_BATCH_IDS};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -39,7 +39,7 @@ pub struct SearchQuery {
 
 impl SearchQuery {
     pub fn capped_limit(&self) -> usize {
-        cap_query_limit(self.limit)
+        self.limit
     }
 }
 
@@ -53,7 +53,7 @@ pub struct TimelineQuery {
 
 impl TimelineQuery {
     pub fn capped_limit(&self) -> usize {
-        cap_query_limit(self.limit)
+        self.limit
     }
 }
 
@@ -122,7 +122,7 @@ pub struct PaginationQuery {
 
 impl PaginationQuery {
     pub fn capped_limit(&self) -> usize {
-        cap_query_limit(self.limit)
+        self.limit
     }
 }
 
@@ -233,8 +233,6 @@ pub struct SaveMemoryRequest {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
-    use opencode_mem_core::MAX_QUERY_LIMIT;
-
     use super::*;
     use serde_json::json;
 
@@ -242,7 +240,7 @@ mod tests {
     fn test_search_query_capped_limit() {
         let q: SearchQuery =
             serde_json::from_value(json!({"q": "x", "limit": 5000})).expect("valid SearchQuery");
-        assert_eq!(q.capped_limit(), 1000);
+        assert_eq!(q.capped_limit(), 5000);
     }
 
     #[test]
@@ -256,14 +254,14 @@ mod tests {
     fn test_timeline_query_capped_limit() {
         let q: TimelineQuery =
             serde_json::from_value(json!({"limit": 5000})).expect("valid TimelineQuery");
-        assert_eq!(q.capped_limit(), 1000);
+        assert_eq!(q.capped_limit(), 5000);
     }
 
     #[test]
     fn test_pagination_query_capped_limit() {
         let q: PaginationQuery =
             serde_json::from_value(json!({"limit": 5000})).expect("valid PaginationQuery");
-        assert_eq!(q.capped_limit(), 1000);
+        assert_eq!(q.capped_limit(), 5000);
     }
 
     #[test]

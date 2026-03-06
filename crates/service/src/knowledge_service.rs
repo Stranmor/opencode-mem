@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use opencode_mem_core::{GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType};
+use opencode_mem_core::{
+    GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType, cap_query_limit,
+};
 use opencode_mem_storage::traits::KnowledgeStore;
 use opencode_mem_storage::{StorageBackend, StorageError};
 
@@ -55,6 +57,7 @@ impl KnowledgeService {
         query: &str,
         limit: usize,
     ) -> Result<Vec<KnowledgeSearchResult>, ServiceError> {
+        let limit = cap_query_limit(limit);
         self.fast_fail_if_db_unavailable()?;
         Ok(self.storage.search_knowledge(query, limit).await?)
     }
@@ -64,6 +67,7 @@ impl KnowledgeService {
         knowledge_type: Option<KnowledgeType>,
         limit: usize,
     ) -> Result<Vec<GlobalKnowledge>, ServiceError> {
+        let limit = cap_query_limit(limit);
         self.fast_fail_if_db_unavailable()?;
         Ok(self.storage.list_knowledge(knowledge_type, limit).await?)
     }
