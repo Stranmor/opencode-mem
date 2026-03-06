@@ -5,6 +5,14 @@ use super::ObservationService;
 use crate::ServiceError;
 
 impl ObservationService {
+    pub async fn delete_observation(&self, id: &str) -> Result<bool, ServiceError> {
+        let deleted = self.storage.delete_observation_cascading(id).await?;
+        if deleted {
+            tracing::info!(id = %id, "Deleted observation (cascading)");
+        }
+        Ok(deleted)
+    }
+
     pub async fn save_observation(&self, observation: &Observation) -> Result<(), ServiceError> {
         let _result = self.persist_and_notify(observation, None).await?;
         Ok(())
@@ -76,7 +84,7 @@ impl ObservationService {
             .find_similar(
                 embedding,
                 self.dedup_threshold,
-                observation.project.as_deref(),
+                observation.project.as_ref().map(AsRef::as_ref),
             )
             .await
         {
@@ -98,10 +106,10 @@ impl ObservationService {
 
         match self
             .storage
-            .merge_into_existing(&existing.observation_id, observation)
+            .merge_into_existing(existing.observation_id.as_ref(), observation)
             .await
         {
-            Ok(()) => Ok(Some(existing.observation_id)),
+            Ok(()) => Ok(Some(existing.observation_id.to_string())),
             Err(e) => {
                 tracing::warn!(
                     "Merge failed (target may have been deleted), saving as new: {}",
@@ -195,7 +203,7 @@ impl ObservationService {
         }
 
         if let Some(vec) = embedding_vec {
-            match self.storage.store_embedding(&obs.id, &vec).await {
+            match self.storage.store_embedding(obs.id.as_ref(), &vec).await {
                 Ok(()) => {
                     tracing::info!("Stored embedding for {}", obs.id);
                 }

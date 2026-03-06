@@ -26,7 +26,6 @@ opencode-mem-storage = { workspace = true }
 opencode-mem-llm = { workspace = true }
 opencode-mem-http = { workspace = true }
 opencode-mem-mcp = { workspace = true }
-opencode-mem-infinite = { workspace = true }
 opencode-mem-embeddings = { workspace = true }
 opencode-mem-service = { workspace = true }
 tokio = { workspace = true }

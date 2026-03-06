@@ -10,7 +10,6 @@ use opencode_mem_core::{
     SessionSummary, UserPrompt,
 };
 use opencode_mem_embeddings::EmbeddingService;
-use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_storage::traits::{
     KnowledgeStore, ObservationStore, PromptStore, SearchStore, StatsStore, SummaryStore,
 };
@@ -18,12 +17,13 @@ use opencode_mem_storage::{
     CircuitBreaker, PaginatedResult, StorageBackend, StorageError, StorageStats,
 };
 
+use crate::InfiniteMemoryService;
 use crate::ServiceError;
 
 pub struct SearchService {
     pub(crate) storage: Arc<StorageBackend>,
     pub(crate) embeddings: Option<Arc<EmbeddingService>>,
-    infinite_mem: Option<Arc<InfiniteMemory>>,
+    infinite_mem: Option<Arc<InfiniteMemoryService>>,
 }
 
 impl SearchService {
@@ -31,7 +31,7 @@ impl SearchService {
     pub fn new(
         storage: Arc<StorageBackend>,
         embeddings: Option<Arc<EmbeddingService>>,
-        infinite_mem: Option<Arc<InfiniteMemory>>,
+        infinite_mem: Option<Arc<InfiniteMemoryService>>,
     ) -> Self {
         Self {
             storage,
@@ -305,3 +305,6 @@ impl SearchService {
         self.with_cb(result).await
     }
 }
+
+#[cfg(test)]
+mod breaker_tests;

@@ -15,7 +15,6 @@ workspace = true
 
 [dependencies]
 opencode-mem-core = { workspace = true }
-opencode-mem-infinite = { workspace = true }
 opencode-mem-service = { workspace = true }
 opencode-mem-storage = { workspace = true }
 axum = { workspace = true }

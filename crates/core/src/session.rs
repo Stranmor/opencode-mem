@@ -6,41 +6,30 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::error::CoreError;
-use crate::{DiscoveryTokens, PromptNumber};
+use crate::{ContentSessionId, DiscoveryTokens, ProjectId, PromptNumber, SessionId};
 
-/// A memory session tracking a coding activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Session {
-    /// Unique session identifier
-    pub id: String,
-    /// Content session ID from IDE
-    pub content_session_id: String,
-    /// Memory session ID
+    pub id: SessionId,
+    pub content_session_id: ContentSessionId,
     pub memory_session_id: Option<String>,
-    /// Project name or path
-    pub project: String,
-    /// Initial user prompt
+    pub project: ProjectId,
     pub user_prompt: Option<String>,
-    /// Session start time
     pub started_at: DateTime<Utc>,
-    /// Session end time
     pub ended_at: Option<DateTime<Utc>>,
-    /// Current session status
     pub status: SessionStatus,
-    /// Prompt counter for this session
     pub prompt_counter: u32,
 }
 
 impl Session {
-    /// Creates a new session.
     #[must_use]
     #[expect(clippy::too_many_arguments, reason = "session has many fields")]
     pub fn new(
-        id: String,
-        content_session_id: String,
+        id: SessionId,
+        content_session_id: ContentSessionId,
         memory_session_id: Option<String>,
-        project: String,
+        project: ProjectId,
         user_prompt: Option<String>,
         started_at: DateTime<Utc>,
         ended_at: Option<DateTime<Utc>>,
@@ -103,10 +92,8 @@ impl FromStr for SessionStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct SessionSummary {
-    /// Session ID this summary belongs to
-    pub session_id: String,
-    /// Project name
-    pub project: String,
+    pub session_id: SessionId,
+    pub project: ProjectId,
     /// What was requested
     pub request: Option<String>,
     /// What was investigated
@@ -136,8 +123,8 @@ impl SessionSummary {
     #[must_use]
     #[expect(clippy::too_many_arguments, reason = "summary has many fields")]
     pub fn new(
-        session_id: String,
-        project: String,
+        session_id: SessionId,
+        project: ProjectId,
         request: Option<String>,
         investigated: Option<String>,
         learned: Option<String>,
@@ -172,29 +159,22 @@ impl SessionSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct UserPrompt {
-    /// Unique prompt ID
     pub id: String,
-    /// Content session ID
-    pub content_session_id: String,
-    /// Prompt number in session
+    pub content_session_id: ContentSessionId,
     pub prompt_number: PromptNumber,
-    /// Prompt text content
     pub prompt_text: String,
-    /// Project context
-    pub project: Option<String>,
-    /// When prompt was created
+    pub project: Option<ProjectId>,
     pub created_at: DateTime<Utc>,
 }
 
 impl UserPrompt {
-    /// Creates a new user prompt.
     #[must_use]
     pub fn new(
         id: String,
-        content_session_id: String,
+        content_session_id: ContentSessionId,
         prompt_number: PromptNumber,
         prompt_text: String,
-        project: Option<String>,
+        project: Option<ProjectId>,
         created_at: DateTime<Utc>,
     ) -> Self {
         Self {

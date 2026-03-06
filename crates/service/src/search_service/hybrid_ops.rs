@@ -47,6 +47,29 @@ impl SearchService {
         self.with_cb(result).await
     }
 
+    /// Smart search: selects the best strategy based on available parameters.
+    ///
+    /// When no filters are applied and a query string is present, uses hybrid
+    /// search (FTS + vector). Otherwise falls back to filtered search. This
+    /// encapsulates the search strategy decision so both HTTP and MCP transports
+    /// call the same logic.
+    pub async fn smart_search(
+        &self,
+        query: Option<&str>,
+        project: Option<&str>,
+        obs_type: Option<&str>,
+        from: Option<&str>,
+        to: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<SearchResult>, ServiceError> {
+        let has_filters = project.is_some() || obs_type.is_some() || from.is_some() || to.is_some();
+        if !has_filters && let Some(q) = query.filter(|s| !s.is_empty()) {
+            return self.hybrid_search(q, limit).await;
+        }
+        self.search_with_filters(query, project, obs_type, from, to, limit)
+            .await
+    }
+
     /// Semantic search with automatic 3-tier fallback:
     /// 1. Vector search via embeddings
     /// 2. If vector results are empty → hybrid search

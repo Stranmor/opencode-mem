@@ -22,6 +22,7 @@
 
 mod ai_types;
 mod client;
+mod compression_prompt;
 pub mod error;
 mod insights;
 mod knowledge;

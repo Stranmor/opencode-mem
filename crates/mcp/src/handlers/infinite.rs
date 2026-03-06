@@ -1,5 +1,5 @@
 use opencode_mem_core::{INFINITE_MEMORY_NOT_CONFIGURED, MAX_QUERY_LIMIT_I64};
-use opencode_mem_infinite::InfiniteMemory;
+use opencode_mem_service::InfiniteMemoryService;
 use tokio::runtime::Handle;
 
 use super::{mcp_err, mcp_ok};
@@ -7,7 +7,7 @@ use crate::McpResponse;
 
 fn degrade_infinite_read(
     err: impl std::fmt::Display,
-    mem: &InfiniteMemory,
+    mem: &InfiniteMemoryService,
     id: serde_json::Value,
 ) -> McpResponse {
     let cb = mem.circuit_breaker();
@@ -35,7 +35,10 @@ fn degrade_infinite_read(
 /// Returns `Some(empty_McpResponse)` if the CB blocks the request (database unavailable),
 /// preventing a full connection-timeout hang on the single-threaded stdio MCP stream.
 /// Returns `None` if the CB allows the request through (circuit closed or half-open probe).
-fn cb_fast_fail_infinite(mem: &InfiniteMemory, id: &serde_json::Value) -> Option<McpResponse> {
+fn cb_fast_fail_infinite(
+    mem: &InfiniteMemoryService,
+    id: &serde_json::Value,
+) -> Option<McpResponse> {
     let cb = mem.circuit_breaker();
     if !cb.should_allow() {
         tracing::debug!(
@@ -53,7 +56,7 @@ fn cb_fast_fail_infinite(mem: &InfiniteMemory, id: &serde_json::Value) -> Option
 }
 
 pub(super) async fn handle_infinite_expand(
-    infinite_mem: Option<&InfiniteMemory>,
+    infinite_mem: Option<&InfiniteMemoryService>,
     _handle: &Handle,
     args: &serde_json::Value,
     id: serde_json::Value,
@@ -96,7 +99,7 @@ pub(super) async fn handle_infinite_expand(
 }
 
 pub(super) async fn handle_infinite_time_range(
-    infinite_mem: Option<&InfiniteMemory>,
+    infinite_mem: Option<&InfiniteMemoryService>,
     _handle: &Handle,
     args: &serde_json::Value,
     id: serde_json::Value,
@@ -106,8 +109,16 @@ pub(super) async fn handle_infinite_time_range(
             if let Some(degraded) = cb_fast_fail_infinite(mem, &id) {
                 return degraded;
             }
-            let from = args.get("start").and_then(|f| f.as_str()).unwrap_or("");
-            let to = args.get("end").and_then(|t| t.as_str()).unwrap_or("");
+            let from = args
+                .get("start")
+                .and_then(|f| f.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("");
+            let to = args
+                .get("end")
+                .and_then(|t| t.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or("");
             let session_id = args.get("session_id").and_then(|s| s.as_str());
             let limit = args
                 .get("limit")
@@ -159,7 +170,7 @@ pub(super) async fn handle_infinite_time_range(
 }
 
 pub(super) async fn handle_infinite_drill_hour(
-    infinite_mem: Option<&InfiniteMemory>,
+    infinite_mem: Option<&InfiniteMemoryService>,
     _handle: &Handle,
     args: &serde_json::Value,
     id: serde_json::Value,
@@ -202,7 +213,7 @@ pub(super) async fn handle_infinite_drill_hour(
 }
 
 pub(super) async fn handle_infinite_drill_minute(
-    infinite_mem: Option<&InfiniteMemory>,
+    infinite_mem: Option<&InfiniteMemoryService>,
     _handle: &Handle,
     args: &serde_json::Value,
     id: serde_json::Value,

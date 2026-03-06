@@ -35,7 +35,7 @@ pub async fn get_context_recent(
         })?;
 
     if let Some(ref session_id) = query.session_id {
-        let ids: Vec<String> = observations.iter().map(|o| o.id.clone()).collect();
+        let ids: Vec<String> = observations.iter().map(|o| o.id.to_string()).collect();
         if !ids.is_empty()
             && let Err(e) = state
                 .observation_service

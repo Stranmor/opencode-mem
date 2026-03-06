@@ -18,7 +18,9 @@ pub(crate) const fn is_localhost(addr: &std::net::SocketAddr) -> bool {
 
 pub mod admin;
 pub mod api_docs;
+pub mod branch;
 pub mod context;
+pub(crate) mod cron;
 pub mod infinite;
 pub mod knowledge;
 pub mod observations;

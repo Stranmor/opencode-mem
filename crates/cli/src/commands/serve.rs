@@ -4,10 +4,10 @@ use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_http::{
     AppState, Settings, create_router, run_startup_recovery, start_background_processor,
 };
-use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_service::{
-    KnowledgeService, ObservationService, QueueService, SearchService, SessionService,
+    InfiniteMemoryService, KnowledgeService, ObservationService, QueueService, SearchService,
+    SessionService,
 };
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -16,13 +16,12 @@ use tokio::sync::{RwLock, Semaphore, broadcast};
 
 pub(crate) async fn run(port: u16, host: String, config: Arc<AppConfig>) -> Result<()> {
     opencode_mem_storage::init_queue_config(config.max_retry, config.visibility_timeout_secs);
-    opencode_mem_infinite::init_compression_config(
+    opencode_mem_service::init_compression_config(
         config.max_content_chars,
         config.max_total_chars,
         config.max_events,
     );
     let storage = Arc::new(crate::create_storage(&config.database_url).await?);
-
     let llm = Arc::new(LlmClient::new(
         config.api_key.clone(),
         config.api_url.clone(),
@@ -39,7 +38,7 @@ pub(crate) async fn run(port: u16, host: String, config: Arc<AppConfig>) -> Resu
             .connect_lazy(url);
 
         match pool {
-            Ok(p) => match InfiniteMemory::new(p, llm.clone()).await {
+            Ok(p) => match InfiniteMemoryService::new(p, llm.clone()).await {
                 Ok(mem) => {
                     tracing::info!("Connected to infinite memory");
                     Some(Arc::new(mem))

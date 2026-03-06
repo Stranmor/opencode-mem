@@ -96,7 +96,7 @@ impl SearchService {
             return Ok(observations);
         }
 
-        let ids: Vec<String> = observations.iter().map(|o| o.id.clone()).collect();
+        let ids: Vec<String> = observations.iter().map(|o| o.id.to_string()).collect();
         let embedding_pairs = self.storage.get_embeddings_for_ids(&ids).await?;
 
         if embedding_pairs.is_empty() {
@@ -110,7 +110,7 @@ impl SearchService {
             chrono::DateTime<chrono::Utc>,
         )> = observations
             .iter()
-            .map(|o| (o.id.clone(), o.noise_level, o.created_at))
+            .map(|o| (o.id.to_string(), o.noise_level, o.created_at))
             .collect();
 
         let embedding_owned: Vec<(String, Vec<f32>)> = embedding_pairs;

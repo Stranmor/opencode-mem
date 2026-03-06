@@ -3,15 +3,12 @@
 use std::collections::HashSet;
 
 use super::{Concept, Observation};
+use crate::identifiers::ObservationId;
 
-/// A match found during semantic deduplication.
 #[derive(Debug, Clone)]
 pub struct SimilarMatch {
-    /// ID of the existing similar observation.
-    pub observation_id: String,
-    /// Cosine similarity score (0.0–1.0).
+    pub observation_id: ObservationId,
     pub similarity: f32,
-    /// Title of the existing observation (for logging).
     pub title: String,
 }
 

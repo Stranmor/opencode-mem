@@ -4,18 +4,15 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::{Concept, DiscoveryTokens, NoiseLevel, ObservationType, PromptNumber};
+use crate::identifiers::{ObservationId, ProjectId, SessionId};
 
 /// Structured observation of a coding activity
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct Observation {
-    /// Unique identifier
-    pub id: String,
-    /// Session this observation belongs to
-    pub session_id: String,
-    /// Project this observation belongs to
-    pub project: Option<String>,
-    /// Type of observation
+    pub id: ObservationId,
+    pub session_id: SessionId,
+    pub project: Option<ProjectId>,
     pub observation_type: ObservationType,
     /// Concise title (max 100 chars)
     pub title: String,
@@ -47,26 +44,24 @@ pub struct Observation {
 }
 
 impl Observation {
-    /// Returns a new builder with the required fields set.
     #[must_use]
     pub fn builder(
-        id: String,
-        session_id: String,
+        id: impl Into<ObservationId>,
+        session_id: impl Into<SessionId>,
         observation_type: ObservationType,
         title: String,
     ) -> ObservationBuilder {
-        ObservationBuilder::new(id, session_id, observation_type, title)
+        ObservationBuilder::new(id.into(), session_id.into(), observation_type, title)
     }
 }
 
-/// Builder for constructing [`Observation`] instances.
 #[derive(Debug, Clone)]
 pub struct ObservationBuilder {
-    id: String,
-    session_id: String,
+    id: ObservationId,
+    session_id: SessionId,
     observation_type: ObservationType,
     title: String,
-    project: Option<String>,
+    project: Option<ProjectId>,
     subtitle: Option<String>,
     narrative: Option<String>,
     facts: Vec<String>,
@@ -84,8 +79,8 @@ pub struct ObservationBuilder {
 impl ObservationBuilder {
     #[must_use]
     fn new(
-        id: String,
-        session_id: String,
+        id: ObservationId,
+        session_id: SessionId,
         observation_type: ObservationType,
         title: String,
     ) -> Self {
@@ -111,13 +106,13 @@ impl ObservationBuilder {
     }
 
     #[must_use]
-    pub fn project(mut self, project: impl Into<String>) -> Self {
+    pub fn project(mut self, project: impl Into<ProjectId>) -> Self {
         self.project = Some(project.into());
         self
     }
 
     #[must_use]
-    pub fn maybe_project(mut self, project: Option<String>) -> Self {
+    pub fn maybe_project(mut self, project: Option<ProjectId>) -> Self {
         self.project = project;
         self
     }

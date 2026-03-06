@@ -23,3 +23,8 @@ thiserror = { workspace = true }
 dirs = { workspace = true }
 globset = { workspace = true }
 unicode-normalization = "0.1"
+sqlx = { workspace = true, optional = true }
+
+[features]
+default = ["sqlx-types"]
+sqlx-types = ["dep:sqlx"]

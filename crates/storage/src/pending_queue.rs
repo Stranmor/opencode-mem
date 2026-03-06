@@ -134,14 +134,15 @@ pub fn init_queue_config(max_retry: i32, visibility_timeout_secs: i64) {
 #[must_use]
 pub fn max_retry_count() -> i32 {
     *MAX_RETRY
-        .get_or_init(|| opencode_mem_core::env_parse_with_default("OPENCODE_MEM_MAX_RETRY", 3i32))
+        .get()
+        .expect("init_queue_config must be called before use")
 }
 
 #[must_use]
 pub fn default_visibility_timeout_secs() -> i64 {
-    *VISIBILITY_TIMEOUT.get_or_init(|| {
-        opencode_mem_core::env_parse_with_default("OPENCODE_MEM_VISIBILITY_TIMEOUT", 300i64)
-    })
+    *VISIBILITY_TIMEOUT
+        .get()
+        .expect("init_queue_config must be called before use")
 }
 
 /// Statistics about the pending message queue.

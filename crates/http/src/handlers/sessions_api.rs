@@ -47,7 +47,8 @@ pub async fn api_session_observations(
     let session_id = session
         .map(|s| s.id)
         .ok_or(ApiError::NotFound("Not Found".into()))?;
-    let resp = enqueue_session_observations(&state, session_id, req.observations).await?;
+    let resp =
+        enqueue_session_observations(&state, session_id.to_string(), req.observations).await?;
     Ok(Json(resp))
 }
 

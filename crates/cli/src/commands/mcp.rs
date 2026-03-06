@@ -1,16 +1,17 @@
 use anyhow::Result;
 use opencode_mem_core::AppConfig;
 use opencode_mem_embeddings::EmbeddingService;
-use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_mcp::run_mcp_server;
-use opencode_mem_service::{KnowledgeService, ObservationService, SearchService, SessionService};
+use opencode_mem_service::{
+    InfiniteMemoryService, KnowledgeService, ObservationService, SearchService, SessionService,
+};
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
 pub(crate) async fn run(config: Arc<AppConfig>) -> Result<()> {
     opencode_mem_storage::init_queue_config(config.max_retry, config.visibility_timeout_secs);
-    opencode_mem_infinite::init_compression_config(
+    opencode_mem_service::init_compression_config(
         config.max_content_chars,
         config.max_total_chars,
         config.max_events,
@@ -45,7 +46,7 @@ pub(crate) async fn run(config: Arc<AppConfig>) -> Result<()> {
             .connect_lazy(url);
 
         match pool {
-            Ok(p) => match InfiniteMemory::new(p, llm.clone()).await {
+            Ok(p) => match InfiniteMemoryService::new(p, llm.clone()).await {
                 Ok(mem) => {
                     eprintln!("Connected to infinite memory");
                     Some(Arc::new(mem))

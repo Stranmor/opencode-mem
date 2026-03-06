@@ -1,8 +1,6 @@
-//! Event-related PostgreSQL queries.
-
-use crate::event_types::{EventType, RawEvent, StoredEvent};
-use anyhow::Result;
+use crate::StorageError;
 use chrono::{DateTime, Utc};
+use opencode_mem_core::{InfiniteEventType, RawInfiniteEvent, StoredInfiniteEvent};
 use sqlx::PgPool;
 use std::str::FromStr;
 
@@ -18,7 +16,10 @@ type StoredEventRow = (
     Option<String>,
 );
 
-pub async fn store_event(pool: &PgPool, event: RawEvent) -> Result<i64> {
+pub async fn store_infinite_event(
+    pool: &PgPool,
+    event: RawInfiniteEvent,
+) -> Result<i64, StorageError> {
     let row: (i64,) = sqlx::query_as(
         r#"
         INSERT INTO raw_events (session_id, project, event_type, content, files, tools, call_id)
@@ -40,7 +41,10 @@ pub async fn store_event(pool: &PgPool, event: RawEvent) -> Result<i64> {
     Ok(row.0)
 }
 
-pub async fn get_recent(pool: &PgPool, limit: i64) -> Result<Vec<StoredEvent>> {
+pub async fn get_recent_infinite_events(
+    pool: &PgPool,
+    limit: i64,
+) -> Result<Vec<StoredInfiniteEvent>, StorageError> {
     let rows = sqlx::query_as::<_, StoredEventRow>(
         r#"
         SELECT id, ts, session_id, project, event_type, content, files, tools, call_id
@@ -56,14 +60,7 @@ pub async fn get_recent(pool: &PgPool, limit: i64) -> Result<Vec<StoredEvent>> {
     Ok(rows.into_iter().filter_map(row_to_stored_event).collect())
 }
 
-/// Release events back for future processing after a failed compression attempt.
-///
-/// Sets `processing_started_at` to NOW() (not NULL) so the visibility timeout
-/// provides a cooldown period before re-fetch. `get_unsummarized_events()` only
-/// picks up events where `processing_started_at IS NULL OR processing_started_at < stale_threshold`,
-/// so events released here won't be re-fetched until the 5-minute visibility timeout expires.
-/// This prevents the spin-loop where zeroing `processing_started_at` caused immediate re-fetch.
-pub async fn release_events(pool: &PgPool, ids: &[i64]) -> Result<()> {
+pub async fn release_infinite_events(pool: &PgPool, ids: &[i64]) -> Result<(), StorageError> {
     if ids.is_empty() {
         return Ok(());
     }
@@ -76,7 +73,10 @@ pub async fn release_events(pool: &PgPool, ids: &[i64]) -> Result<()> {
     Ok(())
 }
 
-pub async fn get_unsummarized_events(pool: &PgPool, limit: i64) -> Result<Vec<StoredEvent>> {
+pub async fn get_unsummarized_infinite_events(
+    pool: &PgPool,
+    limit: i64,
+) -> Result<Vec<StoredInfiniteEvent>, StorageError> {
     let instance_id = uuid::Uuid::new_v4().to_string();
     let visibility_timeout = chrono::Duration::minutes(5);
     let stale_threshold = Utc::now() - visibility_timeout;
@@ -106,11 +106,11 @@ pub async fn get_unsummarized_events(pool: &PgPool, limit: i64) -> Result<Vec<St
     Ok(rows.into_iter().filter_map(row_to_stored_event).collect())
 }
 
-pub async fn get_events_by_summary_id(
+pub async fn get_infinite_events_by_summary_id(
     pool: &PgPool,
     summary_5min_id: i64,
     limit: i64,
-) -> Result<Vec<StoredEvent>> {
+) -> Result<Vec<StoredInfiniteEvent>, StorageError> {
     let rows = sqlx::query_as::<_, StoredEventRow>(
         r#"
         SELECT id, ts, session_id, project, event_type, content, files, tools, call_id
@@ -128,13 +128,13 @@ pub async fn get_events_by_summary_id(
     Ok(rows.into_iter().filter_map(row_to_stored_event).collect())
 }
 
-pub async fn get_events_by_time_range(
+pub async fn get_infinite_events_by_time_range(
     pool: &PgPool,
     start: DateTime<Utc>,
     end: DateTime<Utc>,
     session_id: Option<&str>,
     limit: i64,
-) -> Result<Vec<StoredEvent>> {
+) -> Result<Vec<StoredInfiniteEvent>, StorageError> {
     let rows = if let Some(sid) = session_id {
         sqlx::query_as::<_, StoredEventRow>(
             r#"
@@ -171,7 +171,11 @@ pub async fn get_events_by_time_range(
     Ok(rows.into_iter().filter_map(row_to_stored_event).collect())
 }
 
-pub async fn search(pool: &PgPool, query: &str, limit: i64) -> Result<Vec<StoredEvent>> {
+pub async fn search_infinite_events(
+    pool: &PgPool,
+    query: &str,
+    limit: i64,
+) -> Result<Vec<StoredInfiniteEvent>, StorageError> {
     let rows = sqlx::query_as::<_, StoredEventRow>(
         r#"
         SELECT id, ts, session_id, project, event_type, content, files, tools, call_id
@@ -189,7 +193,7 @@ pub async fn search(pool: &PgPool, query: &str, limit: i64) -> Result<Vec<Stored
     Ok(rows.into_iter().filter_map(row_to_stored_event).collect())
 }
 
-pub async fn stats(pool: &PgPool) -> Result<serde_json::Value> {
+pub async fn infinite_memory_stats(pool: &PgPool) -> Result<serde_json::Value, StorageError> {
     let event_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM raw_events")
         .fetch_one(pool)
         .await?;
@@ -214,10 +218,10 @@ pub async fn stats(pool: &PgPool) -> Result<serde_json::Value> {
     }))
 }
 
-fn row_to_stored_event(row: StoredEventRow) -> Option<StoredEvent> {
+fn row_to_stored_event(row: StoredEventRow) -> Option<StoredInfiniteEvent> {
     let (id, ts, session_id, project, event_type_str, content, files, tools, call_id) = row;
-    match EventType::from_str(&event_type_str) {
-        Ok(event_type) => Some(StoredEvent {
+    match InfiniteEventType::from_str(&event_type_str) {
+        Ok(event_type) => Some(StoredInfiniteEvent {
             id,
             ts,
             session_id,

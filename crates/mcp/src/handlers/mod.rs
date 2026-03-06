@@ -2,10 +2,9 @@ mod infinite;
 mod knowledge;
 mod memory;
 
-use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_service::{
-    KnowledgeService, ObservationService, PendingWrite, PendingWriteQueue, SearchService,
-    ServiceError, SessionService,
+    InfiniteMemoryService, KnowledgeService, ObservationService, PendingWrite, PendingWriteQueue,
+    SearchService, ServiceError, SessionService,
 };
 use serde::Serialize;
 use serde_json::json;
@@ -13,7 +12,7 @@ use std::fmt::Display;
 use std::sync::Arc;
 use tokio::runtime::Handle;
 
-use opencode_mem_core::{DEFAULT_QUERY_LIMIT, MAX_QUERY_LIMIT};
+use opencode_mem_core::{DEFAULT_QUERY_LIMIT, cap_query_limit};
 
 use crate::tools::{McpTool, WORKFLOW_DOCS};
 use crate::{McpError, McpResponse};
@@ -28,9 +27,8 @@ pub(crate) fn parse_limit(args: &serde_json::Value, default: usize) -> usize {
         .get("limit")
         .and_then(serde_json::Value::as_u64)
         .unwrap_or(u64::try_from(default).unwrap_or(u64::MAX));
-    usize::try_from(raw)
-        .unwrap_or(MAX_QUERY_LIMIT)
-        .min(MAX_QUERY_LIMIT)
+    let uncapped = usize::try_from(raw).unwrap_or(usize::MAX);
+    cap_query_limit(uncapped)
 }
 
 pub(crate) fn mcp_ok<T: Serialize>(data: &T) -> serde_json::Value {
@@ -126,7 +124,7 @@ pub(crate) fn degrade_write_err(
     reason = "MCP handler needs all service references"
 )]
 pub async fn handle_tool_call(
-    infinite_mem: Option<&InfiniteMemory>,
+    infinite_mem: Option<&InfiniteMemoryService>,
     observation_service: &Arc<ObservationService>,
     _session_service: &Arc<SessionService>,
     knowledge_service: &Arc<KnowledgeService>,
@@ -167,7 +165,7 @@ pub async fn handle_tool_call(
                 error: Some(McpError {
                     code: -32602,
                     message: format!(
-                        "Unknown tool: '{tool_name_str}'. Available: __IMPORTANT, search, timeline, get_observations, memory_get, memory_recent, memory_hybrid_search, memory_semantic_search, save_memory, knowledge_search, knowledge_save, knowledge_get, knowledge_list, knowledge_delete, infinite_expand, infinite_time_range, infinite_drill_hour, infinite_drill_minute"
+                        "Unknown tool: '{tool_name_str}'. Available: __IMPORTANT, search, timeline, get_observations, memory_get, memory_recent, memory_hybrid_search, memory_semantic_search, save_memory, memory_delete, knowledge_search, knowledge_save, knowledge_get, knowledge_list, knowledge_delete, infinite_expand, infinite_time_range, infinite_drill_hour, infinite_drill_minute"
                     ),
                 }),
             };
@@ -208,6 +206,7 @@ pub async fn handle_tool_call(
         McpTool::SaveMemory => {
             memory::handle_save_memory(observation_service, pending_writes, &args).await
         }
+        McpTool::MemoryDelete => memory::handle_memory_delete(observation_service, &args).await,
         McpTool::KnowledgeSearch => {
             knowledge::handle_knowledge_search(knowledge_service, &args, parse_limit(&args, 10))
                 .await
@@ -281,9 +280,17 @@ fn spawn_pending_flush(
                 text,
                 title,
                 project,
+                observation_type,
+                noise_level,
             } = item;
             match observation_service
-                .save_memory(&text, title.as_deref(), project.as_deref())
+                .save_memory(
+                    &text,
+                    title.as_deref(),
+                    project.as_deref(),
+                    observation_type,
+                    noise_level,
+                )
                 .await
             {
                 Ok(_) => {}
@@ -292,6 +299,8 @@ fn spawn_pending_flush(
                         text,
                         title,
                         project,
+                        observation_type,
+                        noise_level,
                     });
                     tracing::warn!(
                         error = %e,

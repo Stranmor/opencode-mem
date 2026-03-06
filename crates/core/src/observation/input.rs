@@ -6,10 +6,10 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use super::{NoiseLevel, ObservationType};
+use crate::identifiers::{ObservationId, SessionId};
 
 /// Trait for types that carry a relevance score (NaN-safe descending sort).
 pub trait Scored {
-    /// Returns the relevance score for sorting.
     fn score(&self) -> f64;
 }
 
@@ -38,26 +38,19 @@ impl<T> Scored for (T, f64) {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct ToolCall {
-    /// Tool name that was called
     pub tool: String,
-    /// Session ID for this tool call
-    pub session_id: String,
-    /// Unique call identifier
+    pub session_id: SessionId,
     pub call_id: String,
-    /// Project context
     pub project: Option<String>,
-    /// Tool input parameters
     pub input: serde_json::Value,
-    /// Tool output result
     pub output: String,
 }
 
 impl ToolCall {
-    /// Creates a new tool call.
     #[must_use]
     pub fn new(
         tool: String,
-        session_id: String,
+        session_id: SessionId,
         call_id: String,
         project: Option<String>,
         input: serde_json::Value,
@@ -73,9 +66,8 @@ impl ToolCall {
         }
     }
 
-    /// Creates a new tool call with a different session ID.
     #[must_use]
-    pub fn with_session_id(self, session_id: String) -> Self {
+    pub fn with_session_id(self, session_id: SessionId) -> Self {
         Self { session_id, ..self }
     }
 }
@@ -84,20 +76,15 @@ impl ToolCall {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct ObservationInput {
-    /// Tool name
     pub tool: String,
-    /// Session ID
-    pub session_id: String,
-    /// Call ID
+    pub session_id: SessionId,
     pub call_id: String,
-    /// Tool output
     pub output: ToolOutput,
 }
 
 impl ObservationInput {
-    /// Creates a new observation input.
     #[must_use]
-    pub fn new(tool: String, session_id: String, call_id: String, output: ToolOutput) -> Self {
+    pub fn new(tool: String, session_id: SessionId, call_id: String, output: ToolOutput) -> Self {
         Self {
             tool,
             session_id,
@@ -111,17 +98,13 @@ impl ObservationInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct ToolOutput {
-    /// Output title
     pub title: String,
-    /// Output content
     pub output: String,
-    /// Additional metadata
     #[serde(default)]
     pub metadata: serde_json::Value,
 }
 
 impl ToolOutput {
-    /// Creates a new tool output.
     #[must_use]
     pub fn new(title: String, output: String, metadata: serde_json::Value) -> Self {
         Self {
@@ -136,45 +119,32 @@ impl ToolOutput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct ObservationIndex {
-    /// Observation ID
-    pub id: String,
-    /// Observation title
+    pub id: ObservationId,
     pub title: String,
-    /// Optional subtitle
     pub subtitle: Option<String>,
-    /// Type of observation
     pub observation_type: ObservationType,
-    /// Noise level classification
     #[serde(default)]
     pub noise_level: NoiseLevel,
-    /// Creation timestamp
     pub created_at: DateTime<Utc>,
 }
 
-/// Search result with relevance score
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct SearchResult {
-    /// Observation ID
-    pub id: String,
+    pub id: ObservationId,
     /// Observation title
     pub title: String,
-    /// Optional subtitle
     pub subtitle: Option<String>,
-    /// Type of observation
     pub observation_type: ObservationType,
-    /// Noise level classification
     #[serde(default)]
     pub noise_level: NoiseLevel,
-    /// Relevance score
     pub score: f64,
 }
 
 impl SearchResult {
-    /// Creates a new search result.
     #[must_use]
     pub fn new(
-        id: String,
+        id: ObservationId,
         title: String,
         subtitle: Option<String>,
         observation_type: ObservationType,

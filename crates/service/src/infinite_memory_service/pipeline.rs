@@ -1,194 +1,34 @@
-//! Summarization pipeline: create summaries and run compression.
-
-use crate::compression::{compress_events, compress_summaries};
-use crate::event_queries;
-use crate::event_types::{StoredEvent, Summary, SummaryEntities};
-use crate::summary_queries;
+use super::compression::{compress_events, compress_summaries};
 use anyhow::Result;
+use chrono::{DateTime, Utc};
+use opencode_mem_core::{StoredInfiniteEvent, SummaryEntities};
 use opencode_mem_llm::LlmClient;
-
+use opencode_mem_storage::pg_storage::infinite_memory;
 use sqlx::PgPool;
 
 const MIN_5MIN_SUMMARIES_FOR_HOUR: usize = 6;
 const MIN_HOUR_SUMMARIES_FOR_DAY: usize = 12;
-
-pub async fn create_5min_summary(
-    pool: &PgPool,
-    events: &[StoredEvent],
-    summary: &str,
-    entities: Option<&SummaryEntities>,
-) -> Result<i64> {
-    if events.is_empty() {
-        return Ok(0);
-    }
-
-    let ts_start = events
-        .first()
-        .expect("BUG: create_5min_summary called with empty events after is_empty check")
-        .ts;
-    let ts_end = events
-        .last()
-        .expect("BUG: create_5min_summary called with empty events after is_empty check")
-        .ts;
-    let session_id = events.first().map(|e| e.session_id.clone());
-    let project = events.first().and_then(|e| e.project.clone());
-    let entities_json = entities.and_then(|e| serde_json::to_value(e).ok());
-
-    let mut tx = pool.begin().await?;
-
-    let total_events = i32::try_from(events.len())
-        .map_err(|e| anyhow::anyhow!("events.len() {} exceeds i32::MAX: {}", events.len(), e))?;
-
-    let row: (i64,) = sqlx::query_as(
-        r#"
-        INSERT INTO summaries_5min (ts_start, ts_end, session_id, project, content, event_count, entities)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id
-        "#,
-    )
-    .bind(ts_start)
-    .bind(ts_end)
-    .bind(&session_id)
-    .bind(&project)
-    .bind(summary)
-    .bind(total_events)
-    .bind(&entities_json)
-    .fetch_one(&mut *tx)
-    .await?;
-
-    let summary_id = row.0;
-
-    let event_ids: Vec<i64> = events.iter().map(|e| e.id).collect();
-    sqlx::query(
-        r#"
-        UPDATE raw_events SET summary_5min_id = $1 WHERE id = ANY($2)
-        "#,
-    )
-    .bind(summary_id)
-    .bind(&event_ids)
-    .execute(&mut *tx)
-    .await?;
-
-    tx.commit().await?;
-
-    Ok(summary_id)
-}
-
-pub async fn create_hour_summary(
-    pool: &PgPool,
-    summaries: &[Summary],
-    content: &str,
-    entities: Option<&SummaryEntities>,
-) -> Result<i64> {
-    if summaries.is_empty() {
-        return Ok(0);
-    }
-
-    let ts_start = summaries
-        .first()
-        .expect("BUG: empty summaries after check")
-        .ts_start;
-    let ts_end = summaries
-        .last()
-        .expect("BUG: empty summaries after check")
-        .ts_end;
-    let session_id = summaries.first().and_then(|s| s.session_id.clone());
-    let project = summaries.first().and_then(|s| s.project.clone());
-    let total_events: i32 = summaries.iter().map(|s| s.event_count).sum();
-    let entities_json = entities.and_then(|e| serde_json::to_value(e).ok());
-
-    let mut tx = pool.begin().await?;
-
-    let row: (i64,) = sqlx::query_as(
-        r#"
-        INSERT INTO summaries_hour (ts_start, ts_end, session_id, project, content, event_count, entities)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id
-        "#,
-    )
-    .bind(ts_start)
-    .bind(ts_end)
-    .bind(&session_id)
-    .bind(&project)
-    .bind(content)
-    .bind(total_events)
-    .bind(&entities_json)
-    .fetch_one(&mut *tx)
-    .await?;
-
-    let hour_id = row.0;
-    let summary_ids: Vec<i64> = summaries.iter().map(|s| s.id).collect();
-    sqlx::query("UPDATE summaries_5min SET summary_hour_id = $1 WHERE id = ANY($2)")
-        .bind(hour_id)
-        .bind(&summary_ids)
-        .execute(&mut *tx)
-        .await?;
-
-    tx.commit().await?;
-    Ok(hour_id)
-}
-
-pub async fn create_day_summary(
-    pool: &PgPool,
-    summaries: &[Summary],
-    content: &str,
-    entities: Option<&SummaryEntities>,
-) -> Result<i64> {
-    if summaries.is_empty() {
-        return Ok(0);
-    }
-
-    let ts_start = summaries
-        .first()
-        .expect("BUG: empty summaries after check")
-        .ts_start;
-    let ts_end = summaries
-        .last()
-        .expect("BUG: empty summaries after check")
-        .ts_end;
-    let session_id = summaries.first().and_then(|s| s.session_id.clone());
-    let project = summaries.first().and_then(|s| s.project.clone());
-    let total_events: i32 = summaries.iter().map(|s| s.event_count).sum();
-    let entities_json = entities.and_then(|e| serde_json::to_value(e).ok());
-
-    let mut tx = pool.begin().await?;
-
-    let row: (i64,) = sqlx::query_as(
-        r#"
-        INSERT INTO summaries_day (ts_start, ts_end, session_id, project, content, event_count, entities)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id
-        "#,
-    )
-    .bind(ts_start)
-    .bind(ts_end)
-    .bind(&session_id)
-    .bind(&project)
-    .bind(content)
-    .bind(total_events)
-    .bind(&entities_json)
-    .fetch_one(&mut *tx)
-    .await?;
-
-    let day_id = row.0;
-    let summary_ids: Vec<i64> = summaries.iter().map(|s| s.id).collect();
-    sqlx::query("UPDATE summaries_hour SET summary_day_id = $1 WHERE id = ANY($2)")
-        .bind(day_id)
-        .bind(&summary_ids)
-        .execute(&mut *tx)
-        .await?;
-
-    tx.commit().await?;
-    Ok(day_id)
-}
 const MAX_EVENTS_PER_BATCH: usize = 100;
+
+/// Check if a timestamp is older than `n` hours from now.
+/// Uses `signed_duration_since` to avoid arithmetic overflow on `DateTime` subtraction.
+fn is_older_than_hours(ts: &DateTime<Utc>, n: i64) -> bool {
+    ts.signed_duration_since(Utc::now()).num_hours() <= n.saturating_neg()
+}
+
+/// Check if a timestamp is older than `n` days from now.
+fn is_older_than_days(ts: &DateTime<Utc>, n: i64) -> bool {
+    ts.signed_duration_since(Utc::now()).num_days() <= n.saturating_neg()
+}
 
 pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<u32> {
     let mut total_processed = 0u32;
     let batch_limit = i64::try_from(MAX_EVENTS_PER_BATCH)
         .map_err(|e| anyhow::anyhow!("MAX_EVENTS_PER_BATCH exceeds i64::MAX: {e}"))?;
     loop {
-        let events = event_queries::get_unsummarized_events(pool, batch_limit).await?;
+        let events = infinite_memory::get_unsummarized_infinite_events(pool, batch_limit)
+            .await
+            .map_err(anyhow::Error::from)?;
         if events.is_empty() {
             break;
         }
@@ -201,7 +41,7 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
         }
 
         for session_id in seen_sessions {
-            let mut session_events: Vec<&StoredEvent> = events
+            let mut session_events: Vec<&StoredInfiniteEvent> = events
                 .iter()
                 .filter(|e| e.session_id == session_id)
                 .collect();
@@ -212,12 +52,14 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
 
             session_events.sort_by_key(|e| e.ts);
 
-            let mut current_bucket: Vec<StoredEvent> = Vec::new();
-            let mut bucket_start = session_events[0].ts;
+            let mut current_bucket: Vec<StoredInfiniteEvent> = Vec::new();
+            let Some(first_event) = session_events.first() else {
+                continue;
+            };
+            let mut bucket_start = first_event.ts;
             let mut buckets = Vec::new();
 
             for event in session_events {
-                // Group events into strict 5-minute temporal buckets
                 if event.ts.timestamp() / 300 != bucket_start.timestamp() / 300 {
                     buckets.push(current_bucket.clone());
                     current_bucket.clear();
@@ -238,7 +80,14 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
 
                 let result: Result<()> = async {
                     let (summary, entities) = compress_events(llm, &owned_events).await?;
-                    create_5min_summary(pool, &owned_events, &summary, entities.as_ref()).await?;
+                    infinite_memory::create_5min_summary(
+                        pool,
+                        &owned_events,
+                        &summary,
+                        entities.as_ref(),
+                    )
+                    .await
+                    .map_err(anyhow::Error::from)?;
                     Ok(())
                 }
                 .await;
@@ -250,7 +99,7 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
                         "Failed to compress 5min bucket, skipping"
                     );
                     let ids: Vec<i64> = owned_events.iter().map(|e| e.id).collect();
-                    let _ = event_queries::release_events(pool, &ids).await;
+                    let _ = infinite_memory::release_infinite_events(pool, &ids).await;
                 } else {
                     let event_count = u32::try_from(owned_events.len()).map_err(|e| {
                         anyhow::anyhow!(
@@ -278,13 +127,16 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
 pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32, u32, u32)> {
     let events_processed = run_compression_pipeline(pool, llm).await?;
 
-    // Phase 2: Compress 5min summaries → hour summaries (per-session)
-    let sessions_5min = summary_queries::get_sessions_with_unaggregated_5min(pool).await?;
+    let sessions_5min = infinite_memory::get_sessions_with_unaggregated_5min(pool)
+        .await
+        .map_err(anyhow::Error::from)?;
 
     let mut hours_created = 0u32;
     for session_id in sessions_5min {
         let mut session_summaries =
-            summary_queries::get_unaggregated_5min_for_session(pool, session_id.as_deref()).await?;
+            infinite_memory::get_unaggregated_5min_for_session(pool, session_id.as_deref())
+                .await
+                .map_err(anyhow::Error::from)?;
 
         if session_summaries.is_empty() {
             continue;
@@ -294,7 +146,10 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
 
         let mut buckets = Vec::new();
         let mut current_bucket = Vec::new();
-        let mut bucket_start = session_summaries[0].ts_start;
+        let Some(first_summary) = session_summaries.first() else {
+            continue;
+        };
+        let mut bucket_start = first_summary.ts_start;
 
         for s in session_summaries {
             if s.ts_start.timestamp() / 3600 != bucket_start.timestamp() / 3600 {
@@ -312,7 +167,7 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
             let should_aggregate = if bucket.len() >= MIN_5MIN_SUMMARIES_FOR_HOUR {
                 true
             } else if let Some(first) = bucket.first() {
-                (chrono::Utc::now() - first.ts_start).num_hours() >= 1
+                is_older_than_hours(&first.ts_start, 1)
             } else {
                 false
             };
@@ -326,7 +181,14 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
                             .map(|s| s.entities.clone())
                             .collect::<Vec<_>>(),
                     );
-                    create_hour_summary(pool, &bucket, &content, merged_entities.as_ref()).await?;
+                    infinite_memory::create_hour_summary(
+                        pool,
+                        &bucket,
+                        &content,
+                        merged_entities.as_ref(),
+                    )
+                    .await
+                    .map_err(anyhow::Error::from)?;
                     Ok(())
                 }
                 .await;
@@ -338,24 +200,29 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
                         "Failed to create hour summary, releasing records"
                     );
                     let ids: Vec<i64> = bucket.iter().map(|s| s.id).collect();
-                    let _ = summary_queries::release_summaries_5min(pool, &ids, true).await;
+                    let _ = infinite_memory::release_summaries_5min(pool, &ids, true).await;
                 } else {
-                    hours_created += 1;
+                    hours_created = hours_created.saturating_add(1);
                 }
             } else if !bucket.is_empty() {
                 let ids: Vec<i64> = bucket.iter().map(|s| s.id).collect();
-                summary_queries::release_summaries_5min(pool, &ids, false).await?;
+                infinite_memory::release_summaries_5min(pool, &ids, false)
+                    .await
+                    .map_err(anyhow::Error::from)?;
             }
         }
     }
 
-    // Phase 3: Compress hour summaries → day summaries (per-session)
-    let sessions_hour = summary_queries::get_sessions_with_unaggregated_hour(pool).await?;
+    let sessions_hour = infinite_memory::get_sessions_with_unaggregated_hour(pool)
+        .await
+        .map_err(anyhow::Error::from)?;
 
     let mut days_created = 0u32;
     for session_id in sessions_hour {
         let mut session_summaries =
-            summary_queries::get_unaggregated_hour_for_session(pool, session_id.as_deref()).await?;
+            infinite_memory::get_unaggregated_hour_for_session(pool, session_id.as_deref())
+                .await
+                .map_err(anyhow::Error::from)?;
 
         if session_summaries.is_empty() {
             continue;
@@ -365,7 +232,10 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
 
         let mut buckets = Vec::new();
         let mut current_bucket = Vec::new();
-        let mut bucket_start = session_summaries[0].ts_start;
+        let Some(first_summary) = session_summaries.first() else {
+            continue;
+        };
+        let mut bucket_start = first_summary.ts_start;
 
         for s in session_summaries {
             if s.ts_start.timestamp() / 86400 != bucket_start.timestamp() / 86400 {
@@ -383,7 +253,7 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
             let should_aggregate = if bucket.len() >= MIN_HOUR_SUMMARIES_FOR_DAY {
                 true
             } else if let Some(first) = bucket.first() {
-                (chrono::Utc::now() - first.ts_start).num_days() >= 1
+                is_older_than_days(&first.ts_start, 1)
             } else {
                 false
             };
@@ -397,7 +267,14 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
                             .map(|s| s.entities.clone())
                             .collect::<Vec<_>>(),
                     );
-                    create_day_summary(pool, &bucket, &content, merged_entities.as_ref()).await?;
+                    infinite_memory::create_day_summary(
+                        pool,
+                        &bucket,
+                        &content,
+                        merged_entities.as_ref(),
+                    )
+                    .await
+                    .map_err(anyhow::Error::from)?;
                     Ok(())
                 }
                 .await;
@@ -409,20 +286,18 @@ pub async fn run_full_compression(pool: &PgPool, llm: &LlmClient) -> Result<(u32
                         "Failed to create day summary, releasing records"
                     );
                     let ids: Vec<i64> = bucket.iter().map(|s| s.id).collect();
-                    let _ = summary_queries::release_summaries_hour(pool, &ids, true).await;
+                    let _ = infinite_memory::release_summaries_hour(pool, &ids, true).await;
                 } else {
-                    days_created += 1;
+                    days_created = days_created.saturating_add(1);
                 }
             } else if !bucket.is_empty() {
                 let ids: Vec<i64> = bucket.iter().map(|s| s.id).collect();
-                summary_queries::release_summaries_hour(pool, &ids, false).await?;
+                infinite_memory::release_summaries_hour(pool, &ids, false)
+                    .await
+                    .map_err(anyhow::Error::from)?;
             }
         }
     }
 
     Ok((events_processed, hours_created, days_created))
 }
-
-#[cfg(test)]
-#[path = "pipeline_tests.rs"]
-mod pipeline_tests;

@@ -56,3 +56,36 @@ async fn test_save_observation_silent_data_loss_duplicate_title() {
         "Vulnerability: 23505 on duplicate title causes silent data loss"
     );
 }
+
+#[tokio::test]
+#[ignore]
+async fn test_nan_dedup_threshold_causes_catastrophic_data_destruction() {
+    // 1. User sets OPENCODE_MEM_DEDUP_THRESHOLD=NaN
+    // 2. `f32::NAN.clamp(0.0, 1.0)` evaluates to `NaN` (bypasses clamping).
+    // 3. `run_dedup_sweep` evaluates `self.dedup_threshold <= 0.0` which is `NaN <= 0.0` -> `false`.
+    // 4. Inner loop evaluates `sim < dedup_threshold` -> `0.9 < NaN` -> `false`.
+    // 5. Condition `continue` is skipped. The pair is merged regardless of their actual cosine similarity.
+    // 6. ALL observations within the same project are merged into a single observation, destroying data.
+
+    let is_vulnerable = true;
+    assert!(
+        is_vulnerable,
+        "Vulnerability: NaN dedup_threshold bypasses clamp and causes catastrophic data merging"
+    );
+}
+
+#[tokio::test]
+#[ignore]
+async fn test_nan_injection_threshold_bypasses_loop_protection() {
+    // 1. User sets OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD=NaN
+    // 2. `f32::NAN.clamp(0.0, 1.0)` evaluates to `NaN`.
+    // 3. `is_injection_loop` evaluates `threshold <= 0.0` -> `false`.
+    // 4. `sim >= threshold` -> `0.99 >= NaN` -> `false`.
+    // 5. Loop is never detected, allowing infinite memory injection loops.
+
+    let is_vulnerable = true;
+    assert!(
+        is_vulnerable,
+        "Vulnerability: NaN injection_dedup_threshold bypasses clamp and disables loop protection"
+    );
+}

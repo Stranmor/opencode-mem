@@ -1,5 +1,4 @@
-use opencode_mem_core::{Observation, ToolCall, sanitize_input};
-use opencode_mem_infinite::tool_event;
+use opencode_mem_core::{Observation, ToolCall, sanitize_input, tool_event};
 use opencode_mem_storage::traits::KnowledgeStore;
 
 use super::ObservationService;
@@ -12,7 +11,7 @@ impl ObservationService {
         // Prevent duplicate extraction if knowledge is already present.
         match self
             .storage
-            .has_knowledge_for_observation(&observation.id)
+            .has_knowledge_for_observation(observation.id.as_ref())
             .await
         {
             Ok(true) => {
@@ -66,10 +65,10 @@ impl ObservationService {
 
             let files_modified = observation.map_or_else(Vec::new, |o| o.files_modified.clone());
             let obs_id_for_log =
-                observation.map_or_else(|| tool_call.call_id.as_str(), |o| o.id.as_str());
+                observation.map_or_else(|| tool_call.call_id.as_str(), |o| o.id.0.as_str());
 
             let event = tool_event(
-                &tool_call.session_id,
+                tool_call.session_id.as_ref(),
                 tool_call.project.as_deref(),
                 &tool_call.tool,
                 filtered_input,

@@ -1,7 +1,10 @@
 //! Test utilities and module declarations for storage tests.
 
 use chrono::Utc;
-use opencode_mem_core::{NoiseLevel, Observation, ObservationType, Session, SessionStatus};
+use opencode_mem_core::{
+    ContentSessionId, NoiseLevel, Observation, ObservationType, ProjectId, Session, SessionId,
+    SessionStatus,
+};
 
 #[allow(dead_code, reason = "retained for future PG integration tests")]
 pub fn create_test_observation(id: &str, project: &str) -> Observation {
@@ -27,10 +30,10 @@ pub fn create_test_observation(id: &str, project: &str) -> Observation {
 #[allow(dead_code, reason = "retained for future PG integration tests")]
 pub fn create_test_session(id: &str) -> Session {
     Session::new(
-        id.to_owned(),
-        format!("content-{id}"),
+        SessionId::from(id),
+        ContentSessionId::from(format!("content-{id}")),
         Some(format!("memory-{id}")),
-        "test-project".to_owned(),
+        ProjectId::from("test-project"),
         Some("Test prompt".to_owned()),
         Utc::now(),
         None,

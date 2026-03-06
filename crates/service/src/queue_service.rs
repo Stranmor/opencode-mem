@@ -1,9 +1,18 @@
 use std::sync::Arc;
 
+use opencode_mem_core::{ProjectFilter, ToolCall, sanitize_input};
 use opencode_mem_storage::traits::PendingQueueStore;
 use opencode_mem_storage::{PendingMessage, QueueStats, StorageBackend};
 
 use crate::ServiceError;
+
+/// Result of attempting to queue a tool call.
+pub enum QueueToolCallResult {
+    /// Queued successfully, contains the message ID.
+    Queued(i64),
+    /// Skipped because the project is excluded by `ProjectFilter`.
+    ExcludedProject,
+}
 
 pub struct QueueService {
     storage: Arc<StorageBackend>,
@@ -13,6 +22,64 @@ impl QueueService {
     #[must_use]
     pub fn new(storage: Arc<StorageBackend>) -> Self {
         Self { storage }
+    }
+
+    /// Queue a single tool call with sanitization and project exclusion.
+    ///
+    /// Applies `ProjectFilter` check and `sanitize_input` on tool input/output
+    /// before inserting into the pending queue. Returns `ExcludedProject` if the
+    /// tool call's project is excluded, so callers can skip without error.
+    pub async fn queue_tool_call(
+        &self,
+        tool_call: &ToolCall,
+    ) -> Result<QueueToolCallResult, ServiceError> {
+        if let Some(project) = tool_call.project.as_deref()
+            && ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project))
+        {
+            return Ok(QueueToolCallResult::ExcludedProject);
+        }
+
+        let tool_input = serde_json::to_string(&tool_call.input).ok();
+        let filtered_input = tool_input.as_deref().map(sanitize_input);
+        let filtered_output = sanitize_input(&tool_call.output);
+
+        let id = self
+            .storage
+            .queue_message(
+                &tool_call.session_id,
+                Some(&tool_call.tool),
+                filtered_input.as_deref(),
+                Some(&filtered_output),
+                tool_call.project.as_deref(),
+            )
+            .await?;
+
+        Ok(QueueToolCallResult::Queued(id))
+    }
+
+    /// Queue multiple tool calls, returning the number successfully queued.
+    ///
+    /// Excluded projects are silently skipped (not counted as errors).
+    pub async fn queue_tool_calls(&self, tool_calls: &[ToolCall]) -> Result<usize, ServiceError> {
+        let mut count = 0usize;
+        for tool_call in tool_calls {
+            match self.queue_tool_call(tool_call).await? {
+                QueueToolCallResult::Queued(_) => count = count.saturating_add(1),
+                QueueToolCallResult::ExcludedProject => {}
+            }
+        }
+        Ok(count)
+    }
+
+    /// Check if a project is excluded by the global `ProjectFilter`.
+    #[must_use]
+    pub fn is_project_excluded(project: Option<&str>) -> bool {
+        if let Some(project) = project
+            && ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project))
+        {
+            return true;
+        }
+        false
     }
 
     pub async fn queue_message(

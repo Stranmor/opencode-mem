@@ -4,12 +4,13 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
 };
+use std::str::FromStr;
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    Observation, ProjectFilter, SearchResult, SessionSummary, ToolCall, UserPrompt, sanitize_input,
+    NoiseLevel, Observation, ObservationType, SearchResult, SessionSummary, ToolCall, UserPrompt,
 };
-use opencode_mem_service::PaginatedResult;
+use opencode_mem_service::{PaginatedResult, QueueToolCallResult};
 
 use crate::AppState;
 use crate::api_types::{
@@ -21,38 +22,23 @@ pub async fn observe(
     State(state): State<Arc<AppState>>,
     Json(tool_call): Json<ToolCall>,
 ) -> Result<Json<ObserveResponse>, ApiError> {
-    if let Some(project) = tool_call.project.as_deref()
-        && ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project))
-    {
-        return Ok(Json(ObserveResponse {
-            id: String::new(),
-            queued: false,
-        }));
-    }
-
-    let tool_input = serde_json::to_string(&tool_call.input).ok();
-    let filtered_input = tool_input.as_deref().map(opencode_mem_core::sanitize_input);
-    let filtered_output = opencode_mem_core::sanitize_input(&tool_call.output);
-
-    let message_id = state
+    match state
         .queue_service
-        .queue_message(
-            &tool_call.session_id,
-            Some(&tool_call.tool),
-            filtered_input.as_deref(),
-            Some(&filtered_output),
-            tool_call.project.as_deref(),
-        )
+        .queue_tool_call(&tool_call)
         .await
         .map_err(|e| {
             tracing::error!("Queue message error: {}", e);
             ApiError::from(e)
-        })?;
-
-    Ok(Json(ObserveResponse {
-        id: message_id.to_string(),
-        queued: true,
-    }))
+        })? {
+        QueueToolCallResult::Queued(id) => Ok(Json(ObserveResponse {
+            id: id.to_string(),
+            queued: true,
+        })),
+        QueueToolCallResult::ExcludedProject => Ok(Json(ObserveResponse {
+            id: String::new(),
+            queued: false,
+        })),
+    }
 }
 
 pub async fn observe_batch(
@@ -60,35 +46,14 @@ pub async fn observe_batch(
     Json(tool_calls): Json<Vec<ToolCall>>,
 ) -> Result<Json<ObserveBatchResponse>, ApiError> {
     let total = tool_calls.len();
-    let mut count = 0usize;
-    for tool_call in &tool_calls {
-        if let Some(project) = tool_call.project.as_deref()
-            && ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project))
-        {
-            continue;
-        }
-        let tool_input = serde_json::to_string(&tool_call.input).ok();
-        let filtered_input = tool_input.as_deref().map(opencode_mem_core::sanitize_input);
-        let filtered_output = opencode_mem_core::sanitize_input(&tool_call.output);
-
-        match state
-            .queue_service
-            .queue_message(
-                &tool_call.session_id,
-                Some(&tool_call.tool),
-                filtered_input.as_deref(),
-                Some(&filtered_output),
-                tool_call.project.as_deref(),
-            )
-            .await
-        {
-            Ok(_id) => count = count.saturating_add(1),
-            Err(e) => {
-                tracing::error!("Failed to queue tool call {}: {}", tool_call.tool, e);
-                return Err(ApiError::from(e));
-            }
-        }
-    }
+    let count = state
+        .queue_service
+        .queue_tool_calls(&tool_calls)
+        .await
+        .map_err(|e| {
+            tracing::error!("Queue batch error: {}", e);
+            ApiError::from(e)
+        })?;
     Ok(Json(ObserveBatchResponse {
         queued: count,
         total,
@@ -104,9 +69,44 @@ pub async fn save_memory(
         return Err(ApiError::BadRequest("Bad Request".into()));
     }
 
+    let observation_type = match req
+        .observation_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(raw) => ObservationType::from_str(raw).map(Some).map_err(|_| {
+            ApiError::BadRequest(format!(
+                "invalid observation_type: {raw} (allowed: {})",
+                ObservationType::ALL_VARIANTS_STR
+            ))
+        })?,
+        None => None,
+    };
+    let noise_level = match req
+        .noise_level
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(raw) => NoiseLevel::from_str(raw).map(Some).map_err(|_| {
+            ApiError::BadRequest(format!(
+                "invalid noise_level: {raw} (allowed: {})",
+                NoiseLevel::ALL_VARIANTS_STR
+            ))
+        })?,
+        None => None,
+    };
+
     match state
         .observation_service
-        .save_memory(text, req.title.as_deref(), req.project.as_deref())
+        .save_memory(
+            text,
+            req.title.as_deref(),
+            req.project.as_deref(),
+            observation_type,
+            noise_level,
+        )
         .await
     {
         Ok(opencode_mem_service::SaveMemoryResult::Created(obs)) => {
@@ -197,10 +197,9 @@ pub async fn get_observations_paginated(
     State(state): State<Arc<AppState>>,
     Query(query): Query<PaginationQuery>,
 ) -> Result<Json<PaginatedResult<Observation>>, ApiError> {
-    let limit = query.limit.min(opencode_mem_core::MAX_QUERY_LIMIT);
     state
         .search_service
-        .get_observations_paginated(query.offset, limit, query.project.as_deref())
+        .get_observations_paginated(query.offset, query.capped_limit(), query.project.as_deref())
         .await
         .map(Json)
         .map_err(|e| {
@@ -213,10 +212,9 @@ pub async fn get_summaries_paginated(
     State(state): State<Arc<AppState>>,
     Query(query): Query<PaginationQuery>,
 ) -> Result<Json<PaginatedResult<SessionSummary>>, ApiError> {
-    let limit = query.limit.min(opencode_mem_core::MAX_QUERY_LIMIT);
     state
         .search_service
-        .get_summaries_paginated(query.offset, limit, query.project.as_deref())
+        .get_summaries_paginated(query.offset, query.capped_limit(), query.project.as_deref())
         .await
         .map(Json)
         .map_err(|e| {
@@ -229,10 +227,9 @@ pub async fn get_prompts_paginated(
     State(state): State<Arc<AppState>>,
     Query(query): Query<PaginationQuery>,
 ) -> Result<Json<PaginatedResult<UserPrompt>>, ApiError> {
-    let limit = query.limit.min(opencode_mem_core::MAX_QUERY_LIMIT);
     state
         .search_service
-        .get_prompts_paginated(query.offset, limit, query.project.as_deref())
+        .get_prompts_paginated(query.offset, query.capped_limit(), query.project.as_deref())
         .await
         .map(Json)
         .map_err(|e| {
@@ -269,4 +266,23 @@ pub async fn get_prompt_by_id(
             tracing::error!("Get prompt error: {}", e);
             ApiError::from(e)
         })
+}
+
+pub async fn delete_observation(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let deleted = state
+        .observation_service
+        .delete_observation(&id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Delete observation error: {}", e);
+            ApiError::from(e)
+        })?;
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(ApiError::NotFound(format!("observation '{id}' not found")))
+    }
 }

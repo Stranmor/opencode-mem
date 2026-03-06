@@ -8,11 +8,12 @@ use std::sync::Arc;
 
 use opencode_mem_core::{AppConfig, Observation, ToolCall};
 use opencode_mem_embeddings::EmbeddingService;
-use opencode_mem_infinite::InfiniteMemory;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_storage::StorageBackend;
 use opencode_mem_storage::traits::ObservationStore;
 use tokio::sync::broadcast;
+
+use crate::InfiniteMemoryService;
 
 pub enum SaveMemoryResult {
     Created(Observation),
@@ -23,7 +24,7 @@ pub enum SaveMemoryResult {
 pub struct ObservationService {
     pub(crate) storage: Arc<StorageBackend>,
     pub(crate) llm: Arc<LlmClient>,
-    pub(crate) infinite_mem: Option<Arc<InfiniteMemory>>,
+    pub(crate) infinite_mem: Option<Arc<InfiniteMemoryService>>,
     pub(crate) event_tx: broadcast::Sender<String>,
     pub(crate) embeddings: Option<Arc<EmbeddingService>>,
     pub(crate) dedup_threshold: f32,
@@ -48,7 +49,7 @@ impl ObservationService {
     pub fn new(
         storage: Arc<StorageBackend>,
         llm: Arc<LlmClient>,
-        infinite_mem: Option<Arc<InfiniteMemory>>,
+        infinite_mem: Option<Arc<InfiniteMemoryService>>,
         event_tx: broadcast::Sender<String>,
         embeddings: Option<Arc<EmbeddingService>>,
         config: &AppConfig,
@@ -96,7 +97,7 @@ impl ObservationService {
         let compress_fut = async {
             let result = self.compress_and_save(id, &tool_call).await?;
             if let Some((ref obs, false)) = result
-                && obs.id != id
+                && obs.id.0 != id
             {
                 let tombstone = Observation::builder(
                     id.to_owned(),

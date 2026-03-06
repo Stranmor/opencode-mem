@@ -29,6 +29,7 @@
 #![allow(clippy::min_ident_chars, reason = "Short error vars are idiomatic")]
 
 pub mod error;
+mod infinite_memory_service;
 mod knowledge_service;
 mod observation_service;
 mod pending_write_queue;
@@ -37,14 +38,21 @@ mod search_service;
 mod session_service;
 
 pub use error::ServiceError;
+pub use infinite_memory_service::InfiniteMemoryService;
+pub use infinite_memory_service::init_compression_config;
 pub use knowledge_service::KnowledgeService;
 pub use observation_service::{ObservationService, SaveMemoryResult};
 pub use pending_write_queue::{PendingWrite, PendingWriteQueue};
-pub use queue_service::QueueService;
+pub use queue_service::{QueueService, QueueToolCallResult};
 pub use search_service::SearchService;
 pub use session_service::SessionService;
 
 // Re-export storage types used by HTTP handlers so they don't need direct storage dependency.
 pub use opencode_mem_storage::{
     PaginatedResult, PendingMessage, QueueStats, StorageStats, default_visibility_timeout_secs,
+};
+
+// Re-export core infinite memory types for convenience.
+pub use opencode_mem_core::{
+    InfiniteSummary, RawInfiniteEvent, StoredInfiniteEvent, SummaryEntities, tool_event,
 };

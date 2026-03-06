@@ -1,8 +1,7 @@
-//! LLM compression logic for events and summaries.
-
-use crate::event_types::{StoredEvent, Summary, SummaryEntities};
 use anyhow::Result;
-use opencode_mem_core::strip_markdown_json;
+use opencode_mem_core::{
+    InfiniteSummary, StoredInfiniteEvent, SummaryEntities, strip_markdown_json,
+};
 use opencode_mem_llm::LlmClient;
 use std::sync::OnceLock;
 
@@ -20,46 +19,51 @@ pub fn init_compression_config(
     let _ = MAX_EVENTS.set(max_events);
 }
 
-fn max_content_chars() -> usize {
-    *MAX_CONTENT_CHARS.get_or_init(|| {
-        opencode_mem_core::env_parse_with_default("OPENCODE_MEM_MAX_CONTENT_CHARS", 500)
-    })
+fn max_content_chars() -> Result<usize> {
+    MAX_CONTENT_CHARS
+        .get()
+        .copied()
+        .ok_or_else(|| anyhow::anyhow!("init_compression_config must be called before use"))
 }
 
-fn max_total_chars() -> usize {
-    *MAX_TOTAL_CHARS.get_or_init(|| {
-        opencode_mem_core::env_parse_with_default("OPENCODE_MEM_MAX_TOTAL_CHARS", 8000)
-    })
+fn max_total_chars() -> Result<usize> {
+    MAX_TOTAL_CHARS
+        .get()
+        .copied()
+        .ok_or_else(|| anyhow::anyhow!("init_compression_config must be called before use"))
 }
 
-fn max_events() -> usize {
-    *MAX_EVENTS
-        .get_or_init(|| opencode_mem_core::env_parse_with_default("OPENCODE_MEM_MAX_EVENTS", 200))
+fn max_events() -> Result<usize> {
+    MAX_EVENTS
+        .get()
+        .copied()
+        .ok_or_else(|| anyhow::anyhow!("init_compression_config must be called before use"))
 }
 
 pub async fn compress_events(
     llm: &LlmClient,
-    events: &[StoredEvent],
+    events: &[StoredInfiniteEvent],
 ) -> Result<(String, Option<SummaryEntities>)> {
     if events.is_empty() {
         return Ok((String::new(), None));
     }
 
-    let max_events = max_events();
-    if events.len() > max_events {
+    let max_ev = max_events()?;
+    if events.len() > max_ev {
         anyhow::bail!(
             "compress_events called with {} events, max allowed: {}",
             events.len(),
-            max_events
+            max_ev
         );
     }
 
+    let max_content = max_content_chars()?;
+    let max_total = max_total_chars()?;
     let mut events_text: Vec<String> = Vec::with_capacity(events.len());
     let mut total_chars = 0usize;
 
     for e in events {
         let content_str = serde_json::to_string(&e.content).unwrap_or_default();
-        let max_content = max_content_chars();
         let truncated = if content_str.chars().count() > max_content {
             format!(
                 "{}...(truncated)",
@@ -74,11 +78,11 @@ pub async fn compress_events(
             e.ts.format("%H:%M:%S"),
             truncated
         );
-        total_chars += line.len();
-        if total_chars > max_total_chars() {
+        total_chars = total_chars.saturating_add(line.len());
+        if total_chars > max_total {
             events_text.push(format!(
                 "...({} more events truncated)",
-                events.len() - events_text.len()
+                events.len().saturating_sub(events_text.len())
             ));
             break;
         }
@@ -130,8 +134,9 @@ pub async fn compress_events(
         )
     })?;
 
-    let summary = parsed["summary"]
-        .as_str()
+    let summary = parsed
+        .get("summary")
+        .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty())
         .ok_or_else(|| anyhow::anyhow!("LLM returned response without summary field"))?
         .to_string();
@@ -142,7 +147,7 @@ pub async fn compress_events(
     Ok((summary, entities))
 }
 
-pub async fn compress_summaries(llm: &LlmClient, summaries: &[Summary]) -> Result<String> {
+pub async fn compress_summaries(llm: &LlmClient, summaries: &[InfiniteSummary]) -> Result<String> {
     if summaries.is_empty() {
         return Ok(String::new());
     }

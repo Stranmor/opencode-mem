@@ -5,7 +5,8 @@ use opencode_mem_core::{
 use std::str::FromStr as _;
 
 use crate::ai_types::{ChatRequest, Message, ObservationJson, ResponseFormat, ResponseFormatType};
-use crate::client::{LlmClient, MAX_OUTPUT_LEN, truncate};
+use crate::client::LlmClient;
+use crate::compression_prompt::build_compression_prompt;
 use crate::error::LlmError;
 
 /// Result of context-aware LLM compression: create new, update existing, or skip.
@@ -21,153 +22,6 @@ pub enum CompressionResult {
     },
 }
 
-/// Build the LLM prompt for compressing tool output into an observation.
-///
-/// Returns the complete user-message prompt string including tool context,
-/// candidate observations for context-aware dedup, noise level guide, and JSON schema.
-fn build_compression_prompt(
-    tool: &str,
-    title: &str,
-    output: &str,
-    candidates: &[Observation],
-) -> String {
-    let mut types_prompt = String::new();
-    for (i, variant) in opencode_mem_core::ObservationType::ALL_VARIANTS
-        .iter()
-        .enumerate()
-    {
-        types_prompt.push_str(&format!(
-            "{}. {}: {}\n",
-            i.saturating_add(1),
-            variant.as_str().to_uppercase(),
-            variant.description()
-        ));
-        for example in variant.examples() {
-            types_prompt.push_str(&format!("   {}\n", example));
-        }
-        types_prompt.push('\n');
-    }
-
-    let existing_context = if candidates.is_empty() {
-        "\n\nThere are no existing observations. You MUST use action: \"create\".".to_owned()
-    } else {
-        let mut entries = String::new();
-        for (i, obs) in candidates.iter().enumerate() {
-            let narrative_preview = obs
-                .narrative
-                .as_deref()
-                .unwrap_or("")
-                .chars()
-                .take(200)
-                .collect::<String>();
-            entries.push_str(&format!(
-                "[{}] id=\"{}\" title=\"{}\" | {}\n",
-                i.saturating_add(1),
-                obs.id,
-                obs.title,
-                narrative_preview,
-            ));
-        }
-        format!(
-            r#"
-
-EXISTING OBSERVATIONS (potentially related):
-{entries}
-DECISION (MANDATORY — choose exactly one):
-- If this is genuinely NEW knowledge not covered by any existing observation → action: "create"
-- If this REFINES or ADDS TO an existing observation above → action: "update", target_id: "<id of the observation to update>"
-- If this adds ZERO new information beyond what already exists → action: "skip""#
-        )
-    };
-
-    let json_schema = if candidates.is_empty() {
-        format!(
-            r#"Return JSON:
-- action: "create"
-- noise_level: one of [{noise_levels}]
-- noise_reason: why this is/isn't worth remembering (max 100 chars)
-- type: one of [{obs_types}]
-- title: the lesson learned (max 80 chars, must be a complete statement of fact)
-- subtitle: project/context this applies to
-- narrative: the full lesson — what happened, why, and what to do differently
-- facts: specific actionable facts (file paths, commands, error messages)
-- concepts: from [{concepts}]
-- files_read: file paths involved
-- files_modified: file paths changed
-- keywords: search terms"#,
-            obs_types = opencode_mem_core::ObservationType::ALL_VARIANTS_STR,
-            noise_levels = opencode_mem_core::NoiseLevel::ALL_VARIANTS_STR,
-            concepts = opencode_mem_core::Concept::ALL_VARIANTS_STR
-        )
-    } else {
-        format!(
-            r#"Return JSON:
-- action: one of "create", "update", "skip"
-- target_id: id of existing observation to update (required if action is "update")
-- skip_reason: why this should be skipped (required if action is "skip")
-- noise_level: one of [{noise_levels}]
-- noise_reason: why this is/isn't worth remembering (max 100 chars)
-- type: one of [{obs_types}]
-- title: the lesson learned (max 80 chars, must be a complete statement of fact)
-- subtitle: project/context this applies to
-- narrative: the full lesson — what happened, why, and what to do differently
-- facts: specific actionable facts (file paths, commands, error messages)
-- concepts: from [{concepts}]
-- files_read: file paths involved
-- files_modified: file paths changed
-- keywords: search terms"#,
-            obs_types = opencode_mem_core::ObservationType::ALL_VARIANTS_STR,
-            noise_levels = opencode_mem_core::NoiseLevel::ALL_VARIANTS_STR,
-            concepts = opencode_mem_core::Concept::ALL_VARIANTS_STR
-        )
-    };
-
-    format!(
-        r#"You are a STRICT memory filter. Your job is to decide if this tool output contains a LESSON WORTH REMEMBERING across sessions.
-
-Tool: {}
-Output Title: {}
-Output Content: {}
-
-ONLY SAVE observations that match ONE of these categories:
-
-{}
-EVERYTHING ELSE IS NEGLIGIBLE. Specifically, ALWAYS mark as negligible:
-- Reading/writing files (routine work, not a lesson)
-- Code structure descriptions ("module X exports Y") — that's what code is for
-- Build/test output (pass or fail)
-- Status updates, progress reports, task lists
-- Metadata about the system itself ("database has N records")
-
-THE DEFAULT IS NEGLIGIBLE. When in doubt, discard. Only save what would genuinely help a future agent avoid a mistake or understand a non-obvious decision.
-{}
-NOISE LEVEL GUIDE (5 levels):
-- "critical": Production outage, data loss, security vulnerability, core architectural decision that affects the entire system. If ignoring this would cause system failure, it's critical.
-- "high": Important bugfix with root cause analysis, significant gotcha that saves hours of debugging, architectural decision with clear tradeoffs, user preference that affects workflow.
-- "medium": Useful operational gotcha, minor bugfix, routine feature completion with a non-obvious implementation detail.
-- "low": Marginally useful context. Configuration tweak, minor optimization, environment-specific workaround.
-- "negligible": Routine work, generic knowledge available in docs, file edits, build output, status updates, duplicates. DISCARD.
-
-{}"#,
-        tool,
-        title,
-        truncate(output, MAX_OUTPUT_LEN),
-        types_prompt,
-        existing_context,
-        json_schema,
-    )
-}
-
-/// Parse LLM JSON response into a `CompressionResult`.
-///
-/// Deserializes the raw LLM response, checks the action field and noise level,
-/// and builds either Create, Update, or Skip result.
-///
-/// The `candidate_ids` set is used to validate that an "update" target_id
-/// was actually in the candidate set (hallucination guard).
-///
-/// # Errors
-/// Returns an error if JSON deserialization fails or the observation type is invalid.
 fn parse_observation_response(
     response: &str,
     id: &str,
@@ -212,9 +66,11 @@ fn parse_observation_response(
         return Ok(CompressionResult::Skip { reason });
     }
     tracing::debug!(
-        "Observation noise_level={:?}, reason={:?}, title={}",
+        "Observation noise_level={:?}, reason={:?}, type={}, type_reason={:?}, title={}",
         noise_level,
         obs_json.noise_reason,
+        obs_json.observation_type,
+        obs_json.type_reason,
         obs_json.title
     );
 
@@ -237,7 +93,7 @@ fn parse_observation_response(
         observation_type,
         obs_json.title,
     )
-    .maybe_project(project.map(ToOwned::to_owned))
+    .maybe_project(project.map(|p| p.into()))
     .maybe_subtitle(obs_json.subtitle)
     .maybe_narrative(obs_json.narrative)
     .facts(obs_json.facts)
@@ -309,9 +165,15 @@ impl LlmClient {
         };
 
         let candidate_ids: std::collections::HashSet<&str> =
-            candidates.iter().map(|o| o.id.as_str()).collect();
+            candidates.iter().map(|o| o.id.as_ref()).collect();
 
         let response = self.chat_completion(&request).await?;
-        parse_observation_response(&response, id, &input.session_id, project, &candidate_ids)
+        parse_observation_response(
+            &response,
+            id,
+            input.session_id.as_ref(),
+            project,
+            &candidate_ids,
+        )
     }
 }

@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::error::StorageError;
-use opencode_mem_core::SearchResult;
+use opencode_mem_core::{ObservationId, SearchResult};
 use sqlx::Row;
 
 use super::super::{
@@ -237,8 +237,8 @@ fn merge_and_rank(
     vector_results: Vec<SearchResult>,
     limit: usize,
 ) -> Vec<SearchResult> {
-    let mut fts_scores: HashMap<String, (SearchResult, f64)> = HashMap::new();
-    let mut vec_scores: HashMap<String, (SearchResult, f64)> = HashMap::new();
+    let mut fts_scores: HashMap<ObservationId, (SearchResult, f64)> = HashMap::new();
+    let mut vec_scores: HashMap<ObservationId, (SearchResult, f64)> = HashMap::new();
 
     for r in fts_results {
         let score = r.score;
@@ -265,7 +265,7 @@ fn merge_and_rank(
         });
     let vec_range = vec_max - vec_min;
 
-    let all_ids: HashSet<String> = fts_scores
+    let all_ids: HashSet<ObservationId> = fts_scores
         .keys()
         .chain(vec_scores.keys())
         .cloned()

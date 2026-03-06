@@ -37,3 +37,17 @@ pub const EMBEDDING_DIMENSION: usize = 1024;
 /// by this limit — at 5000 observations, sweep processes ~12.5M pairs
 /// in a spawn_blocking thread (~2-3 seconds on modern CPU).
 pub const DEDUP_SWEEP_MAX_OBSERVATIONS: usize = 5000;
+
+/// Cap a user-supplied query limit to `MAX_QUERY_LIMIT`.
+///
+/// Both HTTP and MCP transports need to clamp user-supplied limits for DoS
+/// protection. This is the single point of truth (SPOT) — transport-specific
+/// `capped_limit()` methods and `parse_limit()` delegate here.
+#[must_use]
+pub const fn cap_query_limit(limit: usize) -> usize {
+    if limit < MAX_QUERY_LIMIT {
+        limit
+    } else {
+        MAX_QUERY_LIMIT
+    }
+}

@@ -5,9 +5,7 @@ use axum::{
 };
 use std::sync::Arc;
 
-use opencode_mem_core::{
-    MAX_QUERY_LIMIT, SearchResult, SessionSummary, UserPrompt, sort_by_score_descending,
-};
+use opencode_mem_core::{SearchResult, SessionSummary, UserPrompt, sort_by_score_descending};
 
 use crate::AppState;
 use crate::api_types::{
@@ -25,27 +23,9 @@ pub async fn search(
         Some(query.q.as_str())
     };
 
-    // Use hybrid search if no exact filters are applied
-    if query.project.is_none()
-        && query.obs_type.is_none()
-        && query.from.is_none()
-        && query.to.is_none()
-        && let Some(query_str) = q
-    {
-        return state
-            .search_service
-            .hybrid_search(query_str, query.capped_limit())
-            .await
-            .map(Json)
-            .map_err(|e| {
-                tracing::error!("Search error (hybrid fallback): {}", e);
-                ApiError::from(e)
-            });
-    }
-
     state
         .search_service
-        .search_with_filters(
+        .smart_search(
             q,
             query.project.as_deref(),
             query.obs_type.as_deref(),
@@ -137,7 +117,10 @@ pub async fn search_by_file(
 ) -> Result<Json<Vec<SearchResult>>, ApiError> {
     state
         .search_service
-        .search_by_file(&query.file_path, query.limit.min(MAX_QUERY_LIMIT))
+        .search_by_file(
+            &query.file_path,
+            opencode_mem_core::cap_query_limit(query.limit),
+        )
         .await
         .map(Json)
         .map_err(|e| {
@@ -197,7 +180,7 @@ pub async fn unified_search(
     // Observations already have relevance scores
     for obs in &observations {
         ranked.push(RankedItem {
-            id: obs.id.clone(),
+            id: obs.id.to_string(),
             title: obs.title.clone(),
             subtitle: obs.subtitle.clone(),
             collection: "observation".to_owned(),
@@ -213,9 +196,9 @@ pub async fn unified_search(
             1.0 - (i as f64 / (sessions.len() - 1) as f64) * 0.9
         };
         ranked.push(RankedItem {
-            id: session.session_id.clone(),
+            id: session.session_id.to_string(),
             title: session.request.clone().unwrap_or_default(),
-            subtitle: Some(session.project.clone()),
+            subtitle: Some(session.project.to_string()),
             collection: "session".to_owned(),
             score: position_score,
         });
@@ -231,7 +214,7 @@ pub async fn unified_search(
         ranked.push(RankedItem {
             id: prompt.id.clone(),
             title: prompt.prompt_text.chars().take(100).collect(),
-            subtitle: prompt.project.clone(),
+            subtitle: prompt.project.as_ref().map(|p| p.to_string()),
             collection: "prompt".to_owned(),
             score: position_score,
         });

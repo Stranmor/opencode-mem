@@ -4,8 +4,8 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 use opencode_mem_core::{
-    Observation, ObservationInput, ObservationType, ToolCall, ToolOutput, is_trivial_tool_call,
-    sanitize_input,
+    NoiseLevel, Observation, ObservationInput, ObservationType, ToolCall, ToolOutput,
+    is_trivial_tool_call, sanitize_input,
 };
 use opencode_mem_embeddings::EmbeddingProvider;
 use opencode_mem_llm::CompressionResult;
@@ -54,7 +54,11 @@ impl ObservationService {
             .as_deref()
             .filter(|p| !p.is_empty() && *p != "unknown");
         let candidates = self
-            .find_candidate_observations(&filtered_output, &tool_call.session_id, parsed_project)
+            .find_candidate_observations(
+                &filtered_output,
+                tool_call.session_id.as_ref(),
+                parsed_project,
+            )
             .await;
 
         let compression_result = self
@@ -69,7 +73,7 @@ impl ObservationService {
             }
             CompressionResult::Create(mut observation) => {
                 observation.title = sanitize_input(&observation.title);
-                self.persist_and_notify(&observation, Some(&tool_call.session_id))
+                self.persist_and_notify(&observation, Some(tool_call.session_id.as_ref()))
                     .await
             }
             CompressionResult::Update {
@@ -78,14 +82,14 @@ impl ObservationService {
             } => {
                 observation.title = sanitize_input(&observation.title);
                 let candidate_ids: HashSet<&str> =
-                    candidates.iter().map(|o| o.id.as_str()).collect();
+                    candidates.iter().map(|o| o.id.as_ref()).collect();
                 if !candidate_ids.contains(target_id.as_str()) {
                     tracing::warn!(
                         target_id = %target_id,
                         "Update target not in candidate set at service layer — treating as create"
                     );
                     return self
-                        .persist_and_notify(&observation, Some(&tool_call.session_id))
+                        .persist_and_notify(&observation, Some(tool_call.session_id.as_ref()))
                         .await;
                 }
 
@@ -109,8 +113,11 @@ impl ObservationService {
                                     target_id = %target_id,
                                     "Merged observation disappeared after merge, saving as new"
                                 );
-                                self.persist_and_notify(&observation, Some(&tool_call.session_id))
-                                    .await
+                                self.persist_and_notify(
+                                    &observation,
+                                    Some(tool_call.session_id.as_ref()),
+                                )
+                                .await
                             }
                         }
                     }
@@ -120,7 +127,7 @@ impl ObservationService {
                             error = %e,
                             "Merge failed, falling back to create"
                         );
-                        self.persist_and_notify(&observation, Some(&tool_call.session_id))
+                        self.persist_and_notify(&observation, Some(tool_call.session_id.as_ref()))
                             .await
                     }
                 }
@@ -169,7 +176,8 @@ impl ObservationService {
                             .await
                         {
                             Ok(results) => {
-                                let ids: Vec<String> = results.into_iter().map(|r| r.id).collect();
+                                let ids: Vec<String> =
+                                    results.into_iter().map(|r| String::from(r.id)).collect();
                                 if !ids.is_empty() {
                                     match self.storage.get_observations_by_ids(&ids).await {
                                         Ok(obs) => hybrid_candidates = obs,
@@ -216,7 +224,7 @@ impl ObservationService {
             .chain(fts_candidates)
             .chain(session_candidates)
         {
-            if seen_ids.insert(obs.id.clone()) {
+            if seen_ids.insert(String::from(obs.id.clone())) {
                 result.push(obs);
             }
         }
@@ -263,7 +271,10 @@ impl ObservationService {
             return Vec::new();
         }
 
-        let ids: Vec<String> = search_results.into_iter().map(|r| r.id).collect();
+        let ids: Vec<String> = search_results
+            .into_iter()
+            .map(|r| String::from(r.id))
+            .collect();
         match self.storage.get_observations_by_ids(&ids).await {
             Ok(obs) => obs,
             Err(e) => {
@@ -278,6 +289,8 @@ impl ObservationService {
         text: &str,
         title: Option<&str>,
         project: Option<&str>,
+        observation_type: Option<ObservationType>,
+        noise_level: Option<NoiseLevel>,
     ) -> Result<SaveMemoryResult, ServiceError> {
         let text = sanitize_input(text.trim());
         if text.is_empty() {
@@ -296,18 +309,22 @@ impl ObservationService {
             .filter(|p| !p.is_empty())
             .map(ToOwned::to_owned);
 
+        let resolved_observation_type = observation_type.unwrap_or(ObservationType::Discovery);
+        let resolved_noise_level = noise_level.unwrap_or(NoiseLevel::Medium);
+
         let obs = Observation::builder(
             uuid::Uuid::new_v4().to_string(),
             "manual".to_owned(),
-            ObservationType::Discovery,
+            resolved_observation_type,
             title_str,
         )
-        .maybe_project(project_str.clone())
+        .maybe_project(project_str.clone().map(Into::into))
         .narrative(text.to_owned())
+        .noise_level(resolved_noise_level)
         .build();
 
         if let Some(ref infinite_mem) = self.infinite_mem {
-            let event = opencode_mem_infinite::tool_event(
+            let event = opencode_mem_core::tool_event(
                 "manual",
                 project_str.as_deref(),
                 "save_memory",

@@ -115,8 +115,8 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
                 .unwrap_or_else(|| observation.narrative.clone().unwrap_or_default()),
             extraction.instructions,
             extraction.triggers.unwrap_or_default(),
-            observation.project.clone(),
-            Some(observation.id.clone()),
+            observation.project.clone().map(String::from),
+            Some(String::from(observation.id.clone())),
         )))
     }
 }

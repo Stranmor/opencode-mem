@@ -8,14 +8,14 @@ use std::sync::Arc;
 
 use opencode_mem_core::INFINITE_MEMORY_NOT_CONFIGURED;
 
-use opencode_mem_infinite::{InfiniteMemory, StoredEvent, Summary};
+use opencode_mem_service::{InfiniteMemoryService, InfiniteSummary, StoredInfiniteEvent};
 
 use crate::AppState;
 use crate::api_types::{InfiniteTimeRangeQuery, SearchEntitiesQuery};
 
 fn require_infinite_mem(
     state: &AppState,
-) -> Result<&Arc<InfiniteMemory>, crate::api_error::ApiError> {
+) -> Result<&Arc<InfiniteMemoryService>, crate::api_error::ApiError> {
     state.infinite_mem.as_ref().ok_or_else(|| {
         crate::api_error::ApiError::ServiceUnavailable(INFINITE_MEMORY_NOT_CONFIGURED.to_string())
     })
@@ -24,7 +24,7 @@ fn require_infinite_mem(
 pub async fn infinite_expand_summary(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
-) -> Result<Json<Vec<StoredEvent>>, crate::api_error::ApiError> {
+) -> Result<Json<Vec<StoredInfiniteEvent>>, crate::api_error::ApiError> {
     let infinite_mem = require_infinite_mem(&state)?;
     infinite_mem
         .get_events_by_summary_id(id, opencode_mem_core::MAX_QUERY_LIMIT_I64)
@@ -36,7 +36,7 @@ pub async fn infinite_expand_summary(
 pub async fn infinite_time_range(
     State(state): State<Arc<AppState>>,
     Query(query): Query<InfiniteTimeRangeQuery>,
-) -> Result<Json<Vec<StoredEvent>>, crate::api_error::ApiError> {
+) -> Result<Json<Vec<StoredInfiniteEvent>>, crate::api_error::ApiError> {
     let infinite_mem = require_infinite_mem(&state)?;
     let start = chrono::DateTime::parse_from_rfc3339(&query.start)
         .map_err(|e| crate::api_error::ApiError::BadRequest(format!("invalid_start: {}", e)))?
@@ -59,7 +59,7 @@ pub async fn infinite_time_range(
 pub async fn infinite_drill_hour(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
-) -> Result<Json<Vec<Summary>>, crate::api_error::ApiError> {
+) -> Result<Json<Vec<InfiniteSummary>>, crate::api_error::ApiError> {
     let infinite_mem = require_infinite_mem(&state)?;
     infinite_mem
         .get_5min_summaries_by_hour_id(id, opencode_mem_core::MAX_QUERY_LIMIT_I64)
@@ -71,7 +71,7 @@ pub async fn infinite_drill_hour(
 pub async fn infinite_drill_day(
     State(state): State<Arc<AppState>>,
     Path(id): Path<i64>,
-) -> Result<Json<Vec<Summary>>, crate::api_error::ApiError> {
+) -> Result<Json<Vec<InfiniteSummary>>, crate::api_error::ApiError> {
     let infinite_mem = require_infinite_mem(&state)?;
     infinite_mem
         .get_hour_summaries_by_day_id(id, opencode_mem_core::MAX_QUERY_LIMIT_I64)
@@ -83,7 +83,7 @@ pub async fn infinite_drill_day(
 pub async fn infinite_search_entities(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchEntitiesQuery>,
-) -> Result<Json<Vec<Summary>>, crate::api_error::ApiError> {
+) -> Result<Json<Vec<InfiniteSummary>>, crate::api_error::ApiError> {
     let infinite_mem = require_infinite_mem(&state)?;
 
     infinite_mem

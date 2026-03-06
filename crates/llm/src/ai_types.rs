@@ -77,8 +77,8 @@ pub struct ResponseMessage {
     pub content: String,
 }
 
-fn default_medium() -> String {
-    "medium".to_owned()
+fn default_negligible() -> String {
+    "negligible".to_owned()
 }
 
 fn default_action() -> String {
@@ -87,7 +87,7 @@ fn default_action() -> String {
 
 #[derive(Deserialize)]
 pub struct ObservationJson {
-    #[serde(default = "default_medium")]
+    #[serde(default = "default_negligible")]
     pub noise_level: String,
     pub noise_reason: Option<String>,
     #[serde(rename = "type", default, deserialize_with = "null_as_default")]
@@ -106,6 +106,9 @@ pub struct ObservationJson {
     pub files_modified: Vec<String>,
     #[serde(default, deserialize_with = "null_or_invalid_as_default_vec")]
     pub keywords: Vec<String>,
+    /// Why this observation type was chosen (anti-default justification)
+    #[serde(default)]
+    pub type_reason: Option<String>,
     /// Context-aware compression action: "create", "update", or "skip"
     #[serde(default = "default_action")]
     pub action: String,

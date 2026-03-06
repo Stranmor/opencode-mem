@@ -5,6 +5,7 @@ mod content_filter;
 mod input;
 mod low_value_filter;
 mod observation_type;
+mod trivial_tool_call;
 
 mod dedup;
 #[cfg(test)]
@@ -15,9 +16,10 @@ pub use builder::*;
 pub use content_filter::*;
 pub use dedup::*;
 pub use input::*;
-pub use low_value_filter::{is_low_value_observation, is_trivial_tool_call};
+pub use low_value_filter::is_low_value_observation;
 pub use merge::*;
 pub use observation_type::*;
+pub use trivial_tool_call::is_trivial_tool_call;
 
 use std::fmt;
 

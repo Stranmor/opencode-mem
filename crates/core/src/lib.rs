@@ -7,6 +7,8 @@ mod constants;
 mod env_config;
 pub mod error;
 mod hook;
+mod identifiers;
+pub mod infinite_memory;
 mod json_utils;
 mod knowledge;
 mod observation;
@@ -18,6 +20,11 @@ pub use constants::*;
 pub use env_config::*;
 pub use error::CoreError;
 pub use hook::*;
+pub use identifiers::*;
+pub use infinite_memory::{
+    InfiniteEventType, InfiniteSummary, RawInfiniteEvent, StoredInfiniteEvent, SummaryEntities,
+    assistant_event, tool_event, user_event,
+};
 pub use json_utils::*;
 pub use knowledge::*;
 pub use observation::*;

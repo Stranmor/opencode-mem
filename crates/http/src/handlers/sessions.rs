@@ -99,7 +99,7 @@ pub async fn session_status(
                 .await
                 .unwrap_or(0);
             Ok(Json(SessionStatusResponse {
-                session_id: s.id,
+                session_id: s.id.to_string(),
                 status: s.status,
                 observation_count: obs_count,
                 started_at: s.started_at.to_rfc3339(),

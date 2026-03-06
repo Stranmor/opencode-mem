@@ -1,4 +1,7 @@
-//! Event and summary types for Infinite AGI Memory.
+//! Domain types for the infinite memory system.
+//!
+//! These are the core data structures for raw events (never deleted),
+//! hierarchical summaries (5min → hour → day), and structured entity extraction.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -6,10 +9,10 @@ use std::collections::HashSet;
 use std::fmt;
 use std::str::FromStr;
 
-/// Event types that can be stored
+/// Event types that can be stored in infinite memory.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
-pub enum EventType {
+pub enum InfiniteEventType {
     User,
     Assistant,
     Tool,
@@ -19,7 +22,8 @@ pub enum EventType {
     Delegation,
 }
 
-impl EventType {
+impl InfiniteEventType {
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::User => "user",
@@ -33,14 +37,14 @@ impl EventType {
     }
 }
 
-impl fmt::Display for EventType {
+impl fmt::Display for InfiniteEventType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
 }
 
-impl FromStr for EventType {
-    type Err = anyhow::Error;
+impl FromStr for InfiniteEventType {
+    type Err = InfiniteEventTypeParseError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
@@ -51,40 +55,50 @@ impl FromStr for EventType {
             "error" => Ok(Self::Error),
             "commit" => Ok(Self::Commit),
             "delegation" => Ok(Self::Delegation),
-            unknown => {
-                anyhow::bail!("Unknown event type: '{}'", unknown)
-            }
+            unknown => Err(InfiniteEventTypeParseError(unknown.to_owned())),
         }
     }
 }
 
-/// Raw event to be stored
+/// Error returned when parsing an unknown infinite event type string.
+#[derive(Debug, Clone)]
+pub struct InfiniteEventTypeParseError(pub String);
+
+impl fmt::Display for InfiniteEventTypeParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Unknown infinite event type: '{}'", self.0)
+    }
+}
+
+impl std::error::Error for InfiniteEventTypeParseError {}
+
+/// Raw event to be stored in infinite memory (input, not yet persisted).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RawEvent {
+pub struct RawInfiniteEvent {
     pub session_id: String,
     pub project: Option<String>,
-    pub event_type: EventType,
+    pub event_type: InfiniteEventType,
     pub content: serde_json::Value,
     pub files: Vec<String>,
     pub tools: Vec<String>,
     pub call_id: Option<String>,
 }
 
-/// Stored event with ID and timestamp
+/// Stored event with database-assigned ID and timestamp.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct StoredEvent {
+pub struct StoredInfiniteEvent {
     pub id: i64,
     pub ts: DateTime<Utc>,
     pub session_id: String,
     pub project: Option<String>,
-    pub event_type: EventType,
+    pub event_type: InfiniteEventType,
     pub content: serde_json::Value,
     pub files: Vec<String>,
     pub tools: Vec<String>,
     pub call_id: Option<String>,
 }
 
-/// Structured entities extracted from summaries
+/// Structured entities extracted from summaries via LLM.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SummaryEntities {
     pub files: Vec<String>,
@@ -95,7 +109,8 @@ pub struct SummaryEntities {
 }
 
 impl SummaryEntities {
-    /// Merge multiple entities into one (for aggregation)
+    /// Merge multiple entities into one (for aggregation across time windows).
+    #[must_use]
     pub fn merge(entities: &[Option<SummaryEntities>]) -> Option<SummaryEntities> {
         let mut files = HashSet::new();
         let mut functions = HashSet::new();
@@ -127,9 +142,9 @@ impl SummaryEntities {
     }
 }
 
-/// Summary at various time scales
+/// Summary at various time scales (5min, hour, day).
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Summary {
+pub struct InfiniteSummary {
     pub id: i64,
     pub ts_start: DateTime<Utc>,
     pub ts_end: DateTime<Utc>,
@@ -140,7 +155,8 @@ pub struct Summary {
     pub entities: Option<SummaryEntities>,
 }
 
-/// Helper to create tool event
+/// Helper to create a tool event for infinite memory storage.
+#[must_use]
 pub fn tool_event(
     session_id: &str,
     project: Option<&str>,
@@ -149,11 +165,11 @@ pub fn tool_event(
     output: serde_json::Value,
     files: Vec<String>,
     call_id: Option<String>,
-) -> RawEvent {
-    RawEvent {
+) -> RawInfiniteEvent {
+    RawInfiniteEvent {
         session_id: session_id.to_string(),
         project: project.map(|s| s.to_string()),
-        event_type: EventType::Tool,
+        event_type: InfiniteEventType::Tool,
         content: serde_json::json!({
             "tool": tool,
             "input": input,
@@ -165,12 +181,13 @@ pub fn tool_event(
     }
 }
 
-/// Helper to create user message event
-pub fn user_event(session_id: &str, project: Option<&str>, message: &str) -> RawEvent {
-    RawEvent {
+/// Helper to create a user message event for infinite memory.
+#[must_use]
+pub fn user_event(session_id: &str, project: Option<&str>, message: &str) -> RawInfiniteEvent {
+    RawInfiniteEvent {
         session_id: session_id.to_string(),
         project: project.map(|s| s.to_string()),
-        event_type: EventType::User,
+        event_type: InfiniteEventType::User,
         content: serde_json::json!({
             "text": message
         }),
@@ -180,17 +197,18 @@ pub fn user_event(session_id: &str, project: Option<&str>, message: &str) -> Raw
     }
 }
 
-/// Helper to create assistant response event
+/// Helper to create an assistant response event for infinite memory.
+#[must_use]
 pub fn assistant_event(
     session_id: &str,
     project: Option<&str>,
     response: &str,
     thinking: Option<&str>,
-) -> RawEvent {
-    RawEvent {
+) -> RawInfiniteEvent {
+    RawInfiniteEvent {
         session_id: session_id.to_string(),
         project: project.map(|s| s.to_string()),
-        event_type: EventType::Assistant,
+        event_type: InfiniteEventType::Assistant,
         content: serde_json::json!({
             "text": response,
             "thinking": thinking

@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 
 use opencode_mem_core::{
-    DEDUP_SWEEP_MAX_OBSERVATIONS, MAX_BATCH_IDS, NoiseLevel, cosine_similarity,
+    DEDUP_SWEEP_MAX_OBSERVATIONS, MAX_BATCH_IDS, NoiseLevel, ObservationId, ProjectId,
+    cosine_similarity,
 };
 use opencode_mem_storage::traits::{EmbeddingStore, ObservationStore};
 
@@ -9,9 +10,9 @@ use super::ObservationService;
 use crate::ServiceError;
 
 struct ObservationSummary {
-    id: String,
+    id: ObservationId,
     noise_level: NoiseLevel,
-    project: Option<String>,
+    project: Option<ProjectId>,
 }
 
 impl ObservationService {
@@ -29,7 +30,7 @@ impl ObservationService {
             return Ok(0);
         }
 
-        let ids: Vec<String> = summaries.iter().map(|s| s.id.clone()).collect();
+        let ids: Vec<String> = summaries.iter().map(|s| s.id.to_string()).collect();
         let embeddings = self.load_all_embeddings(&ids).await?;
 
         if embeddings.is_empty() {
@@ -40,8 +41,13 @@ impl ObservationService {
         let mut combined: Vec<(String, Vec<f32>, NoiseLevel, Option<String>)> =
             Vec::with_capacity(embeddings.len());
         for (id, emb) in embeddings {
-            if let Some(summary) = summaries.iter().find(|s| s.id == id) {
-                combined.push((id, emb, summary.noise_level, summary.project.clone()));
+            if let Some(summary) = summaries.iter().find(|s| s.id.as_ref() == id) {
+                combined.push((
+                    id,
+                    emb,
+                    summary.noise_level,
+                    summary.project.as_ref().map(|p| p.to_string()),
+                ));
             }
         }
 

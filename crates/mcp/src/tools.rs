@@ -13,6 +13,7 @@ pub enum McpTool {
     MemoryHybridSearch,
     MemorySemanticSearch,
     SaveMemory,
+    MemoryDelete,
     KnowledgeSearch,
     KnowledgeSave,
     KnowledgeGet,
@@ -39,6 +40,7 @@ impl McpTool {
             "memory_hybrid_search",
             "memory_semantic_search",
             "save_memory",
+            "memory_delete",
             "knowledge_search",
             "knowledge_save",
             "knowledge_get",
@@ -62,6 +64,7 @@ impl McpTool {
             "memory_hybrid_search" => Some(Self::MemoryHybridSearch),
             "memory_semantic_search" => Some(Self::MemorySemanticSearch),
             "save_memory" => Some(Self::SaveMemory),
+            "memory_delete" => Some(Self::MemoryDelete),
             "knowledge_search" => Some(Self::KnowledgeSearch),
             "knowledge_save" => Some(Self::KnowledgeSave),
             "knowledge_get" => Some(Self::KnowledgeGet),
@@ -187,9 +190,22 @@ pub fn get_tools_json() -> serde_json::Value {
                     "properties": {
                         "text": { "type": "string", "description": "Memory text to save" },
                         "title": { "type": "string", "description": "Optional title (defaults to first 50 chars of text)" },
-                        "project": { "type": "string", "description": "Optional project to associate with this memory" }
+                        "project": { "type": "string", "description": "Optional project to associate with this memory" },
+                        "observation_type": { "type": "string", "description": format!("Optional observation type ({})", opencode_mem_core::ObservationType::ALL_VARIANTS_STR) },
+                        "noise_level": { "type": "string", "description": format!("Optional noise level ({})", opencode_mem_core::NoiseLevel::ALL_VARIANTS_STR) }
                     },
                     "required": ["text"]
+                }
+            },
+            {
+                "name": "memory_delete",
+                "description": "Delete an observation by ID. Cascading: removes embedding and unlinks from knowledge entries.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id": { "type": "string", "description": "Observation ID to delete" }
+                    },
+                    "required": ["id"]
                 }
             },
             {

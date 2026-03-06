@@ -1,10 +1,10 @@
-use opencode_mem_core::{Observation, ObservationType, sanitize_input};
+use opencode_mem_core::{Observation, ObservationId, ObservationType, SessionId, sanitize_input};
 
 #[test]
 fn test_post_llm_title_filtering() {
     let mut obs = Observation::builder(
-        "id".into(),
-        "tool".into(),
+        ObservationId::from("id"),
+        SessionId::from("tool"),
         ObservationType::Discovery,
         "Found <private>secret123</private>".into(),
     )

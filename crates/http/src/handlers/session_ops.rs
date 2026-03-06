@@ -1,7 +1,7 @@
 use crate::api_error::ApiError;
 use std::sync::Arc;
 
-use opencode_mem_core::{Session, SessionStatus, ToolCall, sanitize_input};
+use opencode_mem_core::{Session, SessionStatus, ToolCall};
 
 use crate::AppState;
 use crate::api_types::{SessionInitResponse, SessionObservationsResponse};
@@ -19,10 +19,10 @@ pub(crate) async fn create_session(
     user_prompt: Option<String>,
 ) -> Result<SessionInitResponse, ApiError> {
     let session = Session::new(
-        session_db_id.clone(),
-        content_session_id,
+        opencode_mem_core::SessionId(session_db_id.clone()),
+        opencode_mem_core::ContentSessionId(content_session_id),
         None,
-        project.unwrap_or_default(),
+        opencode_mem_core::ProjectId(project.unwrap_or_default()),
         user_prompt,
         chrono::Utc::now(),
         None,
@@ -45,41 +45,20 @@ pub(crate) async fn create_session(
 
 /// Enqueue session observations into the persistent DB queue for durable processing.
 ///
-/// Each observation is individually enqueued via `QueueService::queue_message`,
-/// the same mechanism used by the `/observe` endpoint. The background queue
-/// processor picks them up — no data loss on server crash.
+/// Delegates to `QueueService::queue_tool_calls` which handles sanitization
+/// and project exclusion filtering.
 pub(crate) async fn enqueue_session_observations(
     state: &Arc<AppState>,
     session_id: String,
     observations: Vec<ToolCall>,
 ) -> Result<SessionObservationsResponse, ApiError> {
-    let mut queued = 0usize;
-    for tool_call in &observations {
-        let tool_input = serde_json::to_string(&tool_call.input).ok();
-        let filtered_input = tool_input.as_deref().map(opencode_mem_core::sanitize_input);
-        let filtered_output = opencode_mem_core::sanitize_input(&tool_call.output);
-
-        match state
-            .queue_service
-            .queue_message(
-                &session_id,
-                Some(&tool_call.tool),
-                filtered_input.as_deref(),
-                Some(&filtered_output),
-                tool_call.project.as_deref(),
-            )
-            .await
-        {
-            Ok(_id) => queued = queued.saturating_add(1),
-            Err(e) => {
-                tracing::error!(
-                    "Failed to queue session observation {}: {}",
-                    tool_call.tool,
-                    e
-                );
-                return Err(ApiError::from(e));
-            }
-        }
-    }
+    let queued = state
+        .queue_service
+        .queue_tool_calls(&observations)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to queue session observations: {}", e);
+            ApiError::from(e)
+        })?;
     Ok(SessionObservationsResponse { queued, session_id })
 }

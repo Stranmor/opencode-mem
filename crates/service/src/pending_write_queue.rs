@@ -16,6 +16,8 @@ pub enum PendingWrite {
         text: String,
         title: Option<String>,
         project: Option<String>,
+        observation_type: Option<opencode_mem_core::ObservationType>,
+        noise_level: Option<opencode_mem_core::NoiseLevel>,
     },
 }
 
@@ -119,6 +121,8 @@ mod tests {
             text: "hello".into(),
             title: None,
             project: None,
+            observation_type: None,
+            noise_level: None,
         });
         assert_eq!(q.len(), 1);
 
@@ -135,6 +139,8 @@ mod tests {
                 text: format!("item-{i}"),
                 title: None,
                 project: None,
+                observation_type: None,
+                noise_level: None,
             });
         }
         assert_eq!(q.len(), MAX_QUEUE_SIZE);
@@ -143,6 +149,8 @@ mod tests {
             text: "overflow".into(),
             title: None,
             project: None,
+            observation_type: None,
+            noise_level: None,
         });
         assert!(!accepted);
         assert_eq!(q.len(), MAX_QUEUE_SIZE);

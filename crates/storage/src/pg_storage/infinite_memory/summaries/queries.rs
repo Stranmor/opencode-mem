@@ -1,22 +1,12 @@
-//! Summary-related PostgreSQL queries.
-
-use crate::event_types::Summary;
-use anyhow::Result;
-use chrono::{DateTime, Utc};
+use super::{SummaryRow, row_to_summary};
+use crate::StorageError;
+use opencode_mem_core::InfiniteSummary;
 use sqlx::PgPool;
 
-type SummaryRow = (
-    i64,
-    DateTime<Utc>,
-    DateTime<Utc>,
-    Option<String>,
-    Option<String>,
-    String,
-    i32,
-    Option<serde_json::Value>,
-);
-
-pub async fn get_unaggregated_5min_summaries(pool: &PgPool, limit: i64) -> Result<Vec<Summary>> {
+pub async fn get_unaggregated_5min_summaries(
+    pool: &PgPool,
+    limit: i64,
+) -> Result<Vec<InfiniteSummary>, StorageError> {
     let rows = sqlx::query_as::<_, SummaryRow>(
         r#"
         SELECT id, ts_start, ts_end, session_id, project, content, event_count, entities
@@ -33,8 +23,9 @@ pub async fn get_unaggregated_5min_summaries(pool: &PgPool, limit: i64) -> Resul
     Ok(rows.into_iter().map(row_to_summary).collect())
 }
 
-/// Get distinct session_ids that have unaggregated 5min summaries.
-pub async fn get_sessions_with_unaggregated_5min(pool: &PgPool) -> Result<Vec<Option<String>>> {
+pub async fn get_sessions_with_unaggregated_5min(
+    pool: &PgPool,
+) -> Result<Vec<Option<String>>, StorageError> {
     let rows: Vec<(Option<String>,)> = sqlx::query_as(
         r#"
         SELECT DISTINCT session_id
@@ -48,14 +39,11 @@ pub async fn get_sessions_with_unaggregated_5min(pool: &PgPool) -> Result<Vec<Op
     Ok(rows.into_iter().map(|(sid,)| sid).collect())
 }
 
-/// Get all unaggregated 5min summaries for a specific session.
-/// Release summaries for future processing. Sets `processing_started_at = NOW()`
-/// (not NULL) to provide cooldown via visibility timeout, preventing spin-loops.
 pub async fn release_summaries_5min(
     pool: &PgPool,
     ids: &[i64],
     increment_retry: bool,
-) -> Result<()> {
+) -> Result<(), StorageError> {
     if ids.is_empty() {
         return Ok(());
     }
@@ -68,13 +56,11 @@ pub async fn release_summaries_5min(
     Ok(())
 }
 
-/// Release hour summaries for future processing. Sets `processing_started_at = NOW()`
-/// (not NULL) to provide cooldown via visibility timeout, preventing spin-loops.
 pub async fn release_summaries_hour(
     pool: &PgPool,
     ids: &[i64],
     increment_retry: bool,
-) -> Result<()> {
+) -> Result<(), StorageError> {
     if ids.is_empty() {
         return Ok(());
     }
@@ -90,7 +76,7 @@ pub async fn release_summaries_hour(
 pub async fn get_unaggregated_5min_for_session(
     pool: &PgPool,
     session_id: Option<&str>,
-) -> Result<Vec<Summary>> {
+) -> Result<Vec<InfiniteSummary>, StorageError> {
     let instance_id = uuid::Uuid::new_v4().to_string();
     let visibility_timeout = chrono::Duration::minutes(5);
     let stale_threshold = chrono::Utc::now() - visibility_timeout;
@@ -145,7 +131,10 @@ pub async fn get_unaggregated_5min_for_session(
     Ok(rows.into_iter().map(row_to_summary).collect())
 }
 
-pub async fn get_unaggregated_hour_summaries(pool: &PgPool, limit: i64) -> Result<Vec<Summary>> {
+pub async fn get_unaggregated_hour_summaries(
+    pool: &PgPool,
+    limit: i64,
+) -> Result<Vec<InfiniteSummary>, StorageError> {
     let rows = sqlx::query_as::<_, SummaryRow>(
         r#"
         SELECT id, ts_start, ts_end, session_id, project, content, event_count, entities
@@ -162,8 +151,9 @@ pub async fn get_unaggregated_hour_summaries(pool: &PgPool, limit: i64) -> Resul
     Ok(rows.into_iter().map(row_to_summary).collect())
 }
 
-/// Get distinct session_ids that have unaggregated hour summaries.
-pub async fn get_sessions_with_unaggregated_hour(pool: &PgPool) -> Result<Vec<Option<String>>> {
+pub async fn get_sessions_with_unaggregated_hour(
+    pool: &PgPool,
+) -> Result<Vec<Option<String>>, StorageError> {
     let rows: Vec<(Option<String>,)> = sqlx::query_as(
         r#"
         SELECT DISTINCT session_id
@@ -177,11 +167,10 @@ pub async fn get_sessions_with_unaggregated_hour(pool: &PgPool) -> Result<Vec<Op
     Ok(rows.into_iter().map(|(sid,)| sid).collect())
 }
 
-/// Get all unaggregated hour summaries for a specific session.
 pub async fn get_unaggregated_hour_for_session(
     pool: &PgPool,
     session_id: Option<&str>,
-) -> Result<Vec<Summary>> {
+) -> Result<Vec<InfiniteSummary>, StorageError> {
     let instance_id = uuid::Uuid::new_v4().to_string();
     let visibility_timeout = chrono::Duration::minutes(5);
     let stale_threshold = chrono::Utc::now() - visibility_timeout;
@@ -236,7 +225,10 @@ pub async fn get_unaggregated_hour_for_session(
     Ok(rows.into_iter().map(row_to_summary).collect())
 }
 
-pub async fn get_summary_5min(pool: &PgPool, id: i64) -> Result<Option<Summary>> {
+pub async fn get_infinite_summary_5min(
+    pool: &PgPool,
+    id: i64,
+) -> Result<Option<InfiniteSummary>, StorageError> {
     let row = sqlx::query_as::<_, SummaryRow>(
         r#"
         SELECT id, ts_start, ts_end, session_id, project, content, event_count, entities
@@ -251,7 +243,10 @@ pub async fn get_summary_5min(pool: &PgPool, id: i64) -> Result<Option<Summary>>
     Ok(row.map(row_to_summary))
 }
 
-pub async fn get_summary_hour(pool: &PgPool, id: i64) -> Result<Option<Summary>> {
+pub async fn get_infinite_summary_hour(
+    pool: &PgPool,
+    id: i64,
+) -> Result<Option<InfiniteSummary>, StorageError> {
     let row = sqlx::query_as::<_, SummaryRow>(
         r#"
         SELECT id, ts_start, ts_end, session_id, project, content, event_count, entities
@@ -266,7 +261,10 @@ pub async fn get_summary_hour(pool: &PgPool, id: i64) -> Result<Option<Summary>>
     Ok(row.map(row_to_summary))
 }
 
-pub async fn get_summary_day(pool: &PgPool, id: i64) -> Result<Option<Summary>> {
+pub async fn get_infinite_summary_day(
+    pool: &PgPool,
+    id: i64,
+) -> Result<Option<InfiniteSummary>, StorageError> {
     let row = sqlx::query_as::<_, SummaryRow>(
         r#"
         SELECT id, ts_start, ts_end, session_id, project, content, event_count, entities
@@ -285,7 +283,7 @@ pub async fn get_5min_summaries_by_hour_id(
     pool: &PgPool,
     hour_id: i64,
     limit: i64,
-) -> Result<Vec<Summary>> {
+) -> Result<Vec<InfiniteSummary>, StorageError> {
     let rows = sqlx::query_as::<_, SummaryRow>(
         r#"
         SELECT id, ts_start, ts_end, session_id, project, content, event_count, entities
@@ -307,7 +305,7 @@ pub async fn get_hour_summaries_by_day_id(
     pool: &PgPool,
     day_id: i64,
     limit: i64,
-) -> Result<Vec<Summary>> {
+) -> Result<Vec<InfiniteSummary>, StorageError> {
     let rows = sqlx::query_as::<_, SummaryRow>(
         r#"
         SELECT id, ts_start, ts_end, session_id, project, content, event_count, entities
@@ -330,14 +328,19 @@ pub async fn search_by_entity(
     entity_type: &str,
     value: &str,
     limit: i64,
-) -> Result<Vec<Summary>> {
+) -> Result<Vec<InfiniteSummary>, StorageError> {
     const ALLOWED_TYPES: &[&str] = &["files", "functions", "libraries", "errors", "decisions"];
     if !ALLOWED_TYPES.contains(&entity_type) {
-        anyhow::bail!(
-            "Invalid entity_type '{}'. Allowed: {:?}",
-            entity_type,
-            ALLOWED_TYPES
-        );
+        return Err(StorageError::DataCorruption {
+            context: format!(
+                "Invalid entity_type '{}'. Allowed: {:?}",
+                entity_type, ALLOWED_TYPES
+            ),
+            source: Box::new(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "invalid entity type",
+            )),
+        });
     }
 
     let json_array = serde_json::json!([value]);
@@ -358,18 +361,4 @@ pub async fn search_by_entity(
         .await?;
 
     Ok(rows.into_iter().map(row_to_summary).collect())
-}
-
-fn row_to_summary(row: SummaryRow) -> Summary {
-    let (id, ts_start, ts_end, session_id, project, content, event_count, entities) = row;
-    Summary {
-        id,
-        ts_start,
-        ts_end,
-        session_id,
-        project,
-        content,
-        event_count,
-        entities: entities.and_then(|e| serde_json::from_value(e).ok()),
-    }
 }

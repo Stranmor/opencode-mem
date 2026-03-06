@@ -1,6 +1,6 @@
 //! Request/query types (Deserialize)
 
-use opencode_mem_core::{DEFAULT_QUERY_LIMIT, KnowledgeType, MAX_BATCH_IDS, MAX_QUERY_LIMIT};
+use opencode_mem_core::{DEFAULT_QUERY_LIMIT, KnowledgeType, MAX_BATCH_IDS, cap_query_limit};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -38,9 +38,8 @@ pub struct SearchQuery {
 }
 
 impl SearchQuery {
-    /// Cap limit to prevent DoS via unbounded queries.
     pub fn capped_limit(&self) -> usize {
-        self.limit.min(MAX_QUERY_LIMIT)
+        cap_query_limit(self.limit)
     }
 }
 
@@ -54,7 +53,7 @@ pub struct TimelineQuery {
 
 impl TimelineQuery {
     pub fn capped_limit(&self) -> usize {
-        self.limit.min(MAX_QUERY_LIMIT)
+        cap_query_limit(self.limit)
     }
 }
 
@@ -123,7 +122,7 @@ pub struct PaginationQuery {
 
 impl PaginationQuery {
     pub fn capped_limit(&self) -> usize {
-        self.limit.min(MAX_QUERY_LIMIT)
+        cap_query_limit(self.limit)
     }
 }
 
@@ -227,11 +226,15 @@ pub struct SaveMemoryRequest {
     pub text: String,
     pub title: Option<String>,
     pub project: Option<String>,
+    pub observation_type: Option<String>,
+    pub noise_level: Option<String>,
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    use opencode_mem_core::MAX_QUERY_LIMIT;
+
     use super::*;
     use serde_json::json;
 
