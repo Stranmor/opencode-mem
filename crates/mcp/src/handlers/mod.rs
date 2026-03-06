@@ -12,14 +12,14 @@ use std::fmt::Display;
 use std::sync::Arc;
 use tokio::runtime::Handle;
 
-use opencode_mem_core::{DEFAULT_QUERY_LIMIT, cap_query_limit};
+use opencode_mem_core::DEFAULT_QUERY_LIMIT;
 
 use crate::tools::{McpTool, WORKFLOW_DOCS};
 use crate::{McpError, McpResponse};
 
 /// Parse a `limit` argument from MCP tool arguments.
 ///
-/// Returns `default` when absent or non-numeric, clamped to `MAX_QUERY_LIMIT`.
+/// Returns `default` when absent or non-numeric.
 /// Each caller passes the default matching its tool's JSON schema description.
 /// Uses `usize::try_from` to avoid truncating `as` casts.
 pub(crate) fn parse_limit(args: &serde_json::Value, default: usize) -> usize {
@@ -27,8 +27,7 @@ pub(crate) fn parse_limit(args: &serde_json::Value, default: usize) -> usize {
         .get("limit")
         .and_then(serde_json::Value::as_u64)
         .unwrap_or(u64::try_from(default).unwrap_or(u64::MAX));
-    let uncapped = usize::try_from(raw).unwrap_or(usize::MAX);
-    cap_query_limit(uncapped)
+    usize::try_from(raw).unwrap_or(usize::MAX)
 }
 
 pub(crate) fn mcp_ok<T: Serialize>(data: &T) -> serde_json::Value {

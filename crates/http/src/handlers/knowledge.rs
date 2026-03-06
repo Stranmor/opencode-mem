@@ -8,7 +8,7 @@ use serde_json::json;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use opencode_mem_core::{GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, MAX_QUERY_LIMIT};
+use opencode_mem_core::{GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult};
 
 use crate::AppState;
 use crate::api_types::{KnowledgeQuery, KnowledgeUsageResponse, SaveKnowledgeRequest};
@@ -19,7 +19,7 @@ pub async fn list_knowledge(
 ) -> Result<Json<Vec<GlobalKnowledge>>, ApiError> {
     state
         .knowledge_service
-        .list_knowledge(query.knowledge_type, query.limit.min(MAX_QUERY_LIMIT))
+        .list_knowledge(query.knowledge_type, query.limit)
         .await
         .map(Json)
         .map_err(|e| {
@@ -37,7 +37,7 @@ pub async fn search_knowledge(
     }
     let results = state
         .knowledge_service
-        .search_knowledge(&query.q, query.limit.min(MAX_QUERY_LIMIT))
+        .search_knowledge(&query.q, query.limit)
         .await
         .map_err(|e| {
             tracing::error!("Search knowledge error: {}", e);
