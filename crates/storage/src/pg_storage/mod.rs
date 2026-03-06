@@ -18,6 +18,7 @@ mod embeddings;
 pub mod infinite_memory;
 mod injections;
 mod knowledge;
+mod observation_delete;
 mod observations;
 mod pending;
 mod prompts;
