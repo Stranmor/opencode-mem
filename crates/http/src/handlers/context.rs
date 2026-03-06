@@ -1,4 +1,4 @@
-use crate::api_error::ApiError;
+use crate::api_error::{ApiError, DegradedExt};
 use axum::{
     Json,
     extract::{Query, State},
@@ -9,13 +9,13 @@ use std::convert::Infallible;
 use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
 
-use opencode_mem_core::{Observation, SearchResult};
+use opencode_mem_core::{GlobalKnowledge, Observation, SearchResult};
 use opencode_mem_service::StorageStats;
 
 use crate::AppState;
 use crate::api_types::{
-    ContextPreview, ContextPreviewQuery, ContextQuery, SearchHelpResponse, SearchQuery,
-    TimelineResult, UnifiedTimelineQuery,
+    ContextInjectResponse, ContextPreview, ContextPreviewQuery, ContextQuery, SearchHelpResponse,
+    SearchQuery, TimelineResult, UnifiedTimelineQuery,
 };
 
 use super::api_docs::get_search_help;
@@ -24,7 +24,7 @@ use super::search::unified_timeline;
 pub async fn get_context_recent(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextQuery>,
-) -> Result<Json<Vec<Observation>>, ApiError> {
+) -> Result<Json<ContextInjectResponse>, ApiError> {
     let observations = state
         .search_service
         .get_context_for_project(&query.project, query.limit)
@@ -46,7 +46,181 @@ pub async fn get_context_recent(
         }
     }
 
-    Ok(Json(observations))
+    let knowledge = fetch_relevant_knowledge(&state, &query.project, 10).await;
+    let formatted_context = format_context_sections(&observations, &knowledge);
+
+    Ok(Json(ContextInjectResponse {
+        project: query.project,
+        observations,
+        knowledge,
+        formatted_context,
+    }))
+}
+
+async fn fetch_relevant_knowledge(
+    state: &AppState,
+    project: &str,
+    limit: usize,
+) -> Vec<GlobalKnowledge> {
+    let all_knowledge = match state.knowledge_service.list_knowledge(None, 1000).await {
+        Ok(items) => items,
+        Err(e) => {
+            tracing::warn!("Failed to fetch knowledge for context inject: {}", e);
+            return Vec::new();
+        }
+    };
+
+    let selected = select_relevant_knowledge(all_knowledge, project, limit);
+
+    for item in &selected {
+        if let Err(e) = state
+            .knowledge_service
+            .update_knowledge_usage(&item.id)
+            .await
+        {
+            tracing::warn!(
+                knowledge_id = %item.id,
+                "Failed to update knowledge usage for context inject: {}",
+                e
+            );
+        }
+    }
+
+    selected
+}
+
+fn select_relevant_knowledge(
+    mut entries: Vec<GlobalKnowledge>,
+    project: &str,
+    limit: usize,
+) -> Vec<GlobalKnowledge> {
+    if entries.is_empty() || limit == 0 {
+        return Vec::new();
+    }
+
+    let normalized_project = project.trim().to_ascii_lowercase();
+    entries.sort_by(|a, b| {
+        b.usage_count
+            .cmp(&a.usage_count)
+            .then_with(|| b.confidence.total_cmp(&a.confidence))
+            .then_with(|| a.title.cmp(&b.title))
+    });
+
+    let mut selected = Vec::with_capacity(limit);
+
+    for entry in &entries {
+        if entry.source_projects.iter().any(|source| {
+            let normalized_source = source.trim().to_ascii_lowercase();
+            normalized_source == normalized_project
+        }) {
+            selected.push(entry.clone());
+            if selected.len() == limit {
+                return selected;
+            }
+        }
+    }
+
+    for entry in entries {
+        if selected.iter().any(|picked| picked.id == entry.id) {
+            continue;
+        }
+        selected.push(entry);
+        if selected.len() == limit {
+            break;
+        }
+    }
+
+    selected
+}
+
+fn format_context_sections(observations: &[Observation], knowledge: &[GlobalKnowledge]) -> String {
+    let observations_block = if observations.is_empty() {
+        "(none)".to_owned()
+    } else {
+        observations
+            .iter()
+            .map(|obs| {
+                format!(
+                    "- [{}] {} :: {}",
+                    obs.observation_type.as_str(),
+                    obs.title,
+                    obs.subtitle.as_deref().unwrap_or_default()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    let knowledge_block = if knowledge.is_empty() {
+        "(none)".to_owned()
+    } else {
+        knowledge
+            .iter()
+            .map(|item| {
+                format!(
+                    "- [{}] {}\n  description: {}\n  instructions: {}\n  usage_count: {}",
+                    item.knowledge_type.as_str(),
+                    item.title,
+                    item.description,
+                    item.instructions.as_deref().unwrap_or("(none)"),
+                    item.usage_count
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    };
+
+    format!(
+        "=== RECENT OBSERVATIONS ===\n{}\n\n=== RELEVANT GLOBAL KNOWLEDGE ===\n{}",
+        observations_block, knowledge_block
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::select_relevant_knowledge;
+    use opencode_mem_core::{GlobalKnowledge, KnowledgeType};
+
+    fn sample_knowledge(
+        id: &str,
+        title: &str,
+        source_projects: Vec<&str>,
+        usage_count: i64,
+    ) -> GlobalKnowledge {
+        GlobalKnowledge::new(
+            id.to_owned(),
+            KnowledgeType::Pattern,
+            title.to_owned(),
+            "description".to_owned(),
+            None,
+            vec![],
+            source_projects.into_iter().map(str::to_owned).collect(),
+            vec![],
+            0.5,
+            usage_count,
+            None,
+            "2026-01-01T00:00:00Z".to_owned(),
+            "2026-01-01T00:00:00Z".to_owned(),
+            None,
+        )
+    }
+
+    #[test]
+    fn select_relevant_knowledge_prioritizes_project_matches_then_usage() {
+        let entries = vec![
+            sample_knowledge("global-100", "global high", vec![], 100),
+            sample_knowledge("global-90", "global medium", vec![], 90),
+            sample_knowledge("project-10", "project low", vec!["demo"], 10),
+            sample_knowledge("project-1", "project tiny", vec!["demo"], 1),
+        ];
+
+        let selected = select_relevant_knowledge(entries, "demo", 3);
+
+        assert_eq!(selected.len(), 3);
+        assert_eq!(selected[0].id, "project-10");
+        assert_eq!(selected[1].id, "project-1");
+        assert_eq!(selected[2].id, "global-100");
+    }
 }
 
 pub async fn get_projects(
@@ -73,6 +247,13 @@ pub async fn get_stats(State(state): State<Arc<AppState>>) -> Result<Json<Storag
             tracing::error!("Get stats error: {}", e);
             ApiError::from(e)
         })
+        .with_degraded_body(serde_json::json!({
+            "observation_count": 0,
+            "session_count": 0,
+            "summary_count": 0,
+            "prompt_count": 0,
+            "project_count": 0
+        }))
 }
 
 pub async fn sse_events(
@@ -185,7 +366,12 @@ pub async fn context_preview(
         .map_err(|e| {
             tracing::error!("Context preview error: {}", e);
             ApiError::from(e)
-        })?;
+        })
+        .with_degraded_body(serde_json::json!({
+            "project": query.project,
+            "observation_count": 0,
+            "preview": ""
+        }))?;
     let preview = if query.format == "full" {
         observations
             .iter()

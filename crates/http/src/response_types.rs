@@ -3,7 +3,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use opencode_mem_core::{Scored, SearchResult, SessionStatus, SessionSummary, UserPrompt};
+use opencode_mem_core::{
+    GlobalKnowledge, Observation, Scored, SearchResult, SessionStatus, SessionSummary, UserPrompt,
+};
 use opencode_mem_service::{PendingMessage, QueueStats};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -114,6 +116,14 @@ pub struct ContextPreview {
     pub project: String,
     pub observation_count: usize,
     pub preview: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ContextInjectResponse {
+    pub project: String,
+    pub observations: Vec<Observation>,
+    pub knowledge: Vec<GlobalKnowledge>,
+    pub formatted_context: String,
 }
 
 #[derive(Debug, Serialize)]
