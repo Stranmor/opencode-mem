@@ -54,8 +54,8 @@ pub(crate) fn row_to_summary(row: &sqlx::postgres::PgRow) -> Result<SessionSumma
         row.try_get("completed")?,
         row.try_get("next_steps")?,
         row.try_get("notes")?,
-        parse_json_value(files_read),
-        parse_json_value(files_edited),
+        parse_json_value(files_read, "files_read")?,
+        parse_json_value(files_edited, "files_edited")?,
         row.try_get::<Option<i32>, _>("prompt_number")?
             .map(|v| {
                 u32::try_from(v).map_err(|e| StorageError::DataCorruption {
@@ -102,9 +102,9 @@ pub(crate) fn row_to_knowledge(
         row.try_get("title")?,
         row.try_get("description")?,
         row.try_get("instructions")?,
-        parse_json_value(triggers),
-        parse_json_value(source_projects),
-        parse_json_value(source_observations),
+        parse_json_value(triggers, "triggers")?,
+        parse_json_value(source_projects, "source_projects")?,
+        parse_json_value(source_observations, "source_observations")?,
         row.try_get("confidence")?,
         row.try_get::<i64, _>("usage_count")?,
         last_used_at.map(|d| d.to_rfc3339()),

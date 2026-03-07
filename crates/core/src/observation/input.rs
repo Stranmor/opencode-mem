@@ -14,10 +14,21 @@ pub trait Scored {
 
 /// Sort a slice of [`Scored`] items by score descending (NaN-safe).
 ///
-/// NaN scores are treated as equal to any other value, preserving
-/// their relative order (stable sort).
+/// NaN values are placed at the end of the list.
 pub fn sort_by_score_descending<T: Scored>(items: &mut [T]) {
-    items.sort_by(|a, b| b.score().total_cmp(&a.score()));
+    items.sort_by(|a, b| {
+        let sa = a.score();
+        let sb = b.score();
+        if sa.is_nan() && sb.is_nan() {
+            std::cmp::Ordering::Equal
+        } else if sa.is_nan() {
+            std::cmp::Ordering::Greater
+        } else if sb.is_nan() {
+            std::cmp::Ordering::Less
+        } else {
+            sb.total_cmp(&sa)
+        }
+    });
 }
 
 impl Scored for SearchResult {

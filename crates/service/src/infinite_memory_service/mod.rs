@@ -114,9 +114,32 @@ impl InfiniteMemoryService {
             let recovered = self.circuit_breaker.record_success();
             if recovered && self.migrations_pending.load(Ordering::Acquire) {
                 let this = self.clone();
-                tokio::spawn(async move {
-                    let _ = this.try_run_migrations().await;
-                });
+                // Acquire lock synchronously BEFORE spawning to avoid thundering herd
+                if this
+                    .migrations_pending
+                    .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+                {
+                    tokio::spawn(async move {
+                        match opencode_mem_storage::pg_storage::infinite_memory::run_infinite_memory_migrations(
+                            &this.pool,
+                        )
+                        .await
+                        {
+                            Ok(()) => {
+                                tracing::info!(
+                                    "Infinite Memory deferred migrations completed successfully"
+                                );
+                            }
+                            Err(e) => {
+                                this.migrations_pending.store(true, Ordering::Release);
+                                tracing::warn!(
+                                    "Infinite Memory deferred migration attempt failed: {e}"
+                                );
+                            }
+                        }
+                    });
+                }
             }
         } else if let Err(e) = result {
             let is_transient = Self::is_transient_error(e);
@@ -136,9 +159,32 @@ impl InfiniteMemoryService {
 
             if is_relation_missing && self.migrations_pending.load(Ordering::Acquire) {
                 let this = self.clone();
-                tokio::spawn(async move {
-                    let _ = this.try_run_migrations().await;
-                });
+                // Acquire lock synchronously BEFORE spawning to avoid thundering herd
+                if this
+                    .migrations_pending
+                    .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
+                    .is_ok()
+                {
+                    tokio::spawn(async move {
+                        match opencode_mem_storage::pg_storage::infinite_memory::run_infinite_memory_migrations(
+                            &this.pool,
+                        )
+                        .await
+                        {
+                            Ok(()) => {
+                                tracing::info!(
+                                    "Infinite Memory deferred migrations completed successfully"
+                                );
+                            }
+                            Err(e) => {
+                                this.migrations_pending.store(true, Ordering::Release);
+                                tracing::warn!(
+                                    "Infinite Memory deferred migration attempt failed: {e}"
+                                );
+                            }
+                        }
+                    });
+                }
             }
         }
     }

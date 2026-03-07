@@ -64,8 +64,17 @@ impl SearchService {
                 }
             }
             Err(e) if e.is_db_unavailable() => self.storage.circuit_breaker().record_failure(),
-            Err(_) if self.storage.circuit_breaker().is_half_open() => {
-                self.storage.circuit_breaker().record_failure();
+            Err(e) if self.storage.circuit_breaker().is_half_open() => {
+                // Trip circuit breaker backwards only for legitimate remote unavailability errors
+                if e.is_db_unavailable() || e.is_transient() {
+                    self.storage.circuit_breaker().record_failure();
+                } else {
+                    // Benign application error (404, invalid input) — record success to close the circuit
+                    let recovered = self.storage.circuit_breaker().record_success();
+                    if recovered {
+                        self.handle_recovery();
+                    }
+                }
             }
             Err(_) => {}
         }
@@ -80,13 +89,13 @@ impl SearchService {
             });
         }
 
-        if let Some(ref im) = self.infinite_mem
-            && im.has_pending_migrations()
-        {
-            let im = Arc::clone(im);
-            tokio::spawn(async move {
-                im.try_run_migrations().await;
-            });
+        if let Some(ref im) = self.infinite_mem {
+            if im.has_pending_migrations() {
+                let im = Arc::clone(im);
+                tokio::spawn(async move {
+                    im.try_run_migrations().await;
+                });
+            }
         }
     }
 

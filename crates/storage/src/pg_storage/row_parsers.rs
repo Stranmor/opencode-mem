@@ -11,8 +11,17 @@ use sqlx::Row;
 
 use crate::error::StorageError;
 
-pub(crate) fn parse_json_value<T: serde::de::DeserializeOwned>(val: serde_json::Value) -> Vec<T> {
-    serde_json::from_value(val).unwrap_or_default()
+pub(crate) fn parse_json_value<T: serde::de::DeserializeOwned>(
+    val: serde_json::Value,
+    context: &str,
+) -> Result<Vec<T>, StorageError> {
+    serde_json::from_value(val).map_err(|e| {
+        tracing::warn!("Failed to parse JSON column '{}': {}", context, e);
+        StorageError::DataCorruption {
+            context: format!("invalid JSON in DB column: '{context}'"),
+            source: Box::new(e),
+        }
+    })
 }
 
 pub(crate) fn parse_pg_observation_type(s: &str) -> Result<ObservationType, StorageError> {
@@ -61,11 +70,11 @@ pub(crate) fn row_to_observation(row: &sqlx::postgres::PgRow) -> Result<Observat
     .maybe_project(row.try_get::<Option<ProjectId>, _>("project")?)
     .maybe_subtitle(row.try_get("subtitle")?)
     .maybe_narrative(row.try_get("narrative")?)
-    .facts(parse_json_value(facts))
-    .concepts(parse_json_value(concepts))
-    .files_read(parse_json_value(files_read))
-    .files_modified(parse_json_value(files_modified))
-    .keywords(parse_json_value(keywords))
+    .facts(parse_json_value(facts, "facts")?)
+    .concepts(parse_json_value(concepts, "concepts")?)
+    .files_read(parse_json_value(files_read, "files_read")?)
+    .files_modified(parse_json_value(files_modified, "files_modified")?)
+    .keywords(parse_json_value(keywords, "keywords")?)
     .maybe_prompt_number(
         row.try_get::<Option<i32>, _>("prompt_number")?
             .map(|v| {

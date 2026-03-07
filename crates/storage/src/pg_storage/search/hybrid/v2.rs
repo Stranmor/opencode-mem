@@ -19,7 +19,10 @@ pub(crate) async fn hybrid_search_v2(
 }
 
 /// Hybrid search v2 with optional filters for project, type, and date range.
-#[allow(clippy::too_many_arguments, reason = "Internal algorithm needs multiple parameters")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Internal algorithm needs multiple parameters"
+)]
 pub(crate) async fn hybrid_search_v2_with_filters(
     storage: &PgStorage,
     query: &str,
@@ -156,7 +159,7 @@ fn merge_and_rank(
         .cloned()
         .collect();
 
-    let mut combined: Vec<(SearchResult, f64)> = all_ids
+    let combined: Vec<SearchResult> = all_ids
         .into_iter()
         .map(|id| {
             let fts_norm = fts_scores
@@ -187,23 +190,21 @@ fn merge_and_rank(
                 r
             } else {
                 // Unreachable: id came from one of these maps
-                return (
-                    SearchResult::new(
-                        id,
-                        String::new(),
-                        None,
-                        opencode_mem_core::ObservationType::Discovery,
-                        opencode_mem_core::NoiseLevel::Medium,
-                        0.0,
-                    ),
+                return SearchResult::new(
+                    id,
+                    String::new(),
+                    None,
+                    opencode_mem_core::ObservationType::Discovery,
+                    opencode_mem_core::NoiseLevel::Medium,
                     0.0,
                 );
             };
             result.score = final_score;
-            (result, final_score)
+            result
         })
         .collect();
 
+    let mut combined = combined;
     sort_by_score_descending(&mut combined);
-    combined.into_iter().take(limit).map(|(r, _)| r).collect()
+    combined.into_iter().take(limit).collect()
 }

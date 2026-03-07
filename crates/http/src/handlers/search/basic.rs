@@ -39,6 +39,9 @@ pub async fn hybrid_search(
     State(state): State<Arc<AppState>>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<Vec<SearchResult>>, ApiError> {
+    if query.q.is_empty() {
+        return Ok(Json(Vec::new()));
+    }
     state
         .search_service
         .hybrid_search(&query.q, query.capped_limit())
@@ -99,7 +102,7 @@ pub async fn search_by_file(
 ) -> Result<Json<Vec<SearchResult>>, ApiError> {
     state
         .search_service
-        .search_by_file(&query.file_path, query.limit)
+        .search_by_file(&query.file_path, query.capped_limit())
         .await
         .or_degraded(Vec::<SearchResult>::new())
         .map(Json)

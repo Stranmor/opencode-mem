@@ -134,6 +134,12 @@ pub struct FileSearchQuery {
     pub limit: usize,
 }
 
+impl FileSearchQuery {
+    pub fn capped_limit(&self) -> usize {
+        opencode_mem_core::cap_query_limit(self.limit)
+    }
+}
+
 #[derive(Debug, Deserialize)]
 pub struct UnifiedTimelineQuery {
     pub anchor: Option<String>,

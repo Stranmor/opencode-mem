@@ -50,9 +50,11 @@ impl PgStorage {
             last_used_at,
         )) = existing
         {
-            let mut triggers: Vec<String> = parse_json_value(triggers_json);
-            let mut source_projects: Vec<String> = parse_json_value(src_proj_json);
-            let mut source_observations: Vec<String> = parse_json_value(src_obs_json);
+            let mut triggers: Vec<String> = parse_json_value(triggers_json, "triggers")?;
+            let mut source_projects: Vec<String> =
+                parse_json_value(src_proj_json, "source_projects")?;
+            let mut source_observations: Vec<String> =
+                parse_json_value(src_obs_json, "source_observations")?;
 
             for t in &input.triggers {
                 if !triggers.contains(t) {

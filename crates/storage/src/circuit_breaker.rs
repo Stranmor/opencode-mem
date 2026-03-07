@@ -10,7 +10,7 @@
 //! The circuit breaker is shared across all storage operations via `Arc`.
 
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 /// Circuit breaker states stored as u8 for atomic operations.
 const STATE_CLOSED: u8 = 0;
@@ -35,8 +35,8 @@ pub struct CircuitBreaker {
     state: AtomicU8,
     /// Count of consecutive failures
     failure_count: AtomicU64,
-    /// Unix timestamp (seconds) when the circuit last opened
-    last_failure_time: AtomicU64,
+    /// Monotonic timestamp when the circuit last opened
+    last_failure_time: std::sync::RwLock<Instant>,
     /// Current backoff duration in seconds (doubles on each re-open)
     backoff_secs: AtomicU64,
 }
@@ -48,7 +48,7 @@ impl CircuitBreaker {
         Self {
             state: AtomicU8::new(STATE_CLOSED),
             failure_count: AtomicU64::new(0),
-            last_failure_time: AtomicU64::new(0),
+            last_failure_time: std::sync::RwLock::new(Instant::now()),
             backoff_secs: AtomicU64::new(MIN_BACKOFF_SECS),
         }
     }
@@ -62,19 +62,34 @@ impl CircuitBreaker {
         match state {
             STATE_CLOSED => true,
             STATE_OPEN => {
-                let now = Self::now_secs();
-                let last_failure = self.last_failure_time.load(Ordering::Relaxed);
-                let backoff = self.backoff_secs.load(Ordering::Relaxed);
-                let elapsed = now.saturating_sub(last_failure);
-                if elapsed >= backoff {
-                    // Transition to half-open: allow one probe request
-                    self.state.store(STATE_HALF_OPEN, Ordering::Release);
-                    tracing::info!(
-                        elapsed_secs = elapsed,
-                        backoff_secs = backoff,
-                        "Circuit breaker: Open → HalfOpen (probing database)"
-                    );
-                    true
+                let now = Instant::now();
+                let last_failure = *self
+                    .last_failure_time
+                    .read()
+                    .unwrap_or_else(|e| e.into_inner());
+                let backoff = Duration::from_secs(self.backoff_secs.load(Ordering::Relaxed));
+                if now.duration_since(last_failure) >= backoff {
+                    // Transition to half-open: allow one probe request.
+                    // Use compare_exchange to avoid thundering herd.
+                    if self
+                        .state
+                        .compare_exchange(
+                            STATE_OPEN,
+                            STATE_HALF_OPEN,
+                            Ordering::AcqRel,
+                            Ordering::Acquire,
+                        )
+                        .is_ok()
+                    {
+                        tracing::info!(
+                            elapsed_secs = now.duration_since(last_failure).as_secs(),
+                            backoff_secs = backoff.as_secs(),
+                            "Circuit breaker: Open → HalfOpen (probing database)"
+                        );
+                        true
+                    } else {
+                        false
+                    }
                 } else {
                     false
                 }
@@ -94,13 +109,14 @@ impl CircuitBreaker {
     /// Returns `true` if this success caused a recovery transition (Open/HalfOpen → Closed),
     /// meaning this is the first success after a failure period.
     pub fn record_success(&self) -> bool {
+        // Zero failure count FIRST to avoid race condition with record_failure
+        self.failure_count.store(0, Ordering::Release);
+        self.backoff_secs.store(MIN_BACKOFF_SECS, Ordering::Relaxed);
         let prev = self.state.swap(STATE_CLOSED, Ordering::Release);
         let recovered = prev != STATE_CLOSED;
         if recovered {
             tracing::info!("Circuit breaker: → Closed (database recovered)");
         }
-        self.failure_count.store(0, Ordering::Relaxed);
-        self.backoff_secs.store(MIN_BACKOFF_SECS, Ordering::Relaxed);
         recovered
     }
 
@@ -109,10 +125,6 @@ impl CircuitBreaker {
     /// Increments failure count. If threshold is reached, opens the circuit
     /// with exponential backoff.
     pub fn record_failure(&self) {
-        let count = self
-            .failure_count
-            .fetch_add(1, Ordering::Relaxed)
-            .saturating_add(1);
         let state = self.state.load(Ordering::Acquire);
 
         if state == STATE_HALF_OPEN {
@@ -120,24 +132,32 @@ impl CircuitBreaker {
             let current_backoff = self.backoff_secs.load(Ordering::Relaxed);
             let new_backoff = current_backoff.saturating_mul(2).min(MAX_BACKOFF_SECS);
             self.backoff_secs.store(new_backoff, Ordering::Relaxed);
-            self.last_failure_time
-                .store(Self::now_secs(), Ordering::Relaxed);
+            if let Ok(mut lock) = self.last_failure_time.write() {
+                *lock = Instant::now();
+            }
             self.state.store(STATE_OPEN, Ordering::Release);
             tracing::warn!(
                 backoff_secs = new_backoff,
                 "Circuit breaker: HalfOpen → Open (probe failed, increasing backoff)"
             );
-        } else if count >= FAILURE_THRESHOLD {
-            self.last_failure_time
-                .store(Self::now_secs(), Ordering::Relaxed);
-            let prev = self.state.swap(STATE_OPEN, Ordering::Release);
-            if prev != STATE_OPEN {
-                let backoff = self.backoff_secs.load(Ordering::Relaxed);
-                tracing::warn!(
-                    consecutive_failures = count,
-                    backoff_secs = backoff,
-                    "Circuit breaker: → Open (database unavailable)"
-                );
+        } else {
+            let count = self
+                .failure_count
+                .fetch_add(1, Ordering::Relaxed)
+                .saturating_add(1);
+            if count >= FAILURE_THRESHOLD {
+                if let Ok(mut lock) = self.last_failure_time.write() {
+                    *lock = Instant::now();
+                }
+                let prev = self.state.swap(STATE_OPEN, Ordering::Release);
+                if prev != STATE_OPEN {
+                    let backoff = self.backoff_secs.load(Ordering::Relaxed);
+                    tracing::warn!(
+                        consecutive_failures = count,
+                        backoff_secs = backoff,
+                        "Circuit breaker: → Open (database unavailable)"
+                    );
+                }
             }
         }
     }
@@ -171,18 +191,18 @@ impl CircuitBreaker {
         if self.state.load(Ordering::Acquire) != STATE_OPEN {
             return 0;
         }
-        let now = Self::now_secs();
-        let last_failure = self.last_failure_time.load(Ordering::Relaxed);
-        let backoff = self.backoff_secs.load(Ordering::Relaxed);
-        let target = last_failure.saturating_add(backoff);
-        target.saturating_sub(now)
-    }
-
-    fn now_secs() -> u64 {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or(Duration::ZERO)
-            .as_secs()
+        let now = Instant::now();
+        let last_failure = *self
+            .last_failure_time
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        let backoff = Duration::from_secs(self.backoff_secs.load(Ordering::Relaxed));
+        let target = last_failure + backoff;
+        if now >= target {
+            0
+        } else {
+            (target - now).as_secs()
+        }
     }
 }
 

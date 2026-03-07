@@ -167,10 +167,10 @@ impl SearchService {
                     if sim > DEDUP_SIMILARITY_THRESHOLD {
                         let ra = find(&mut parent, i);
                         let rb = find(&mut parent, j);
-                        if ra != rb
-                            && let Some(slot) = parent.get_mut(rb)
-                        {
-                            *slot = ra;
+                        if ra != rb {
+                            if let Some(slot) = parent.get_mut(rb) {
+                                *slot = ra;
+                            }
                         }
                     }
                 }
