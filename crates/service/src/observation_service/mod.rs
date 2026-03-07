@@ -30,6 +30,8 @@ pub struct ObservationService {
     pub(crate) embeddings: Option<Arc<EmbeddingService>>,
     pub(crate) dedup_threshold: f32,
     pub(crate) injection_dedup_threshold: f32,
+    pub(crate) project_filter: Option<opencode_mem_core::ProjectFilter>,
+    pub(crate) low_value_filter: opencode_mem_core::LowValueFilter,
 }
 
 impl ObservationService {
@@ -37,38 +39,11 @@ impl ObservationService {
         self.storage.circuit_breaker()
     }
 
-    fn fast_fail_if_db_unavailable(&self) -> Result<(), crate::ServiceError> {
-        let cb = self.circuit_breaker();
-        if cb.should_allow() {
-            Ok(())
-        } else {
-            Err(crate::ServiceError::Storage(
-                opencode_mem_storage::StorageError::Unavailable {
-                    seconds_until_probe: cb.seconds_until_probe(),
-                },
-            ))
-        }
-    }
-
     pub(crate) fn with_cb<T>(
         &self,
-        result: Result<T, crate::ServiceError>,
+        result: Result<T, opencode_mem_storage::StorageError>,
     ) -> Result<T, crate::ServiceError> {
-        match &result {
-            Ok(_) => {
-                self.circuit_breaker().record_success();
-            }
-            Err(e) if e.is_db_unavailable() => self.circuit_breaker().record_failure(),
-            Err(e) if self.circuit_breaker().is_half_open() => {
-                if e.is_db_unavailable() || e.is_transient() {
-                    self.circuit_breaker().record_failure();
-                } else {
-                    self.circuit_breaker().record_success();
-                }
-            }
-            Err(_) => {}
-        }
-        result
+        result.map_err(crate::ServiceError::from)
     }
 
     pub fn update_llm_config(
@@ -91,6 +66,10 @@ impl ObservationService {
     ) -> Self {
         let dedup_threshold = config.dedup_threshold;
         let injection_dedup_threshold = config.injection_dedup_threshold;
+        let project_filter =
+            opencode_mem_core::ProjectFilter::new(config.excluded_projects_raw.as_deref());
+        let low_value_filter =
+            opencode_mem_core::LowValueFilter::new(config.filter_patterns_raw.as_deref());
         if injection_dedup_threshold > 0.0 && embeddings.is_none() {
             tracing::warn!(
                 threshold = %injection_dedup_threshold,
@@ -105,6 +84,8 @@ impl ObservationService {
             embeddings,
             dedup_threshold,
             injection_dedup_threshold,
+            project_filter,
+            low_value_filter,
         }
     }
 
@@ -113,12 +94,7 @@ impl ObservationService {
         id: &str,
         tool_call: ToolCall,
     ) -> Result<Option<Observation>, crate::ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
-        let result = self
-            .storage
-            .get_by_id(id)
-            .await
-            .map_err(crate::ServiceError::from);
+        let result = self.storage.guarded(|| self.storage.get_by_id(id)).await;
         let existing_obs = self.with_cb(result)?;
 
         if let Some(obs) = existing_obs {
@@ -152,12 +128,10 @@ impl ObservationService {
                     .noise_reason(format!("Tombstone: merged into {}", obs.id))
                     .build();
 
-                    self.fast_fail_if_db_unavailable()?;
                     let result = self
                         .storage
-                        .save_observation(&tombstone)
-                        .await
-                        .map_err(crate::ServiceError::from);
+                        .guarded(|| self.storage.save_observation(&tombstone))
+                        .await;
                     if let Err(e) = self.with_cb(result) {
                         tracing::warn!(
                             tombstone_id = %id,

@@ -97,6 +97,12 @@ pub struct AppConfig {
     /// Administrative token for sensitive operations.
     /// Env: `OPENCODE_MEM_ADMIN_TOKEN`
     pub admin_token: Option<String>,
+
+    /// Raw patterns for project exclusion.
+    pub excluded_projects_raw: Option<String>,
+
+    /// Raw patterns for low-value observation filtering.
+    pub filter_patterns_raw: Option<String>,
 }
 
 /// Error returned when required configuration is missing or invalid.
@@ -206,6 +212,8 @@ impl AppConfig {
         let max_events = env_parse_with_default("OPENCODE_MEM_MAX_EVENTS", 200_usize);
 
         let admin_token = std::env::var("OPENCODE_MEM_ADMIN_TOKEN").ok();
+        let excluded_projects_raw = std::env::var("OPENCODE_MEM_EXCLUDED_PROJECTS").ok();
+        let filter_patterns_raw = std::env::var("OPENCODE_MEM_FILTER_PATTERNS").ok();
 
         Ok(Self {
             database_url,
@@ -225,6 +233,8 @@ impl AppConfig {
             max_total_chars,
             max_events,
             admin_token,
+            excluded_projects_raw,
+            filter_patterns_raw,
         })
     }
 

@@ -119,7 +119,7 @@ pub async fn process_pending_queue(
                 }
                 Err(e) => {
                     tracing::error!("Process message {} failed: {}", msg.id, e);
-                    if let Err(e) = state_clone.queue_service.fail_message(msg.id, true).await {
+                    if let Err(e) = state_clone.queue_service.fail_message(msg.id, false).await {
                         tracing::error!("Fail message {} error: {}", msg.id, e);
                     }
                     false

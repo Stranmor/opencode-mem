@@ -61,6 +61,8 @@ fn setup_degraded_services() -> (
         max_total_chars: 8000,
         max_events: 200,
         admin_token: None,
+        excluded_projects_raw: None,
+        filter_patterns_raw: None,
     };
 
     let infinite_mem = if let Ok(p) = PgPoolOptions::new()

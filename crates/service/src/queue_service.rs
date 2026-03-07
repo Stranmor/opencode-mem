@@ -17,30 +17,27 @@ pub enum QueueToolCallResult {
 pub struct QueueService {
     storage: Arc<StorageBackend>,
     pending_writes: Arc<PendingWriteQueue>,
+    project_filter: Option<opencode_mem_core::ProjectFilter>,
 }
 
 impl QueueService {
     #[must_use]
-    pub fn new(storage: Arc<StorageBackend>, pending_writes: Arc<PendingWriteQueue>) -> Self {
+    pub fn new(
+        storage: Arc<StorageBackend>,
+        pending_writes: Arc<PendingWriteQueue>,
+        config: &opencode_mem_core::AppConfig,
+    ) -> Self {
         Self {
             storage,
             pending_writes,
+            project_filter: opencode_mem_core::ProjectFilter::new(
+                config.excluded_projects_raw.as_deref(),
+            ),
         }
     }
 
     pub fn circuit_breaker(&self) -> &opencode_mem_storage::CircuitBreaker {
         self.storage.circuit_breaker()
-    }
-
-    fn fast_fail_if_db_unavailable(&self) -> Result<(), ServiceError> {
-        let cb = self.storage.circuit_breaker();
-        if cb.should_allow() {
-            Ok(())
-        } else {
-            Err(ServiceError::Storage(StorageError::Unavailable {
-                seconds_until_probe: cb.seconds_until_probe(),
-            }))
-        }
     }
 
     pub(crate) fn with_cb<T>(&self, result: Result<T, ServiceError>) -> Result<T, ServiceError> {
@@ -76,7 +73,7 @@ impl QueueService {
         tool_call: &ToolCall,
     ) -> Result<QueueToolCallResult, ServiceError> {
         if let Some(project) = tool_call.project.as_deref() {
-            if ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project)) {
+            if self.is_project_excluded(Some(project)) {
                 return Ok(QueueToolCallResult::ExcludedProject);
             }
         }
@@ -88,20 +85,20 @@ impl QueueService {
 
         let filtered_output = sanitize_input(&tool_call.output);
 
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .queue_message(
-                &tool_call.session_id,
-                Some(&tool_call.call_id),
-                Some(&tool_call.tool),
-                tool_input_str.as_deref(),
-                Some(&filtered_output),
-                tool_call.project.as_deref(),
-            )
-            .await
-            .map_err(ServiceError::from);
-        let id = self.with_cb(result)?;
+            .guarded(|| {
+                self.storage.queue_message(
+                    &tool_call.session_id,
+                    Some(&tool_call.call_id),
+                    Some(&tool_call.tool),
+                    tool_input_str.as_deref(),
+                    Some(&filtered_output),
+                    tool_call.project.as_deref(),
+                )
+            })
+            .await;
+        let id = self.with_cb(result.map_err(ServiceError::from))?;
 
         Ok(QueueToolCallResult::Queued(id))
     }
@@ -117,10 +114,8 @@ impl QueueService {
         let mut messages = Vec::with_capacity(tool_calls.len());
 
         for tool_call in tool_calls {
-            if let Some(project) = tool_call.project.as_deref() {
-                if ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project)) {
-                    continue;
-                }
+            if self.is_project_excluded(tool_call.project.as_deref()) {
+                continue;
             }
 
             let mut sanitized_input = tool_call.input.clone();
@@ -142,20 +137,22 @@ impl QueueService {
             return Ok(0);
         }
 
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .queue_messages(&messages)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result)
+            .guarded(|| self.storage.queue_messages(&messages))
+            .await;
+        self.with_cb(result.map_err(ServiceError::from))
     }
 
-    /// Check if a project is excluded by the global `ProjectFilter`.
+    /// Check if a project is excluded by the current `ProjectFilter`.
     #[must_use]
-    pub fn is_project_excluded(project: Option<&str>) -> bool {
+    pub fn is_project_excluded(&self, project: Option<&str>) -> bool {
         if let Some(project) = project {
-            if ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project)) {
+            if self
+                .project_filter
+                .as_ref()
+                .is_some_and(|filter| filter.is_excluded(project))
+            {
                 return true;
             }
         }
@@ -163,13 +160,13 @@ impl QueueService {
     }
 
     #[must_use]
-    pub fn should_skip_project(project: Option<&str>) -> bool {
+    pub fn should_skip_project(&self, project: Option<&str>) -> bool {
         if let Some(value) = project {
             if value.is_empty() || value == "unknown" {
                 return true;
             }
         }
-        Self::is_project_excluded(project)
+        self.is_project_excluded(project)
     }
 
     pub async fn queue_message(
@@ -181,20 +178,20 @@ impl QueueService {
         tool_response: Option<&str>,
         project: Option<&str>,
     ) -> Result<i64, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .queue_message(
-                session_id,
-                call_id,
-                tool_name,
-                tool_input,
-                tool_response,
-                project,
-            )
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result)
+            .guarded(|| {
+                self.storage.queue_message(
+                    session_id,
+                    call_id,
+                    tool_name,
+                    tool_input,
+                    tool_response,
+                    project,
+                )
+            })
+            .await;
+        self.with_cb(result.map_err(ServiceError::from))
     }
 
     pub async fn get_all_pending_messages(
@@ -202,23 +199,19 @@ impl QueueService {
         limit: usize,
     ) -> Result<Vec<PendingMessage>, ServiceError> {
         let limit = cap_query_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .get_all_pending_messages(limit)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result)
+            .guarded(|| self.storage.get_all_pending_messages(limit))
+            .await;
+        self.with_cb(result.map_err(ServiceError::from))
     }
 
     pub async fn get_queue_stats(&self) -> Result<QueueStats, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .get_queue_stats()
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result)
+            .guarded(|| self.storage.get_queue_stats())
+            .await;
+        self.with_cb(result.map_err(ServiceError::from))
     }
 
     pub async fn claim_pending_messages(
@@ -226,77 +219,65 @@ impl QueueService {
         max: usize,
         visibility_timeout_secs: i64,
     ) -> Result<Vec<PendingMessage>, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .claim_pending_messages(max, visibility_timeout_secs)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result)
+            .guarded(|| {
+                self.storage
+                    .claim_pending_messages(max, visibility_timeout_secs)
+            })
+            .await;
+        self.with_cb(result.map_err(ServiceError::from))
     }
 
     pub async fn complete_message(&self, id: i64) -> Result<(), ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .complete_message(id)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result)
+            .guarded(|| self.storage.complete_message(id))
+            .await;
+        self.with_cb(result.map_err(ServiceError::from))
     }
 
     pub async fn fail_message(&self, id: i64, permanent: bool) -> Result<(), ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .fail_message(id, permanent)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result)
+            .guarded(|| self.storage.fail_message(id, permanent))
+            .await;
+        self.with_cb(result.map_err(ServiceError::from))
     }
 
     pub async fn clear_failed_messages(&self) -> Result<usize, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .clear_failed_messages()
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result)
+            .guarded(|| self.storage.clear_failed_messages())
+            .await;
+        self.with_cb(result.map_err(ServiceError::from))
     }
 
     pub async fn clear_stale_failed_messages(&self, ttl_secs: i64) -> Result<usize, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .clear_stale_failed_messages(ttl_secs)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result)
+            .guarded(|| self.storage.clear_stale_failed_messages(ttl_secs))
+            .await;
+        self.with_cb(result.map_err(ServiceError::from))
     }
 
     pub async fn retry_failed_messages(&self) -> Result<usize, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .retry_failed_messages()
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result)
+            .guarded(|| self.storage.retry_failed_messages())
+            .await;
+        self.with_cb(result.map_err(ServiceError::from))
     }
 
     pub async fn clear_all_pending_messages(&self) -> Result<usize, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .clear_all_pending_messages()
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result)
+            .guarded(|| self.storage.clear_all_pending_messages())
+            .await;
+        self.with_cb(result.map_err(ServiceError::from))
     }
 
     pub async fn get_pending_count(&self) -> Result<usize, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
             .get_pending_count()
@@ -309,22 +290,18 @@ impl QueueService {
         &self,
         visibility_timeout_secs: i64,
     ) -> Result<usize, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .release_stale_messages(visibility_timeout_secs)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result)
+            .guarded(|| self.storage.release_stale_messages(visibility_timeout_secs))
+            .await;
+        self.with_cb(result.map_err(ServiceError::from))
     }
 
     pub async fn release_messages(&self, ids: &[i64]) -> Result<usize, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .release_messages(ids)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result)
+            .guarded(|| self.storage.release_messages(ids))
+            .await;
+        self.with_cb(result.map_err(ServiceError::from))
     }
 }

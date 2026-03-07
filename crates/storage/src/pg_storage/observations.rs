@@ -381,8 +381,8 @@ impl ObservationStore for PgStorage {
 
         // 5. Repoint injected_observations (replace duplicate_id with keeper_id)
         sqlx::query(
-            "INSERT INTO injected_observations (session_id, observation_id, embedding) \
-             SELECT session_id, $2, embedding FROM injected_observations WHERE observation_id = $1 \
+            "INSERT INTO injected_observations (session_id, observation_id) \
+             SELECT session_id, $2 FROM injected_observations WHERE observation_id = $1 \
              ON CONFLICT (session_id, observation_id) DO NOTHING",
         )
         .bind(duplicate_id)

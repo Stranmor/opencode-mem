@@ -1,5 +1,3 @@
-use std::env;
-use std::sync::LazyLock;
 use unicode_normalization::UnicodeNormalization;
 
 const BASE_CONTAINS: &[&str] = &[
@@ -150,23 +148,22 @@ const BASE_PREFIXES: &[&str] = &[
 
 const BASE_EXACT: &[&str] = &["task completion"];
 
-struct LowValueFilter {
+#[derive(Clone)]
+pub struct LowValueFilter {
     contains: Vec<Box<str>>,
     prefixes: Vec<Box<str>>,
     exact: Vec<Box<str>>,
 }
 
-static LOW_VALUE_FILTER: LazyLock<LowValueFilter> = LazyLock::new(LowValueFilter::from_env);
-
 impl LowValueFilter {
-    fn from_env() -> Self {
+    pub fn new(raw_patterns: Option<&str>) -> Self {
         let mut filter = Self {
             contains: BASE_CONTAINS.iter().map(|v| (*v).into()).collect(),
             prefixes: BASE_PREFIXES.iter().map(|v| (*v).into()).collect(),
             exact: BASE_EXACT.iter().map(|v| (*v).into()).collect(),
         };
-        if let Ok(p) = env::var("OPENCODE_MEM_FILTER_PATTERNS") {
-            let parsed = Self::from_pattern_str(&p);
+        if let Some(p) = raw_patterns {
+            let parsed = Self::from_pattern_str(p);
             filter.contains.extend(parsed.contains);
             filter.prefixes.extend(parsed.prefixes);
             filter.exact.extend(parsed.exact);
@@ -220,43 +217,43 @@ impl LowValueFilter {
         filter
     }
 
-    fn matches(&self, t: &str) -> bool {
+    pub(crate) fn matches(&self, t: &str) -> bool {
         self.exact.iter().any(|v| t == v.as_ref())
             || self.prefixes.iter().any(|v| t.starts_with(v.as_ref()))
             || self.contains.iter().any(|v| t.contains(v.as_ref()))
     }
-}
 
-pub fn is_low_value_observation(title: &str) -> bool {
-    let t = normalize_title(title);
-    if t.contains("rustfmt") && t.contains("nightly") {
-        return true;
+    pub fn is_low_value(&self, title: &str) -> bool {
+        let t = normalize_title(title);
+        if t.contains("rustfmt") && t.contains("nightly") {
+            return true;
+        }
+        if (t.contains("comment") || t.contains("docstring")) && t.contains("hook") {
+            return true;
+        }
+        if t.starts_with("refined ") && !t.contains("logic") && !t.contains("formula") {
+            return true;
+        }
+        if t.starts_with("search ")
+            && (t.contains("results") || t.contains("failed") || t.contains("yielded"))
+        {
+            return true;
+        }
+        if t.starts_with("agent ")
+            && (t.contains("rules")
+                || t.contains("protocol")
+                || t.contains("guidelines")
+                || t.contains("doctrine")
+                || t.contains("principles")
+                || t.contains("behavioral")
+                || t.contains("operational")
+                || t.contains("workflow")
+                || t.contains("persona"))
+        {
+            return true;
+        }
+        self.matches(&t)
     }
-    if (t.contains("comment") || t.contains("docstring")) && t.contains("hook") {
-        return true;
-    }
-    if t.starts_with("refined ") && !t.contains("logic") && !t.contains("formula") {
-        return true;
-    }
-    if t.starts_with("search ")
-        && (t.contains("results") || t.contains("failed") || t.contains("yielded"))
-    {
-        return true;
-    }
-    if t.starts_with("agent ")
-        && (t.contains("rules")
-            || t.contains("protocol")
-            || t.contains("guidelines")
-            || t.contains("doctrine")
-            || t.contains("principles")
-            || t.contains("behavioral")
-            || t.contains("operational")
-            || t.contains("workflow")
-            || t.contains("persona"))
-    {
-        return true;
-    }
-    LOW_VALUE_FILTER.matches(&t)
 }
 
 fn deconfuse(c: char) -> char {

@@ -43,7 +43,7 @@ impl ObservationService {
 
         // Project filter check (Privacy)
         if let Some(p) = project {
-            if let Some(filter) = opencode_mem_core::ProjectFilter::global() {
+            if let Some(ref filter) = self.project_filter {
                 if filter.is_excluded(p) {
                     tracing::info!(project = %p, "Skipping save_memory — project is excluded by privacy policy");
                     return Ok(SaveMemoryResult::Filtered);

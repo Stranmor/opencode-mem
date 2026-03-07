@@ -23,17 +23,6 @@ impl KnowledgeService {
         self.storage.circuit_breaker()
     }
 
-    fn fast_fail_if_db_unavailable(&self) -> Result<(), ServiceError> {
-        let cb = self.storage.circuit_breaker();
-        if cb.should_allow() {
-            Ok(())
-        } else {
-            Err(ServiceError::Storage(StorageError::Unavailable {
-                seconds_until_probe: cb.seconds_until_probe(),
-            }))
-        }
-    }
-
     pub(crate) fn with_cb<T>(&self, result: Result<T, StorageError>) -> Result<T, ServiceError> {
         result.map_err(ServiceError::from)
     }

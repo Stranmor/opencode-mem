@@ -1,20 +1,13 @@
 use globset::{Glob, GlobSet, GlobSetBuilder};
-use std::sync::OnceLock;
 
-const EXCLUDED_PROJECTS_ENV: &str = "OPENCODE_MEM_EXCLUDED_PROJECTS";
-static PROJECT_FILTER: OnceLock<Option<ProjectFilter>> = OnceLock::new();
-
+#[derive(Clone)]
 pub struct ProjectFilter {
     matcher: GlobSet,
 }
 
 impl ProjectFilter {
-    pub fn from_env() -> Option<Self> {
-        Self::from_env_value(std::env::var(EXCLUDED_PROJECTS_ENV).ok().as_deref())
-    }
-
-    pub fn global() -> Option<&'static Self> {
-        PROJECT_FILTER.get_or_init(Self::from_env).as_ref()
+    pub fn new(raw_patterns: Option<&str>) -> Option<Self> {
+        Self::from_env_value(raw_patterns)
     }
 
     pub fn is_excluded(&self, project: &str) -> bool {
@@ -66,12 +59,6 @@ fn expand_home(pattern: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{ProjectFilter, expand_home};
-    use std::sync::{Mutex, OnceLock};
-
-    fn env_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| Mutex::new(()))
-    }
 
     #[test]
     fn matches_basic_glob_pattern() {
@@ -103,23 +90,5 @@ mod tests {
     #[test]
     fn returns_none_for_missing_env_value() {
         assert!(ProjectFilter::from_env_value(None).is_none());
-    }
-
-    #[test]
-    fn returns_none_for_empty_env_var() {
-        let _guard = env_lock().lock().expect("lock");
-        // SAFETY: Test-only, serialized by env_lock mutex
-        unsafe { std::env::set_var("OPENCODE_MEM_EXCLUDED_PROJECTS", " , ") };
-        let filter = ProjectFilter::from_env();
-        unsafe { std::env::remove_var("OPENCODE_MEM_EXCLUDED_PROJECTS") };
-        assert!(filter.is_none());
-    }
-
-    #[test]
-    fn returns_none_for_missing_env_var() {
-        let _guard = env_lock().lock().expect("lock");
-        // SAFETY: Test-only, serialized by env_lock mutex
-        unsafe { std::env::remove_var("OPENCODE_MEM_EXCLUDED_PROJECTS") };
-        assert!(ProjectFilter::from_env().is_none());
     }
 }

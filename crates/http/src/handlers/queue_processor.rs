@@ -11,11 +11,16 @@ pub(crate) fn max_queue_workers(state: &AppState) -> usize {
 }
 
 pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> anyhow::Result<()> {
-    if let Some(project) = msg.project.as_deref() {
-        if QueueService::should_skip_project(Some(project)) {
-            tracing::debug!("Skipping project '{}' for message {}", project, msg.id);
-            return Ok(());
-        }
+    if state
+        .queue_service
+        .should_skip_project(msg.project.as_deref())
+    {
+        tracing::debug!(
+            "Skipping project '{:?}' for message {}",
+            msg.project,
+            msg.id
+        );
+        return Ok(());
     }
 
     let tool_name = msg.tool_name.as_deref().unwrap_or("unknown");
@@ -209,7 +214,7 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
                         Err(e) => {
                             tracing::error!("Background: process message {} failed: {}", msg.id, e);
                             if let Err(e) =
-                                state_clone.queue_service.fail_message(msg.id, true).await
+                                state_clone.queue_service.fail_message(msg.id, false).await
                             {
                                 tracing::error!("Background: fail message {} error: {}", msg.id, e);
                             }

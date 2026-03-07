@@ -57,7 +57,12 @@ pub fn compute_merge(
     // NoiseLevel Ord: Critical(0) < High(1) < ... < Negligible(4)
     // min picks the most important (lowest discriminant = highest importance)
     let noise_level = if force_newer {
-        newer.noise_level
+        // Prevent degrading Critical/High observations into lower priorities via AI update
+        if existing.noise_level < NoiseLevel::Medium && newer.noise_level > existing.noise_level {
+            existing.noise_level
+        } else {
+            newer.noise_level
+        }
     } else {
         std::cmp::min(existing.noise_level, newer.noise_level)
     };

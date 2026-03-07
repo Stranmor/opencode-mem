@@ -1,4 +1,4 @@
-use super::{LowValueFilter, is_low_value_observation};
+use super::LowValueFilter;
 use crate::is_trivial_tool_call;
 
 fn as_strs(v: &[Box<str>]) -> Vec<&str> {
@@ -15,6 +15,7 @@ fn test_parsing() {
 
 #[test]
 fn test_filtering() {
+    let filter = LowValueFilter::new(None);
     let low = [
         "File edit applied successfully",
         "rustfmt nightly formatting",
@@ -36,11 +37,7 @@ fn test_filtering() {
         "Refactor plan for splitting IsolationManager",
     ];
     for title in low {
-        assert!(
-            is_low_value_observation(title),
-            "Should be low value: {}",
-            title
-        );
+        assert!(filter.is_low_value(title), "Should be low value: {}", title);
     }
     let high = [
         "Database migration v10 added session_summaries",
@@ -51,7 +48,7 @@ fn test_filtering() {
     ];
     for title in high {
         assert!(
-            !is_low_value_observation(title),
+            !filter.is_low_value(title),
             "Should be high value: {}",
             title
         );
@@ -60,16 +57,18 @@ fn test_filtering() {
 
 #[test]
 fn test_case_and_partial() {
-    assert!(is_low_value_observation("FILE EDIT APPLIED SUCCESSFULLY"));
-    assert!(is_low_value_observation("There is no significant change"));
+    let filter = LowValueFilter::new(None);
+    assert!(filter.is_low_value("FILE EDIT APPLIED SUCCESSFULLY"));
+    assert!(filter.is_low_value("There is no significant change"));
 }
 
 #[test]
 fn test_unicode_bypass_prevention() {
+    let filter = LowValueFilter::new(None);
     // Cyrillic 'а' (U+0430) deconfused to Latin 'a'
-    assert!(is_low_value_observation("Upd\u{0430}ted test.rs"));
+    assert!(filter.is_low_value("Upd\u{0430}ted test.rs"));
     // ZWS stripped → "updatedtest.rs" (fused, no space = no prefix match)
-    assert!(!is_low_value_observation("Updated\u{200B}test.rs"));
+    assert!(!filter.is_low_value("Updated\u{200B}test.rs"));
 }
 
 #[test]

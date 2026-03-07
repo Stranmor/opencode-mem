@@ -1,4 +1,4 @@
-use opencode_mem_core::{Observation, is_low_value_observation};
+use opencode_mem_core::Observation;
 use opencode_mem_storage::traits::{EmbeddingStore, ObservationStore};
 
 use super::ObservationService;
@@ -6,7 +6,11 @@ use crate::ServiceError;
 
 impl ObservationService {
     pub async fn delete_observation(&self, id: &str) -> Result<bool, ServiceError> {
-        let deleted = self.storage.delete_observation_cascading(id).await?;
+        let result = self
+            .storage
+            .guarded(|| self.storage.delete_observation_cascading(id))
+            .await;
+        let deleted = self.with_cb(result)?;
         if deleted {
             tracing::info!(id = %id, "Deleted observation (cascading)");
         }
@@ -29,7 +33,7 @@ impl ObservationService {
         observation: &Observation,
         session_id: Option<&str>,
     ) -> Result<Option<(Observation, bool)>, ServiceError> {
-        if is_low_value_observation(&observation.title) {
+        if self.low_value_filter.is_low_value(&observation.title) {
             tracing::debug!("Filtered low-value observation: {}", observation.title);
             return Ok(None);
         }

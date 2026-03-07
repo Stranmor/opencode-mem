@@ -82,10 +82,24 @@ impl ObservationService {
                 observation.title = sanitize_input(&observation.title);
                 let candidate_ids: HashSet<&str> =
                     candidates.iter().map(|o| o.id.as_ref()).collect();
-                if !candidate_ids.contains(target_id.as_str()) {
+
+                // Security: Only allow context-aware updates if the target observation
+                // was in the candidate set AND belongs to the current session.
+                // This prevents a hallucinating LLM from corrupting historical data
+                // across project boundaries.
+                let target_in_session = candidates
+                    .iter()
+                    .find(|o| o.id.as_ref() == target_id.as_str())
+                    .map_or(false, |o| {
+                        o.session_id.as_ref() == tool_call.session_id.as_ref()
+                    });
+
+                if !candidate_ids.contains(target_id.as_str()) || !target_in_session {
                     tracing::warn!(
                         target_id = %target_id,
-                        "Update target not in candidate set at service layer — treating as create"
+                        in_candidate_set = candidate_ids.contains(target_id.as_str()),
+                        in_current_session = target_in_session,
+                        "Update target not eligible for context-aware refinement — treating as create"
                     );
                     return self
                         .persist_and_notify(&observation, Some(tool_call.session_id.as_ref()))
