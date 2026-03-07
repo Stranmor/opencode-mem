@@ -32,7 +32,9 @@ pub async fn observe(
         .map_err(|e| {
             tracing::error!("Queue message error: {}", e);
             ApiError::from(e)
-        })? {
+        })
+        .with_degraded_body(json!({ "id": "", "queued": false }))?
+    {
         QueueToolCallResult::Queued(id) => Ok(Json(ObserveResponse {
             id: id.to_string(),
             queued: true,
@@ -56,7 +58,8 @@ pub async fn observe_batch(
         .map_err(|e| {
             tracing::error!("Queue batch error: {}", e);
             ApiError::from(e)
-        })?;
+        })
+        .with_degraded_body(json!({ "queued": 0, "total": total }))?;
     Ok(Json(ObserveBatchResponse {
         queued: count,
         total,
@@ -71,6 +74,11 @@ pub async fn save_memory(
     if text.is_empty() {
         return Err(ApiError::BadRequest("Bad Request".into()));
     }
+
+    let title_str = match req.title.as_deref() {
+        Some(t) if !t.trim().is_empty() => opencode_mem_core::sanitize_input(t.trim()),
+        _ => text.chars().take(50).collect(),
+    };
 
     let observation_type = match req
         .observation_type
@@ -105,25 +113,30 @@ pub async fn save_memory(
         .observation_service
         .save_memory(
             text,
-            req.title.as_deref(),
+            Some(&title_str),
             req.project.as_deref(),
             observation_type,
             noise_level,
         )
         .await
-    {
-        Ok(opencode_mem_service::SaveMemoryResult::Created(obs)) => {
+        .map_err(|e| {
+            tracing::error!("Save memory error: {}", e);
+            ApiError::from(e)
+        })
+        .with_degraded_body(json!({
+            "id": uuid::Uuid::new_v4().to_string(),
+            "session_id": "manual",
+            "title": title_str,
+            "observation_type": "Discovery",
+            "noise_level": "Medium",
+            "created_at": chrono::Utc::now().to_rfc3339()
+        }))? {
+        opencode_mem_service::SaveMemoryResult::Created(obs) => {
             Ok((StatusCode::CREATED, Json(obs)))
         }
-        Ok(opencode_mem_service::SaveMemoryResult::Duplicate(obs)) => {
-            Ok((StatusCode::OK, Json(obs)))
-        }
-        Ok(opencode_mem_service::SaveMemoryResult::Filtered) => {
+        opencode_mem_service::SaveMemoryResult::Duplicate(obs) => Ok((StatusCode::OK, Json(obs))),
+        opencode_mem_service::SaveMemoryResult::Filtered => {
             Err(ApiError::UnprocessableEntity("Unprocessable Entity".into()))
-        }
-        Err(e) => {
-            tracing::error!("Save memory error: {}", e);
-            Err(ApiError::from(e))
         }
     }
 }

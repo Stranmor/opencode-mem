@@ -1,8 +1,9 @@
-use crate::api_error::{ApiError, OrDegraded};
+use crate::api_error::{ApiError, DegradedExt, OrDegraded};
 use axum::{
     Json,
     extract::{Path, State},
 };
+use serde_json::json;
 use std::sync::Arc;
 
 use crate::AppState;
@@ -27,7 +28,11 @@ pub async fn generate_summary(
         .map_err(|e| {
             tracing::error!("Generate summary failed: {}", e);
             ApiError::from(e)
-        })?;
+        })
+        .with_degraded_body(json!({
+            "session_id": req.session_id,
+            "summary": "Database unavailable, summary skipped."
+        }))?;
     Ok(Json(
         serde_json::json!({"session_id": req.session_id, "summary": summary}),
     ))
@@ -43,12 +48,16 @@ pub async fn session_init_legacy(
         .unwrap_or_else(|| session_db_id.clone());
     let resp = create_session(
         &state,
-        session_db_id,
+        session_db_id.clone(),
         content_session_id,
         req.project,
         req.user_prompt,
     )
-    .await?;
+    .await
+    .with_degraded_body(json!({
+        "session_id": session_db_id,
+        "status": "active"
+    }))?;
     Ok(Json(resp))
 }
 
@@ -57,7 +66,12 @@ pub async fn session_observations_legacy(
     Path(session_db_id): Path<String>,
     Json(req): Json<SessionObservationsRequest>,
 ) -> Result<Json<SessionObservationsResponse>, ApiError> {
-    let resp = enqueue_session_observations(&state, session_db_id, req.observations).await?;
+    let resp = enqueue_session_observations(&state, session_db_id.clone(), req.observations)
+        .await
+        .with_degraded_body(json!({
+            "queued": 0,
+            "session_id": session_db_id
+        }))?;
     Ok(Json(resp))
 }
 
@@ -73,7 +87,12 @@ pub async fn session_summarize_legacy(
         .map_err(|e| {
             tracing::error!("Generate summary failed: {}", e);
             ApiError::from(e)
-        })?;
+        })
+        .with_degraded_body(json!({
+            "session_id": session_db_id,
+            "summary": "Database unavailable, summary skipped.",
+            "queued": true
+        }))?;
     Ok(Json(
         serde_json::json!({"session_id": session_db_id, "summary": summary, "queued": true}),
     ))
@@ -137,7 +156,12 @@ pub async fn session_complete(
         .map_err(|e| {
             tracing::error!("Complete session failed: {}", e);
             ApiError::from(e)
-        })?;
+        })
+        .with_degraded_body(json!({
+            "session_id": session_db_id,
+            "status": "completed",
+            "summary": "Database unavailable, summary skipped."
+        }))?;
     Ok(Json(SessionCompleteResponse {
         session_id: session_db_id,
         status: SessionStatus::Completed,

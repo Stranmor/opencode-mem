@@ -1,5 +1,6 @@
-use crate::api_error::ApiError;
+use crate::api_error::{ApiError, DegradedExt};
 use axum::{Json, extract::State};
+use serde_json::json;
 use std::sync::Arc;
 
 use crate::AppState;
@@ -20,12 +21,16 @@ pub async fn api_session_init(
     let session_id = uuid::Uuid::new_v4().to_string();
     let resp = create_session(
         &state,
-        session_id,
+        session_id.clone(),
         content_session_id,
         req.project,
         req.user_prompt,
     )
-    .await?;
+    .await
+    .with_degraded_body(json!({
+        "session_id": session_id,
+        "status": "active"
+    }))?;
     Ok(Json(resp))
 }
 
@@ -47,8 +52,12 @@ pub async fn api_session_observations(
     let session_id = session
         .map(|s| s.id)
         .ok_or(ApiError::NotFound("Not Found".into()))?;
-    let resp =
-        enqueue_session_observations(&state, session_id.to_string(), req.observations).await?;
+    let resp = enqueue_session_observations(&state, session_id.to_string(), req.observations)
+        .await
+        .with_degraded_body(json!({
+            "queued": 0,
+            "session_id": session_id
+        }))?;
     Ok(Json(resp))
 }
 
@@ -82,7 +91,13 @@ pub async fn api_session_summarize(
         .map_err(|e| {
             tracing::error!("Session summarize failed: {}", e);
             ApiError::from(e)
-        })?;
+        })
+        .with_degraded_body(json!({
+            "content_session_id": content_session_id,
+            "session_id": session_id,
+            "summary": "Database unavailable, summary skipped.",
+            "status": "completed"
+        }))?;
 
     Ok(Json(serde_json::json!({
         "content_session_id": content_session_id,

@@ -33,10 +33,10 @@ impl QueueService {
         &self,
         tool_call: &ToolCall,
     ) -> Result<QueueToolCallResult, ServiceError> {
-        if let Some(project) = tool_call.project.as_deref()
-            && ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project))
-        {
-            return Ok(QueueToolCallResult::ExcludedProject);
+        if let Some(project) = tool_call.project.as_deref() {
+            if ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project)) {
+                return Ok(QueueToolCallResult::ExcludedProject);
+            }
         }
 
         let tool_input = serde_json::to_string(&tool_call.input).ok();
@@ -74,20 +74,20 @@ impl QueueService {
     /// Check if a project is excluded by the global `ProjectFilter`.
     #[must_use]
     pub fn is_project_excluded(project: Option<&str>) -> bool {
-        if let Some(project) = project
-            && ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project))
-        {
-            return true;
+        if let Some(project) = project {
+            if ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project)) {
+                return true;
+            }
         }
         false
     }
 
     #[must_use]
     pub fn should_skip_project(project: Option<&str>) -> bool {
-        if let Some(value) = project
-            && (value.is_empty() || value == "unknown")
-        {
-            return true;
+        if let Some(value) = project {
+            if value.is_empty() || value == "unknown" {
+                return true;
+            }
         }
         Self::is_project_excluded(project)
     }
