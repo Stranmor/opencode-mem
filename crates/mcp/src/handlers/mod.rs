@@ -20,7 +20,8 @@ pub(crate) fn parse_limit(args: &serde_json::Value, default: usize) -> usize {
         .get("limit")
         .and_then(serde_json::Value::as_u64)
         .unwrap_or(u64::try_from(default).unwrap_or(u64::MAX));
-    usize::try_from(raw).unwrap_or(usize::MAX)
+    let limit = usize::try_from(raw).unwrap_or(usize::MAX);
+    opencode_mem_core::cap_query_limit(limit)
 }
 
 pub(crate) fn mcp_ok<T: Serialize>(data: &T) -> serde_json::Value {

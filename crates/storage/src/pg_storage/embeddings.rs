@@ -56,14 +56,12 @@ impl EmbeddingStore for PgStorage {
         &self,
         limit: usize,
     ) -> Result<Vec<Observation>, StorageError> {
-        let rows = sqlx::query(
-            "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
-                    facts, concepts, files_read, files_modified, keywords, prompt_number,
-                    discovery_tokens, noise_level, noise_reason, created_at
-               FROM observations
-               WHERE embedding IS NULL
+        let rows = sqlx::query(&format!(
+            "SELECT {OBSERVATION_COLUMNS} \
+               FROM observations \
+               WHERE embedding IS NULL \
                LIMIT $1",
-        )
+        ))
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;

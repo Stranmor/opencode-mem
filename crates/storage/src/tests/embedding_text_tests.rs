@@ -1,6 +1,6 @@
 //! Tests for `observation_embedding_text` — pure function tests.
 
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, reason = "Unwraps are safe in tests")]
 
 use opencode_mem_core::{ObservationType, observation_embedding_text};
 

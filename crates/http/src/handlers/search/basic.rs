@@ -1,4 +1,4 @@
-use crate::api_error::ApiError;
+use crate::api_error::{ApiError, OrDegraded};
 use axum::{
     Json,
     extract::{Query, State},
@@ -31,11 +31,8 @@ pub async fn search(
             query.capped_limit(),
         )
         .await
+        .or_degraded(Vec::<SearchResult>::new())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Search error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn hybrid_search(
@@ -46,11 +43,8 @@ pub async fn hybrid_search(
         .search_service
         .hybrid_search(&query.q, query.capped_limit())
         .await
+        .or_degraded(Vec::<SearchResult>::new())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Hybrid search error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn semantic_search(
@@ -65,11 +59,8 @@ pub async fn semantic_search(
         .search_service
         .semantic_search_with_fallback(&query.q, query.capped_limit())
         .await
+        .or_degraded(Vec::<SearchResult>::new())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Semantic search error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn search_sessions(
@@ -83,11 +74,8 @@ pub async fn search_sessions(
         .search_service
         .search_sessions(&query.q, query.capped_limit())
         .await
+        .or_degraded(Vec::<SessionSummary>::new())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Search sessions error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn search_prompts(
@@ -101,11 +89,8 @@ pub async fn search_prompts(
         .search_service
         .search_prompts(&query.q, query.capped_limit())
         .await
+        .or_degraded(Vec::<UserPrompt>::new())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Search prompts error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn search_by_file(
@@ -116,9 +101,6 @@ pub async fn search_by_file(
         .search_service
         .search_by_file(&query.file_path, query.limit)
         .await
+        .or_degraded(Vec::<SearchResult>::new())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Search by file error: {}", e);
-            ApiError::from(e)
-        })
 }

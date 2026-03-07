@@ -37,7 +37,7 @@ pub(crate) async fn get_timeline(
     };
 
     let sql = format!(
-        "SELECT id, title, subtitle, observation_type, noise_level, 0.0::float8 AS score
+        "SELECT id, title, subtitle, observation_type, noise_level, created_at, 0.0::float8 AS score
            FROM observations {where_clause}
            ORDER BY created_at {order_direction}
            LIMIT ${param_idx}"
@@ -50,7 +50,7 @@ pub(crate) async fn get_timeline(
     q = q.bind(usize_to_i64(limit));
     let rows = q.fetch_all(&storage.pool).await?;
     let mut results: Vec<SearchResult> =
-        collect_skipping_corrupt(rows.iter().map(row_to_search_result));
+        collect_skipping_corrupt(rows.into_iter().map(|r| row_to_search_result(&r)));
 
     if order_direction == "ASC" {
         results.reverse();

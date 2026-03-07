@@ -28,7 +28,7 @@ impl SearchService {
         let limit = Self::normalize_limit(limit);
         self.fast_fail_if_db_unavailable()?;
         let result = self.run_hybrid_search(query, limit).await;
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     /// Search with additional filters (project, observation type, date range).
@@ -46,7 +46,7 @@ impl SearchService {
         let result = self
             .run_search_with_filters(query, project, obs_type, from, to, limit)
             .await;
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     /// Smart search: selects the best strategy based on available parameters.
@@ -85,7 +85,7 @@ impl SearchService {
         let limit = Self::normalize_limit(limit);
         self.fast_fail_if_db_unavailable()?;
         let result = self.run_semantic_search_with_fallback(query, limit).await;
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     // ── Private routing implementations ─────────────────────────────────

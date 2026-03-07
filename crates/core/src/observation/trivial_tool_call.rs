@@ -37,22 +37,32 @@ pub fn is_trivial_tool_call(tool_name: &str, input: &serde_json::Value) -> bool 
         if !has_metachars
             && (trimmed == "ls"
                 || trimmed.starts_with("ls ")
-                || trimmed.starts_with("pwd")
+                || trimmed == "pwd"
                 || trimmed.starts_with("cat ")
                 || trimmed.starts_with("echo ")
                 || trimmed.starts_with("grep ")
-                || trimmed.starts_with("find ")
-                || trimmed.starts_with("git status")
-                || trimmed.starts_with("git log")
-                || trimmed.starts_with("git diff")
-                || trimmed.starts_with("cargo check")
-                || trimmed.starts_with("cargo test")
-                || trimmed.starts_with("cargo build")
-                || trimmed.starts_with("npm test")
-                || trimmed.starts_with("npm run test")
-                || trimmed.starts_with("npm run build")
-                || trimmed.starts_with("npm install")
-                || trimmed.starts_with("pytest"))
+                || trimmed == "git status"
+                || trimmed.starts_with("git status ")
+                || trimmed == "git log"
+                || trimmed.starts_with("git log ")
+                || trimmed == "git diff"
+                || trimmed.starts_with("git diff ")
+                || trimmed == "cargo check"
+                || trimmed.starts_with("cargo check ")
+                || trimmed == "cargo test"
+                || trimmed.starts_with("cargo test ")
+                || trimmed == "cargo build"
+                || trimmed.starts_with("cargo build ")
+                || trimmed == "npm test"
+                || trimmed.starts_with("npm test ")
+                || trimmed == "npm run test"
+                || trimmed.starts_with("npm run test ")
+                || trimmed == "npm run build"
+                || trimmed.starts_with("npm run build ")
+                || trimmed == "npm install"
+                || trimmed.starts_with("npm install ")
+                || trimmed == "pytest"
+                || trimmed.starts_with("pytest "))
         {
             return true;
         }

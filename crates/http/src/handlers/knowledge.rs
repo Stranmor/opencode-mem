@@ -1,5 +1,5 @@
 use super::is_localhost;
-use crate::api_error::ApiError;
+use crate::api_error::{ApiError, DegradedExt, OrDegraded};
 use axum::{
     Json,
     extract::{ConnectInfo, Path, Query, State},
@@ -21,11 +21,8 @@ pub async fn list_knowledge(
         .knowledge_service
         .list_knowledge(query.knowledge_type, query.limit)
         .await
+        .or_degraded(Vec::<GlobalKnowledge>::new())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("List knowledge error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn search_knowledge(
@@ -39,10 +36,8 @@ pub async fn search_knowledge(
         .knowledge_service
         .search_knowledge(&query.q, query.limit)
         .await
-        .map_err(|e| {
-            tracing::error!("Search knowledge error: {}", e);
-            ApiError::from(e)
-        })?;
+        .or_degraded(Vec::<KnowledgeSearchResult>::new())?;
+
     // Fire-and-forget: update usage_count for all returned results.
     let knowledge_service = state.knowledge_service.clone();
     let result_ids: Vec<String> = results.iter().map(|r| r.knowledge.id.clone()).collect();
@@ -62,10 +57,8 @@ pub async fn get_knowledge_by_id(
         .knowledge_service
         .get_knowledge(&id)
         .await
-        .map_err(|e| {
-            tracing::error!("Get knowledge error: {}", e);
-            ApiError::from(e)
-        })?;
+        .or_degraded(None::<GlobalKnowledge>)?;
+
     match knowledge {
         Some(k) => {
             let knowledge_service = state.knowledge_service.clone();

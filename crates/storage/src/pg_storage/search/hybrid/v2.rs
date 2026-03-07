@@ -19,7 +19,7 @@ pub(crate) async fn hybrid_search_v2(
 }
 
 /// Hybrid search v2 with optional filters for project, type, and date range.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, reason = "Internal algorithm needs multiple parameters")]
 pub(crate) async fn hybrid_search_v2_with_filters(
     storage: &PgStorage,
     query: &str,

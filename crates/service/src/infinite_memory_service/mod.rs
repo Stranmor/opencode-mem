@@ -41,12 +41,36 @@ impl InfiniteMemoryService {
                 }
             };
 
-        Ok(Self {
+        let svc = Self {
             pool,
             llm,
             circuit_breaker: Arc::new(CircuitBreaker::new()),
             migrations_pending: Arc::new(AtomicBool::new(migrations_pending)),
-        })
+        };
+
+        // Spawn a background loop to retry deferred migrations periodically.
+        // Solves the deadlock where migrations are deferred (DB was down at startup)
+        // but DB operations fail with "relation does not exist" (non-transient),
+        // so record_result never triggers retry.
+        if migrations_pending {
+            let svc_clone = svc.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    if !svc_clone.has_pending_migrations() {
+                        break;
+                    }
+                    if svc_clone.try_run_migrations().await {
+                        tracing::info!(
+                            "Infinite Memory deferred migrations resolved by background retry"
+                        );
+                        break;
+                    }
+                }
+            });
+        }
+
+        Ok(svc)
     }
 
     #[must_use]
@@ -95,10 +119,26 @@ impl InfiniteMemoryService {
                 });
             }
         } else if let Err(e) = result {
-            if Self::is_transient_error(e) {
+            let is_transient = Self::is_transient_error(e);
+            let is_relation_missing = Self::is_missing_relation_error(e);
+
+            if is_transient {
                 self.circuit_breaker.record_failure();
+            } else if self.circuit_breaker.is_half_open() {
+                self.circuit_breaker.record_failure();
+                tracing::debug!(
+                    "Non-transient error during HalfOpen probe, recording failure: {}",
+                    e
+                );
             } else {
                 tracing::debug!("Non-transient error, not tripping circuit breaker: {}", e);
+            }
+
+            if is_relation_missing && self.migrations_pending.load(Ordering::Acquire) {
+                let this = self.clone();
+                tokio::spawn(async move {
+                    let _ = this.try_run_migrations().await;
+                });
             }
         }
     }
@@ -124,6 +164,11 @@ impl InfiniteMemoryService {
             || msg.contains("pool timed out")
             || msg.contains("PoolTimedOut")
             || msg.contains("timed out while waiting")
+    }
+
+    fn is_missing_relation_error(err: &anyhow::Error) -> bool {
+        let msg = err.to_string();
+        msg.contains("relation") && msg.contains("does not exist")
     }
 
     pub async fn store_event(&self, event: RawInfiniteEvent) -> Result<i64> {

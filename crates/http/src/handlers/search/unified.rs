@@ -1,4 +1,4 @@
-use crate::api_error::ApiError;
+use crate::api_error::{ApiError, OrDegraded};
 use axum::{
     Json,
     extract::{Query, State},
@@ -43,6 +43,30 @@ pub async fn unified_search(
         state.search_service.search_sessions(q, limit),
         state.search_service.search_prompts(q, limit),
     );
+
+    // If any query failed due to database unavailability, return a degraded response.
+    // This ensures consistency with other endpoints and provides the X-Memory-Degraded header.
+    if let Err(e) = &obs_result {
+        if e.is_db_unavailable() || e.is_transient() {
+            return Err(ApiError::Degraded(
+                serde_json::to_value(UnifiedSearchResult::default()).unwrap(),
+            ));
+        }
+    }
+    if let Err(e) = &sess_result {
+        if e.is_db_unavailable() || e.is_transient() {
+            return Err(ApiError::Degraded(
+                serde_json::to_value(UnifiedSearchResult::default()).unwrap(),
+            ));
+        }
+    }
+    if let Err(e) = &prompt_result {
+        if e.is_db_unavailable() || e.is_transient() {
+            return Err(ApiError::Degraded(
+                serde_json::to_value(UnifiedSearchResult::default()).unwrap(),
+            ));
+        }
+    }
 
     let observations = obs_result.unwrap_or_else(|e| {
         tracing::error!("Unified search observation query failed: {e}");
@@ -182,6 +206,22 @@ pub async fn unified_timeline(
                 .search_service
                 .get_timeline(Some(&anchor_time), None, after_limit),
         );
+
+        // If any query failed due to database unavailability, return a degraded response.
+        if let Err(e) = &before_result {
+            if e.is_db_unavailable() || e.is_transient() {
+                return Err(ApiError::Degraded(
+                    serde_json::to_value(TimelineResult::default()).unwrap(),
+                ));
+            }
+        }
+        if let Err(e) = &after_result {
+            if e.is_db_unavailable() || e.is_transient() {
+                return Err(ApiError::Degraded(
+                    serde_json::to_value(TimelineResult::default()).unwrap(),
+                ));
+            }
+        }
 
         let anchor_id = anchor_sr.id.clone();
         let before_items = before_result

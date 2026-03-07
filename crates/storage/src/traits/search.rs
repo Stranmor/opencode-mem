@@ -51,7 +51,10 @@ pub trait SearchStore: Send + Sync {
     ) -> Result<Vec<SearchResult>, StorageError>;
 
     /// Hybrid search with optional filters.
-    #[allow(clippy::too_many_arguments)]
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "Search trait parameters match underlying implementation needs"
+    )]
     async fn hybrid_search_v2_with_filters(
         &self,
         query: &str,

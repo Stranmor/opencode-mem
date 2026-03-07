@@ -7,15 +7,16 @@ async fn pg_search_observations() {
     let storage = create_pg_storage().await;
     let id = unique_id();
     let project = unique_id();
-    let title = format!("Xylophone integration marker {id}");
+    let search_term = format!("xylophone-{id}");
+    let title = format!("{search_term} integration marker");
     let obs = make_observation(&id, "pg-test-session", &project, &title);
     storage
         .save_observation(&obs)
         .await
         .expect("save_observation failed");
 
-    let results = storage.search("xylophone", 10).await.unwrap();
-    let found = results.iter().any(|r| *r.id == id);
+    let results = storage.search(&search_term, 10).await.unwrap();
+    let found = results.iter().any(|r| r.id.0 == id);
     assert!(
         found,
         "Observation should be found via FTS search for 'xylophone'"

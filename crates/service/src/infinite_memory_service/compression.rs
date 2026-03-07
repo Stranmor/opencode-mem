@@ -78,7 +78,7 @@ pub async fn compress_events(
             e.ts.format("%H:%M:%S"),
             truncated
         );
-        total_chars = total_chars.saturating_add(line.len());
+        total_chars = total_chars.saturating_add(line.chars().count());
         if total_chars > max_total {
             events_text.push(format!(
                 "...({} more events truncated)",

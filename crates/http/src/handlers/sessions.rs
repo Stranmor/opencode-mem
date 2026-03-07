@@ -1,4 +1,4 @@
-use crate::api_error::ApiError;
+use crate::api_error::{ApiError, OrDegraded};
 use axum::{
     Json,
     extract::{Path, State},
@@ -87,10 +87,8 @@ pub async fn session_status(
         .session_service
         .get_session(&session_db_id)
         .await
-        .map_err(|e| {
-            tracing::error!("Get session error: {}", e);
-            ApiError::from(e)
-        })?;
+        .or_degraded(None::<opencode_mem_core::Session>)?;
+
     match session {
         Some(s) => {
             let obs_count = state

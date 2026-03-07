@@ -9,6 +9,8 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use opencode_mem_storage::StorageError;
 
+use serde::Serialize;
+
 /// API error with HTTP status code and human-readable message.
 ///
 /// Use via `Result<Json<T>, ApiError>` in handlers.
@@ -32,15 +34,15 @@ pub enum ApiError {
     ServiceUnavailable(String),
     /// 200 OK with empty body — database unavailable, graceful degradation.
     /// Returns `X-Memory-Degraded: true` header so callers can detect degraded mode.
-    Degraded,
+    /// The `Value` payload MUST match the handler's native JSON schema (array or object).
+    Degraded(serde_json::Value),
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         match self {
-            Self::Degraded => {
+            Self::Degraded(body) => {
                 tracing::warn!("HTTP: database unavailable, returning degraded empty response");
-                let body = serde_json::json!({"data": [], "degraded": true});
                 (
                     StatusCode::OK,
                     [(
@@ -65,7 +67,7 @@ impl IntoResponse for ApiError {
                         )
                     }
                     Self::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg),
-                    Self::Degraded => unreachable!(),
+                    Self::Degraded(_) => unreachable!(),
                 };
                 let body = serde_json::json!({"error": message});
                 (status, Json(body)).into_response()
@@ -85,7 +87,9 @@ impl From<opencode_mem_service::ServiceError> for ApiError {
         use opencode_mem_service::ServiceError;
 
         if err.is_db_unavailable() || err.is_transient() {
-            return Self::Degraded;
+            // Default to Null instead of an empty array.
+            // Handlers should use .with_degraded_body() to provide the correct structural fallback.
+            return Self::Degraded(serde_json::Value::Null);
         }
 
         match err {
@@ -98,6 +102,35 @@ impl From<opencode_mem_service::ServiceError> for ApiError {
             ServiceError::InvalidInput(msg) => Self::BadRequest(msg),
             ServiceError::NotConfigured(msg) => Self::ServiceUnavailable(msg),
             _ => Self::Internal(err.into()),
+        }
+    }
+}
+
+pub trait DegradedExt<T> {
+    fn with_degraded_body(self, body: serde_json::Value) -> Result<T, ApiError>;
+}
+
+impl<T> DegradedExt<T> for Result<T, ApiError> {
+    fn with_degraded_body(self, body: serde_json::Value) -> Result<T, ApiError> {
+        match self {
+            Err(ApiError::Degraded(_)) => Err(ApiError::Degraded(body)),
+            other => other,
+        }
+    }
+}
+
+pub trait OrDegraded<T> {
+    fn or_degraded<B: Serialize>(self, body: B) -> Result<T, ApiError>;
+}
+
+impl<T> OrDegraded<T> for Result<T, opencode_mem_service::ServiceError> {
+    fn or_degraded<B: Serialize>(self, body: B) -> Result<T, ApiError> {
+        match self {
+            Ok(v) => Ok(v),
+            Err(e) if e.is_db_unavailable() || e.is_transient() => Err(ApiError::Degraded(
+                serde_json::to_value(body).unwrap_or(serde_json::Value::Null),
+            )),
+            Err(e) => Err(ApiError::from(e)),
         }
     }
 }

@@ -96,7 +96,7 @@ impl Scored for RankedItem {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 pub struct UnifiedSearchResult {
     pub observations: Vec<SearchResult>,
     pub sessions: Vec<SessionSummary>,
@@ -104,7 +104,7 @@ pub struct UnifiedSearchResult {
     pub ranked: Vec<RankedItem>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Default)]
 pub struct TimelineResult {
     pub anchor: Option<SearchResult>,
     pub before: Vec<SearchResult>,

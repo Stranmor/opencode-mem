@@ -65,7 +65,7 @@ pub async fn release_infinite_events(pool: &PgPool, ids: &[i64]) -> Result<(), S
         return Ok(());
     }
     sqlx::query(
-        "UPDATE raw_events SET processing_instance_id = NULL, processing_started_at = NOW(), retry_count = retry_count + 1 WHERE id = ANY($1)",
+        "UPDATE raw_events SET processing_instance_id = NULL, processing_started_at = NULL, retry_count = retry_count + 1 WHERE id = ANY($1)",
     )
     .bind(ids)
     .execute(pool)

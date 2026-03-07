@@ -14,12 +14,35 @@ use std::sync::Arc;
 use tokio::task::spawn_blocking;
 
 pub async fn get_branch_status(
-    State(state): State<Arc<AppState>>,
+    State(_state): State<Arc<AppState>>,
 ) -> Result<Json<BranchStatusResponse>, ApiError> {
-    let settings = state.settings.read().await;
+    let (branch, is_dirty) = spawn_blocking(|| {
+        let branch = Command::new("git")
+            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+            .stdin(std::process::Stdio::null())
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
+            .unwrap_or_default();
+
+        let dirty = Command::new("git")
+            .args(["status", "--porcelain"])
+            .stdin(std::process::Stdio::null())
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| !o.stdout.is_empty())
+            .unwrap_or(false);
+
+        (branch, dirty)
+    })
+    .await
+    .map_err(anyhow::Error::from)?;
+
     Ok(Json(BranchStatusResponse {
-        current_branch: settings.current_branch.clone(),
-        is_dirty: false,
+        current_branch: branch,
+        is_dirty,
     }))
 }
 
@@ -59,10 +82,15 @@ pub async fn switch_branch(
     }
 
     let branch = req.branch.clone();
-    let result = spawn_blocking(move || Command::new("git").args(["checkout", &branch]).output())
-        .await
-        .map_err(anyhow::Error::from)?
-        .map_err(anyhow::Error::from)?;
+    let result = spawn_blocking(move || {
+        Command::new("git")
+            .args(["switch", &branch])
+            .stdin(std::process::Stdio::null())
+            .output()
+    })
+    .await
+    .map_err(anyhow::Error::from)?
+    .map_err(anyhow::Error::from)?;
 
     if result.status.success() {
         state
@@ -93,10 +121,15 @@ pub async fn update_branch(
     if !is_localhost(&addr) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
-    let result = spawn_blocking(|| Command::new("git").args(["pull", "--ff-only"]).output())
-        .await
-        .map_err(anyhow::Error::from)?
-        .map_err(anyhow::Error::from)?;
+    let result = spawn_blocking(|| {
+        Command::new("git")
+            .args(["pull", "--ff-only"])
+            .stdin(std::process::Stdio::null())
+            .output()
+    })
+    .await
+    .map_err(anyhow::Error::from)?
+    .map_err(anyhow::Error::from)?;
 
     if result.status.success() {
         let stdout = String::from_utf8_lossy(&result.stdout);

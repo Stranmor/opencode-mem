@@ -24,8 +24,7 @@ pub enum McpTool {
 }
 
 impl McpTool {
-    /// Parse tool name from JSON-RPC request.
-    /// Returns None for unknown tools (caller must handle error).
+    /// Returns all registered MCP tool names as a static slice.
     #[must_use]
     pub fn all_tool_names() -> &'static [&'static str] {
         &[
@@ -51,6 +50,8 @@ impl McpTool {
         ]
     }
 
+    /// Parse tool name from JSON-RPC request.
+    /// Returns `None` for unknown tools (caller must handle error).
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "__IMPORTANT" => Some(Self::Important),

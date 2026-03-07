@@ -1,4 +1,4 @@
-use crate::api_error::ApiError;
+use crate::api_error::{ApiError, OrDegraded};
 use axum::{
     Json,
     extract::{Path, Query, State},
@@ -30,7 +30,13 @@ pub async fn infinite_expand_summary(
         .get_events_by_summary_id(id, opencode_mem_core::MAX_QUERY_LIMIT_I64)
         .await
         .map(Json)
-        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))
+        .map_err(|e| {
+            if infinite_mem.circuit_breaker().is_open() {
+                crate::api_error::ApiError::Degraded(serde_json::json!([]))
+            } else {
+                crate::api_error::ApiError::Internal(e)
+            }
+        })
 }
 
 pub async fn infinite_time_range(
@@ -53,7 +59,13 @@ pub async fn infinite_time_range(
         )
         .await
         .map(Json)
-        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))
+        .map_err(|e| {
+            if infinite_mem.circuit_breaker().is_open() {
+                crate::api_error::ApiError::Degraded(serde_json::json!([]))
+            } else {
+                crate::api_error::ApiError::Internal(e)
+            }
+        })
 }
 
 pub async fn infinite_drill_hour(
@@ -65,7 +77,13 @@ pub async fn infinite_drill_hour(
         .get_5min_summaries_by_hour_id(id, opencode_mem_core::MAX_QUERY_LIMIT_I64)
         .await
         .map(Json)
-        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))
+        .map_err(|e| {
+            if infinite_mem.circuit_breaker().is_open() {
+                crate::api_error::ApiError::Degraded(serde_json::json!([]))
+            } else {
+                crate::api_error::ApiError::Internal(e)
+            }
+        })
 }
 
 pub async fn infinite_drill_day(
@@ -77,7 +95,13 @@ pub async fn infinite_drill_day(
         .get_hour_summaries_by_day_id(id, opencode_mem_core::MAX_QUERY_LIMIT_I64)
         .await
         .map(Json)
-        .map_err(|e| crate::api_error::ApiError::Internal(anyhow::anyhow!(e)))
+        .map_err(|e| {
+            if infinite_mem.circuit_breaker().is_open() {
+                crate::api_error::ApiError::Degraded(serde_json::json!([]))
+            } else {
+                crate::api_error::ApiError::Internal(e)
+            }
+        })
 }
 
 pub async fn infinite_search_entities(
@@ -94,8 +118,10 @@ pub async fn infinite_search_entities(
             let error_msg = e.to_string();
             if error_msg.contains("Invalid entity_type") {
                 crate::api_error::ApiError::BadRequest(error_msg)
+            } else if infinite_mem.circuit_breaker().is_open() {
+                crate::api_error::ApiError::Degraded(serde_json::json!([]))
             } else {
-                crate::api_error::ApiError::Internal(anyhow::anyhow!(e))
+                crate::api_error::ApiError::Internal(e)
             }
         })
 }

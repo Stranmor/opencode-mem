@@ -148,6 +148,12 @@ impl CircuitBreaker {
         self.state.load(Ordering::Acquire) == STATE_OPEN
     }
 
+    /// Whether the circuit is in half-open (probing) state.
+    #[must_use]
+    pub fn is_half_open(&self) -> bool {
+        self.state.load(Ordering::Acquire) == STATE_HALF_OPEN
+    }
+
     /// Current state as a human-readable string (for diagnostics).
     #[must_use]
     pub fn state_name(&self) -> &'static str {

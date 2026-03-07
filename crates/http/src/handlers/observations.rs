@@ -1,9 +1,12 @@
-use crate::api_error::ApiError;
+use super::is_localhost;
+use crate::api_error::{ApiError, DegradedExt, OrDegraded};
 use axum::{
     Json,
-    extract::{Path, Query, State},
+    extract::{ConnectInfo, Path, Query, State},
     http::StatusCode,
 };
+use serde_json::json;
+use std::net::SocketAddr;
 use std::str::FromStr;
 use std::sync::Arc;
 
@@ -133,11 +136,8 @@ pub async fn get_observation(
         .search_service
         .get_observation_by_id(&id)
         .await
+        .or_degraded(None::<Observation>)
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get observation error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn get_recent(
@@ -148,11 +148,8 @@ pub async fn get_recent(
         .search_service
         .get_recent_observations(query.capped_limit())
         .await
+        .or_degraded(Vec::<Observation>::new())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get recent error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn get_timeline(
@@ -167,11 +164,8 @@ pub async fn get_timeline(
             query.capped_limit(),
         )
         .await
+        .or_degraded(Vec::<SearchResult>::new())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get timeline error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn get_observations_batch(
@@ -186,11 +180,8 @@ pub async fn get_observations_batch(
         .search_service
         .get_observations_by_ids(&req.ids)
         .await
+        .or_degraded(Vec::<Observation>::new())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get observations batch error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn get_observations_paginated(
@@ -201,11 +192,8 @@ pub async fn get_observations_paginated(
         .search_service
         .get_observations_paginated(query.offset, query.capped_limit(), query.project.as_deref())
         .await
+        .or_degraded(PaginatedResult::<Observation>::empty())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get observations paginated error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn get_summaries_paginated(
@@ -216,11 +204,8 @@ pub async fn get_summaries_paginated(
         .search_service
         .get_summaries_paginated(query.offset, query.capped_limit(), query.project.as_deref())
         .await
+        .or_degraded(PaginatedResult::<SessionSummary>::empty())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get summaries paginated error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn get_prompts_paginated(
@@ -231,11 +216,8 @@ pub async fn get_prompts_paginated(
         .search_service
         .get_prompts_paginated(query.offset, query.capped_limit(), query.project.as_deref())
         .await
+        .or_degraded(PaginatedResult::<UserPrompt>::empty())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get prompts paginated error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn get_session_by_id(
@@ -246,11 +228,8 @@ pub async fn get_session_by_id(
         .search_service
         .get_session_summary(&id)
         .await
+        .or_degraded(None::<SessionSummary>)
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get session summary error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn get_prompt_by_id(
@@ -261,17 +240,18 @@ pub async fn get_prompt_by_id(
         .search_service
         .get_prompt_by_id(&id)
         .await
+        .or_degraded(None::<UserPrompt>)
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get prompt error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn delete_observation(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
+    if !is_localhost(&addr) {
+        return Err(ApiError::Forbidden("Forbidden".into()));
+    }
     let deleted = state
         .observation_service
         .delete_observation(&id)

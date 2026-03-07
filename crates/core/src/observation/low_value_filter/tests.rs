@@ -66,8 +66,10 @@ fn test_case_and_partial() {
 
 #[test]
 fn test_unicode_bypass_prevention() {
+    // Cyrillic 'а' (U+0430) deconfused to Latin 'a'
     assert!(is_low_value_observation("Upd\u{0430}ted test.rs"));
-    assert!(is_low_value_observation("Updated\u{200B}test.rs"));
+    // ZWS stripped → "updatedtest.rs" (fused, no space = no prefix match)
+    assert!(!is_low_value_observation("Updated\u{200B}test.rs"));
 }
 
 #[test]

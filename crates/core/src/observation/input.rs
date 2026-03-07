@@ -1,7 +1,5 @@
 //! Input types for observation creation from tool calls.
 
-use std::cmp::Ordering;
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
@@ -19,7 +17,7 @@ pub trait Scored {
 /// NaN scores are treated as equal to any other value, preserving
 /// their relative order (stable sort).
 pub fn sort_by_score_descending<T: Scored>(items: &mut [T]) {
-    items.sort_by(|a, b| b.score().partial_cmp(&a.score()).unwrap_or(Ordering::Equal));
+    items.sort_by(|a, b| b.score().total_cmp(&a.score()));
 }
 
 impl Scored for SearchResult {

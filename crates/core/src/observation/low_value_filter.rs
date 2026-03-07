@@ -274,24 +274,18 @@ fn deconfuse(c: char) -> char {
 }
 
 fn normalize_title(title: &str) -> String {
-    title
+    let stripped: String = title
         .nfkd()
-        .map(deconfuse)
-        .map(|c| {
-            if c.is_control()
-                || c == '\u{200B}'
-                || c == '\u{200C}'
-                || c == '\u{200D}'
-                || c == '\u{FEFF}'
-                || matches!(c, '\u{FE00}'..='\u{FE0F}')
-            {
-                ' '
-            } else {
-                c
-            }
+        .filter(|c| {
+            !c.is_control()
+                && *c != '\u{200B}'
+                && *c != '\u{200C}'
+                && *c != '\u{200D}'
+                && *c != '\u{FEFF}'
+                && !matches!(c, '\u{FE00}'..='\u{FE0F}')
         })
-        .collect::<String>()
-        .to_lowercase()
+        .collect();
+    stripped.to_lowercase().chars().map(deconfuse).collect()
 }
 
 #[cfg(test)]

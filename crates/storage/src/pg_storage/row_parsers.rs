@@ -121,7 +121,10 @@ pub(crate) fn row_to_search_result(
     ))
 }
 
-#[allow(dead_code)]
+#[allow(
+    dead_code,
+    reason = "Legacy fallback method for backward compatibility"
+)]
 pub(crate) fn row_to_search_result_with_score(
     row: &sqlx::postgres::PgRow,
     score: f64,

@@ -21,13 +21,14 @@ impl PgStorage {
     pub async fn delete_observation_cascading(&self, id: &str) -> Result<bool, StorageError> {
         let mut tx = self.pool.begin().await?;
 
-        let obs_json = serde_json::json!([id]).to_string();
+        // Unlink from global_knowledge by removing the ID from source_observations jsonb array.
+        // The `-` operator with a text argument removes all occurrences of that string from the array.
         sqlx::query(
-            r#"UPDATE global_knowledge
-               SET source_observations = (source_observations - $1::jsonb)
-               WHERE source_observations @> $1::jsonb"#,
+            "UPDATE global_knowledge \
+             SET source_observations = source_observations - $1 \
+             WHERE source_observations ? $1",
         )
-        .bind(&obs_json)
+        .bind(id)
         .execute(&mut *tx)
         .await?;
 

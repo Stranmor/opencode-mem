@@ -40,6 +40,8 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
             }
         }
 
+        let mut processed_this_iteration = 0u32;
+
         for session_id in seen_sessions {
             let mut session_events: Vec<&StoredInfiniteEvent> = events
                 .iter()
@@ -112,8 +114,16 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
                         total_processed.checked_add(event_count).ok_or_else(|| {
                             anyhow::anyhow!("total_processed overflow at {}", total_processed)
                         })?;
+                    processed_this_iteration = processed_this_iteration.saturating_add(event_count);
                 }
             }
+        }
+
+        if processed_this_iteration == 0 {
+            tracing::warn!(
+                "Compression pipeline made zero progress this iteration, breaking to avoid infinite loop"
+            );
+            break;
         }
 
         if events.len() < MAX_EVENTS_PER_BATCH {

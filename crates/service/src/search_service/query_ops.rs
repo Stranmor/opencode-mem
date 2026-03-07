@@ -25,7 +25,7 @@ impl SearchService {
             .search_sessions(query, limit)
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     pub async fn get_session_summary(
@@ -38,7 +38,7 @@ impl SearchService {
             .get_session_summary(session_id)
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     pub async fn get_summaries_paginated(
@@ -54,7 +54,7 @@ impl SearchService {
             .get_summaries_paginated(offset, limit, project)
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     pub async fn search_prompts(
@@ -69,7 +69,7 @@ impl SearchService {
             .search_prompts(query, limit)
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     pub async fn get_prompt_by_id(&self, id: &str) -> Result<Option<UserPrompt>, ServiceError> {
@@ -79,7 +79,7 @@ impl SearchService {
             .get_prompt_by_id(id)
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     pub async fn get_prompts_paginated(
@@ -95,7 +95,7 @@ impl SearchService {
             .get_prompts_paginated(offset, limit, project)
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     pub async fn search_knowledge(
@@ -110,7 +110,7 @@ impl SearchService {
             .search_knowledge(query, limit)
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     pub async fn list_knowledge(
@@ -125,7 +125,7 @@ impl SearchService {
             .list_knowledge(knowledge_type, limit)
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     pub async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, ServiceError> {
@@ -135,6 +135,6 @@ impl SearchService {
             .get_knowledge(id)
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 }

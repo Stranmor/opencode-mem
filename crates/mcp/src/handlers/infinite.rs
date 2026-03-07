@@ -78,7 +78,7 @@ pub(super) async fn handle_infinite_expand(
                 .get("limit")
                 .and_then(serde_json::Value::as_i64)
                 .unwrap_or(1000)
-                .min(MAX_QUERY_LIMIT_I64);
+                .clamp(1, MAX_QUERY_LIMIT_I64);
             match mem.get_events_by_summary_id(summary_id, limit).await {
                 Ok(events) => McpResponse {
                     jsonrpc: "2.0".to_owned(),
@@ -124,14 +124,14 @@ pub(super) async fn handle_infinite_time_range(
                 .get("limit")
                 .and_then(serde_json::Value::as_i64)
                 .unwrap_or(1000)
-                .min(MAX_QUERY_LIMIT_I64);
+                .clamp(1, MAX_QUERY_LIMIT_I64);
             let start = match chrono::DateTime::parse_from_rfc3339(from) {
                 Ok(dt) => dt.with_timezone(&chrono::Utc),
                 Err(_) => {
                     return McpResponse {
                         jsonrpc: "2.0".to_owned(),
                         id,
-                        result: Some(mcp_err("Invalid 'from' datetime format (use RFC3339)")),
+                        result: Some(mcp_err("Invalid 'start' datetime format (use RFC3339)")),
                         error: None,
                     };
                 }
@@ -142,7 +142,7 @@ pub(super) async fn handle_infinite_time_range(
                     return McpResponse {
                         jsonrpc: "2.0".to_owned(),
                         id,
-                        result: Some(mcp_err("Invalid 'to' datetime format (use RFC3339)")),
+                        result: Some(mcp_err("Invalid 'end' datetime format (use RFC3339)")),
                         error: None,
                     };
                 }
@@ -192,7 +192,7 @@ pub(super) async fn handle_infinite_drill_hour(
                 .get("limit")
                 .and_then(serde_json::Value::as_i64)
                 .unwrap_or(100)
-                .min(MAX_QUERY_LIMIT_I64);
+                .clamp(1, MAX_QUERY_LIMIT_I64);
             match mem.get_hour_summaries_by_day_id(day_id, limit).await {
                 Ok(summaries) => McpResponse {
                     jsonrpc: "2.0".to_owned(),
@@ -235,7 +235,7 @@ pub(super) async fn handle_infinite_drill_minute(
                 .get("limit")
                 .and_then(serde_json::Value::as_i64)
                 .unwrap_or(100)
-                .min(MAX_QUERY_LIMIT_I64);
+                .clamp(1, MAX_QUERY_LIMIT_I64);
             match mem.get_5min_summaries_by_hour_id(hour_id, limit).await {
                 Ok(summaries) => McpResponse {
                     jsonrpc: "2.0".to_owned(),

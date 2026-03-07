@@ -21,14 +21,13 @@ impl SearchService {
             .clear_embeddings()
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     #[allow(
         clippy::arithmetic_side_effects,
         reason = "total counter increment is safe - max value is batch_size iterations"
     )]
-    /// Runs embedding backfill for a batch of observations
     pub async fn run_embedding_backfill(&self, batch_size: usize) -> Result<usize, ServiceError> {
         let Some(ref embeddings) = self.embeddings else {
             return Ok(0);
@@ -43,11 +42,19 @@ impl SearchService {
             if all_obs.is_empty() {
                 break;
             }
+            let all_count = all_obs.len();
             let obs: Vec<_> = all_obs
                 .into_iter()
                 .filter(|o| !failed_ids.contains(&o.id))
                 .collect();
             if obs.is_empty() {
+                if all_count >= batch_size {
+                    tracing::warn!(
+                        failed_count = failed_ids.len(),
+                        "Embedding backfill: entire batch was previously failed IDs, \
+                         stopping to avoid infinite loop"
+                    );
+                }
                 break;
             }
             for o in obs {
@@ -77,6 +84,10 @@ impl SearchService {
                         failed_ids.insert(o.id.clone());
                     }
                 }
+            }
+
+            if all_count < batch_size {
+                break;
             }
         }
         Ok(total)

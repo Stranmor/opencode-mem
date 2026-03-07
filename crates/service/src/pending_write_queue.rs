@@ -45,18 +45,19 @@ impl PendingWriteQueue {
             tracing::warn!("PendingWriteQueue mutex poisoned, dropping write");
             return false;
         };
-        if queue.len() >= MAX_QUEUE_SIZE {
+        let mut dropped = false;
+        while queue.len() >= MAX_QUEUE_SIZE {
             queue.pop_front();
+            dropped = true;
+        }
+        if dropped {
             tracing::warn!(
                 max = MAX_QUEUE_SIZE,
-                "Pending write queue full, dropping oldest item"
+                "Pending write queue full, dropped oldest item(s)"
             );
-            queue.push_back(item);
-            false
-        } else {
-            queue.push_back(item);
-            true
         }
+        queue.push_back(item);
+        !dropped
     }
 
     pub fn drain_all(&self) -> Vec<PendingWrite> {
@@ -80,6 +81,13 @@ impl PendingWriteQueue {
             tracing::warn!("PendingWriteQueue mutex poisoned during push_front");
             return;
         };
+        if queue.len() >= MAX_QUEUE_SIZE {
+            queue.pop_back();
+            tracing::warn!(
+                max = MAX_QUEUE_SIZE,
+                "Pending write queue full on push_front, dropped newest item"
+            );
+        }
         queue.push_front(item);
     }
 

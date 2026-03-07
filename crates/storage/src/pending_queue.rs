@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 /// Statistics about storage contents
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct StorageStats {
     /// Number of observations in storage.
@@ -20,7 +20,7 @@ pub struct StorageStats {
 }
 
 /// Generic paginated result
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct PaginatedResult<T> {
     /// Items in the current page.
@@ -45,6 +45,17 @@ impl<T> PaginatedResult<T> {
             total: u64::try_from(total).unwrap_or(0),
             offset: u64::try_from(offset).unwrap_or(u64::MAX),
             limit: u64::try_from(limit).unwrap_or(u64::MAX),
+        }
+    }
+
+    /// Return an empty result set (useful for degraded mode).
+    #[must_use]
+    pub fn empty() -> Self {
+        Self {
+            items: Vec::new(),
+            total: 0,
+            offset: 0,
+            limit: 0,
         }
     }
 }
@@ -146,7 +157,7 @@ pub fn default_visibility_timeout_secs() -> i64 {
 }
 
 /// Statistics about the pending message queue.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub struct QueueStats {
     /// Number of messages waiting to be processed.

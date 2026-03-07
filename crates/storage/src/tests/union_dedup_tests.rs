@@ -1,6 +1,6 @@
 //! Tests for `union_dedup` — pure function tests, no DB required.
 
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::unwrap_used, reason = "Unwraps are safe in tests")]
 
 use opencode_mem_core::union_dedup;
 

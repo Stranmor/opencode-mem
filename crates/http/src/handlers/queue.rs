@@ -1,5 +1,5 @@
 use super::is_localhost;
-use crate::api_error::ApiError;
+use crate::api_error::{ApiError, OrDegraded};
 use axum::{
     Json,
     extract::{ConnectInfo, Query, State},
@@ -26,12 +26,12 @@ pub async fn get_pending_queue(
         .queue_service
         .get_all_pending_messages(query.capped_limit())
         .await
-        .map_err(ApiError::from)?;
+        .or_degraded(Vec::<opencode_mem_service::PendingMessage>::new())?;
     let queue_stats = state
         .queue_service
         .get_queue_stats()
         .await
-        .map_err(ApiError::from)?;
+        .or_degraded(opencode_mem_service::QueueStats::default())?;
     Ok(Json(PendingQueueResponse {
         messages,
         stats: queue_stats,
@@ -190,7 +190,7 @@ pub async fn get_processing_status(
         .queue_service
         .get_pending_count()
         .await
-        .map_err(ApiError::from)?;
+        .or_degraded(0usize)?;
     Ok(Json(ProcessingStatusResponse {
         active,
         pending_count,

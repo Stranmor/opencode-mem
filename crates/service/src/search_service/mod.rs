@@ -55,10 +55,7 @@ impl SearchService {
         }
     }
 
-    pub(crate) async fn with_cb<T>(
-        &self,
-        result: Result<T, ServiceError>,
-    ) -> Result<T, ServiceError> {
+    pub(crate) fn with_cb<T>(&self, result: Result<T, ServiceError>) -> Result<T, ServiceError> {
         match &result {
             Ok(_) => {
                 let recovered = self.storage.circuit_breaker().record_success();
@@ -67,6 +64,9 @@ impl SearchService {
                 }
             }
             Err(e) if e.is_db_unavailable() => self.storage.circuit_breaker().record_failure(),
+            Err(_) if self.storage.circuit_breaker().is_half_open() => {
+                self.storage.circuit_breaker().record_failure();
+            }
             Err(_) => {}
         }
         result
@@ -103,7 +103,7 @@ impl SearchService {
             .get_timeline(from, to, limit)
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     pub async fn get_observation_by_id(
@@ -112,7 +112,7 @@ impl SearchService {
     ) -> Result<Option<Observation>, ServiceError> {
         self.fast_fail_if_db_unavailable()?;
         let result = self.storage.get_by_id(id).await.map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     pub async fn get_recent_observations(
@@ -126,7 +126,7 @@ impl SearchService {
             .get_recent(limit)
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     pub async fn get_observations_by_ids(
@@ -139,7 +139,7 @@ impl SearchService {
             .get_observations_by_ids(ids)
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     pub async fn get_context_for_project(
@@ -148,12 +148,13 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<Observation>, ServiceError> {
         let limit = Self::normalize_limit(limit);
+        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
             .get_context_for_project(project, limit)
             .await
             .map_err(ServiceError::from);
-        let observations = self.with_cb(result).await?;
+        let observations = self.with_cb(result)?;
         self.deduplicate_by_embedding(observations).await
     }
 
@@ -163,26 +164,29 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
         let limit = Self::normalize_limit(limit);
+        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
             .search_by_file(file_path, limit)
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     pub async fn get_stats(&self) -> Result<StorageStats, ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
         let result = self.storage.get_stats().await.map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     pub async fn get_all_projects(&self) -> Result<Vec<String>, ServiceError> {
+        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
             .get_all_projects()
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 
     pub async fn get_observations_paginated(
@@ -192,12 +196,13 @@ impl SearchService {
         project: Option<&str>,
     ) -> Result<PaginatedResult<Observation>, ServiceError> {
         let limit = Self::normalize_limit(limit);
+        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
             .get_observations_paginated(offset, limit, project)
             .await
             .map_err(ServiceError::from);
-        self.with_cb(result).await
+        self.with_cb(result)
     }
 }
 

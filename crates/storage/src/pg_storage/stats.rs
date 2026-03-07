@@ -66,24 +66,20 @@ impl StatsStore for PgStorage {
         };
 
         let rows = if let Some(p) = project {
-            sqlx::query(
-                "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
-                        facts, concepts, files_read, files_modified, keywords, prompt_number,
-                        discovery_tokens, noise_level, noise_reason, created_at
+            sqlx::query(&format!(
+                "SELECT {OBSERVATION_COLUMNS} \
                    FROM observations WHERE (project = $1 OR project IS NULL) ORDER BY created_at DESC, id LIMIT $2 OFFSET $3",
-            )
+            ))
             .bind(p)
             .bind(usize_to_i64(limit))
             .bind(usize_to_i64(offset))
             .fetch_all(&self.pool)
             .await?
         } else {
-            sqlx::query(
-                "SELECT id, session_id, project, observation_type, title, subtitle, narrative,
-                        facts, concepts, files_read, files_modified, keywords, prompt_number,
-                        discovery_tokens, noise_level, noise_reason, created_at
+            sqlx::query(&format!(
+                "SELECT {OBSERVATION_COLUMNS} \
                    FROM observations ORDER BY created_at DESC, id LIMIT $1 OFFSET $2",
-            )
+            ))
             .bind(usize_to_i64(limit))
             .bind(usize_to_i64(offset))
             .fetch_all(&self.pool)
