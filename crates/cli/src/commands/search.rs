@@ -65,27 +65,16 @@ pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
     let embeddings = EmbeddingService::new(thread_count)?;
 
     let mut total = 0;
-    let mut failed_ids: HashSet<ObservationId> = HashSet::new();
+    let mut failed_ids_vec = Vec::new();
     loop {
         let all_observations = storage
-            .get_observations_without_embeddings(batch_size)
+            .get_observations_without_embeddings(batch_size, &failed_ids_vec)
             .await?;
         if all_observations.is_empty() {
             break;
         }
-        let observations: Vec<_> = all_observations
-            .into_iter()
-            .filter(|obs| !failed_ids.contains(&obs.id))
-            .collect();
-        if observations.is_empty() {
-            eprintln!(
-                "Remaining {} observations all previously failed — stopping",
-                failed_ids.len()
-            );
-            break;
-        }
 
-        for obs in &observations {
+        for obs in &all_observations {
             let text = format!(
                 "{} {} {}",
                 obs.title,
@@ -97,7 +86,7 @@ pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
                 Ok(vec) => {
                     if let Err(e) = storage.store_embedding(&obs.id, &vec).await {
                         eprintln!("Failed to store embedding for {}: {}", obs.id, e);
-                        failed_ids.insert(obs.id.clone());
+                        failed_ids_vec.push(obs.id.to_string());
                     } else {
                         total += 1;
                         if total % 10 == 0 {
@@ -107,16 +96,16 @@ pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
                 }
                 Err(e) => {
                     eprintln!("Failed to generate embedding for {}: {}", obs.id, e);
-                    failed_ids.insert(obs.id.clone());
+                    failed_ids_vec.push(obs.id.to_string());
                 }
             }
         }
     }
 
-    if !failed_ids.is_empty() {
+    if !failed_ids_vec.is_empty() {
         eprintln!(
             "Warning: {} observations failed to process",
-            failed_ids.len()
+            failed_ids_vec.len()
         );
     }
     println!("Backfill complete. Generated embeddings for {total} observations.");

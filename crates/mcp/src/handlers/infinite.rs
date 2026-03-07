@@ -172,7 +172,7 @@ pub(super) async fn handle_infinite_time_range(
     }
 }
 
-pub(super) async fn handle_infinite_drill_hour(
+pub(super) async fn handle_infinite_drill_day(
     infinite_mem: Option<&InfiniteMemoryService>,
     _handle: &Handle,
     args: &serde_json::Value,
@@ -215,7 +215,7 @@ pub(super) async fn handle_infinite_drill_hour(
     }
 }
 
-pub(super) async fn handle_infinite_drill_minute(
+pub(super) async fn handle_infinite_drill_hour(
     infinite_mem: Option<&InfiniteMemoryService>,
     _handle: &Handle,
     args: &serde_json::Value,

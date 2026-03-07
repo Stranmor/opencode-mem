@@ -13,10 +13,11 @@ pub trait EmbeddingStore: Send + Sync {
         embedding: &[f32],
     ) -> Result<(), StorageError>;
 
-    /// Get observations that don't have embeddings yet.
+    /// Get observations that don't have embeddings yet, excluding specific IDs.
     async fn get_observations_without_embeddings(
         &self,
         limit: usize,
+        excluded_ids: &[String],
     ) -> Result<Vec<Observation>, StorageError>;
 
     /// Drop and recreate the embedding index, forcing re-embedding of all observations.

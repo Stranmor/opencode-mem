@@ -19,8 +19,8 @@ pub enum McpTool {
     KnowledgeDelete,
     InfiniteExpand,
     InfiniteTimeRange,
+    InfiniteDrillDay,
     InfiniteDrillHour,
-    InfiniteDrillMinute,
     InfiniteSearchEntities,
 }
 
@@ -46,8 +46,8 @@ impl McpTool {
             "knowledge_delete",
             "infinite_expand",
             "infinite_time_range",
+            "infinite_drill_day",
             "infinite_drill_hour",
-            "infinite_drill_minute",
             "infinite_search_entities",
         ]
     }
@@ -73,8 +73,8 @@ impl McpTool {
             "knowledge_delete" => Some(Self::KnowledgeDelete),
             "infinite_expand" => Some(Self::InfiniteExpand),
             "infinite_time_range" => Some(Self::InfiniteTimeRange),
+            "infinite_drill_day" => Some(Self::InfiniteDrillDay),
             "infinite_drill_hour" => Some(Self::InfiniteDrillHour),
-            "infinite_drill_minute" => Some(Self::InfiniteDrillMinute),
             "infinite_search_entities" => Some(Self::InfiniteSearchEntities),
             _ => None,
         }

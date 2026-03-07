@@ -79,7 +79,9 @@ pub async fn get_unsummarized_infinite_events(
 
     let rows = sqlx::query_as::<_, StoredEventRow>(&format!(
         "UPDATE raw_events \
-        SET processing_started_at = NOW(), processing_instance_id = $3 \
+        SET processing_started_at = NOW(), \
+            processing_instance_id = $3, \
+            retry_count = CASE WHEN processing_started_at IS NOT NULL THEN retry_count + 1 ELSE retry_count END \
         WHERE id IN ( \
             SELECT id FROM raw_events \
             WHERE summary_5min_id IS NULL \

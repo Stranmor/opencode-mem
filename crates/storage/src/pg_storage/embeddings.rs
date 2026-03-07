@@ -55,16 +55,30 @@ impl EmbeddingStore for PgStorage {
     async fn get_observations_without_embeddings(
         &self,
         limit: usize,
+        excluded_ids: &[String],
     ) -> Result<Vec<Observation>, StorageError> {
-        let rows = sqlx::query(&format!(
-            "SELECT {OBSERVATION_COLUMNS} \
-               FROM observations \
-               WHERE embedding IS NULL \
-               LIMIT $1",
-        ))
-        .bind(usize_to_i64(limit))
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = if excluded_ids.is_empty() {
+            sqlx::query(&format!(
+                "SELECT {OBSERVATION_COLUMNS} \
+                   FROM observations \
+                   WHERE embedding IS NULL \
+                   LIMIT $1",
+            ))
+            .bind(usize_to_i64(limit))
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query(&format!(
+                "SELECT {OBSERVATION_COLUMNS} \
+                   FROM observations \
+                   WHERE embedding IS NULL AND id != ANY($2) \
+                   LIMIT $1",
+            ))
+            .bind(usize_to_i64(limit))
+            .bind(excluded_ids)
+            .fetch_all(&self.pool)
+            .await?
+        };
         Ok(collect_skipping_corrupt(
             rows.iter().map(row_to_observation),
         ))

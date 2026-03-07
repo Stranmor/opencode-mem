@@ -26,7 +26,7 @@ async fn pg_store_and_search_embedding() {
     storage.store_embedding(&id, &embedding).await.unwrap();
 
     let without = storage
-        .get_observations_without_embeddings(1000)
+        .get_observations_without_embeddings(1000, &[])
         .await
         .unwrap();
     let still_missing = without.iter().any(|o| *o.id == id);

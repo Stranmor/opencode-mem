@@ -193,11 +193,11 @@ async fn dispatch_tool(
         McpTool::InfiniteTimeRange => DispatchResult::FullResponse(
             infinite::handle_infinite_time_range(infinite_mem, handle, args, id).await,
         ),
+        McpTool::InfiniteDrillDay => DispatchResult::FullResponse(
+            infinite::handle_infinite_drill_day(infinite_mem, handle, args, id).await,
+        ),
         McpTool::InfiniteDrillHour => DispatchResult::FullResponse(
             infinite::handle_infinite_drill_hour(infinite_mem, handle, args, id).await,
-        ),
-        McpTool::InfiniteDrillMinute => DispatchResult::FullResponse(
-            infinite::handle_infinite_drill_minute(infinite_mem, handle, args, id).await,
         ),
         McpTool::InfiniteSearchEntities => DispatchResult::FullResponse(
             infinite::handle_infinite_search_entities(infinite_mem, handle, args, id).await,

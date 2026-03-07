@@ -29,32 +29,23 @@ impl SearchService {
             return Ok(0);
         };
         let mut total = 0;
-        let mut failed_ids = std::collections::HashSet::new();
+        let mut failed_ids_vec = Vec::new();
         loop {
+            let ids: Vec<String> = failed_ids_vec.iter().cloned().collect();
             let all_obs = self
                 .storage
-                .guarded(|| self.storage.get_observations_without_embeddings(batch_size))
+                .guarded(|| {
+                    self.storage
+                        .get_observations_without_embeddings(batch_size, &ids)
+                })
                 .await
                 .map_err(ServiceError::from)?;
+
             if all_obs.is_empty() {
                 break;
             }
             let all_count = all_obs.len();
-            let obs: Vec<_> = all_obs
-                .into_iter()
-                .filter(|o| !failed_ids.contains(&o.id))
-                .collect();
-            if obs.is_empty() {
-                if all_count >= batch_size {
-                    tracing::warn!(
-                        failed_count = failed_ids.len(),
-                        "Embedding backfill: entire batch was previously failed IDs, \
-                         stopping to avoid infinite loop"
-                    );
-                }
-                break;
-            }
-            for o in obs {
+            for o in all_obs {
                 let text = format!(
                     "{} {} {}",
                     o.title,
@@ -78,12 +69,12 @@ impl SearchService {
                         {
                             total += 1;
                         } else {
-                            failed_ids.insert(o.id.clone());
+                            failed_ids_vec.push(o.id.to_string());
                         }
                     }
                     Err(e) => {
                         tracing::warn!("Failed to generate embedding for {}: {}", o.id, e);
-                        failed_ids.insert(o.id.clone());
+                        failed_ids_vec.push(o.id.to_string());
                     }
                 }
             }

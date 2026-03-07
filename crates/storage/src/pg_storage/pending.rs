@@ -47,22 +47,26 @@ impl PendingQueueStore for PgStorage {
         let now = Utc::now().timestamp();
         let stale_threshold = now - visibility_timeout_secs;
         let rows = sqlx::query(
-            "UPDATE pending_messages
-               SET status = 'processing', claimed_at_epoch = $1
-               WHERE id IN (
-                   SELECT id FROM pending_messages
-                   WHERE status = 'pending'
-                      OR (status = 'processing' AND claimed_at_epoch < $2)
-                   ORDER BY created_at_epoch ASC
-                   LIMIT $3
-                   FOR UPDATE SKIP LOCKED
-               )
-               RETURNING id, session_id, call_id, status, tool_name, tool_input, tool_response,
+            "UPDATE pending_messages \
+               SET status = 'processing', \
+                   claimed_at_epoch = $1, \
+                   retry_count = CASE WHEN status = 'processing' THEN retry_count + 1 ELSE retry_count END \
+               WHERE id IN ( \
+                   SELECT id FROM pending_messages \
+                   WHERE (status = 'pending' \
+                      OR (status = 'processing' AND claimed_at_epoch < $2)) \
+                     AND retry_count < $4 \
+                   ORDER BY created_at_epoch ASC \
+                   LIMIT $3 \
+                   FOR UPDATE SKIP LOCKED \
+               ) \
+               RETURNING id, session_id, call_id, status, tool_name, tool_input, tool_response, \
                          retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch, project",
         )
         .bind(now)
         .bind(stale_threshold)
         .bind(usize_to_i64(limit))
+        .bind(max_retry_count())
         .fetch_all(&self.pool)
         .await?;
         Ok(collect_skipping_corrupt(
@@ -118,8 +122,10 @@ impl PendingQueueStore for PgStorage {
         let now = Utc::now().timestamp();
         let stale_threshold = now - visibility_timeout_secs;
         let result = sqlx::query(
-            "UPDATE pending_messages
-               SET status = 'pending', claimed_at_epoch = NULL
+            "UPDATE pending_messages \
+               SET status = 'pending', \
+                   claimed_at_epoch = NULL, \
+                   retry_count = retry_count + 1 \
                WHERE status = 'processing' AND claimed_at_epoch <= $1",
         )
         .bind(stale_threshold)

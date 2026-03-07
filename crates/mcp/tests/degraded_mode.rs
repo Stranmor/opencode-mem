@@ -22,10 +22,15 @@ use opencode_mem_mcp::McpTool;
 use opencode_mem_service::{
     KnowledgeService, ObservationService, PendingWriteQueue, SearchService, SessionService,
 };
-use opencode_mem_storage::{PgStorage, StorageBackend};
+use opencode_mem_storage::StorageBackend;
 use serde_json::json;
 use sqlx::postgres::PgPoolOptions;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
+
+fn env_lock() -> &'static Mutex<()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
 
 fn setup_degraded_services() -> (
     Arc<ObservationService>,
@@ -34,6 +39,19 @@ fn setup_degraded_services() -> (
     Arc<SearchService>,
     Arc<PendingWriteQueue>,
 ) {
+    let _guard = env_lock().lock().expect("lock");
+    // SAFETY: Test-only, serialized by env_lock mutex
+    unsafe {
+        std::env::set_var("DATABASE_URL", "postgres://bogus:bogus@127.0.0.1:1/bogus");
+        std::env::set_var(
+            "INFINITE_MEMORY_URL",
+            "postgres://bogus:bogus@127.0.0.1:1/bogus",
+        );
+        std::env::set_var("OPENCODE_MEM_API_KEY", "test-key");
+    }
+
+    let config = opencode_mem_core::AppConfig::from_env().expect("valid config");
+
     let backend = Arc::new(StorageBackend::new_degraded(
         "postgres://bogus:bogus@127.0.0.1:1/bogus",
     ));
@@ -42,28 +60,6 @@ fn setup_degraded_services() -> (
     let llm = Arc::new(
         opencode_mem_llm::LlmClient::new(String::new(), String::new(), String::new()).unwrap(),
     );
-
-    let config = opencode_mem_core::AppConfig {
-        database_url: String::new(),
-        api_key: String::new(),
-        api_url: String::new(),
-        model: String::new(),
-        disable_embeddings: true,
-        embedding_threads: 0,
-        infinite_memory_url: None,
-        dedup_threshold: 0.85,
-        injection_dedup_threshold: 0.80,
-        queue_workers: 10,
-        max_retry: 3,
-        visibility_timeout_secs: 300,
-        dlq_ttl_days: 7,
-        max_content_chars: 500,
-        max_total_chars: 8000,
-        max_events: 200,
-        admin_token: None,
-        excluded_projects_raw: None,
-        filter_patterns_raw: None,
-    };
 
     let infinite_mem = if let Ok(p) = PgPoolOptions::new()
         .max_connections(1)
@@ -85,7 +81,7 @@ fn setup_degraded_services() -> (
         None,
         &config,
     ));
-    let session_service = Arc::new(SessionService::new(backend.clone(), llm));
+    let session_service = Arc::new(SessionService::new(backend.clone(), llm.clone()));
     let knowledge_service = Arc::new(KnowledgeService::new(backend.clone()));
     let search_service = Arc::new(SearchService::new(
         backend,
@@ -130,8 +126,8 @@ fn tool_args(tool_name: &str) -> serde_json::Value {
             "start": "2025-01-01T00:00:00Z",
             "end": "2025-01-02T00:00:00Z"
         }),
+        "infinite_drill_day" => json!({"id": 1}),
         "infinite_drill_hour" => json!({"id": 1}),
-        "infinite_drill_minute" => json!({"id": 1}),
         "infinite_search_entities" => json!({"type": "file", "value": "test.rs"}),
         _ => json!({}),
     }
@@ -140,7 +136,7 @@ fn tool_args(tool_name: &str) -> serde_json::Value {
 const INFINITE_TOOLS: [&str; 5] = [
     "infinite_expand",
     "infinite_time_range",
+    "infinite_drill_day",
     "infinite_drill_hour",
-    "infinite_drill_minute",
     "infinite_search_entities",
 ];

@@ -35,6 +35,10 @@ fn test_mcp_tool_parse_valid() {
         Some(McpTool::KnowledgeList)
     );
     assert_eq!(
+        McpTool::parse("knowledge_delete"),
+        Some(McpTool::KnowledgeDelete)
+    );
+    assert_eq!(
         McpTool::parse("infinite_expand"),
         Some(McpTool::InfiniteExpand)
     );
@@ -43,12 +47,16 @@ fn test_mcp_tool_parse_valid() {
         Some(McpTool::InfiniteTimeRange)
     );
     assert_eq!(
+        McpTool::parse("infinite_drill_day"),
+        Some(McpTool::InfiniteDrillDay)
+    );
+    assert_eq!(
         McpTool::parse("infinite_drill_hour"),
         Some(McpTool::InfiniteDrillHour)
     );
     assert_eq!(
-        McpTool::parse("infinite_drill_minute"),
-        Some(McpTool::InfiniteDrillMinute)
+        McpTool::parse("infinite_search_entities"),
+        Some(McpTool::InfiniteSearchEntities)
     );
 }
 

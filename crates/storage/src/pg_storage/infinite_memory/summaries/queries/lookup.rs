@@ -107,12 +107,12 @@ pub async fn search_by_entity(
     value: &str,
     limit: i64,
 ) -> Result<Vec<InfiniteSummary>, StorageError> {
-    const ALLOWED_TYPES: &[&str] = &["files", "functions", "libraries", "errors", "decisions"];
-    if !ALLOWED_TYPES.contains(&entity_type) {
+    let allowed_keys = opencode_mem_core::SummaryEntities::allowed_query_keys();
+    if !allowed_keys.contains(&entity_type) {
         return Err(StorageError::DataCorruption {
             context: format!(
                 "Invalid entity_type '{}'. Allowed: {:?}",
-                entity_type, ALLOWED_TYPES
+                entity_type, allowed_keys
             ),
             source: Box::new(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,

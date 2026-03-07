@@ -109,6 +109,12 @@ pub struct SummaryEntities {
 }
 
 impl SummaryEntities {
+    /// Returns the set of valid entity type keys used in queries.
+    #[must_use]
+    pub const fn allowed_query_keys() -> &'static [&'static str] {
+        &["files", "functions", "libraries", "errors", "decisions"]
+    }
+
     /// Merge multiple entities into one (for aggregation across time windows).
     #[must_use]
     pub fn merge(entities: &[Option<SummaryEntities>]) -> Option<SummaryEntities> {
