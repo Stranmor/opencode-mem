@@ -379,7 +379,18 @@ impl ObservationStore for PgStorage {
         .execute(&mut *tx)
         .await?;
 
-        // 5. Delete duplicate observation
+        // 5. Repoint injected_observations (replace duplicate_id with keeper_id)
+        sqlx::query(
+            "INSERT INTO injected_observations (session_id, observation_id, embedding) \
+             SELECT session_id, $2, embedding FROM injected_observations WHERE observation_id = $1 \
+             ON CONFLICT (session_id, observation_id) DO NOTHING",
+        )
+        .bind(duplicate_id)
+        .bind(keeper_id)
+        .execute(&mut *tx)
+        .await?;
+
+        // 6. Delete duplicate observation (will cascade to injected_observations due to FK)
         sqlx::query("DELETE FROM observations WHERE id = $1")
             .bind(duplicate_id)
             .execute(&mut *tx)

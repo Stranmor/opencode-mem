@@ -78,16 +78,16 @@ impl PendingQueueStore for PgStorage {
         Ok(())
     }
 
-    async fn fail_message(&self, id: i64, increment_retry: bool) -> Result<(), StorageError> {
-        if increment_retry {
+    async fn fail_message(&self, id: i64, permanent: bool) -> Result<(), StorageError> {
+        if !permanent {
             sqlx::query(
-                "UPDATE pending_messages
-                   SET retry_count = retry_count + 1,
-                       status = CASE
-                           WHEN retry_count + 1 >= $1 THEN 'failed'
-                           ELSE 'pending'
-                       END,
-                       claimed_at_epoch = NULL
+                "UPDATE pending_messages \
+                   SET retry_count = retry_count + 1, \
+                       status = CASE \
+                           WHEN retry_count + 1 >= $1 THEN 'failed' \
+                           ELSE 'pending' \
+                       END, \
+                       claimed_at_epoch = NULL \
                    WHERE id = $2",
             )
             .bind(max_retry_count())

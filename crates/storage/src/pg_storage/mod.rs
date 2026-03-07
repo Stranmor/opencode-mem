@@ -98,21 +98,18 @@ impl PgStorage {
     /// Attempt to run pending migrations. Safe to call repeatedly — idempotent.
     /// Returns `Ok(true)` if migrations ran, `Ok(false)` if DB unavailable or not needed.
     pub async fn try_run_migrations(&self) -> Result<bool, StorageError> {
-        if self
-            .migrations_pending
-            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
+        // Try to acquire the execution lock
+        if self.migrations_pending.load(Ordering::Acquire) == false {
             return Ok(false);
         }
 
         match run_pg_migrations(&self.pool).await {
             Ok(()) => {
+                self.migrations_pending.store(false, Ordering::Release);
                 tracing::info!("Deferred migrations completed successfully");
                 Ok(true)
             }
             Err(e) => {
-                self.migrations_pending.store(true, Ordering::Release);
                 tracing::debug!("Deferred migration attempt failed (DB may still be down): {e}");
                 Ok(false)
             }

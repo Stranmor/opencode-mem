@@ -28,7 +28,7 @@ pub trait PendingQueueStore: Send + Sync {
     async fn complete_message(&self, id: i64) -> Result<(), StorageError>;
 
     /// Mark message as failed.
-    async fn fail_message(&self, id: i64, increment_retry: bool) -> Result<(), StorageError>;
+    async fn fail_message(&self, id: i64, permanent: bool) -> Result<(), StorageError>;
 
     /// Get count of pending messages.
     async fn get_pending_count(&self) -> Result<usize, StorageError>;

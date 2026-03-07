@@ -93,11 +93,8 @@ impl InfiniteMemoryService {
     }
 
     pub async fn try_run_migrations(&self) -> bool {
-        if self
-            .migrations_pending
-            .compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire)
-            .is_err()
-        {
+        // Try to acquire the execution lock
+        if self.migrations_pending.load(Ordering::Acquire) == false {
             return false;
         }
 
@@ -107,11 +104,11 @@ impl InfiniteMemoryService {
         .await
         {
             Ok(()) => {
+                self.migrations_pending.store(false, Ordering::Release);
                 tracing::info!("Infinite Memory deferred migrations completed successfully");
                 true
             }
             Err(e) => {
-                self.migrations_pending.store(true, Ordering::Release);
                 tracing::warn!("Infinite Memory deferred migration attempt failed: {e}");
                 false
             }
