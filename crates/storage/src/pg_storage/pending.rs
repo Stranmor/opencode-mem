@@ -14,6 +14,7 @@ impl PendingQueueStore for PgStorage {
     async fn queue_message(
         &self,
         session_id: &str,
+        call_id: Option<&str>,
         tool_name: Option<&str>,
         tool_input: Option<&str>,
         tool_response: Option<&str>,
@@ -22,11 +23,12 @@ impl PendingQueueStore for PgStorage {
         let now = Utc::now().timestamp();
         let id: i64 = sqlx::query_scalar(
             "INSERT INTO pending_messages
-               (session_id, status, tool_name, tool_input, tool_response, retry_count, created_at_epoch, project)
-               VALUES ($1, 'pending', $2, $3, $4, 0, $5, $6)
+               (session_id, call_id, status, tool_name, tool_input, tool_response, retry_count, created_at_epoch, project)
+               VALUES ($1, $2, 'pending', $3, $4, $5, 0, $6, $7)
                RETURNING id",
         )
         .bind(session_id)
+        .bind(call_id)
         .bind(tool_name)
         .bind(tool_input)
         .bind(tool_response)
@@ -55,7 +57,7 @@ impl PendingQueueStore for PgStorage {
                    LIMIT $3
                    FOR UPDATE SKIP LOCKED
                )
-               RETURNING id, session_id, status, tool_name, tool_input, tool_response,
+               RETURNING id, session_id, call_id, status, tool_name, tool_input, tool_response,
                          retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch, project",
         )
         .bind(now)
@@ -143,7 +145,7 @@ impl PendingQueueStore for PgStorage {
 
     async fn get_failed_messages(&self, limit: usize) -> Result<Vec<PendingMessage>, StorageError> {
         let rows = sqlx::query(
-            "SELECT id, session_id, status, tool_name, tool_input, tool_response,
+            "SELECT id, session_id, call_id, status, tool_name, tool_input, tool_response,
                     retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch, project
                FROM pending_messages
                WHERE status = 'failed'
@@ -163,7 +165,7 @@ impl PendingQueueStore for PgStorage {
         limit: usize,
     ) -> Result<Vec<PendingMessage>, StorageError> {
         let rows = sqlx::query(
-            "SELECT id, session_id, status, tool_name, tool_input, tool_response,
+            "SELECT id, session_id, call_id, status, tool_name, tool_input, tool_response,
                     retry_count, created_at_epoch, claimed_at_epoch, completed_at_epoch, project
                FROM pending_messages
                WHERE status = 'pending'

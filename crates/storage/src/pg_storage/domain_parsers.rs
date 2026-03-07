@@ -147,6 +147,7 @@ pub(crate) fn row_to_pending_message(
     Ok(PendingMessage {
         id: row.try_get("id")?,
         session_id: row.try_get("session_id")?,
+        call_id: row.try_get("call_id")?,
         status,
         tool_name: row.try_get("tool_name")?,
         tool_input: row.try_get("tool_input")?,

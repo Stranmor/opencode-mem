@@ -197,18 +197,21 @@ async fn dispatch_tool(
 
 fn spawn_pending_flush(
     observation_service: &Arc<ObservationService>,
-    pending_writes: &Arc<PendingWriteQueue>,
+    pending_writes_ref: &Arc<PendingWriteQueue>,
 ) {
-    if pending_writes.is_empty() {
+    if pending_writes_ref.is_empty() {
         return;
     }
-    if !pending_writes.start_flush() {
-        return;
-    }
+    let guard = match pending_writes_ref.start_flush() {
+        Some(g) => g,
+        None => return,
+    };
 
     let observation_service = Arc::clone(observation_service);
-    let pending_writes = Arc::clone(pending_writes);
+    let pending_writes = Arc::clone(pending_writes_ref);
     tokio::spawn(async move {
+        // Transfer guard to task
+        let _guard = guard;
         let pending_count = pending_writes.len();
         tracing::info!(
             pending_count,
@@ -258,7 +261,5 @@ fn spawn_pending_flush(
                 }
             }
         }
-
-        pending_writes.finish_flush();
     });
 }

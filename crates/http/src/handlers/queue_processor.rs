@@ -11,11 +11,11 @@ pub(crate) fn max_queue_workers(state: &AppState) -> usize {
 }
 
 pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> anyhow::Result<()> {
-    if let Some(project) = msg.project.as_deref()
-        && QueueService::should_skip_project(Some(project))
-    {
-        tracing::debug!("Skipping project '{}' for message {}", project, msg.id);
-        return Ok(());
+    if let Some(project) = msg.project.as_deref() {
+        if QueueService::should_skip_project(Some(project)) {
+            tracing::debug!("Skipping project '{}' for message {}", project, msg.id);
+            return Ok(());
+        }
     }
 
     let tool_name = msg.tool_name.as_deref().unwrap_or("unknown");
@@ -36,7 +36,10 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
         .unwrap_or(serde_json::Value::Null);
     let tool_response = msg.tool_response.as_deref().unwrap_or("");
 
-    let id = {
+    // Use msg.call_id if present, otherwise generate a deterministic UUID
+    let id = if let Some(ref cid) = msg.call_id {
+        cid.clone()
+    } else {
         let input_str = msg.tool_input.as_deref().unwrap_or("");
         let mut data = String::with_capacity(
             tool_name.len() + msg.session_id.len() + input_str.len() + tool_response.len() + 24,

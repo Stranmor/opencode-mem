@@ -172,26 +172,18 @@ impl ObservationService {
         duplicate_id: &str,
         similarity: f32,
     ) -> Result<(), ServiceError> {
-        let duplicate_obs = self.storage.get_by_id(duplicate_id).await?;
-        let Some(dup) = duplicate_obs else {
-            return Ok(());
-        };
-
         tracing::info!(
             keeper = %keeper_id,
             duplicate = %duplicate_id,
-            duplicate_title = %dup.title,
             similarity = %similarity,
-            "Dedup sweep: merging duplicate into keeper"
+            "Dedup sweep: merging and purging duplicate observation"
         );
 
-        self.storage.merge_into_existing(keeper_id, &dup).await?;
+        self.storage
+            .merge_and_purge(keeper_id, duplicate_id)
+            .await?;
 
         self.regenerate_embedding(keeper_id).await;
-
-        if self.storage.delete_observation_by_id(duplicate_id).await? {
-            tracing::debug!(id = %duplicate_id, "Dedup sweep: deleted duplicate observation");
-        }
 
         Ok(())
     }

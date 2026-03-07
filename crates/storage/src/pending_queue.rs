@@ -110,6 +110,8 @@ pub struct PendingMessage {
     pub id: i64,
     /// Session this message belongs to.
     pub session_id: String,
+    /// Unique call ID from tool invocation (for idempotent logging).
+    pub call_id: Option<String>,
     /// Current processing status.
     pub status: PendingMessageStatus,
     /// Name of the tool that was called.

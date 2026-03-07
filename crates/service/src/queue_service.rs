@@ -39,16 +39,20 @@ impl QueueService {
             }
         }
 
-        let tool_input = serde_json::to_string(&tool_call.input).ok();
-        let filtered_input = tool_input.as_deref().map(sanitize_input);
+        // Use recursive JSON sanitization to avoid corrupting JSON envelopes (SPOT compliance with Infinite Memory path)
+        let mut sanitized_input = tool_call.input.clone();
+        opencode_mem_core::sanitize_json_values(&mut sanitized_input);
+        let tool_input_str = serde_json::to_string(&sanitized_input).ok();
+
         let filtered_output = sanitize_input(&tool_call.output);
 
         let id = self
             .storage
             .queue_message(
                 &tool_call.session_id,
+                Some(&tool_call.call_id),
                 Some(&tool_call.tool),
-                filtered_input.as_deref(),
+                tool_input_str.as_deref(),
                 Some(&filtered_output),
                 tool_call.project.as_deref(),
             )
@@ -95,6 +99,7 @@ impl QueueService {
     pub async fn queue_message(
         &self,
         session_id: &str,
+        call_id: Option<&str>,
         tool_name: Option<&str>,
         tool_input: Option<&str>,
         tool_response: Option<&str>,
@@ -102,7 +107,14 @@ impl QueueService {
     ) -> Result<i64, ServiceError> {
         Ok(self
             .storage
-            .queue_message(session_id, tool_name, tool_input, tool_response, project)
+            .queue_message(
+                session_id,
+                call_id,
+                tool_name,
+                tool_input,
+                tool_response,
+                project,
+            )
             .await?)
     }
 

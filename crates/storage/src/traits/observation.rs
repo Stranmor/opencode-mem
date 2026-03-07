@@ -50,7 +50,14 @@ pub trait ObservationStore: Send + Sync {
         limit: usize,
     ) -> Result<Vec<SearchResult>, StorageError>;
 
-    /// Merge a newer observation into an existing one (semantic dedup).
+    /// Merge two observations and purge the duplicate, repointing knowledge entries.
+    async fn merge_and_purge(
+        &self,
+        keeper_id: &str,
+        duplicate_id: &str,
+    ) -> Result<(), StorageError>;
+
+    /// Merge a newer observation data into an existing one (updates facts, keywords, etc.).
     async fn merge_into_existing(
         &self,
         existing_id: &str,

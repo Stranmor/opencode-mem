@@ -206,8 +206,7 @@ impl ObservationStore for PgStorage {
         let mut tx = self.pool.begin().await?;
 
         let row = sqlx::query(&format!(
-            "SELECT {}
-             FROM observations WHERE id = $1 FOR UPDATE",
+            "SELECT {} FROM observations WHERE id = $1 FOR UPDATE",
             super::OBSERVATION_COLUMNS
         ))
         .bind(existing_id)
@@ -266,6 +265,118 @@ impl ObservationStore for PgStorage {
         .bind(merged.observation_type.as_str())
         .execute(&mut *tx)
         .await?;
+
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn merge_and_purge(
+        &self,
+        keeper_id: &str,
+        duplicate_id: &str,
+    ) -> Result<(), StorageError> {
+        let mut tx = self.pool.begin().await?;
+
+        // 1. Lock both rows to prevent concurrent modifications
+        let keeper_row = sqlx::query(&format!(
+            "SELECT {} FROM observations WHERE id = $1 FOR UPDATE",
+            super::OBSERVATION_COLUMNS
+        ))
+        .bind(keeper_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let duplicate_row = sqlx::query(&format!(
+            "SELECT {} FROM observations WHERE id = $1 FOR UPDATE",
+            super::OBSERVATION_COLUMNS
+        ))
+        .bind(duplicate_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let keeper = keeper_row
+            .map(|r| row_to_observation(&r))
+            .transpose()?
+            .ok_or_else(|| StorageError::NotFound {
+                entity: "observation",
+                id: keeper_id.to_owned(),
+            })?;
+
+        let duplicate = duplicate_row
+            .map(|r| row_to_observation(&r))
+            .transpose()?
+            .ok_or_else(|| StorageError::NotFound {
+                entity: "observation",
+                id: duplicate_id.to_owned(),
+            })?;
+
+        // 2. Compute merge
+        let merged = opencode_mem_core::compute_merge(&keeper, &duplicate);
+
+        // 3. Update keeper with merged data
+        sqlx::query(
+            "UPDATE observations SET facts = $1, keywords = $2, files_read = $3,
+                    files_modified = $4, narrative = $5, created_at = $6, concepts = $7,
+                    noise_level = $8, subtitle = $9, noise_reason = $10,
+                    prompt_number = $11, discovery_tokens = $12, title = $14, observation_type = $15
+               WHERE id = $13",
+        )
+        .bind(serde_json::to_value(&merged.facts)?)
+        .bind(serde_json::to_value(&merged.keywords)?)
+        .bind(serde_json::to_value(&merged.files_read)?)
+        .bind(serde_json::to_value(&merged.files_modified)?)
+        .bind(&merged.narrative)
+        .bind(merged.created_at)
+        .bind(serde_json::to_value(&merged.concepts)?)
+        .bind(merged.noise_level.as_str())
+        .bind(&merged.subtitle)
+        .bind(&merged.noise_reason)
+        .bind(
+            merged
+                .prompt_number
+                .map(|v| v.as_pg_i32())
+                .transpose()
+                .map_err(|e| StorageError::DataCorruption {
+                    context: "prompt_number exceeds i32::MAX".into(),
+                    source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+                })?,
+        )
+        .bind(
+            merged
+                .discovery_tokens
+                .map(|v| v.as_pg_i32())
+                .transpose()
+                .map_err(|e| StorageError::DataCorruption {
+                    context: "discovery_tokens exceeds i32::MAX".into(),
+                    source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+                })?,
+        )
+        .bind(keeper_id)
+        .bind(&merged.title)
+        .bind(merged.observation_type.as_str())
+        .execute(&mut *tx)
+        .await?;
+
+        // 4. Repoint knowledge entries (replace duplicate_id with keeper_id in jsonb array)
+        // Correct PostgreSQL logic: remove duplicate_id, add keeper_id, then DISTINCT to avoid duplicates.
+        sqlx::query(
+            "UPDATE global_knowledge \
+             SET source_observations = ( \
+                 SELECT jsonb_agg(DISTINCT x) \
+                 FROM jsonb_array_elements_text(source_observations - $1::text || jsonb_build_array($2::text)) AS x \
+             ) \
+             WHERE source_observations ? $1",
+        )
+        .bind(duplicate_id)
+        .bind(keeper_id)
+        .execute(&mut *tx)
+        .await?;
+
+        // 5. Delete duplicate observation
+        sqlx::query("DELETE FROM observations WHERE id = $1")
+            .bind(duplicate_id)
+            .execute(&mut *tx)
+            .await?;
 
         tx.commit().await?;
         Ok(())

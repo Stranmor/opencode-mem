@@ -10,6 +10,7 @@ pub trait PendingQueueStore: Send + Sync {
     async fn queue_message(
         &self,
         session_id: &str,
+        call_id: Option<&str>,
         tool_name: Option<&str>,
         tool_input: Option<&str>,
         tool_response: Option<&str>,

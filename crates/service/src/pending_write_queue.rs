@@ -5,6 +5,7 @@
 //! is flushed back to the database.
 
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -91,10 +92,18 @@ impl PendingWriteQueue {
         queue.push_front(item);
     }
 
-    pub fn start_flush(&self) -> bool {
-        self.flushing
+    pub fn start_flush(self: &Arc<Self>) -> Option<FlushGuard> {
+        if self
+            .flushing
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_ok()
+        {
+            Some(FlushGuard {
+                queue: Arc::clone(self),
+            })
+        } else {
+            None
+        }
     }
 
     pub fn finish_flush(&self) {
@@ -113,6 +122,17 @@ impl PendingWriteQueue {
 impl Default for PendingWriteQueue {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// RAII guard to ensure `flushing` flag is always reset even on panic.
+pub struct FlushGuard {
+    queue: Arc<PendingWriteQueue>,
+}
+
+impl Drop for FlushGuard {
+    fn drop(&mut self) {
+        self.queue.finish_flush();
     }
 }
 
