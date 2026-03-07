@@ -29,13 +29,13 @@ pub(crate) async fn run(port: u16, host: String, config: Arc<AppConfig>) -> Resu
     )?);
     let (event_tx, _) = broadcast::channel(100);
 
-    let infinite_mem = if let Some(ref url) = config.infinite_memory_url {
+    let infinite_mem = {
         let pool = sqlx::postgres::PgPoolOptions::new()
             .max_connections(5)
             .acquire_timeout(std::time::Duration::from_secs(
                 opencode_mem_core::PG_POOL_ACQUIRE_TIMEOUT_SECS,
             ))
-            .connect_lazy(url);
+            .connect_lazy(&config.infinite_memory_url.clone().unwrap());
 
         match pool {
             Ok(p) => match InfiniteMemoryService::new(p, llm.clone()).await {
@@ -53,9 +53,6 @@ pub(crate) async fn run(port: u16, host: String, config: Arc<AppConfig>) -> Resu
                 None
             }
         }
-    } else {
-        tracing::info!("INFINITE_MEMORY_URL not set, infinite memory disabled");
-        None
     };
 
     let embeddings = if config.disable_embeddings {

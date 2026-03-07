@@ -31,7 +31,7 @@ pub async fn infinite_expand_summary(
         .await
         .map(Json)
         .map_err(|e| {
-            if infinite_mem.circuit_breaker().is_open() {
+            if e.is_unavailable() || e.is_transient() || infinite_mem.circuit_breaker().is_open() {
                 crate::api_error::ApiError::Degraded(serde_json::json!([]))
             } else {
                 crate::api_error::ApiError::Internal(e.into())
@@ -60,7 +60,7 @@ pub async fn infinite_time_range(
         .await
         .map(Json)
         .map_err(|e| {
-            if infinite_mem.circuit_breaker().is_open() {
+            if e.is_unavailable() || e.is_transient() || infinite_mem.circuit_breaker().is_open() {
                 crate::api_error::ApiError::Degraded(serde_json::json!([]))
             } else {
                 crate::api_error::ApiError::Internal(e.into())
@@ -78,7 +78,7 @@ pub async fn infinite_drill_hour(
         .await
         .map(Json)
         .map_err(|e| {
-            if infinite_mem.circuit_breaker().is_open() {
+            if e.is_unavailable() || e.is_transient() || infinite_mem.circuit_breaker().is_open() {
                 crate::api_error::ApiError::Degraded(serde_json::json!([]))
             } else {
                 crate::api_error::ApiError::Internal(e.into())
@@ -96,7 +96,7 @@ pub async fn infinite_drill_day(
         .await
         .map(Json)
         .map_err(|e| {
-            if infinite_mem.circuit_breaker().is_open() {
+            if e.is_unavailable() || e.is_transient() || infinite_mem.circuit_breaker().is_open() {
                 crate::api_error::ApiError::Degraded(serde_json::json!([]))
             } else {
                 crate::api_error::ApiError::Internal(e.into())
@@ -118,7 +118,10 @@ pub async fn infinite_search_entities(
             let error_msg = e.to_string();
             if error_msg.contains("Invalid entity_type") {
                 crate::api_error::ApiError::BadRequest(error_msg)
-            } else if infinite_mem.circuit_breaker().is_open() {
+            } else if e.is_unavailable()
+                || e.is_transient()
+                || infinite_mem.circuit_breaker().is_open()
+            {
                 crate::api_error::ApiError::Degraded(serde_json::json!([]))
             } else {
                 crate::api_error::ApiError::Internal(e.into())

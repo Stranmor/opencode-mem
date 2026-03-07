@@ -8,36 +8,45 @@ use axum::{
     extract::{ConnectInfo, State},
 };
 use std::net::SocketAddr;
-use std::process::Command;
 use std::sync::Arc;
-use tokio::task::spawn_blocking;
 
 pub async fn get_branch_status(
     State(_state): State<Arc<AppState>>,
 ) -> Result<Json<BranchStatusResponse>, ApiError> {
-    let (branch, is_dirty) = spawn_blocking(|| {
-        let branch = Command::new("git")
+    let timeout_duration = std::time::Duration::from_secs(10);
+
+    let branch_fut = async {
+        let output = tokio::process::Command::new("git")
             .args(["rev-parse", "--abbrev-ref", "HEAD"])
             .stdin(std::process::Stdio::null())
             .output()
+            .await
             .ok()
             .filter(|o| o.status.success())
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
             .unwrap_or_default();
+        output
+    };
 
-        let dirty = Command::new("git")
+    let dirty_fut = async {
+        let output = tokio::process::Command::new("git")
             .args(["status", "--porcelain"])
             .stdin(std::process::Stdio::null())
             .output()
+            .await
             .ok()
             .filter(|o| o.status.success())
             .map(|o| !o.stdout.is_empty())
             .unwrap_or(false);
+        output
+    };
 
-        (branch, dirty)
-    })
-    .await
-    .map_err(anyhow::Error::from)?;
+    let branch = tokio::time::timeout(timeout_duration, branch_fut)
+        .await
+        .unwrap_or_default();
+    let is_dirty = tokio::time::timeout(timeout_duration, dirty_fut)
+        .await
+        .unwrap_or(false);
 
     Ok(Json(BranchStatusResponse {
         current_branch: branch,
@@ -82,15 +91,19 @@ pub async fn switch_branch(
     }
 
     let branch = req.branch.clone();
-    let result = spawn_blocking(move || {
-        Command::new("git")
+    let timeout_duration = std::time::Duration::from_secs(15);
+    let switch_fut = async {
+        tokio::process::Command::new("git")
             .args(["switch", &branch])
             .stdin(std::process::Stdio::null())
             .output()
-    })
-    .await
-    .map_err(anyhow::Error::from)?
-    .map_err(anyhow::Error::from)?;
+            .await
+    };
+
+    let result = tokio::time::timeout(timeout_duration, switch_fut)
+        .await
+        .map_err(|_| ApiError::Internal(anyhow::anyhow!("Git switch timed out")))?
+        .map_err(anyhow::Error::from)?;
 
     if result.status.success() {
         state
@@ -122,16 +135,19 @@ pub async fn update_branch(
     if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
-
-    let result = spawn_blocking(|| {
-        Command::new("git")
+    let timeout_duration = std::time::Duration::from_secs(30);
+    let pull_fut = async {
+        tokio::process::Command::new("git")
             .args(["pull", "--ff-only"])
             .stdin(std::process::Stdio::null())
             .output()
-    })
-    .await
-    .map_err(anyhow::Error::from)?
-    .map_err(anyhow::Error::from)?;
+            .await
+    };
+
+    let result = tokio::time::timeout(timeout_duration, pull_fut)
+        .await
+        .map_err(|_| ApiError::Internal(anyhow::anyhow!("Git pull timed out")))?
+        .map_err(anyhow::Error::from)?;
 
     if result.status.success() {
         let stdout = String::from_utf8_lossy(&result.stdout);

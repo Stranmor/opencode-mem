@@ -196,7 +196,7 @@ impl KnowledgeStore for PgStorage {
 
     async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, StorageError> {
         let row = sqlx::query(&format!(
-            "SELECT {KNOWLEDGE_COLUMNS} FROM global_knowledge WHERE id = $1"
+            "SELECT {KNOWLEDGE_COLUMNS} FROM global_knowledge WHERE id = $1 AND archived_at IS NULL"
         ))
         .bind(id)
         .fetch_optional(&self.pool)
