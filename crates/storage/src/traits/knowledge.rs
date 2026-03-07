@@ -38,6 +38,9 @@ pub trait KnowledgeStore: Send + Sync {
     /// Increment usage count and bump confidence.
     async fn update_knowledge_usage(&self, id: &str) -> Result<(), StorageError>;
 
+    /// Increment usage count and bump confidence for a batch of entries.
+    async fn update_knowledge_usage_batch(&self, ids: &[String]) -> Result<(), StorageError>;
+
     /// Decay confidence for all non-archived entries based on time since last use.
     /// Returns the number of entries updated.
     async fn decay_confidence(&self) -> Result<u64, StorageError>;

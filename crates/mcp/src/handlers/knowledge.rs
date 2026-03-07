@@ -18,14 +18,14 @@ pub(super) async fn handle_knowledge_search(
     match knowledge_service.search_knowledge(query, limit).await {
         Ok(results) => {
             cb.record_success();
-            // Fire-and-forget: update usage_count for all returned results.
+            // Fire-and-forget: update usage_count for all returned results in one batch.
             // This is the primary discovery path — without this, 93% of entries show usage_count=0.
             let knowledge_service = knowledge_service.clone();
             let result_ids: Vec<String> = results.iter().map(|r| r.knowledge.id.clone()).collect();
             tokio::spawn(async move {
-                for id in result_ids {
-                    let _ = knowledge_service.update_knowledge_usage(&id).await;
-                }
+                let _ = knowledge_service
+                    .update_knowledge_usage_batch(&result_ids)
+                    .await;
             });
             mcp_ok(&results)
         }

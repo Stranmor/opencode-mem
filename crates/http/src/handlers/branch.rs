@@ -67,10 +67,11 @@ fn validate_branch_name(branch: &str) -> Result<(), &'static str> {
 
 pub async fn switch_branch(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::http::HeaderMap(headers): axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(req): Json<SwitchBranchRequest>,
 ) -> Result<Json<SwitchBranchResponse>, ApiError> {
-    if !is_localhost(&addr) {
+    if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
     if let Err(msg) = validate_branch_name(&req.branch) {
@@ -116,9 +117,10 @@ pub async fn switch_branch(
 
 pub async fn update_branch(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    State(_state): State<Arc<AppState>>,
+    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    State(state): State<Arc<AppState>>,
 ) -> Result<Json<UpdateBranchResponse>, ApiError> {
-    if !is_localhost(&addr) {
+    if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
     let result = spawn_blocking(|| {

@@ -38,13 +38,13 @@ pub async fn search_knowledge(
         .await
         .or_degraded(Vec::<KnowledgeSearchResult>::new())?;
 
-    // Fire-and-forget: update usage_count for all returned results.
+    // Fire-and-forget: update usage_count for all returned results in one batch.
     let knowledge_service = state.knowledge_service.clone();
     let result_ids: Vec<String> = results.iter().map(|r| r.knowledge.id.clone()).collect();
     tokio::spawn(async move {
-        for id in result_ids {
-            let _ = knowledge_service.update_knowledge_usage(&id).await;
-        }
+        let _ = knowledge_service
+            .update_knowledge_usage_batch(&result_ids)
+            .await;
     });
     Ok(Json(results))
 }
@@ -74,10 +74,11 @@ pub async fn get_knowledge_by_id(
 
 pub async fn delete_knowledge(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::http::HeaderMap(headers): axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    if !is_localhost(&addr) {
+    if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
     let deleted = state
@@ -158,9 +159,10 @@ pub async fn record_knowledge_usage(
 
 pub async fn run_confidence_lifecycle(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::http::HeaderMap(headers): axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    if !is_localhost(&addr) {
+    if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
     let (decayed, archived) = state

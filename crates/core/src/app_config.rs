@@ -93,6 +93,10 @@ pub struct AppConfig {
     /// Maximum raw events per compression chunk.
     /// Env: `OPENCODE_MEM_MAX_EVENTS` (default: `200`)
     pub max_events: usize,
+
+    /// Administrative token for sensitive operations.
+    /// Env: `OPENCODE_MEM_ADMIN_TOKEN`
+    pub admin_token: Option<String>,
 }
 
 /// Error returned when required configuration is missing or invalid.
@@ -201,6 +205,8 @@ impl AppConfig {
         let max_total_chars = env_parse_with_default("OPENCODE_MEM_MAX_TOTAL_CHARS", 8000_usize);
         let max_events = env_parse_with_default("OPENCODE_MEM_MAX_EVENTS", 200_usize);
 
+        let admin_token = std::env::var("OPENCODE_MEM_ADMIN_TOKEN").ok();
+
         Ok(Self {
             database_url,
             api_key,
@@ -218,6 +224,7 @@ impl AppConfig {
             max_content_chars,
             max_total_chars,
             max_events,
+            admin_token,
         })
     }
 

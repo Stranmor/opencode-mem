@@ -116,10 +116,14 @@ impl KnowledgeService {
     }
 
     pub async fn update_knowledge_usage(&self, id: &str) -> Result<(), ServiceError> {
+        self.update_knowledge_usage_batch(&[id.to_owned()]).await
+    }
+
+    pub async fn update_knowledge_usage_batch(&self, ids: &[String]) -> Result<(), ServiceError> {
         self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .update_knowledge_usage(id)
+            .update_knowledge_usage_batch(ids)
             .await
             .map_err(ServiceError::from);
         self.with_cb(result)

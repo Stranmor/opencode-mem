@@ -12,8 +12,26 @@
     reason = "HTTP handlers are called once from router"
 )]
 
-pub(crate) const fn is_localhost(addr: &std::net::SocketAddr) -> bool {
-    addr.ip().is_loopback()
+pub(crate) fn check_admin_access(
+    addr: &std::net::SocketAddr,
+    headers: &axum::http::HeaderMap,
+    config: &opencode_mem_core::AppConfig,
+) -> bool {
+    // 1. Check for explicit admin token (required for non-localhost or behind proxy)
+    if let Some(ref token) = config.admin_token {
+        if let Some(provided) = headers.get("x-admin-token").and_then(|h| h.to_str().ok()) {
+            if provided == token {
+                return true;
+            }
+        }
+    }
+
+    // 2. Fallback to loopback check (only if no token is configured)
+    if config.admin_token.is_none() && addr.ip().is_loopback() {
+        return true;
+    }
+
+    false
 }
 
 pub mod admin;

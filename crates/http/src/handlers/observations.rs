@@ -271,10 +271,11 @@ pub async fn get_prompt_by_id(
 
 pub async fn delete_observation(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::http::HeaderMap(headers): axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    if !is_localhost(&addr) {
+    if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
     let deleted = state

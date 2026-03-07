@@ -80,14 +80,8 @@ async fn fetch_relevant_knowledge(
     let ids: Vec<String> = selected.iter().map(|item| item.id.clone()).collect();
     let knowledge_service = state.knowledge_service.clone();
     tokio::spawn(async move {
-        for id in &ids {
-            if let Err(e) = knowledge_service.update_knowledge_usage(id).await {
-                tracing::warn!(
-                    knowledge_id = %id,
-                    "Failed to update knowledge usage for context inject: {}",
-                    e
-                );
-            }
+        if let Err(e) = knowledge_service.update_knowledge_usage_batch(&ids).await {
+            tracing::warn!("Failed to update knowledge usage for context inject: {}", e);
         }
     });
 

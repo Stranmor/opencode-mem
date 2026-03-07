@@ -18,9 +18,10 @@ use crate::api_types::{
 
 pub async fn get_settings(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::http::HeaderMap(headers): axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<SettingsResponse>, ApiError> {
-    if !is_localhost(&addr) {
+    if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
     let mut settings = state.settings.read().await.clone();
@@ -51,10 +52,11 @@ fn redact_sensitive_env(env: &mut std::collections::HashMap<String, String>) {
 
 pub async fn update_settings(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::http::HeaderMap(headers): axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(req): Json<UpdateSettingsRequest>,
 ) -> Result<Json<SettingsResponse>, ApiError> {
-    if !is_localhost(&addr) {
+    if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
     let mut settings = state.settings.write().await;
@@ -105,10 +107,11 @@ pub async fn get_mcp_status(
 
 pub async fn toggle_mcp(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::http::HeaderMap(headers): axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(req): Json<ToggleMcpRequest>,
 ) -> Result<Json<McpStatusResponse>, ApiError> {
-    if !is_localhost(&addr) {
+    if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
     let mut settings = state.settings.write().await;
@@ -168,9 +171,10 @@ fn extract_section(content: &str, section: &str) -> String {
 
 pub async fn admin_restart(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::http::HeaderMap(headers): axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<AdminResponse>, ApiError> {
-    if !is_localhost(&addr) {
+    if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
 
@@ -187,9 +191,10 @@ pub async fn admin_restart(
 
 pub async fn rebuild_embeddings(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::http::HeaderMap(headers): axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<AdminResponse>, ApiError> {
-    if !is_localhost(&addr) {
+    if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
     state
@@ -206,9 +211,10 @@ pub async fn rebuild_embeddings(
 
 pub async fn admin_shutdown(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::http::HeaderMap(headers): axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<AdminResponse>, ApiError> {
-    if !is_localhost(&addr) {
+    if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
 

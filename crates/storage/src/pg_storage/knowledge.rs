@@ -278,16 +278,23 @@ impl KnowledgeStore for PgStorage {
     }
 
     async fn update_knowledge_usage(&self, id: &str) -> Result<(), StorageError> {
+        self.update_knowledge_usage_batch(&[id.to_owned()]).await
+    }
+
+    async fn update_knowledge_usage_batch(&self, ids: &[String]) -> Result<(), StorageError> {
+        if ids.is_empty() {
+            return Ok(());
+        }
         let now = Utc::now();
         sqlx::query(
-            "UPDATE global_knowledge
-             SET usage_count = usage_count + 1,
-                 last_used_at = $1, updated_at = $1,
-                 confidence = LEAST(1.0, confidence + 0.1)
-             WHERE id = $2 AND archived_at IS NULL",
+            "UPDATE global_knowledge \
+             SET usage_count = usage_count + 1, \
+                 last_used_at = $1, updated_at = $1, \
+                 confidence = LEAST(1.0, confidence + 0.1) \
+             WHERE id = ANY($2) AND archived_at IS NULL",
         )
         .bind(now)
-        .bind(id)
+        .bind(ids)
         .execute(&self.pool)
         .await?;
         Ok(())

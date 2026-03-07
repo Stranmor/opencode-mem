@@ -40,10 +40,11 @@ pub async fn get_pending_queue(
 
 pub async fn process_pending_queue(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::http::HeaderMap(headers): axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(()): Json<()>,
 ) -> Result<Json<ProcessQueueResponse>, crate::api_error::ApiError> {
-    if !is_localhost(&addr) {
+    if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
     }
     if !state.processing_active.load(Ordering::SeqCst) {
@@ -144,10 +145,11 @@ pub async fn process_pending_queue(
 
 pub async fn clear_failed_queue(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::http::HeaderMap(headers): axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(()): Json<()>,
 ) -> Result<Json<ClearQueueResponse>, crate::api_error::ApiError> {
-    if !is_localhost(&addr) {
+    if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
     }
     let cleared = state
@@ -160,10 +162,11 @@ pub async fn clear_failed_queue(
 
 pub async fn retry_failed_queue(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::http::HeaderMap(headers): axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(()): Json<()>,
 ) -> Result<Json<RetryQueueResponse>, crate::api_error::ApiError> {
-    if !is_localhost(&addr) {
+    if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
     }
     let retried = state
@@ -176,10 +179,11 @@ pub async fn retry_failed_queue(
 
 pub async fn clear_all_queue(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::http::HeaderMap(headers): axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(()): Json<()>,
 ) -> Result<Json<ClearQueueResponse>, crate::api_error::ApiError> {
-    if !is_localhost(&addr) {
+    if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
     }
     let cleared = state
@@ -207,10 +211,11 @@ pub async fn get_processing_status(
 
 pub async fn set_processing_status(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    axum::http::HeaderMap(headers): axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(req): Json<SetProcessingRequest>,
 ) -> Result<Json<SetProcessingResponse>, crate::api_error::ApiError> {
-    if !is_localhost(&addr) {
+    if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(crate::api_error::ApiError::Forbidden("Forbidden".into()));
     }
     state.processing_active.store(req.active, Ordering::SeqCst);
