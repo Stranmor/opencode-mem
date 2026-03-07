@@ -27,7 +27,8 @@ pub(crate) fn row_to_session(row: &sqlx::postgres::PgRow) -> Result<Session, Sto
         row.try_get::<SessionId, _>("id")?,
         row.try_get::<ContentSessionId, _>("content_session_id")?,
         row.try_get("memory_session_id")?,
-        row.try_get::<ProjectId, _>("project")?,
+        row.try_get::<Option<ProjectId>, _>("project")?
+            .unwrap_or_else(|| ProjectId("".to_owned())),
         row.try_get("user_prompt")?,
         started_at,
         ended_at,

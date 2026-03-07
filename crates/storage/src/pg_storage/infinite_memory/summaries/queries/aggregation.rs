@@ -7,15 +7,13 @@ pub async fn get_unaggregated_5min_summaries(
     pool: &PgPool,
     limit: i64,
 ) -> Result<Vec<InfiniteSummary>, StorageError> {
-    let rows = sqlx::query_as::<_, SummaryRow>(
-        r#"
-        SELECT id, ts_start, ts_end, session_id, project, content, event_count, entities
-        FROM summaries_5min
-        WHERE summary_hour_id IS NULL
-        ORDER BY ts_start ASC
-        LIMIT $1
-        "#,
-    )
+    let rows = sqlx::query_as::<_, SummaryRow>(&format!(
+        "SELECT {} FROM summaries_5min \
+         WHERE summary_hour_id IS NULL \
+         ORDER BY ts_start ASC \
+         LIMIT $1",
+        crate::pg_storage::SUMMARY_COLUMNS
+    ))
     .bind(limit)
     .fetch_all(pool)
     .await?;
@@ -82,46 +80,44 @@ pub async fn get_unaggregated_5min_for_session(
     let stale_threshold = chrono::Utc::now() - visibility_timeout;
 
     let rows = if let Some(sid) = session_id {
-        sqlx::query_as::<_, SummaryRow>(
-            r#"
-            UPDATE summaries_5min
-            SET processing_started_at = NOW(), processing_instance_id = $3
-            WHERE id IN (
-                SELECT id
-                FROM summaries_5min
-                WHERE summary_hour_id IS NULL AND session_id = $1
-                  AND retry_count < 3
-                  AND (processing_started_at IS NULL OR processing_started_at < $2)
-                ORDER BY ts_start ASC
-                LIMIT 500
-                FOR UPDATE SKIP LOCKED
-            )
-            RETURNING id, ts_start, ts_end, session_id, project, content, event_count, entities
-            "#,
-        )
+        sqlx::query_as::<_, SummaryRow>(&format!(
+            "UPDATE summaries_5min \
+            SET processing_started_at = NOW(), processing_instance_id = $3 \
+            WHERE id IN ( \
+                SELECT id \
+                FROM summaries_5min \
+                WHERE summary_hour_id IS NULL AND session_id = $1 \
+                  AND retry_count < 3 \
+                  AND (processing_started_at IS NULL OR processing_started_at < $2) \
+                ORDER BY ts_start ASC \
+                LIMIT 500 \
+                FOR UPDATE SKIP LOCKED \
+            ) \
+            RETURNING {}",
+            crate::pg_storage::SUMMARY_COLUMNS
+        ))
         .bind(sid)
         .bind(stale_threshold)
         .bind(&instance_id)
         .fetch_all(pool)
         .await?
     } else {
-        sqlx::query_as::<_, SummaryRow>(
-            r#"
-            UPDATE summaries_5min
-            SET processing_started_at = NOW(), processing_instance_id = $2
-            WHERE id IN (
-                SELECT id
-                FROM summaries_5min
-                WHERE summary_hour_id IS NULL AND session_id IS NULL
-                  AND retry_count < 3
-                  AND (processing_started_at IS NULL OR processing_started_at < $1)
-                ORDER BY ts_start ASC
-                LIMIT 500
-                FOR UPDATE SKIP LOCKED
-            )
-            RETURNING id, ts_start, ts_end, session_id, project, content, event_count, entities
-            "#,
-        )
+        sqlx::query_as::<_, SummaryRow>(&format!(
+            "UPDATE summaries_5min \
+            SET processing_started_at = NOW(), processing_instance_id = $2 \
+            WHERE id IN ( \
+                SELECT id \
+                FROM summaries_5min \
+                WHERE summary_hour_id IS NULL AND session_id IS NULL \
+                  AND retry_count < 3 \
+                  AND (processing_started_at IS NULL OR processing_started_at < $1) \
+                ORDER BY ts_start ASC \
+                LIMIT 500 \
+                FOR UPDATE SKIP LOCKED \
+            ) \
+            RETURNING {}",
+            crate::pg_storage::SUMMARY_COLUMNS
+        ))
         .bind(stale_threshold)
         .bind(&instance_id)
         .fetch_all(pool)
@@ -135,15 +131,13 @@ pub async fn get_unaggregated_hour_summaries(
     pool: &PgPool,
     limit: i64,
 ) -> Result<Vec<InfiniteSummary>, StorageError> {
-    let rows = sqlx::query_as::<_, SummaryRow>(
-        r#"
-        SELECT id, ts_start, ts_end, session_id, project, content, event_count, entities
-        FROM summaries_hour
-        WHERE summary_day_id IS NULL
-        ORDER BY ts_start ASC
-        LIMIT $1
-        "#,
-    )
+    let rows = sqlx::query_as::<_, SummaryRow>(&format!(
+        "SELECT {} FROM summaries_hour \
+         WHERE summary_day_id IS NULL \
+         ORDER BY ts_start ASC \
+         LIMIT $1",
+        crate::pg_storage::SUMMARY_COLUMNS
+    ))
     .bind(limit)
     .fetch_all(pool)
     .await?;
@@ -176,46 +170,44 @@ pub async fn get_unaggregated_hour_for_session(
     let stale_threshold = chrono::Utc::now() - visibility_timeout;
 
     let rows = if let Some(sid) = session_id {
-        sqlx::query_as::<_, SummaryRow>(
-            r#"
-            UPDATE summaries_hour
-            SET processing_started_at = NOW(), processing_instance_id = $3
-            WHERE id IN (
-                SELECT id
-                FROM summaries_hour
-                WHERE summary_day_id IS NULL AND session_id = $1
-                  AND retry_count < 3
-                  AND (processing_started_at IS NULL OR processing_started_at < $2)
-                ORDER BY ts_start ASC
-                LIMIT 500
-                FOR UPDATE SKIP LOCKED
-            )
-            RETURNING id, ts_start, ts_end, session_id, project, content, event_count, entities
-            "#,
-        )
+        sqlx::query_as::<_, SummaryRow>(&format!(
+            "UPDATE summaries_hour \
+            SET processing_started_at = NOW(), processing_instance_id = $3 \
+            WHERE id IN ( \
+                SELECT id \
+                FROM summaries_hour \
+                WHERE summary_day_id IS NULL AND session_id = $1 \
+                  AND retry_count < 3 \
+                  AND (processing_started_at IS NULL OR processing_started_at < $2) \
+                ORDER BY ts_start ASC \
+                LIMIT 500 \
+                FOR UPDATE SKIP LOCKED \
+            ) \
+            RETURNING {}",
+            crate::pg_storage::SUMMARY_COLUMNS
+        ))
         .bind(sid)
         .bind(stale_threshold)
         .bind(&instance_id)
         .fetch_all(pool)
         .await?
     } else {
-        sqlx::query_as::<_, SummaryRow>(
-            r#"
-            UPDATE summaries_hour
-            SET processing_started_at = NOW(), processing_instance_id = $2
-            WHERE id IN (
-                SELECT id
-                FROM summaries_hour
-                WHERE summary_day_id IS NULL AND session_id IS NULL
-                  AND retry_count < 3
-                  AND (processing_started_at IS NULL OR processing_started_at < $1)
-                ORDER BY ts_start ASC
-                LIMIT 500
-                FOR UPDATE SKIP LOCKED
-            )
-            RETURNING id, ts_start, ts_end, session_id, project, content, event_count, entities
-            "#,
-        )
+        sqlx::query_as::<_, SummaryRow>(&format!(
+            "UPDATE summaries_hour \
+            SET processing_started_at = NOW(), processing_instance_id = $2 \
+            WHERE id IN ( \
+                SELECT id \
+                FROM summaries_hour \
+                WHERE summary_day_id IS NULL AND session_id IS NULL \
+                  AND retry_count < 3 \
+                  AND (processing_started_at IS NULL OR processing_started_at < $1) \
+                ORDER BY ts_start ASC \
+                LIMIT 500 \
+                FOR UPDATE SKIP LOCKED \
+            ) \
+            RETURNING {}",
+            crate::pg_storage::SUMMARY_COLUMNS
+        ))
         .bind(stale_threshold)
         .bind(&instance_id)
         .fetch_all(pool)

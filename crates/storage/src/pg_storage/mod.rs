@@ -209,7 +209,9 @@ pub(crate) const KNOWLEDGE_COLUMNS: &str =
      last_used_at, created_at, updated_at, archived_at";
 
 pub(crate) const SUMMARY_COLUMNS: &str =
-    "session_id, project, request, investigated, learned, completed, next_steps, notes,
-     files_read, files_edited, prompt_number, discovery_tokens, created_at";
+    "id, ts_start, ts_end, session_id, project, content, event_count, entities";
 
 pub(crate) const OBSERVATION_COLUMNS: &str = "id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, files_read, files_modified, keywords, prompt_number, discovery_tokens, noise_level, noise_reason, created_at";
+
+pub(crate) const EVENT_COLUMNS: &str =
+    "id, ts, session_id, project, event_type, content, files, tools, call_id";

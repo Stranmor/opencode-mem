@@ -42,7 +42,7 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
     } else {
         let input_str = msg.tool_input.as_deref().unwrap_or("");
         let mut data = String::with_capacity(
-            tool_name.len() + msg.session_id.len() + input_str.len() + tool_response.len() + 24,
+            tool_name.len() + msg.session_id.len() + input_str.len() + tool_response.len() + 48,
         );
         data.push_str(tool_name);
         data.push('\0');
@@ -51,6 +51,9 @@ pub async fn process_pending_message(state: &AppState, msg: &PendingMessage) -> 
         data.push_str(input_str);
         data.push('\0');
         data.push_str(tool_response);
+        data.push('\0');
+        // Include msg.id to guarantee uniqueness across identical tool calls in the same second
+        data.push_str(&msg.id.to_string());
         data.push('\0');
         data.push_str(&msg.created_at_epoch.to_string());
         uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_URL, data.as_bytes()).to_string()
@@ -243,6 +246,23 @@ pub fn start_background_processor(state: Arc<AppState>) {
     let state_cron = Arc::clone(&state);
     tokio::spawn(async move {
         super::cron::start_cron_scheduler(state_cron).await;
+    });
+
+    let state_tasks = Arc::clone(&state);
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+        loop {
+            interval.tick().await;
+            let mut tasks = state_tasks.background_tasks.lock().await;
+            // Drain completed tasks from JoinSet to prevent memory leak
+            while let Some(res) = tasks.try_join_next() {
+                if let Err(e) = res {
+                    if e.is_panic() {
+                        tracing::error!("Background task panicked: {}", e);
+                    }
+                }
+            }
+        }
     });
 }
 

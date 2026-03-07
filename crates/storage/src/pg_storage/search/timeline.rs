@@ -39,7 +39,7 @@ pub(crate) async fn get_timeline(
     let sql = format!(
         "SELECT id, title, subtitle, observation_type, noise_level, created_at, 0.0::float8 AS score
            FROM observations {where_clause}
-           ORDER BY created_at {order_direction}
+           ORDER BY created_at {order_direction}, id {order_direction}
            LIMIT ${param_idx}"
     );
 

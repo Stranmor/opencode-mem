@@ -45,14 +45,10 @@ pub async fn get_recent_infinite_events(
     pool: &PgPool,
     limit: i64,
 ) -> Result<Vec<StoredInfiniteEvent>, StorageError> {
-    let rows = sqlx::query_as::<_, StoredEventRow>(
-        r#"
-        SELECT id, ts, session_id, project, event_type, content, files, tools, call_id
-        FROM raw_events
-        ORDER BY ts DESC
-        LIMIT $1
-        "#,
-    )
+    let rows = sqlx::query_as::<_, StoredEventRow>(&format!(
+        "SELECT {} FROM raw_events ORDER BY ts DESC LIMIT $1",
+        crate::pg_storage::EVENT_COLUMNS
+    ))
     .bind(limit)
     .fetch_all(pool)
     .await?;
@@ -81,22 +77,21 @@ pub async fn get_unsummarized_infinite_events(
     let visibility_timeout = chrono::Duration::minutes(5);
     let stale_threshold = Utc::now() - visibility_timeout;
 
-    let rows = sqlx::query_as::<_, StoredEventRow>(
-        r#"
-        UPDATE raw_events
-        SET processing_started_at = NOW(), processing_instance_id = $3
-        WHERE id IN (
-            SELECT id FROM raw_events
-            WHERE summary_5min_id IS NULL
-              AND retry_count < 3
-              AND (processing_started_at IS NULL OR processing_started_at < $2)
-            ORDER BY ts ASC
-            LIMIT $1
-            FOR UPDATE SKIP LOCKED
-        )
-        RETURNING id, ts, session_id, project, event_type, content, files, tools, call_id
-        "#,
-    )
+    let rows = sqlx::query_as::<_, StoredEventRow>(&format!(
+        "UPDATE raw_events \
+        SET processing_started_at = NOW(), processing_instance_id = $3 \
+        WHERE id IN ( \
+            SELECT id FROM raw_events \
+            WHERE summary_5min_id IS NULL \
+              AND retry_count < 3 \
+              AND (processing_started_at IS NULL OR processing_started_at < $2) \
+            ORDER BY ts ASC \
+            LIMIT $1 \
+            FOR UPDATE SKIP LOCKED \
+        ) \
+        RETURNING {}",
+        crate::pg_storage::EVENT_COLUMNS
+    ))
     .bind(limit)
     .bind(stale_threshold)
     .bind(&instance_id)
@@ -111,15 +106,14 @@ pub async fn get_infinite_events_by_summary_id(
     summary_5min_id: i64,
     limit: i64,
 ) -> Result<Vec<StoredInfiniteEvent>, StorageError> {
-    let rows = sqlx::query_as::<_, StoredEventRow>(
-        r#"
-        SELECT id, ts, session_id, project, event_type, content, files, tools, call_id
-        FROM raw_events
-        WHERE summary_5min_id = $1
-        ORDER BY ts ASC
-        LIMIT $2
-        "#,
-    )
+    let rows = sqlx::query_as::<_, StoredEventRow>(&format!(
+        "SELECT {} \
+        FROM raw_events \
+        WHERE summary_5min_id = $1 \
+        ORDER BY ts ASC \
+        LIMIT $2",
+        crate::pg_storage::EVENT_COLUMNS
+    ))
     .bind(summary_5min_id)
     .bind(limit)
     .fetch_all(pool)
@@ -136,15 +130,14 @@ pub async fn get_infinite_events_by_time_range(
     limit: i64,
 ) -> Result<Vec<StoredInfiniteEvent>, StorageError> {
     let rows = if let Some(sid) = session_id {
-        sqlx::query_as::<_, StoredEventRow>(
-            r#"
-            SELECT id, ts, session_id, project, event_type, content, files, tools, call_id
-            FROM raw_events
-            WHERE ts >= $1 AND ts <= $2 AND session_id = $3
-            ORDER BY ts ASC
-            LIMIT $4
-            "#,
-        )
+        sqlx::query_as::<_, StoredEventRow>(&format!(
+            "SELECT {} \
+            FROM raw_events \
+            WHERE ts >= $1 AND ts <= $2 AND session_id = $3 \
+            ORDER BY ts ASC \
+            LIMIT $4",
+            crate::pg_storage::EVENT_COLUMNS
+        ))
         .bind(start)
         .bind(end)
         .bind(sid)
@@ -152,15 +145,14 @@ pub async fn get_infinite_events_by_time_range(
         .fetch_all(pool)
         .await?
     } else {
-        sqlx::query_as::<_, StoredEventRow>(
-            r#"
-            SELECT id, ts, session_id, project, event_type, content, files, tools, call_id
-            FROM raw_events
-            WHERE ts >= $1 AND ts <= $2
-            ORDER BY ts ASC
-            LIMIT $3
-            "#,
-        )
+        sqlx::query_as::<_, StoredEventRow>(&format!(
+            "SELECT {} \
+            FROM raw_events \
+            WHERE ts >= $1 AND ts <= $2 \
+            ORDER BY ts ASC \
+            LIMIT $3",
+            crate::pg_storage::EVENT_COLUMNS
+        ))
         .bind(start)
         .bind(end)
         .bind(limit)
@@ -176,15 +168,14 @@ pub async fn search_infinite_events(
     query: &str,
     limit: i64,
 ) -> Result<Vec<StoredInfiniteEvent>, StorageError> {
-    let rows = sqlx::query_as::<_, StoredEventRow>(
-        r#"
-        SELECT id, ts, session_id, project, event_type, content, files, tools, call_id
-        FROM raw_events
-        WHERE content::text ILIKE '%' || $1 || '%'
-        ORDER BY ts DESC
-        LIMIT $2
-        "#,
-    )
+    let rows = sqlx::query_as::<_, StoredEventRow>(&format!(
+        "SELECT {} \
+        FROM raw_events \
+        WHERE content::text ILIKE '%' || $1 || '%' \
+        ORDER BY ts DESC \
+        LIMIT $2",
+        crate::pg_storage::EVENT_COLUMNS
+    ))
     .bind(query)
     .bind(limit)
     .fetch_all(pool)

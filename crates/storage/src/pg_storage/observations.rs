@@ -79,8 +79,8 @@ impl ObservationStore for PgStorage {
 
     async fn get_recent(&self, limit: usize) -> Result<Vec<Observation>, StorageError> {
         let rows = sqlx::query(&format!(
-            "SELECT {}
-             FROM observations ORDER BY created_at DESC LIMIT $1",
+            "SELECT {} \
+             FROM observations ORDER BY created_at DESC, id DESC LIMIT $1",
             super::OBSERVATION_COLUMNS
         ))
         .bind(usize_to_i64(limit))
@@ -187,7 +187,7 @@ impl ObservationStore for PgStorage {
             r#"SELECT id, title, subtitle, observation_type, noise_level, 0.0::float8 as score
                FROM observations
                WHERE files_read @> $1::jsonb OR files_modified @> $1::jsonb
-               ORDER BY created_at DESC LIMIT $2"#,
+               ORDER BY created_at DESC, id DESC LIMIT $2"#,
         )
         .bind(&jsonb_str)
         .bind(usize_to_i64(limit))
