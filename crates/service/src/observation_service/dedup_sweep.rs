@@ -19,14 +19,15 @@ struct ObservationSummary {
 
 impl ObservationSummary {
     fn prioritize<'a>(&'a self, other: &'a Self) -> &'a Self {
-        if self.noise_level < other.noise_level {
+        if opencode_mem_core::Observation::is_metadata_higher_priority(
+            self.noise_level,
+            self.created_at,
+            other.noise_level,
+            other.created_at,
+        ) {
             self
-        } else if other.noise_level < self.noise_level {
-            other
-        } else if other.created_at >= self.created_at {
-            other
         } else {
-            self
+            other
         }
     }
 }

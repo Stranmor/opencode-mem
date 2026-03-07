@@ -7,6 +7,59 @@ use crate::traits::ObservationStore;
 use async_trait::async_trait;
 use opencode_mem_core::{Observation, SearchResult};
 
+impl PgStorage {
+    async fn update_observation_fields(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        id: &str,
+        merged: &opencode_mem_core::MergeResult,
+    ) -> Result<(), StorageError> {
+        sqlx::query(
+            "UPDATE observations SET facts = $1, keywords = $2, files_read = $3,
+                    files_modified = $4, narrative = $5, created_at = $6, concepts = $7,
+                    noise_level = $8, subtitle = $9, noise_reason = $10,
+                    prompt_number = $11, discovery_tokens = $12, title = $14, observation_type = $15
+               WHERE id = $13",
+        )
+        .bind(serde_json::to_value(&merged.facts)?)
+        .bind(serde_json::to_value(&merged.keywords)?)
+        .bind(serde_json::to_value(&merged.files_read)?)
+        .bind(serde_json::to_value(&merged.files_modified)?)
+        .bind(&merged.narrative)
+        .bind(merged.created_at)
+        .bind(serde_json::to_value(&merged.concepts)?)
+        .bind(merged.noise_level.as_str())
+        .bind(&merged.subtitle)
+        .bind(&merged.noise_reason)
+        .bind(
+            merged
+                .prompt_number
+                .map(|v| v.as_pg_i32())
+                .transpose()
+                .map_err(|e| StorageError::DataCorruption {
+                    context: "prompt_number exceeds i32::MAX".into(),
+                    source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+                })?,
+        )
+        .bind(
+            merged
+                .discovery_tokens
+                .map(|v| v.as_pg_i32())
+                .transpose()
+                .map_err(|e| StorageError::DataCorruption {
+                    context: "discovery_tokens exceeds i32::MAX".into(),
+                    source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
+                })?,
+        )
+        .bind(id)
+        .bind(&merged.title)
+        .bind(merged.observation_type.as_str())
+        .execute(&mut **tx)
+        .await?;
+        Ok(())
+    }
+}
+
 #[async_trait]
 impl ObservationStore for PgStorage {
     async fn save_observation(&self, obs: &Observation) -> Result<bool, StorageError> {
@@ -224,48 +277,8 @@ impl ObservationStore for PgStorage {
 
         let merged = opencode_mem_core::compute_merge(&existing, newer, force_newer);
 
-        sqlx::query(
-            "UPDATE observations SET facts = $1, keywords = $2, files_read = $3,
-                    files_modified = $4, narrative = $5, created_at = $6, concepts = $7,
-                    noise_level = $8, subtitle = $9, noise_reason = $10,
-                    prompt_number = $11, discovery_tokens = $12, title = $14, observation_type = $15
-               WHERE id = $13",
-        )
-        .bind(serde_json::to_value(&merged.facts)?)
-        .bind(serde_json::to_value(&merged.keywords)?)
-        .bind(serde_json::to_value(&merged.files_read)?)
-        .bind(serde_json::to_value(&merged.files_modified)?)
-        .bind(&merged.narrative)
-        .bind(merged.created_at)
-        .bind(serde_json::to_value(&merged.concepts)?)
-        .bind(merged.noise_level.as_str())
-        .bind(&merged.subtitle)
-        .bind(&merged.noise_reason)
-        .bind(
-            merged
-                .prompt_number
-                .map(|v| v.as_pg_i32())
-                .transpose()
-                .map_err(|e| StorageError::DataCorruption {
-                    context: "prompt_number exceeds i32::MAX".into(),
-                    source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
-                })?,
-        )
-        .bind(
-            merged
-                .discovery_tokens
-                .map(|v| v.as_pg_i32())
-                .transpose()
-                .map_err(|e| StorageError::DataCorruption {
-                    context: "discovery_tokens exceeds i32::MAX".into(),
-                    source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
-                })?,
-        )
-        .bind(existing_id)
-        .bind(&merged.title)
-        .bind(merged.observation_type.as_str())
-        .execute(&mut *tx)
-        .await?;
+        self.update_observation_fields(&mut tx, existing_id, &merged)
+            .await?;
 
         tx.commit().await?;
         Ok(())
@@ -321,48 +334,8 @@ impl ObservationStore for PgStorage {
         let merged = opencode_mem_core::compute_merge(&keeper, &duplicate, false);
 
         // 3. Update keeper with merged data
-        sqlx::query(
-            "UPDATE observations SET facts = $1, keywords = $2, files_read = $3,
-                    files_modified = $4, narrative = $5, created_at = $6, concepts = $7,
-                    noise_level = $8, subtitle = $9, noise_reason = $10,
-                    prompt_number = $11, discovery_tokens = $12, title = $14, observation_type = $15
-               WHERE id = $13",
-        )
-        .bind(serde_json::to_value(&merged.facts)?)
-        .bind(serde_json::to_value(&merged.keywords)?)
-        .bind(serde_json::to_value(&merged.files_read)?)
-        .bind(serde_json::to_value(&merged.files_modified)?)
-        .bind(&merged.narrative)
-        .bind(merged.created_at)
-        .bind(serde_json::to_value(&merged.concepts)?)
-        .bind(merged.noise_level.as_str())
-        .bind(&merged.subtitle)
-        .bind(&merged.noise_reason)
-        .bind(
-            merged
-                .prompt_number
-                .map(|v| v.as_pg_i32())
-                .transpose()
-                .map_err(|e| StorageError::DataCorruption {
-                    context: "prompt_number exceeds i32::MAX".into(),
-                    source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
-                })?,
-        )
-        .bind(
-            merged
-                .discovery_tokens
-                .map(|v| v.as_pg_i32())
-                .transpose()
-                .map_err(|e| StorageError::DataCorruption {
-                    context: "discovery_tokens exceeds i32::MAX".into(),
-                    source: Box::<dyn std::error::Error + Send + Sync>::from(e.to_string()),
-                })?,
-        )
-        .bind(keeper_id)
-        .bind(&merged.title)
-        .bind(merged.observation_type.as_str())
-        .execute(&mut *tx)
-        .await?;
+        self.update_observation_fields(&mut tx, keeper_id, &merged)
+            .await?;
 
         // 4. Repoint knowledge entries (replace duplicate_id with keeper_id in jsonb array)
         // Correct PostgreSQL logic: remove duplicate_id, add keeper_id, then DISTINCT to avoid duplicates.

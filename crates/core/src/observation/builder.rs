@@ -61,15 +61,34 @@ impl Observation {
     /// 2. If noise levels are equal, the newer one (by created_at) wins.
     #[must_use]
     pub fn prioritize_duplicate<'a>(a: &'a Self, b: &'a Self) -> &'a Self {
-        // NoiseLevel Ord: Critical(0) < High(1) < Medium(2) < Low(3) < Negligible(4)
-        if a.noise_level < b.noise_level {
+        if Self::is_metadata_higher_priority(
+            a.noise_level,
+            a.created_at,
+            b.noise_level,
+            b.created_at,
+        ) {
             a
-        } else if b.noise_level < a.noise_level {
-            b
-        } else if b.created_at >= a.created_at {
-            b
         } else {
-            a
+            b
+        }
+    }
+
+    /// Pure metadata-based priority check (survival logic).
+    /// Returns `true` if `(noise_a, ts_a)` is higher priority than `(noise_b, ts_b)`.
+    #[must_use]
+    pub fn is_metadata_higher_priority(
+        noise_a: NoiseLevel,
+        ts_a: DateTime<Utc>,
+        noise_b: NoiseLevel,
+        ts_b: DateTime<Utc>,
+    ) -> bool {
+        // NoiseLevel Ord: Critical(0) < High(1) < Medium(2) < Low(3) < Negligible(4)
+        if noise_a < noise_b {
+            true
+        } else if noise_b < noise_a {
+            false
+        } else {
+            ts_a >= ts_b
         }
     }
 }

@@ -106,7 +106,13 @@ pub async fn session_status(
         .session_service
         .get_session(&session_db_id)
         .await
-        .or_degraded(None::<opencode_mem_core::Session>)?;
+        .map_err(ApiError::from)
+        .with_degraded_body(json!({
+            "session_id": session_db_id,
+            "status": "active",
+            "observation_count": 0,
+            "started_at": chrono::Utc::now().to_rfc3339()
+        }))?;
 
     match session {
         Some(s) => {

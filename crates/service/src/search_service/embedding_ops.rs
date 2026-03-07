@@ -104,6 +104,11 @@ impl SearchService {
             return Ok(observations);
         }
 
+        // Check if deduplication is disabled via threshold
+        if self.dedup_threshold <= 0.0 {
+            return Ok(observations);
+        }
+
         // Without embeddings, skip dedup — just return filtered results
         if self.embeddings.is_none() {
             return Ok(observations);

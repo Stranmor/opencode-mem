@@ -73,19 +73,7 @@ impl KnowledgeService {
             .storage
             .guarded(|| self.storage.search_knowledge(query, limit))
             .await;
-        let results: Vec<KnowledgeSearchResult> = self.with_cb(result)?;
-
-        // Fire-and-forget: update usage_count for all returned results in one batch.
-        // Telemetry is now encapsulated in the service layer.
-        let knowledge_service = self.clone();
-        let result_ids: Vec<String> = results.iter().map(|r| r.knowledge.id.clone()).collect();
-        tokio::spawn(async move {
-            let _ = knowledge_service
-                .update_knowledge_usage_batch(&result_ids)
-                .await;
-        });
-
-        Ok(results)
+        self.with_cb(result)
     }
 
     pub async fn list_knowledge(
