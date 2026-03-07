@@ -1,10 +1,11 @@
-use crate::api_error::{ApiError, DegradedExt};
+use crate::api_error::{ApiError, DegradedExt, OrDegraded};
 use axum::{
     Json,
     extract::{Query, State},
     response::sse::{Event, Sse},
 };
 use futures_util::stream::Stream;
+use serde_json::json;
 use std::convert::Infallible;
 use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
@@ -25,14 +26,17 @@ pub async fn get_context_recent(
     State(state): State<Arc<AppState>>,
     Query(query): Query<ContextQuery>,
 ) -> Result<Json<ContextInjectResponse>, ApiError> {
+    let degraded_fallback = ContextInjectResponse {
+        project: query.project.clone(),
+        observations: Vec::new(),
+        knowledge: Vec::new(),
+        formatted_context: String::new(),
+    };
     let observations = state
         .search_service
         .get_context_for_project(&query.project, query.limit)
         .await
-        .map_err(|e| {
-            tracing::error!("Get context error: {}", e);
-            ApiError::from(e)
-        })?;
+        .or_degraded(degraded_fallback)?;
 
     if let Some(ref session_id) = query.session_id {
         let ids: Vec<String> = observations.iter().map(|o| o.id.to_string()).collect();
@@ -72,19 +76,19 @@ async fn fetch_relevant_knowledge(
 
     let selected = select_relevant_knowledge(all_knowledge, project, limit);
 
-    for item in &selected {
-        if let Err(e) = state
-            .knowledge_service
-            .update_knowledge_usage(&item.id)
-            .await
-        {
-            tracing::warn!(
-                knowledge_id = %item.id,
-                "Failed to update knowledge usage for context inject: {}",
-                e
-            );
+    let ids: Vec<String> = selected.iter().map(|item| item.id.clone()).collect();
+    let knowledge_service = state.knowledge_service.clone();
+    tokio::spawn(async move {
+        for id in &ids {
+            if let Err(e) = knowledge_service.update_knowledge_usage(id).await {
+                tracing::warn!(
+                    knowledge_id = %id,
+                    "Failed to update knowledge usage for context inject: {}",
+                    e
+                );
+            }
         }
-    }
+    });
 
     selected
 }
@@ -140,12 +144,11 @@ fn format_context_sections(observations: &[Observation], knowledge: &[GlobalKnow
         observations
             .iter()
             .map(|obs| {
-                format!(
-                    "- [{}] {} :: {}",
-                    obs.observation_type.as_str(),
-                    obs.title,
-                    obs.subtitle.as_deref().unwrap_or_default()
-                )
+                let base = format!("- [{}] {}", obs.observation_type.as_str(), obs.title,);
+                match obs.subtitle.as_deref() {
+                    Some(s) if !s.is_empty() => format!("{base} :: {s}"),
+                    _ => base,
+                }
             })
             .collect::<Vec<_>>()
             .join("\n")
@@ -230,11 +233,8 @@ pub async fn get_projects(
         .search_service
         .get_all_projects()
         .await
+        .or_degraded(Vec::<String>::new())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get projects error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn get_stats(State(state): State<Arc<AppState>>) -> Result<Json<StorageStats>, ApiError> {
@@ -242,18 +242,8 @@ pub async fn get_stats(State(state): State<Arc<AppState>>) -> Result<Json<Storag
         .search_service
         .get_stats()
         .await
+        .or_degraded(StorageStats::default())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get stats error: {}", e);
-            ApiError::from(e)
-        })
-        .with_degraded_body(serde_json::json!({
-            "observation_count": 0,
-            "session_count": 0,
-            "summary_count": 0,
-            "prompt_count": 0,
-            "project_count": 0
-        }))
 }
 
 pub async fn sse_events(
@@ -294,11 +284,8 @@ pub async fn get_decisions(
             query.capped_limit(),
         )
         .await
+        .or_degraded(Vec::<SearchResult>::new())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get decisions error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn get_changes(
@@ -321,11 +308,8 @@ pub async fn get_changes(
             query.capped_limit(),
         )
         .await
+        .or_degraded(Vec::<SearchResult>::new())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("Get changes error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn get_how_it_works(
@@ -341,11 +325,8 @@ pub async fn get_how_it_works(
         .search_service
         .hybrid_search(&search_query, query.capped_limit())
         .await
+        .or_degraded(Vec::<SearchResult>::new())
         .map(Json)
-        .map_err(|e| {
-            tracing::error!("How it works search error: {}", e);
-            ApiError::from(e)
-        })
 }
 
 pub async fn context_timeline(
@@ -363,25 +344,17 @@ pub async fn context_preview(
         .search_service
         .get_context_for_project(&query.project, query.limit)
         .await
-        .map_err(|e| {
-            tracing::error!("Context preview error: {}", e);
-            ApiError::from(e)
-        })
-        .with_degraded_body(serde_json::json!({
-            "project": query.project,
-            "observation_count": 0,
-            "preview": ""
-        }))?;
+        .or_degraded(Vec::<Observation>::new())?;
+
     let preview = if query.format == "full" {
         observations
             .iter()
             .map(|o| {
-                format!(
-                    "[{}] {}: {}",
-                    o.observation_type.as_str(),
-                    o.title,
-                    o.subtitle.as_deref().unwrap_or("")
-                )
+                let base = format!("[{}] {}", o.observation_type.as_str(), o.title,);
+                match o.subtitle.as_deref() {
+                    Some(s) if !s.is_empty() => format!("{base}: {s}"),
+                    _ => base,
+                }
             })
             .collect::<Vec<_>>()
             .join("\n\n")
