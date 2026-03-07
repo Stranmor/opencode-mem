@@ -15,9 +15,8 @@ impl SearchService {
     pub async fn clear_embeddings(&self) -> Result<(), ServiceError> {
         let result = self
             .storage
-            .clear_embeddings()
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.clear_embeddings())
+            .await;
         self.with_cb(result)
     }
 
@@ -34,8 +33,9 @@ impl SearchService {
         loop {
             let all_obs = self
                 .storage
-                .get_observations_without_embeddings(batch_size)
-                .await?;
+                .guarded(|| self.storage.get_observations_without_embeddings(batch_size))
+                .await
+                .map_err(ServiceError::from)?;
             if all_obs.is_empty() {
                 break;
             }
@@ -70,7 +70,12 @@ impl SearchService {
 
                 match embed_result {
                     Ok(vec) => {
-                        if self.storage.store_embedding(&o.id, &vec).await.is_ok() {
+                        if self
+                            .storage
+                            .guarded(|| self.storage.store_embedding(&o.id, &vec))
+                            .await
+                            .is_ok()
+                        {
                             total += 1;
                         } else {
                             failed_ids.insert(o.id.clone());
@@ -105,7 +110,11 @@ impl SearchService {
         }
 
         let ids: Vec<String> = observations.iter().map(|o| o.id.to_string()).collect();
-        let embedding_pairs = self.storage.get_embeddings_for_ids(&ids).await?;
+        let embedding_pairs = self
+            .storage
+            .guarded(|| self.storage.get_embeddings_for_ids(&ids))
+            .await
+            .map_err(ServiceError::from)?;
 
         if embedding_pairs.is_empty() {
             return Ok(observations);

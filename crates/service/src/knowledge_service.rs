@@ -34,31 +34,15 @@ impl KnowledgeService {
         }
     }
 
-    pub(crate) fn with_cb<T>(&self, result: Result<T, ServiceError>) -> Result<T, ServiceError> {
-        match &result {
-            Ok(_) => {
-                self.storage.circuit_breaker().record_success();
-            }
-            Err(e) if e.is_db_unavailable() => self.storage.circuit_breaker().record_failure(),
-            Err(e) if self.storage.circuit_breaker().is_half_open() => {
-                if e.is_db_unavailable() || e.is_transient() {
-                    self.storage.circuit_breaker().record_failure();
-                } else {
-                    self.storage.circuit_breaker().record_success();
-                }
-            }
-            Err(_) => {}
-        }
-        result
+    pub(crate) fn with_cb<T>(&self, result: Result<T, StorageError>) -> Result<T, ServiceError> {
+        result.map_err(ServiceError::from)
     }
 
     pub async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .get_knowledge(id)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.get_knowledge(id))
+            .await;
         self.with_cb(result)
     }
 
@@ -75,22 +59,18 @@ impl KnowledgeService {
         id: &str,
         input: KnowledgeInput,
     ) -> Result<GlobalKnowledge, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .save_knowledge_with_id(id, input)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.save_knowledge_with_id(id, input.clone()))
+            .await;
         self.with_cb(result)
     }
 
     pub async fn delete_knowledge(&self, id: &str) -> Result<bool, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .delete_knowledge(id)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.delete_knowledge(id))
+            .await;
         self.with_cb(result)
     }
 
@@ -100,13 +80,23 @@ impl KnowledgeService {
         limit: usize,
     ) -> Result<Vec<KnowledgeSearchResult>, ServiceError> {
         let limit = cap_query_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .search_knowledge(query, limit)
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result)
+            .guarded(|| self.storage.search_knowledge(query, limit))
+            .await;
+        let results: Vec<KnowledgeSearchResult> = self.with_cb(result)?;
+
+        // Fire-and-forget: update usage_count for all returned results in one batch.
+        // Telemetry is now encapsulated in the service layer.
+        let knowledge_service = self.clone();
+        let result_ids: Vec<String> = results.iter().map(|r| r.knowledge.id.clone()).collect();
+        tokio::spawn(async move {
+            let _ = knowledge_service
+                .update_knowledge_usage_batch(&result_ids)
+                .await;
+        });
+
+        Ok(results)
     }
 
     pub async fn list_knowledge(
@@ -115,12 +105,10 @@ impl KnowledgeService {
         limit: usize,
     ) -> Result<Vec<GlobalKnowledge>, ServiceError> {
         let limit = cap_query_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .list_knowledge(knowledge_type, limit)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.list_knowledge(knowledge_type, limit))
+            .await;
         self.with_cb(result)
     }
 
@@ -129,32 +117,26 @@ impl KnowledgeService {
     }
 
     pub async fn update_knowledge_usage_batch(&self, ids: &[String]) -> Result<(), ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .update_knowledge_usage_batch(ids)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.update_knowledge_usage_batch(ids))
+            .await;
         self.with_cb(result)
     }
 
     pub async fn decay_confidence(&self) -> Result<u64, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .decay_confidence()
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.decay_confidence())
+            .await;
         self.with_cb(result)
     }
 
     pub async fn auto_archive(&self, min_age_days: i64) -> Result<u64, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .auto_archive(min_age_days)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.auto_archive(min_age_days))
+            .await;
         self.with_cb(result)
     }
 

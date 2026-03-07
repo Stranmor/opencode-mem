@@ -49,6 +49,12 @@ pub async fn observe_batch(
     State(state): State<Arc<AppState>>,
     Json(tool_calls): Json<Vec<ToolCall>>,
 ) -> Result<Json<ObserveBatchResponse>, ApiError> {
+    if tool_calls.len() > opencode_mem_core::MAX_BATCH_IDS {
+        return Err(ApiError::BadRequest(format!(
+            "Batch size exceeds maximum of {} items",
+            opencode_mem_core::MAX_BATCH_IDS
+        )));
+    }
     let total = tool_calls.len();
     let count = state
         .queue_service

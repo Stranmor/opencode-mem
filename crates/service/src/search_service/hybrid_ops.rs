@@ -26,9 +26,7 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
         let limit = Self::normalize_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
-        let result = self.run_hybrid_search(query, limit).await;
-        self.with_cb(result)
+        self.run_hybrid_search(query, limit).await
     }
 
     /// Search with additional filters (project, observation type, date range).
@@ -42,11 +40,8 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
         let limit = Self::normalize_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
-        let result = self
-            .run_search_with_filters(query, project, obs_type, from, to, limit)
-            .await;
-        self.with_cb(result)
+        self.run_search_with_filters(query, project, obs_type, from, to, limit)
+            .await
     }
 
     /// Smart search: selects the best strategy based on available parameters.
@@ -87,9 +82,7 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
         let limit = Self::normalize_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
-        let result = self.run_semantic_search_with_fallback(query, limit).await;
-        self.with_cb(result)
+        self.run_semantic_search_with_fallback(query, limit).await
     }
 
     // ── Private routing implementations ─────────────────────────────────
@@ -100,12 +93,17 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
         if let Some(query_vec) = self.try_embed(query).await? {
-            Ok(self
+            let result = self
                 .storage
-                .hybrid_search_v2(query, &query_vec, limit)
-                .await?)
+                .guarded(|| self.storage.hybrid_search_v2(query, &query_vec, limit))
+                .await;
+            self.with_cb(result)
         } else {
-            Ok(self.storage.hybrid_search(query, limit).await?)
+            let result = self
+                .storage
+                .guarded(|| self.storage.hybrid_search(query, limit))
+                .await;
+            self.with_cb(result)
         }
     }
 
@@ -120,18 +118,25 @@ impl SearchService {
     ) -> Result<Vec<SearchResult>, ServiceError> {
         if let Some(q) = query {
             if let Some(query_vec) = self.try_embed(q).await? {
-                return Ok(self
+                let result = self
                     .storage
-                    .hybrid_search_v2_with_filters(
-                        q, &query_vec, project, obs_type, from, to, limit,
-                    )
-                    .await?);
+                    .guarded(|| {
+                        self.storage.hybrid_search_v2_with_filters(
+                            q, &query_vec, project, obs_type, from, to, limit,
+                        )
+                    })
+                    .await;
+                return self.with_cb(result);
             }
         }
-        Ok(self
+        let result = self
             .storage
-            .search_with_filters(query, project, obs_type, from, to, limit)
-            .await?)
+            .guarded(|| {
+                self.storage
+                    .search_with_filters(query, project, obs_type, from, to, limit)
+            })
+            .await;
+        self.with_cb(result)
     }
 
     async fn run_semantic_search_with_fallback(
@@ -140,26 +145,39 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
         let Some(ref emb) = self.embeddings else {
-            return Ok(self.storage.hybrid_search(query, limit).await?);
+            let result = self
+                .storage
+                .guarded(|| self.storage.hybrid_search(query, limit))
+                .await;
+            return self.with_cb(result);
         };
 
         let embed_result = embed_query(emb, query).await;
 
         match embed_result {
-            Ok(query_vec) => match self.storage.semantic_search(&query_vec, limit).await {
-                Ok(results) if !results.is_empty() => Ok(results),
-                Ok(_) => Ok(self.storage.hybrid_search(query, limit).await?),
-                Err(e) => {
-                    tracing::warn!(
-                        "Semantic search storage error, falling back to hybrid: {}",
-                        e
-                    );
-                    Ok(self.storage.hybrid_search(query, limit).await?)
+            Ok(query_vec) => {
+                let sem_res = self
+                    .storage
+                    .guarded(|| self.storage.semantic_search(&query_vec, limit))
+                    .await;
+                match sem_res {
+                    Ok(results) if !results.is_empty() => Ok(results),
+                    _ => {
+                        let res = self
+                            .storage
+                            .guarded(|| self.storage.hybrid_search(query, limit))
+                            .await;
+                        self.with_cb(res)
+                    }
                 }
-            },
+            }
             Err(e) => {
                 tracing::warn!("Failed to embed query, falling back to hybrid: {}", e);
-                Ok(self.storage.hybrid_search(query, limit).await?)
+                let res = self
+                    .storage
+                    .guarded(|| self.storage.hybrid_search(query, limit))
+                    .await;
+                self.with_cb(res)
             }
         }
     }

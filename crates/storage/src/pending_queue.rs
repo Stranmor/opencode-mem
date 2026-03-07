@@ -132,6 +132,34 @@ pub struct PendingMessage {
     pub project: Option<String>,
 }
 
+impl PendingMessage {
+    /// Create a new pending message (used by service layer for buffering).
+    #[must_use]
+    pub fn new(
+        session_id: String,
+        call_id: Option<String>,
+        tool_name: Option<String>,
+        tool_input: Option<String>,
+        tool_response: Option<String>,
+        project: Option<String>,
+    ) -> Self {
+        Self {
+            id: 0,
+            session_id,
+            call_id,
+            status: PendingMessageStatus::Pending,
+            tool_name,
+            tool_input,
+            tool_response,
+            retry_count: 0,
+            created_at_epoch: chrono::Utc::now().timestamp(),
+            claimed_at_epoch: None,
+            completed_at_epoch: None,
+            project,
+        }
+    }
+}
+
 use std::sync::OnceLock;
 
 static MAX_RETRY: OnceLock<i32> = OnceLock::new();

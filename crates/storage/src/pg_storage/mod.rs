@@ -175,24 +175,44 @@ impl PgStorage {
         }
     }
 
-    #[allow(
-        dead_code,
-        reason = "CB guard for wrapping storage methods — available for incremental adoption"
-    )]
-    pub(crate) async fn guarded<F, T>(&self, op: F) -> Result<T, StorageError>
+    pub async fn guarded<F, Fut, T>(&self, op_f: F) -> Result<T, StorageError>
     where
-        F: std::future::Future<Output = Result<T, StorageError>>,
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<T, StorageError>>,
     {
         self.check_availability()?;
-        match op.await {
-            Ok(val) => {
-                self.record_success();
-                Ok(val)
+        let result = op_f().await;
+        match &result {
+            Ok(_) => {
+                let recovered = self.circuit_breaker.record_success();
+                if recovered {
+                    self.handle_recovery_static();
+                }
             }
-            Err(e) => {
-                self.record_failure_if_connection_error(&e);
-                Err(e)
+            Err(e) if e.is_unavailable() => {
+                self.circuit_breaker.record_failure();
             }
+            Err(e) if self.circuit_breaker.is_half_open() => {
+                if e.is_unavailable() {
+                    self.circuit_breaker.record_failure();
+                } else {
+                    let recovered = self.circuit_breaker.record_success();
+                    if recovered {
+                        self.handle_recovery_static();
+                    }
+                }
+            }
+            Err(_) => {}
+        }
+        result
+    }
+
+    pub fn handle_recovery_static(&self) {
+        if self.has_pending_migrations() {
+            let this = self.clone();
+            tokio::spawn(async move {
+                let _ = this.try_run_migrations().await;
+            });
         }
     }
 }

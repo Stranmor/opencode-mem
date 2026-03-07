@@ -110,14 +110,45 @@ impl QueueService {
     ///
     /// Excluded projects are silently skipped (not counted as errors).
     pub async fn queue_tool_calls(&self, tool_calls: &[ToolCall]) -> Result<usize, ServiceError> {
-        let mut count = 0usize;
-        for tool_call in tool_calls {
-            match self.queue_tool_call(tool_call).await? {
-                QueueToolCallResult::Queued(_) => count = count.saturating_add(1),
-                QueueToolCallResult::ExcludedProject => {}
-            }
+        if tool_calls.is_empty() {
+            return Ok(0);
         }
-        Ok(count)
+
+        let mut messages = Vec::with_capacity(tool_calls.len());
+
+        for tool_call in tool_calls {
+            if let Some(project) = tool_call.project.as_deref() {
+                if ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project)) {
+                    continue;
+                }
+            }
+
+            let mut sanitized_input = tool_call.input.clone();
+            opencode_mem_core::sanitize_json_values(&mut sanitized_input);
+            let tool_input_str = serde_json::to_string(&sanitized_input).ok();
+            let filtered_output = sanitize_input(&tool_call.output);
+
+            messages.push(PendingMessage::new(
+                tool_call.session_id.to_string(),
+                Some(tool_call.call_id.clone()),
+                Some(tool_call.tool.clone()),
+                tool_input_str,
+                Some(filtered_output),
+                tool_call.project.clone(),
+            ));
+        }
+
+        if messages.is_empty() {
+            return Ok(0);
+        }
+
+        self.fast_fail_if_db_unavailable()?;
+        let result = self
+            .storage
+            .queue_messages(&messages)
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result)
     }
 
     /// Check if a project is excluded by the global `ProjectFilter`.

@@ -37,14 +37,6 @@ pub async fn search_knowledge(
         .await
         .or_degraded(Vec::<KnowledgeSearchResult>::new())?;
 
-    // Fire-and-forget: update usage_count for all returned results in one batch.
-    let knowledge_service = state.knowledge_service.clone();
-    let result_ids: Vec<String> = results.iter().map(|r| r.knowledge.id.clone()).collect();
-    tokio::spawn(async move {
-        let _ = knowledge_service
-            .update_knowledge_usage_batch(&result_ids)
-            .await;
-    });
     Ok(Json(results))
 }
 
@@ -59,14 +51,7 @@ pub async fn get_knowledge_by_id(
         .or_degraded(None::<GlobalKnowledge>)?;
 
     match knowledge {
-        Some(k) => {
-            let knowledge_service = state.knowledge_service.clone();
-            let entry_id = id.clone();
-            tokio::spawn(async move {
-                let _ = knowledge_service.update_knowledge_usage(&entry_id).await;
-            });
-            Ok(Json(k))
-        }
+        Some(k) => Ok(Json(k)),
         None => Err(ApiError::NotFound("Not Found".into())),
     }
 }

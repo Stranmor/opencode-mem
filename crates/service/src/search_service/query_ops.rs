@@ -19,12 +19,10 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<SessionSummary>, ServiceError> {
         let limit = Self::normalize_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .search_sessions(query, limit)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.search_sessions(query, limit))
+            .await;
         self.with_cb(result)
     }
 
@@ -32,12 +30,10 @@ impl SearchService {
         &self,
         session_id: &str,
     ) -> Result<Option<SessionSummary>, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .get_session_summary(session_id)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.get_session_summary(session_id))
+            .await;
         self.with_cb(result)
     }
 
@@ -48,12 +44,10 @@ impl SearchService {
         project: Option<&str>,
     ) -> Result<PaginatedResult<SessionSummary>, ServiceError> {
         let limit = Self::normalize_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .get_summaries_paginated(offset, limit, project)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.get_summaries_paginated(offset, limit, project))
+            .await;
         self.with_cb(result)
     }
 
@@ -63,22 +57,18 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<UserPrompt>, ServiceError> {
         let limit = Self::normalize_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .search_prompts(query, limit)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.search_prompts(query, limit))
+            .await;
         self.with_cb(result)
     }
 
     pub async fn get_prompt_by_id(&self, id: &str) -> Result<Option<UserPrompt>, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .get_prompt_by_id(id)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.get_prompt_by_id(id))
+            .await;
         self.with_cb(result)
     }
 
@@ -89,12 +79,10 @@ impl SearchService {
         project: Option<&str>,
     ) -> Result<PaginatedResult<UserPrompt>, ServiceError> {
         let limit = Self::normalize_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .get_prompts_paginated(offset, limit, project)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.get_prompts_paginated(offset, limit, project))
+            .await;
         self.with_cb(result)
     }
 
@@ -104,12 +92,10 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<KnowledgeSearchResult>, ServiceError> {
         let limit = Self::normalize_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .search_knowledge(query, limit)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.search_knowledge(query, limit))
+            .await;
         self.with_cb(result)
     }
 
@@ -119,22 +105,18 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<GlobalKnowledge>, ServiceError> {
         let limit = Self::normalize_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .list_knowledge(knowledge_type, limit)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.list_knowledge(knowledge_type, limit))
+            .await;
         self.with_cb(result)
     }
 
     pub async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .get_knowledge(id)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.get_knowledge(id))
+            .await;
         self.with_cb(result)
     }
 }

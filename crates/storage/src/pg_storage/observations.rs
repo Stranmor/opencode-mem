@@ -278,38 +278,44 @@ impl ObservationStore for PgStorage {
     ) -> Result<(), StorageError> {
         let mut tx = self.pool.begin().await?;
 
-        // 1. Lock both rows to prevent concurrent modifications
-        let keeper_row = sqlx::query(&format!(
-            "SELECT {} FROM observations WHERE id = $1 FOR UPDATE",
+        // 1. Lock both rows in a deterministic order to prevent deadlocks.
+        // Using a single query with ORDER BY id FOR UPDATE ensures consistent lock acquisition sequence.
+        let rows = sqlx::query(&format!(
+            "SELECT {} FROM observations WHERE id IN ($1, $2) ORDER BY id FOR UPDATE",
             super::OBSERVATION_COLUMNS
         ))
         .bind(keeper_id)
-        .fetch_optional(&mut *tx)
-        .await?;
-
-        let duplicate_row = sqlx::query(&format!(
-            "SELECT {} FROM observations WHERE id = $1 FOR UPDATE",
-            super::OBSERVATION_COLUMNS
-        ))
         .bind(duplicate_id)
-        .fetch_optional(&mut *tx)
+        .fetch_all(&mut *tx)
         .await?;
 
-        let keeper = keeper_row
-            .map(|r| row_to_observation(&r))
-            .transpose()?
-            .ok_or_else(|| StorageError::NotFound {
-                entity: "observation",
-                id: keeper_id.to_owned(),
-            })?;
+        if rows.len() < 2 {
+            return Err(StorageError::NotFound {
+                entity: "observation(s)",
+                id: format!("{} and/or {}", keeper_id, duplicate_id),
+            });
+        }
 
-        let duplicate = duplicate_row
-            .map(|r| row_to_observation(&r))
-            .transpose()?
-            .ok_or_else(|| StorageError::NotFound {
-                entity: "observation",
-                id: duplicate_id.to_owned(),
-            })?;
+        let mut keeper = None;
+        let mut duplicate = None;
+
+        for row in rows {
+            let obs = row_to_observation(&row)?;
+            if obs.id.as_ref() == keeper_id {
+                keeper = Some(obs);
+            } else {
+                duplicate = Some(obs);
+            }
+        }
+
+        let keeper = keeper.ok_or_else(|| StorageError::NotFound {
+            entity: "observation",
+            id: keeper_id.to_owned(),
+        })?;
+        let duplicate = duplicate.ok_or_else(|| StorageError::NotFound {
+            entity: "observation",
+            id: duplicate_id.to_owned(),
+        })?;
 
         // 2. Compute merge (background dedup uses standard metric-based merging)
         let merged = opencode_mem_core::compute_merge(&keeper, &duplicate, false);

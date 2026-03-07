@@ -15,19 +15,7 @@ pub(super) async fn handle_knowledge_search(
         return degraded;
     }
     match knowledge_service.search_knowledge(query, limit).await {
-        Ok(results) => {
-            cb.record_success();
-            // Fire-and-forget: update usage_count for all returned results in one batch.
-            // This is the primary discovery path — without this, 93% of entries show usage_count=0.
-            let knowledge_service = knowledge_service.clone();
-            let result_ids: Vec<String> = results.iter().map(|r| r.knowledge.id.clone()).collect();
-            tokio::spawn(async move {
-                let _ = knowledge_service
-                    .update_knowledge_usage_batch(&result_ids)
-                    .await;
-            });
-            mcp_ok(&results)
-        }
+        Ok(results) => mcp_ok(&results),
         Err(e) => degrade_read_err::<Vec<opencode_mem_core::KnowledgeSearchResult>>(e, cb),
     }
 }
@@ -45,15 +33,8 @@ pub(super) async fn handle_knowledge_get(
         return degraded;
     }
     match knowledge_service.get_knowledge(id_str).await {
-        Ok(Some(knowledge)) => {
-            cb.record_success();
-            let _ = knowledge_service.update_knowledge_usage(id_str).await;
-            mcp_ok(&knowledge)
-        }
-        Ok(None) => {
-            cb.record_success();
-            mcp_ok(&serde_json::Value::Null)
-        }
+        Ok(Some(knowledge)) => mcp_ok(&knowledge),
+        Ok(None) => mcp_ok(&serde_json::Value::Null),
         Err(e) if e.is_db_unavailable() || e.is_transient() => {
             cb.record_failure();
             tracing::warn!(error = %e, "MCP read: database unavailable, returning empty array for knowledge");

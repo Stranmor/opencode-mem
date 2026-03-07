@@ -58,39 +58,12 @@ impl SearchService {
         }
     }
 
-    pub(crate) fn with_cb<T>(&self, result: Result<T, ServiceError>) -> Result<T, ServiceError> {
-        match &result {
-            Ok(_) => {
-                let recovered = self.storage.circuit_breaker().record_success();
-                if recovered {
-                    self.handle_recovery();
-                }
-            }
-            Err(e) if e.is_db_unavailable() => self.storage.circuit_breaker().record_failure(),
-            Err(e) if self.storage.circuit_breaker().is_half_open() => {
-                // Trip circuit breaker backwards only for legitimate remote unavailability errors
-                if e.is_db_unavailable() || e.is_transient() {
-                    self.storage.circuit_breaker().record_failure();
-                } else {
-                    // Benign application error (404, invalid input) — record success to close the circuit
-                    let recovered = self.storage.circuit_breaker().record_success();
-                    if recovered {
-                        self.handle_recovery();
-                    }
-                }
-            }
-            Err(_) => {}
-        }
-        result
+    pub(crate) fn with_cb<T>(&self, result: Result<T, StorageError>) -> Result<T, ServiceError> {
+        result.map_err(ServiceError::from)
     }
 
     pub fn handle_recovery(&self) {
-        if self.storage.has_pending_migrations() {
-            let storage = self.storage.clone();
-            tokio::spawn(async move {
-                let _ = storage.try_run_migrations().await;
-            });
-        }
+        self.storage.handle_recovery_static();
 
         if let Some(ref im) = self.infinite_mem {
             if im.has_pending_migrations() {
@@ -109,12 +82,10 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
         let limit = Self::normalize_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .get_timeline(from, to, limit)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.get_timeline(from, to, limit))
+            .await;
         self.with_cb(result)
     }
 
@@ -122,8 +93,7 @@ impl SearchService {
         &self,
         id: &str,
     ) -> Result<Option<Observation>, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
-        let result = self.storage.get_by_id(id).await.map_err(ServiceError::from);
+        let result = self.storage.guarded(|| self.storage.get_by_id(id)).await;
         self.with_cb(result)
     }
 
@@ -132,12 +102,10 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<Observation>, ServiceError> {
         let limit = Self::normalize_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .get_recent(limit)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.get_recent(limit))
+            .await;
         self.with_cb(result)
     }
 
@@ -145,12 +113,10 @@ impl SearchService {
         &self,
         ids: &[String],
     ) -> Result<Vec<Observation>, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .get_observations_by_ids(ids)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.get_observations_by_ids(ids))
+            .await;
         self.with_cb(result)
     }
 
@@ -160,12 +126,10 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<Observation>, ServiceError> {
         let limit = Self::normalize_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .get_context_for_project(project, limit)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.get_context_for_project(project, limit))
+            .await;
         let observations = self.with_cb(result)?;
         self.deduplicate_by_embedding(observations).await
     }
@@ -176,28 +140,23 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
         let limit = Self::normalize_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .search_by_file(file_path, limit)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.search_by_file(file_path, limit))
+            .await;
         self.with_cb(result)
     }
 
     pub async fn get_stats(&self) -> Result<StorageStats, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
-        let result = self.storage.get_stats().await.map_err(ServiceError::from);
+        let result = self.storage.guarded(|| self.storage.get_stats()).await;
         self.with_cb(result)
     }
 
     pub async fn get_all_projects(&self) -> Result<Vec<String>, ServiceError> {
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .get_all_projects()
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| self.storage.get_all_projects())
+            .await;
         self.with_cb(result)
     }
 
@@ -208,12 +167,13 @@ impl SearchService {
         project: Option<&str>,
     ) -> Result<PaginatedResult<Observation>, ServiceError> {
         let limit = Self::normalize_limit(limit);
-        self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .get_observations_paginated(offset, limit, project)
-            .await
-            .map_err(ServiceError::from);
+            .guarded(|| {
+                self.storage
+                    .get_observations_paginated(offset, limit, project)
+            })
+            .await;
         self.with_cb(result)
     }
 }

@@ -65,4 +65,9 @@ pub trait PendingQueueStore: Send + Sync {
 
     /// Clear all pending messages.
     async fn clear_all_pending_messages(&self) -> Result<usize, StorageError>;
+    /// Queue multiple messages for processing.
+    async fn queue_messages(
+        &self,
+        messages: &[crate::PendingMessage],
+    ) -> Result<usize, StorageError>;
 }

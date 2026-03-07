@@ -234,4 +234,49 @@ impl PendingQueueStore for PgStorage {
             .await?;
         Ok(usize::try_from(result.rows_affected()).unwrap_or(usize::MAX))
     }
+
+    async fn queue_messages(&self, messages: &[PendingMessage]) -> Result<usize, StorageError> {
+        if messages.is_empty() {
+            return Ok(0);
+        }
+
+        let mut session_ids = Vec::with_capacity(messages.len());
+        let mut call_ids = Vec::with_capacity(messages.len());
+        let mut tool_names = Vec::with_capacity(messages.len());
+        let mut tool_inputs = Vec::with_capacity(messages.len());
+        let mut tool_responses = Vec::with_capacity(messages.len());
+        let mut projects = Vec::with_capacity(messages.len());
+        let mut created_at_epochs = Vec::with_capacity(messages.len());
+
+        let now = Utc::now().timestamp();
+
+        for m in messages {
+            session_ids.push(m.session_id.clone());
+            call_ids.push(m.call_id.clone());
+            tool_names.push(m.tool_name.clone());
+            tool_inputs.push(m.tool_input.clone());
+            tool_responses.push(m.tool_response.clone());
+            projects.push(m.project.clone());
+            created_at_epochs.push(now);
+        }
+
+        let result = sqlx::query(
+            "INSERT INTO pending_messages \
+             (session_id, call_id, status, tool_name, tool_input, tool_response, retry_count, created_at_epoch, project) \
+             SELECT * FROM UNNEST($1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[], $7::int4[], $8::int8[], $9::text[])",
+        )
+        .bind(&session_ids)
+        .bind(&call_ids)
+        .bind(&vec!["pending"; messages.len()])
+        .bind(&tool_names)
+        .bind(&tool_inputs)
+        .bind(&tool_responses)
+        .bind(&vec![0i32; messages.len()])
+        .bind(&created_at_epochs)
+        .bind(&projects)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(usize::try_from(result.rows_affected()).unwrap_or(0))
+    }
 }
