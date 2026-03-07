@@ -74,6 +74,8 @@ pub(crate) async fn run(port: u16, host: String, config: Arc<AppConfig>) -> Resu
         }
     };
 
+    let pending_writes = Arc::new(opencode_mem_service::PendingWriteQueue::new());
+
     let observation_service = Arc::new(ObservationService::new(
         storage.clone(),
         llm.clone(),
@@ -89,7 +91,7 @@ pub(crate) async fn run(port: u16, host: String, config: Arc<AppConfig>) -> Resu
         embeddings.clone(),
         infinite_mem.clone(),
     ));
-    let queue_service = Arc::new(QueueService::new(storage.clone()));
+    let queue_service = Arc::new(QueueService::new(storage.clone(), pending_writes.clone()));
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::broadcast::channel(1);
 
     let state = Arc::new(AppState {
@@ -103,6 +105,7 @@ pub(crate) async fn run(port: u16, host: String, config: Arc<AppConfig>) -> Resu
         knowledge_service,
         search_service,
         queue_service,
+        pending_writes,
         shutdown_tx,
         started_at: Instant::now(),
         config: config.clone(),

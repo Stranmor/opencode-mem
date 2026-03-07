@@ -88,10 +88,10 @@ pub async fn run_mcp_server(
     session_service: Arc<SessionService>,
     knowledge_service: Arc<KnowledgeService>,
     search_service: Arc<SearchService>,
+    pending_writes: Arc<PendingWriteQueue>,
     handle: Handle,
 ) {
     tracing::info!("MCP server starting on stdio");
-    let pending_writes = Arc::new(PendingWriteQueue::new());
     let stdin = tokio::io::stdin();
     let mut stdout = tokio::io::stdout();
     let mut reader = BufReader::new(stdin).lines();

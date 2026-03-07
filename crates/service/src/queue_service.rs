@@ -4,7 +4,7 @@ use opencode_mem_core::{ProjectFilter, ToolCall, cap_query_limit, sanitize_input
 use opencode_mem_storage::traits::PendingQueueStore;
 use opencode_mem_storage::{PendingMessage, QueueStats, StorageBackend};
 
-use crate::ServiceError;
+use crate::{PendingWriteQueue, ServiceError};
 
 /// Result of attempting to queue a tool call.
 pub enum QueueToolCallResult {
@@ -16,12 +16,21 @@ pub enum QueueToolCallResult {
 
 pub struct QueueService {
     storage: Arc<StorageBackend>,
+    pending_writes: Arc<PendingWriteQueue>,
 }
 
 impl QueueService {
     #[must_use]
-    pub fn new(storage: Arc<StorageBackend>) -> Self {
-        Self { storage }
+    pub fn new(storage: Arc<StorageBackend>, pending_writes: Arc<PendingWriteQueue>) -> Self {
+        Self {
+            storage,
+            pending_writes,
+        }
+    }
+
+    /// Push a write operation to the in-memory buffer for later flush.
+    pub fn push_pending_write(&self, write: crate::PendingWrite) {
+        self.pending_writes.push(write);
     }
 
     /// Queue a single tool call with sanitization and project exclusion.

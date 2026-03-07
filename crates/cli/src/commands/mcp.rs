@@ -86,12 +86,15 @@ pub(crate) async fn run(config: Arc<AppConfig>) -> Result<()> {
 
     let handle = tokio::runtime::Handle::current();
 
+    let pending_writes = Arc::new(opencode_mem_service::PendingWriteQueue::new());
+
     run_mcp_server(
         infinite_mem,
         observation_service,
         session_service,
         knowledge_service,
         search_service,
+        pending_writes,
         handle,
     )
     .await;

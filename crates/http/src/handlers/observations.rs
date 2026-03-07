@@ -77,7 +77,7 @@ pub async fn save_memory(
 
     let title_str = match req.title.as_deref() {
         Some(t) if !t.trim().is_empty() => opencode_mem_core::sanitize_input(t.trim()),
-        _ => text.chars().take(50).collect(),
+        _ => text.chars().take(50).collect::<String>(),
     };
 
     let observation_type = match req
@@ -120,6 +120,18 @@ pub async fn save_memory(
         )
         .await
         .map_err(|e| {
+            if e.is_db_unavailable() || e.is_transient() {
+                // Buffer the write in the pending queue for later flush
+                state.queue_service.push_pending_write(
+                    opencode_mem_service::PendingWrite::SaveMemory {
+                        text: text.to_owned(),
+                        title: Some(title_str.clone()),
+                        project: req.project.clone(),
+                        observation_type,
+                        noise_level,
+                    },
+                );
+            }
             tracing::error!("Save memory error: {}", e);
             ApiError::from(e)
         })
