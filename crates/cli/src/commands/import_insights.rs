@@ -171,10 +171,16 @@ async fn import_file(storage: &StorageBackend, path: &Path) -> Result<(usize, us
 
         let input = KnowledgeInput::new(
             category_to_knowledge_type(&insight.category),
-            insight.title.clone(),
-            description,
-            insight.recommendation,
-            extract_triggers(&insight.title),
+            opencode_mem_core::sanitize_input(&insight.title),
+            opencode_mem_core::sanitize_input(&description),
+            insight
+                .recommendation
+                .as_deref()
+                .map(opencode_mem_core::sanitize_input),
+            extract_triggers(&insight.title)
+                .into_iter()
+                .map(|t| opencode_mem_core::sanitize_input(&t))
+                .collect(),
             Some("agi-audit".to_owned()),
             None,
         );

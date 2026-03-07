@@ -123,6 +123,7 @@ impl SearchService {
 
         let embedding_owned: Vec<(String, Vec<f32>)> = embedding_pairs;
         let dedup_threshold = self.dedup_threshold;
+        let obs_for_blocking = observations.clone();
 
         let kept_indices = tokio::task::spawn_blocking(move || {
             let emb_map: HashMap<&str, &[f32]> = embedding_owned
@@ -184,8 +185,15 @@ impl SearchService {
             for members in groups.values() {
                 let best = members
                     .iter()
-                    .filter_map(|&idx| obs_data.get(idx).map(|d| (idx, d)))
-                    .min_by(|(_, a), (_, b)| a.1.cmp(&b.1).then_with(|| b.2.cmp(&a.2)));
+                    .filter_map(|&idx| obs_for_blocking.get(idx).map(|o| (idx, o)))
+                    .min_by(|(_, a), (_, b)| {
+                        let keeper = Observation::prioritize_duplicate(*a, *b);
+                        if std::ptr::eq(keeper, *a) {
+                            std::cmp::Ordering::Less
+                        } else {
+                            std::cmp::Ordering::Greater
+                        }
+                    });
                 if let Some((idx, _)) = best {
                     kept.push(idx);
                 }

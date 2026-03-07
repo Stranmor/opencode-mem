@@ -84,6 +84,8 @@ pub struct AppState {
     pub queue_service: Arc<QueueService>,
     /// In-memory buffer for write operations during degraded mode
     pub pending_writes: Arc<opencode_mem_service::PendingWriteQueue>,
+    /// Set of background tasks for graceful shutdown tracking
+    pub background_tasks: Arc<tokio::sync::Mutex<tokio::task::JoinSet<()>>>,
     pub shutdown_tx: tokio::sync::broadcast::Sender<bool>,
     pub started_at: Instant,
     pub config: Arc<AppConfig>,

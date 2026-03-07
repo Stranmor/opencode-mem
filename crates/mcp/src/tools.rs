@@ -21,6 +21,7 @@ pub enum McpTool {
     InfiniteTimeRange,
     InfiniteDrillHour,
     InfiniteDrillMinute,
+    InfiniteSearchEntities,
 }
 
 impl McpTool {
@@ -47,6 +48,7 @@ impl McpTool {
             "infinite_time_range",
             "infinite_drill_hour",
             "infinite_drill_minute",
+            "infinite_search_entities",
         ]
     }
 
@@ -73,6 +75,7 @@ impl McpTool {
             "infinite_time_range" => Some(Self::InfiniteTimeRange),
             "infinite_drill_hour" => Some(Self::InfiniteDrillHour),
             "infinite_drill_minute" => Some(Self::InfiniteDrillMinute),
+            "infinite_search_entities" => Some(Self::InfiniteSearchEntities),
             _ => None,
         }
     }

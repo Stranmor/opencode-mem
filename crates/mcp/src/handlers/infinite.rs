@@ -6,13 +6,16 @@ use super::{mcp_err, mcp_ok};
 use crate::McpResponse;
 
 fn degrade_infinite_read(
-    err: impl std::fmt::Display,
+    err: opencode_mem_storage::StorageError,
     mem: &InfiniteMemoryService,
     id: serde_json::Value,
 ) -> McpResponse {
     let cb = mem.circuit_breaker();
 
-    if cb.is_open() {
+    if err.is_unavailable() || err.is_transient() || cb.is_open() {
+        if !cb.is_open() {
+            cb.record_failure();
+        }
         tracing::warn!(error = %err, "Infinite memory: database unavailable, returning empty results");
         McpResponse {
             jsonrpc: "2.0".to_owned(),
@@ -237,6 +240,53 @@ pub(super) async fn handle_infinite_drill_minute(
                 .unwrap_or(100)
                 .clamp(1, MAX_QUERY_LIMIT_I64);
             match mem.get_5min_summaries_by_hour_id(hour_id, limit).await {
+                Ok(summaries) => McpResponse {
+                    jsonrpc: "2.0".to_owned(),
+                    id,
+                    result: Some(mcp_ok(&summaries)),
+                    error: None,
+                },
+                Err(e) => degrade_infinite_read(e, mem, id),
+            }
+        }
+        None => McpResponse {
+            jsonrpc: "2.0".to_owned(),
+            id,
+            result: Some(mcp_err(INFINITE_MEMORY_NOT_CONFIGURED)),
+            error: None,
+        },
+    }
+}
+
+pub(super) async fn handle_infinite_search_entities(
+    infinite_mem: Option<&InfiniteMemoryService>,
+    _handle: &Handle,
+    args: &serde_json::Value,
+    id: serde_json::Value,
+) -> McpResponse {
+    match infinite_mem {
+        Some(mem) => {
+            if let Some(degraded) = cb_fast_fail_infinite(mem, &id) {
+                return degraded;
+            }
+            let entity_type = args.get("type").and_then(|t| t.as_str()).unwrap_or("");
+            let value = args.get("value").and_then(|v| v.as_str()).unwrap_or("");
+            let limit = args
+                .get("limit")
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(100)
+                .clamp(1, MAX_QUERY_LIMIT_I64);
+
+            if entity_type.is_empty() || value.is_empty() {
+                return McpResponse {
+                    jsonrpc: "2.0".to_owned(),
+                    id,
+                    result: Some(mcp_err("Both 'type' and 'value' are required")),
+                    error: None,
+                };
+            }
+
+            match mem.search_by_entity(entity_type, value, limit).await {
                 Ok(summaries) => McpResponse {
                     jsonrpc: "2.0".to_owned(),
                     id,

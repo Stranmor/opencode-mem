@@ -178,7 +178,7 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
                     .expect("permit must exist for claimed message");
                 spawned += 1;
                 let state_clone = Arc::clone(&state);
-                tokio::spawn(async move {
+                state.background_tasks.lock().await.spawn(async move {
                     let _permit = permit;
                     let result = process_pending_message(&state_clone, &msg).await;
                     match result {

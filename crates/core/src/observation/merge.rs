@@ -73,35 +73,20 @@ pub fn compute_merge(
             newer.observation_type,
             newer.noise_reason.clone(),
         )
-    } else if existing.noise_level < newer.noise_level {
-        (
-            existing.title.clone(),
-            existing.observation_type,
-            existing.noise_reason.clone(),
-        )
-    } else if newer.noise_level < existing.noise_level {
-        (
-            newer.title.clone(),
-            newer.observation_type,
-            newer.noise_reason.clone(),
-        )
-    } else if newer.created_at >= existing.created_at {
-        (
-            newer.title.clone(),
-            newer.observation_type,
-            newer
-                .noise_reason
-                .clone()
-                .or_else(|| existing.noise_reason.clone()),
-        )
     } else {
-        (
-            existing.title.clone(),
-            existing.observation_type,
+        let keeper = Observation::prioritize_duplicate(existing, newer);
+        let other = if std::ptr::eq(keeper, existing) {
+            newer
+        } else {
             existing
+        };
+        (
+            keeper.title.clone(),
+            keeper.observation_type,
+            keeper
                 .noise_reason
                 .clone()
-                .or_else(|| newer.noise_reason.clone()),
+                .or_else(|| other.noise_reason.clone()),
         )
     };
 

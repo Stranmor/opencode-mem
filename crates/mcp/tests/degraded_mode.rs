@@ -22,8 +22,9 @@ use opencode_mem_mcp::McpTool;
 use opencode_mem_service::{
     KnowledgeService, ObservationService, PendingWriteQueue, SearchService, SessionService,
 };
-use opencode_mem_storage::StorageBackend;
+use opencode_mem_storage::{PgStorage, StorageBackend};
 use serde_json::json;
+use sqlx::postgres::PgPoolOptions;
 use std::sync::Arc;
 
 fn setup_degraded_services() -> (
@@ -61,17 +62,34 @@ fn setup_degraded_services() -> (
         max_events: 200,
     };
 
+    let infinite_mem = if let Ok(p) = PgPoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(std::time::Duration::from_millis(1))
+        .connect_lazy("postgres://bogus:bogus@127.0.0.1:1/bogus")
+    {
+        Some(Arc::new(
+            opencode_mem_service::InfiniteMemoryService::new_degraded(p, llm.clone()),
+        ))
+    } else {
+        None
+    };
+
     let observation_service = Arc::new(ObservationService::new(
         backend.clone(),
         llm.clone(),
-        None,
+        infinite_mem.clone(),
         event_tx,
         None,
         &config,
     ));
     let session_service = Arc::new(SessionService::new(backend.clone(), llm));
     let knowledge_service = Arc::new(KnowledgeService::new(backend.clone()));
-    let search_service = Arc::new(SearchService::new(backend, None, None));
+    let search_service = Arc::new(SearchService::new(
+        backend,
+        None,
+        infinite_mem.clone(),
+        0.85,
+    ));
     let pending_writes = Arc::new(PendingWriteQueue::new());
 
     (
@@ -111,13 +129,15 @@ fn tool_args(tool_name: &str) -> serde_json::Value {
         }),
         "infinite_drill_hour" => json!({"id": 1}),
         "infinite_drill_minute" => json!({"id": 1}),
+        "infinite_search_entities" => json!({"type": "file", "value": "test.rs"}),
         _ => json!({}),
     }
 }
 
-const INFINITE_TOOLS: [&str; 4] = [
+const INFINITE_TOOLS: [&str; 5] = [
     "infinite_expand",
     "infinite_time_range",
     "infinite_drill_hour",
     "infinite_drill_minute",
+    "infinite_search_entities",
 ];

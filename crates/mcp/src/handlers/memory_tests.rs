@@ -13,7 +13,7 @@ async fn setup_storage() -> StorageBackend {
 }
 
 fn setup_search_service(backend: StorageBackend) -> SearchService {
-    SearchService::new(Arc::new(backend), None, None)
+    SearchService::new(Arc::new(backend), None, None, 0.85)
 }
 
 fn setup_observation_service(backend: StorageBackend) -> opencode_mem_service::ObservationService {

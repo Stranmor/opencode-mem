@@ -107,6 +107,7 @@ pub(crate) async fn run(port: u16, host: String, config: Arc<AppConfig>) -> Resu
         search_service,
         queue_service,
         pending_writes,
+        background_tasks: Arc::new(tokio::sync::Mutex::new(tokio::task::JoinSet::new())),
         shutdown_tx,
         started_at: Instant::now(),
         config: config.clone(),
@@ -118,7 +119,7 @@ pub(crate) async fn run(port: u16, host: String, config: Arc<AppConfig>) -> Resu
 
     start_background_processor(state.clone());
 
-    let router = create_router(state);
+    let router = create_router(state.clone());
     let addr_str = format!("{host}:{port}");
     let addr: std::net::SocketAddr = addr_str.parse()?;
 
@@ -172,6 +173,12 @@ Or kill the process manually before starting a new server.",
     .await?;
 
     tracing::info!("Waiting for background tasks to finish...");
+    let mut tasks = state.background_tasks.lock().await;
+    while let Some(res) = tasks.join_next().await {
+        if let Err(e) = res {
+            tracing::error!("Background task failed during shutdown: {}", e);
+        }
+    }
     tracing::info!("Background tasks finished.");
 
     if is_restart.load(std::sync::atomic::Ordering::Relaxed) {

@@ -53,6 +53,25 @@ impl Observation {
     ) -> ObservationBuilder {
         ObservationBuilder::new(id.into(), session_id.into(), observation_type, title)
     }
+
+    /// Select the primary observation between two potential duplicates.
+    ///
+    /// Survival logic (SPOT):
+    /// 1. Lowest noise level wins (highest priority).
+    /// 2. If noise levels are equal, the newer one (by created_at) wins.
+    #[must_use]
+    pub fn prioritize_duplicate<'a>(a: &'a Self, b: &'a Self) -> &'a Self {
+        // NoiseLevel Ord: Critical(0) < High(1) < Medium(2) < Low(3) < Negligible(4)
+        if a.noise_level < b.noise_level {
+            a
+        } else if b.noise_level < a.noise_level {
+            b
+        } else if b.created_at >= a.created_at {
+            b
+        } else {
+            a
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

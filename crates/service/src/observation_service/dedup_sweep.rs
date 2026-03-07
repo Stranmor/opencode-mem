@@ -9,10 +9,26 @@ use opencode_mem_storage::traits::{EmbeddingStore, ObservationStore};
 use super::ObservationService;
 use crate::ServiceError;
 
+#[derive(Clone)]
 struct ObservationSummary {
     id: ObservationId,
     noise_level: NoiseLevel,
     project: Option<ProjectId>,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl ObservationSummary {
+    fn prioritize<'a>(&'a self, other: &'a Self) -> &'a Self {
+        if self.noise_level < other.noise_level {
+            self
+        } else if other.noise_level < self.noise_level {
+            other
+        } else if other.created_at >= self.created_at {
+            other
+        } else {
+            self
+        }
+    }
 }
 
 impl ObservationService {
@@ -38,16 +54,11 @@ impl ObservationService {
         }
 
         // Prepare combined data array for the blocking task
-        let mut combined: Vec<(String, Vec<f32>, NoiseLevel, Option<String>)> =
+        let mut combined: Vec<(String, Vec<f32>, ObservationSummary)> =
             Vec::with_capacity(embeddings.len());
         for (id, emb) in embeddings {
             if let Some(summary) = summaries.iter().find(|s| s.id.as_ref() == id) {
-                combined.push((
-                    id,
-                    emb,
-                    summary.noise_level,
-                    summary.project.as_ref().map(|p| p.to_string()),
-                ));
+                combined.push((id, emb, summary.clone()));
             }
         }
 
@@ -60,19 +71,19 @@ impl ObservationService {
             let mut pairs = Vec::new();
             let mut deleted_ids = HashSet::new();
 
-            for (i, (id_a, emb_a, noise_a, proj_a)) in combined.iter().enumerate() {
+            for (i, (id_a, emb_a, summary_a)) in combined.iter().enumerate() {
                 if deleted_ids.contains(id_a) {
                     continue;
                 }
 
                 let start = i.saturating_add(1);
-                for (id_b, emb_b, noise_b, proj_b) in combined.iter().skip(start) {
+                for (id_b, emb_b, summary_b) in combined.iter().skip(start) {
                     if deleted_ids.contains(id_b) {
                         continue;
                     }
 
                     // Critical: Prevent context starvation by only merging within the same project
-                    if proj_a != proj_b {
+                    if summary_a.project != summary_b.project {
                         continue;
                     }
 
@@ -81,13 +92,13 @@ impl ObservationService {
                         continue;
                     }
 
-                    // Lower NoiseLevel ord value = more important (Critical < High < Medium < Low < Negligible).
-                    // Keep the more important observation (lower ord = keeper).
-                    let (keeper_id, duplicate_id) = if noise_a <= noise_b {
-                        (id_a, id_b)
+                    // Survival logic (SPOT): use prioritized summary
+                    let keeper_id = if summary_a.prioritize(summary_b).id == summary_a.id {
+                        id_a
                     } else {
-                        (id_b, id_a)
+                        id_b
                     };
+                    let duplicate_id = if keeper_id == id_a { id_b } else { id_a };
 
                     pairs.push((keeper_id.to_string(), duplicate_id.to_string(), sim));
                     deleted_ids.insert(duplicate_id.to_string());
@@ -150,6 +161,7 @@ impl ObservationService {
                 id: obs.id,
                 noise_level: obs.noise_level,
                 project: obs.project,
+                created_at: obs.created_at,
             })
             .collect())
     }

@@ -74,6 +74,20 @@ impl InfiniteMemoryService {
     }
 
     #[must_use]
+    pub fn new_degraded(pool: sqlx::PgPool, llm: Arc<LlmClient>) -> Self {
+        let cb = CircuitBreaker::new();
+        cb.record_failure();
+        cb.record_failure();
+        cb.record_failure();
+        Self {
+            pool,
+            llm,
+            circuit_breaker: Arc::new(cb),
+            migrations_pending: Arc::new(AtomicBool::new(true)),
+        }
+    }
+
+    #[must_use]
     pub fn circuit_breaker(&self) -> &CircuitBreaker {
         &self.circuit_breaker
     }

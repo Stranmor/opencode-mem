@@ -2353,6 +2353,7 @@ dependencies = [
  "opencode-mem-storage",
  "serde",
  "serde_json",
+ "sqlx",
  "tokio",
  "tracing",
 ]

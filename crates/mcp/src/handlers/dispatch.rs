@@ -192,5 +192,8 @@ async fn dispatch_tool(
         McpTool::InfiniteDrillMinute => DispatchResult::FullResponse(
             infinite::handle_infinite_drill_minute(infinite_mem, handle, args, id).await,
         ),
+        McpTool::InfiniteSearchEntities => DispatchResult::FullResponse(
+            infinite::handle_infinite_search_entities(infinite_mem, handle, args, id).await,
+        ),
     }
 }

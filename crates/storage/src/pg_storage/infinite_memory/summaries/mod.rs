@@ -19,7 +19,19 @@ pub(crate) type SummaryRow = (
 );
 
 pub(crate) fn row_to_summary(row: SummaryRow) -> InfiniteSummary {
-    let (id, ts_start, ts_end, session_id, project, content, event_count, entities) = row;
+    let (id, ts_start, ts_end, session_id, project, content, event_count, entities_json) = row;
+    let entities = entities_json.and_then(|e| {
+        serde_json::from_value(e.clone())
+            .map_err(|err| {
+                tracing::warn!(
+                    "Failed to parse SummaryEntities for summary {}: {}",
+                    id,
+                    err
+                );
+                err
+            })
+            .ok()
+    });
     InfiniteSummary {
         id,
         ts_start,
@@ -28,6 +40,6 @@ pub(crate) fn row_to_summary(row: SummaryRow) -> InfiniteSummary {
         project,
         content,
         event_count,
-        entities: entities.and_then(|e| serde_json::from_value(e).ok()),
+        entities,
     }
 }

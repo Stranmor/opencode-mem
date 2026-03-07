@@ -23,5 +23,7 @@ tokio = { workspace = true }
 chrono = { workspace = true }
 tracing = { workspace = true }
 
-[dev-dependencies]
-opencode-mem-llm = { workspace = true }
+ [dev-dependencies]
+ opencode-mem-llm = { workspace = true }
+ sqlx = { workspace = true }
+
