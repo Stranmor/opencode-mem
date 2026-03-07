@@ -1,4 +1,3 @@
-use super::is_localhost;
 use crate::api_error::ApiError;
 use axum::{
     Json,
@@ -18,7 +17,7 @@ use crate::api_types::{
 
 pub async fn get_settings(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<SettingsResponse>, ApiError> {
     if !super::check_admin_access(&addr, &headers, &state.config) {
@@ -52,7 +51,7 @@ fn redact_sensitive_env(env: &mut std::collections::HashMap<String, String>) {
 
 pub async fn update_settings(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(req): Json<UpdateSettingsRequest>,
 ) -> Result<Json<SettingsResponse>, ApiError> {
@@ -107,7 +106,7 @@ pub async fn get_mcp_status(
 
 pub async fn toggle_mcp(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(req): Json<ToggleMcpRequest>,
 ) -> Result<Json<McpStatusResponse>, ApiError> {
@@ -171,7 +170,7 @@ fn extract_section(content: &str, section: &str) -> String {
 
 pub async fn admin_restart(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<AdminResponse>, ApiError> {
     if !super::check_admin_access(&addr, &headers, &state.config) {
@@ -191,7 +190,7 @@ pub async fn admin_restart(
 
 pub async fn rebuild_embeddings(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<AdminResponse>, ApiError> {
     if !super::check_admin_access(&addr, &headers, &state.config) {
@@ -211,7 +210,7 @@ pub async fn rebuild_embeddings(
 
 pub async fn admin_shutdown(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<AdminResponse>, ApiError> {
     if !super::check_admin_access(&addr, &headers, &state.config) {

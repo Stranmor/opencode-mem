@@ -17,17 +17,15 @@ pub fn strip_markdown_json(content: &str) -> &str {
     let Some(open_pos) = trimmed.find("```") else {
         return trimmed;
     };
-    // Find the LAST occurrence of ```
-    let Some(close_pos) = trimmed.rfind("```") else {
-        return trimmed;
-    };
 
     let content_start = open_pos.saturating_add(3);
 
-    // open and close must not overlap
-    if close_pos < content_start {
+    // Find the NEXT occurrence of ``` after the opening block.
+    // This isolates the actual JSON block even if subsequent prose contains code blocks.
+    let Some(close_pos) = trimmed[content_start..].find("```") else {
         return trimmed;
-    }
+    };
+    let close_pos = close_pos.saturating_add(content_start);
 
     // Content between opening ``` (skip past the ```) and closing ```
     let after_open = &trimmed[content_start..close_pos];

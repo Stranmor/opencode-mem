@@ -14,11 +14,22 @@ const MAX_QUEUE_SIZE: usize = 1000;
 
 pub enum PendingWrite {
     SaveMemory {
+        id: String,
         text: String,
         title: Option<String>,
         project: Option<String>,
         observation_type: Option<opencode_mem_core::ObservationType>,
         noise_level: Option<opencode_mem_core::NoiseLevel>,
+    },
+    DeleteObservation {
+        id: String,
+    },
+    SaveKnowledge {
+        id: String,
+        input: opencode_mem_core::KnowledgeInput,
+    },
+    DeleteKnowledge {
+        id: String,
     },
 }
 
@@ -138,6 +149,7 @@ impl Drop for FlushGuard {
 
 pub fn spawn_pending_flush(
     observation_service: &Arc<crate::ObservationService>,
+    knowledge_service: &Arc<crate::KnowledgeService>,
     pending_writes_ref: &Arc<PendingWriteQueue>,
 ) {
     if pending_writes_ref.is_empty() {
@@ -149,56 +161,99 @@ pub fn spawn_pending_flush(
     };
 
     let observation_service = Arc::clone(observation_service);
+    let knowledge_service = Arc::clone(knowledge_service);
     let pending_writes = Arc::clone(pending_writes_ref);
     tokio::spawn(async move {
         // Transfer guard to task
         let _guard = guard;
         let pending_count = pending_writes.len();
-        tracing::info!(
-            pending_count,
-            "Flushing pending save_memory writes after DB recovery"
-        );
+        tracing::info!(pending_count, "Flushing pending writes after DB recovery");
 
         loop {
             let Some(item) = pending_writes.pop_front() else {
                 break;
             };
 
-            let PendingWrite::SaveMemory {
-                text,
-                title,
-                project,
-                observation_type,
-                noise_level,
-            } = item;
-            match observation_service
-                .save_memory(
-                    &text,
-                    title.as_deref(),
-                    project.as_deref(),
+            match item {
+                PendingWrite::SaveMemory {
+                    id,
+                    text,
+                    title,
+                    project,
                     observation_type,
                     noise_level,
-                )
-                .await
-            {
-                Ok(_) => {}
-                Err(e) if e.is_db_unavailable() || e.is_transient() => {
-                    pending_writes.push_front(PendingWrite::SaveMemory {
-                        text,
-                        title,
-                        project,
-                        observation_type,
-                        noise_level,
-                    });
-                    tracing::warn!(
-                        error = %e,
-                        remaining = pending_writes.len(),
-                        "Pending write flush paused: database became unavailable again"
-                    );
-                    break;
+                } => {
+                    match observation_service
+                        .save_memory_with_id(
+                            &id,
+                            &text,
+                            title.as_deref(),
+                            project.as_deref(),
+                            observation_type,
+                            noise_level,
+                        )
+                        .await
+                    {
+                        Ok(_) => {}
+                        Err(e) if e.is_db_unavailable() || e.is_transient() => {
+                            pending_writes.push_front(PendingWrite::SaveMemory {
+                                id,
+                                text,
+                                title,
+                                project,
+                                observation_type,
+                                noise_level,
+                            });
+                            tracing::warn!(
+                                error = %e,
+                                remaining = pending_writes.len(),
+                                "Pending write flush paused: database became unavailable again"
+                            );
+                            break;
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Pending save_memory flush dropped one invalid item");
+                        }
+                    }
                 }
-                Err(e) => {
-                    tracing::warn!(error = %e, "Pending save_memory flush dropped one invalid item");
+                PendingWrite::DeleteObservation { id } => {
+                    match observation_service.delete_observation(&id).await {
+                        Ok(_) => {}
+                        Err(e) if e.is_db_unavailable() || e.is_transient() => {
+                            pending_writes.push_front(PendingWrite::DeleteObservation { id });
+                            break;
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Pending delete_observation flush failed");
+                        }
+                    }
+                }
+                PendingWrite::SaveKnowledge { id, input } => {
+                    match knowledge_service
+                        .save_knowledge_with_id(&id, input.clone())
+                        .await
+                    {
+                        Ok(_) => {}
+                        Err(e) if e.is_db_unavailable() || e.is_transient() => {
+                            pending_writes.push_front(PendingWrite::SaveKnowledge { id, input });
+                            break;
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Pending save_knowledge flush failed");
+                        }
+                    }
+                }
+                PendingWrite::DeleteKnowledge { id } => {
+                    match knowledge_service.delete_knowledge(&id).await {
+                        Ok(_) => {}
+                        Err(e) if e.is_db_unavailable() || e.is_transient() => {
+                            pending_writes.push_front(PendingWrite::DeleteKnowledge { id });
+                            break;
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Pending delete_knowledge flush failed");
+                        }
+                    }
                 }
             }
         }
@@ -215,6 +270,7 @@ mod tests {
         assert!(q.is_empty());
 
         q.push(PendingWrite::SaveMemory {
+            id: "test-id".to_owned(),
             text: "hello".into(),
             title: None,
             project: None,
@@ -233,6 +289,7 @@ mod tests {
         let q = PendingWriteQueue::new();
         for i in 0..MAX_QUEUE_SIZE {
             q.push(PendingWrite::SaveMemory {
+                id: format!("id-{i}"),
                 text: format!("item-{i}"),
                 title: None,
                 project: None,
@@ -243,6 +300,7 @@ mod tests {
         assert_eq!(q.len(), MAX_QUEUE_SIZE);
 
         let accepted = q.push(PendingWrite::SaveMemory {
+            id: "overflow-id".to_owned(),
             text: "overflow".into(),
             title: None,
             project: None,

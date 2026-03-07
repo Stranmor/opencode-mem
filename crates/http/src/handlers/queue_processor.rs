@@ -168,6 +168,7 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
             if state.search_service.circuit_breaker().is_closed() {
                 opencode_mem_service::spawn_pending_flush(
                     &state.observation_service,
+                    &state.knowledge_service,
                     &state.pending_writes,
                 );
             }
@@ -180,7 +181,17 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
                 let state_clone = Arc::clone(&state);
                 state.background_tasks.lock().await.spawn(async move {
                     let _permit = permit;
-                    let result = process_pending_message(&state_clone, &msg).await;
+                    use futures_util::FutureExt;
+                    let result =
+                        std::panic::AssertUnwindSafe(process_pending_message(&state_clone, &msg))
+                            .catch_unwind()
+                            .await
+                            .unwrap_or_else(|_| {
+                                Err(anyhow::anyhow!(
+                                    "Panic during background message processing"
+                                ))
+                            });
+
                     match result {
                         Ok(()) => {
                             if let Err(e) = state_clone.queue_service.complete_message(msg.id).await

@@ -9,6 +9,13 @@ pub trait KnowledgeStore: Send + Sync {
     /// Save or update a knowledge entry (upserts by title).
     async fn save_knowledge(&self, input: KnowledgeInput) -> Result<GlobalKnowledge, StorageError>;
 
+    /// Save or update a knowledge entry with a specific ID.
+    async fn save_knowledge_with_id(
+        &self,
+        id: &str,
+        input: KnowledgeInput,
+    ) -> Result<GlobalKnowledge, StorageError>;
+
     /// Get knowledge entry by ID.
     async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, StorageError>;
 

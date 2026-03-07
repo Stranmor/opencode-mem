@@ -87,7 +87,11 @@ pub async fn handle_tool_call(
 
     if pre_cb_state != "closed" && search_service.circuit_breaker().state_name() == "closed" {
         search_service.handle_recovery();
-        opencode_mem_service::spawn_pending_flush(observation_service, pending_writes);
+        opencode_mem_service::spawn_pending_flush(
+            observation_service,
+            knowledge_service,
+            pending_writes,
+        );
     }
 
     McpResponse {
@@ -123,10 +127,12 @@ async fn dispatch_tool(
             DispatchResult::Json(json!({ "content": [{ "type": "text", "text": WORKFLOW_DOCS }] }))
         }
         McpTool::Search => DispatchResult::Json(
-            memory::handle_search(search_service, args, parse_limit(args, 50)).await,
+            memory::handle_search(search_service, args, parse_limit(args, DEFAULT_QUERY_LIMIT))
+                .await,
         ),
         McpTool::Timeline => DispatchResult::Json(
-            memory::handle_timeline(search_service, args, parse_limit(args, 50)).await,
+            memory::handle_timeline(search_service, args, parse_limit(args, DEFAULT_QUERY_LIMIT))
+                .await,
         ),
         McpTool::GetObservations => {
             DispatchResult::Json(memory::handle_get_observations(search_service, args).await)
@@ -156,16 +162,16 @@ async fn dispatch_tool(
         McpTool::SaveMemory => DispatchResult::Json(
             memory::handle_save_memory(observation_service, pending_writes, args).await,
         ),
-        McpTool::MemoryDelete => {
-            DispatchResult::Json(memory::handle_memory_delete(observation_service, args).await)
-        }
+        McpTool::MemoryDelete => DispatchResult::Json(
+            memory::handle_memory_delete(observation_service, pending_writes, args).await,
+        ),
         McpTool::KnowledgeSearch => DispatchResult::Json(
             knowledge::handle_knowledge_search(knowledge_service, args, parse_limit(args, 10))
                 .await,
         ),
-        McpTool::KnowledgeSave => {
-            DispatchResult::Json(knowledge::handle_knowledge_save(knowledge_service, args).await)
-        }
+        McpTool::KnowledgeSave => DispatchResult::Json(
+            knowledge::handle_knowledge_save(knowledge_service, pending_writes, args).await,
+        ),
         McpTool::KnowledgeGet => {
             DispatchResult::Json(knowledge::handle_knowledge_get(knowledge_service, args).await)
         }
@@ -177,9 +183,9 @@ async fn dispatch_tool(
             )
             .await,
         ),
-        McpTool::KnowledgeDelete => {
-            DispatchResult::Json(knowledge::handle_knowledge_delete(knowledge_service, args).await)
-        }
+        McpTool::KnowledgeDelete => DispatchResult::Json(
+            knowledge::handle_knowledge_delete(knowledge_service, pending_writes, args).await,
+        ),
         McpTool::InfiniteExpand => DispatchResult::FullResponse(
             infinite::handle_infinite_expand(infinite_mem, handle, args, id).await,
         ),

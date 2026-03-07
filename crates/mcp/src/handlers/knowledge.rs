@@ -1,9 +1,8 @@
 use opencode_mem_service::KnowledgeService;
 use serde_json::json;
+use uuid::Uuid;
 
-use super::{
-    cb_fast_fail_read, cb_fast_fail_write, degrade_read_err, degrade_write_err, mcp_err, mcp_ok,
-};
+use super::{cb_fast_fail_read, cb_fast_fail_write, degrade_read_err, mcp_err, mcp_ok};
 
 pub(super) async fn handle_knowledge_search(
     knowledge_service: &KnowledgeService,
@@ -94,6 +93,7 @@ pub(super) async fn handle_knowledge_list(
 
 pub(super) async fn handle_knowledge_delete(
     knowledge_service: &KnowledgeService,
+    pending_writes: &opencode_mem_service::PendingWriteQueue,
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let id_str = match args.get("id").and_then(|i| i.as_str()) {
@@ -102,6 +102,9 @@ pub(super) async fn handle_knowledge_delete(
     };
     let cb = knowledge_service.circuit_breaker();
     if let Some(degraded) = cb_fast_fail_write(cb) {
+        pending_writes.push(opencode_mem_service::PendingWrite::DeleteKnowledge {
+            id: id_str.to_owned(),
+        });
         return degraded;
     }
     match knowledge_service.delete_knowledge(id_str).await {
@@ -109,12 +112,20 @@ pub(super) async fn handle_knowledge_delete(
             cb.record_success();
             mcp_ok(&json!({ "success": deleted, "id": id_str, "deleted": deleted }))
         }
-        Err(e) => degrade_write_err(e, cb),
+        Err(e) if e.is_db_unavailable() || e.is_transient() => {
+            cb.record_failure();
+            pending_writes.push(opencode_mem_service::PendingWrite::DeleteKnowledge {
+                id: id_str.to_owned(),
+            });
+            mcp_ok(&json!({ "success": true, "degraded": true, "buffered": true, "id": id_str }))
+        }
+        Err(e) => mcp_err(e),
     }
 }
 
 pub(super) async fn handle_knowledge_save(
     knowledge_service: &KnowledgeService,
+    pending_writes: &opencode_mem_service::PendingWriteQueue,
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let knowledge_type_str = args
@@ -174,15 +185,31 @@ pub(super) async fn handle_knowledge_save(
             .map(opencode_mem_core::sanitize_input),
     );
 
+    let id = Uuid::new_v4().to_string();
     let cb = knowledge_service.circuit_breaker();
     if let Some(degraded) = cb_fast_fail_write(cb) {
+        pending_writes.push(opencode_mem_service::PendingWrite::SaveKnowledge {
+            id: id.clone(),
+            input: input.clone(),
+        });
         return degraded;
     }
-    match knowledge_service.save_knowledge(input).await {
+    match knowledge_service
+        .save_knowledge_with_id(&id, input.clone())
+        .await
+    {
         Ok(knowledge) => {
             cb.record_success();
             mcp_ok(&knowledge)
         }
-        Err(e) => degrade_write_err(e, cb),
+        Err(e) if e.is_db_unavailable() || e.is_transient() => {
+            cb.record_failure();
+            pending_writes.push(opencode_mem_service::PendingWrite::SaveKnowledge {
+                id: id.clone(),
+                input,
+            });
+            mcp_ok(&json!({ "success": true, "degraded": true, "buffered": true, "id": id }))
+        }
+        Err(e) => mcp_err(e),
     }
 }

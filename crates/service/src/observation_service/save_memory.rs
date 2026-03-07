@@ -14,6 +14,26 @@ impl ObservationService {
         observation_type: Option<ObservationType>,
         noise_level: Option<NoiseLevel>,
     ) -> Result<SaveMemoryResult, ServiceError> {
+        self.save_memory_with_id(
+            &uuid::Uuid::new_v4().to_string(),
+            text,
+            title,
+            project,
+            observation_type,
+            noise_level,
+        )
+        .await
+    }
+
+    pub async fn save_memory_with_id(
+        &self,
+        id: &str,
+        text: &str,
+        title: Option<&str>,
+        project: Option<&str>,
+        observation_type: Option<ObservationType>,
+        noise_level: Option<NoiseLevel>,
+    ) -> Result<SaveMemoryResult, ServiceError> {
         let text = sanitize_input(text.trim());
         if text.is_empty() {
             return Err(ServiceError::InvalidInput(
@@ -45,7 +65,7 @@ impl ObservationService {
         let resolved_noise_level = noise_level.unwrap_or(NoiseLevel::Medium);
 
         let obs = Observation::builder(
-            uuid::Uuid::new_v4().to_string(),
+            id.to_owned(),
             "manual".to_owned(),
             resolved_observation_type,
             title_str,

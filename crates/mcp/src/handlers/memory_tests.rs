@@ -35,6 +35,7 @@ fn setup_observation_service(backend: StorageBackend) -> opencode_mem_service::O
         max_content_chars: 500,
         max_total_chars: 8000,
         max_events: 200,
+        admin_token: None,
     };
     opencode_mem_service::ObservationService::new(
         Arc::new(backend),

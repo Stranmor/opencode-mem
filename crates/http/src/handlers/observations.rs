@@ -1,4 +1,3 @@
-use super::is_localhost;
 use crate::api_error::{ApiError, DegradedExt, OrDegraded};
 use axum::{
     Json,
@@ -109,9 +108,12 @@ pub async fn save_memory(
         None => None,
     };
 
+    let id = uuid::Uuid::new_v4().to_string();
+
     match state
         .observation_service
-        .save_memory(
+        .save_memory_with_id(
+            &id,
             text,
             Some(&title_str),
             req.project.as_deref(),
@@ -124,6 +126,7 @@ pub async fn save_memory(
                 // Buffer the write in the pending queue for later flush
                 state.queue_service.push_pending_write(
                     opencode_mem_service::PendingWrite::SaveMemory {
+                        id: id.clone(),
                         text: text.to_owned(),
                         title: Some(title_str.clone()),
                         project: req.project.clone(),
@@ -136,7 +139,7 @@ pub async fn save_memory(
             ApiError::from(e)
         })
         .with_degraded_body(json!({
-            "id": uuid::Uuid::new_v4().to_string(),
+            "id": id,
             "session_id": "manual",
             "title": title_str,
             "observation_type": "Discovery",
@@ -271,7 +274,7 @@ pub async fn get_prompt_by_id(
 
 pub async fn delete_observation(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
@@ -283,9 +286,15 @@ pub async fn delete_observation(
         .delete_observation(&id)
         .await
         .map_err(|e| {
+            if e.is_db_unavailable() || e.is_transient() {
+                state.queue_service.push_pending_write(
+                    opencode_mem_service::PendingWrite::DeleteObservation { id: id.clone() },
+                );
+            }
             tracing::error!("Delete observation error: {}", e);
             ApiError::from(e)
-        })?;
+        })
+        .with_degraded_body(serde_json::Value::Bool(true))?;
     if deleted {
         Ok(StatusCode::NO_CONTENT)
     } else {

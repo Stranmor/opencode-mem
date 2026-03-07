@@ -2,6 +2,7 @@ use opencode_mem_core::{NoiseLevel, ObservationType};
 use opencode_mem_service::{ObservationService, PendingWrite, PendingWriteQueue};
 use serde_json::json;
 use std::str::FromStr;
+use uuid::Uuid;
 
 use crate::handlers::{cb_fast_fail_write, degrade_write_err, mcp_err, mcp_ok};
 
@@ -60,8 +61,10 @@ pub(in crate::handlers) async fn handle_save_memory(
     };
 
     let cb = observation_service.circuit_breaker();
+    let id = Uuid::new_v4().to_string();
     if let Some(degraded) = cb_fast_fail_write(cb) {
         pending_writes.push(PendingWrite::SaveMemory {
+            id,
             text: raw_text.to_owned(),
             title: title.map(ToOwned::to_owned),
             project: project.map(ToOwned::to_owned),
@@ -72,7 +75,7 @@ pub(in crate::handlers) async fn handle_save_memory(
     }
 
     match observation_service
-        .save_memory(raw_text, title, project, observation_type, noise_level)
+        .save_memory_with_id(&id, raw_text, title, project, observation_type, noise_level)
         .await
     {
         Ok(opencode_mem_service::SaveMemoryResult::Created(obs)) => {
@@ -91,6 +94,7 @@ pub(in crate::handlers) async fn handle_save_memory(
             let cb = observation_service.circuit_breaker();
             cb.record_failure();
             pending_writes.push(PendingWrite::SaveMemory {
+                id,
                 text: raw_text.to_owned(),
                 title: title.map(ToOwned::to_owned),
                 project: project.map(ToOwned::to_owned),
@@ -109,6 +113,7 @@ pub(in crate::handlers) async fn handle_save_memory(
 
 pub(in crate::handlers) async fn handle_memory_delete(
     observation_service: &ObservationService,
+    pending_writes: &PendingWriteQueue,
     args: &serde_json::Value,
 ) -> serde_json::Value {
     let Some(id_str) = args
@@ -120,6 +125,9 @@ pub(in crate::handlers) async fn handle_memory_delete(
     };
     let cb = observation_service.circuit_breaker();
     if let Some(degraded) = cb_fast_fail_write(cb) {
+        pending_writes.push(PendingWrite::DeleteObservation {
+            id: id_str.to_owned(),
+        });
         return degraded;
     }
     match observation_service.delete_observation(id_str).await {
@@ -127,6 +135,13 @@ pub(in crate::handlers) async fn handle_memory_delete(
             cb.record_success();
             mcp_ok(&json!({ "success": deleted, "id": id_str, "deleted": deleted }))
         }
-        Err(e) => degrade_write_err(e, cb),
+        Err(e) if e.is_db_unavailable() || e.is_transient() => {
+            cb.record_failure();
+            pending_writes.push(PendingWrite::DeleteObservation {
+                id: id_str.to_owned(),
+            });
+            mcp_ok(&json!({ "success": true, "degraded": true, "buffered": true, "id": id_str }))
+        }
+        Err(e) => mcp_err(e),
     }
 }

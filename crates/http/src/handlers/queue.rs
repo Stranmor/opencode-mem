@@ -1,4 +1,3 @@
-use super::is_localhost;
 use crate::api_error::{ApiError, OrDegraded};
 use axum::{
     Json,
@@ -40,7 +39,7 @@ pub async fn get_pending_queue(
 
 pub async fn process_pending_queue(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(()): Json<()>,
 ) -> Result<Json<ProcessQueueResponse>, crate::api_error::ApiError> {
@@ -145,7 +144,7 @@ pub async fn process_pending_queue(
 
 pub async fn clear_failed_queue(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(()): Json<()>,
 ) -> Result<Json<ClearQueueResponse>, crate::api_error::ApiError> {
@@ -162,7 +161,7 @@ pub async fn clear_failed_queue(
 
 pub async fn retry_failed_queue(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(()): Json<()>,
 ) -> Result<Json<RetryQueueResponse>, crate::api_error::ApiError> {
@@ -179,7 +178,7 @@ pub async fn retry_failed_queue(
 
 pub async fn clear_all_queue(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(()): Json<()>,
 ) -> Result<Json<ClearQueueResponse>, crate::api_error::ApiError> {
@@ -211,7 +210,7 @@ pub async fn get_processing_status(
 
 pub async fn set_processing_status(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(req): Json<SetProcessingRequest>,
 ) -> Result<Json<SetProcessingResponse>, crate::api_error::ApiError> {

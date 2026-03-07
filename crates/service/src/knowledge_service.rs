@@ -66,10 +66,19 @@ impl KnowledgeService {
         &self,
         input: KnowledgeInput,
     ) -> Result<GlobalKnowledge, ServiceError> {
+        self.save_knowledge_with_id(&uuid::Uuid::new_v4().to_string(), input)
+            .await
+    }
+
+    pub async fn save_knowledge_with_id(
+        &self,
+        id: &str,
+        input: KnowledgeInput,
+    ) -> Result<GlobalKnowledge, ServiceError> {
         self.fast_fail_if_db_unavailable()?;
         let result = self
             .storage
-            .save_knowledge(input)
+            .save_knowledge_with_id(id, input)
             .await
             .map_err(ServiceError::from);
         self.with_cb(result)

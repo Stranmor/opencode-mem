@@ -18,7 +18,7 @@ pub fn get_tools_json() -> serde_json::Value {
                     "type": "object",
                     "properties": {
                         "query": { "type": "string", "description": "Search query" },
-                        "limit": { "type": "integer", "default": 50 },
+                        "limit": { "type": "integer", "default": opencode_mem_core::DEFAULT_QUERY_LIMIT },
                         "project": { "type": "string", "description": "Filter by project" },
                         "type": { "type": "string", "description": format!("Filter by observation type ({})", opencode_mem_core::ObservationType::ALL_VARIANTS_STR) },
                         "from": { "type": "string", "description": "Start date (ISO 8601)" },
@@ -35,7 +35,7 @@ pub fn get_tools_json() -> serde_json::Value {
                     "properties": {
                         "from": { "type": "string", "description": "Start date (ISO 8601)" },
                         "to": { "type": "string", "description": "End date (ISO 8601)" },
-                        "limit": { "type": "integer", "default": 50 }
+                        "limit": { "type": "integer", "default": opencode_mem_core::DEFAULT_QUERY_LIMIT }
                     }
                 }
             },
@@ -82,7 +82,7 @@ pub fn get_tools_json() -> serde_json::Value {
                     "type": "object",
                     "properties": {
                         "query": { "type": "string", "description": "Search query (supports multiple words)" },
-                        "limit": { "type": "integer", "default": 20 }
+                        "limit": { "type": "integer", "default": opencode_mem_core::DEFAULT_QUERY_LIMIT }
                     },
                     "required": ["query"]
                 }
@@ -94,7 +94,7 @@ pub fn get_tools_json() -> serde_json::Value {
                     "type": "object",
                     "properties": {
                         "query": { "type": "string", "description": "Search query" },
-                        "limit": { "type": "integer", "default": 20 }
+                        "limit": { "type": "integer", "default": opencode_mem_core::DEFAULT_QUERY_LIMIT }
                     },
                     "required": ["query"]
                 }
@@ -231,6 +231,19 @@ pub fn get_tools_json() -> serde_json::Value {
                         "id": { "type": "integer", "description": "Hour summary ID" }
                     },
                     "required": ["id"]
+                }
+            },
+            {
+                "name": "infinite_search_entities",
+                "description": "Search summaries by extracted entities (file, function, library, error, decision).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "type": { "type": "string", "description": "Entity type (e.g. file, function)" },
+                        "value": { "type": "string", "description": "Entity value to search for" },
+                        "limit": { "type": "integer", "default": 100 }
+                    },
+                    "required": ["type", "value"]
                 }
             }
         ]

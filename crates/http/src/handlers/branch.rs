@@ -1,4 +1,3 @@
-use super::is_localhost;
 use crate::AppState;
 use crate::api_error::ApiError;
 use crate::api_types::{
@@ -67,7 +66,7 @@ fn validate_branch_name(branch: &str) -> Result<(), &'static str> {
 
 pub async fn switch_branch(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Json(req): Json<SwitchBranchRequest>,
 ) -> Result<Json<SwitchBranchResponse>, ApiError> {
@@ -117,12 +116,13 @@ pub async fn switch_branch(
 
 pub async fn update_branch(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<UpdateBranchResponse>, ApiError> {
     if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
+
     let result = spawn_blocking(|| {
         Command::new("git")
             .args(["pull", "--ff-only"])

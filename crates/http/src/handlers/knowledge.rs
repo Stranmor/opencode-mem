@@ -1,4 +1,3 @@
-use super::is_localhost;
 use crate::api_error::{ApiError, DegradedExt, OrDegraded};
 use axum::{
     Json,
@@ -74,24 +73,29 @@ pub async fn get_knowledge_by_id(
 
 pub async fn delete_knowledge(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
     }
-    let deleted = state
+    let resp_body = state
         .knowledge_service
         .delete_knowledge(&id)
         .await
+        .map(|deleted| json!({ "success": deleted, "id": id, "deleted": deleted }))
         .map_err(|e| {
+            if e.is_db_unavailable() || e.is_transient() {
+                state.queue_service.push_pending_write(
+                    opencode_mem_service::PendingWrite::DeleteKnowledge { id: id.clone() },
+                );
+            }
             tracing::error!("Delete knowledge error: {}", e);
             ApiError::from(e)
-        })?;
-    Ok(Json(
-        json!({ "success": deleted, "id": id, "deleted": deleted }),
-    ))
+        })
+        .with_degraded_body(json!({ "success": true, "id": id, "deleted": true }))?;
+    Ok(Json(resp_body))
 }
 
 pub async fn save_knowledge(
@@ -121,17 +125,27 @@ pub async fn save_knowledge(
             .map(opencode_mem_core::sanitize_input),
     );
 
+    let id = uuid::Uuid::new_v4().to_string();
+
     state
         .knowledge_service
-        .save_knowledge(input)
+        .save_knowledge_with_id(&id, input.clone())
         .await
         .map(Json)
         .map_err(|e| {
+            if e.is_db_unavailable() || e.is_transient() {
+                state.queue_service.push_pending_write(
+                    opencode_mem_service::PendingWrite::SaveKnowledge {
+                        id: id.clone(),
+                        input,
+                    },
+                );
+            }
             tracing::error!("Save knowledge error: {}", e);
             ApiError::from(e)
         })
         .with_degraded_body(json!({
-            "id": uuid::Uuid::new_v4().to_string(),
+            "id": id,
             "knowledge_type": knowledge_type,
             "title": title,
             "description": description,
@@ -159,7 +173,7 @@ pub async fn record_knowledge_usage(
 
 pub async fn run_confidence_lifecycle(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    axum::http::HeaderMap(headers): axum::http::HeaderMap,
+    headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     if !super::check_admin_access(&addr, &headers, &state.config) {

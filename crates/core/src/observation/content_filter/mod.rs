@@ -194,15 +194,15 @@ mod tests;
 /// while preserving the JSON structure (preventing parsing failures on valid JSON).
 pub fn sanitize_json_values(val: &mut serde_json::Value) {
     match val {
-        serde_json::Value::String(ref mut s) => {
+        serde_json::Value::String(s) => {
             *s = sanitize_input(s);
         }
-        serde_json::Value::Array(ref mut arr) => {
+        serde_json::Value::Array(arr) => {
             for v in arr {
                 sanitize_json_values(v);
             }
         }
-        serde_json::Value::Object(ref mut obj) => {
+        serde_json::Value::Object(obj) => {
             for v in obj.values_mut() {
                 sanitize_json_values(v);
             }

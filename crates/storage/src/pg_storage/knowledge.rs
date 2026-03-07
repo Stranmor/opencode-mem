@@ -12,6 +12,7 @@ use sqlx::Row;
 impl PgStorage {
     async fn save_knowledge_inner(
         &self,
+        id: Option<&str>,
         input: &KnowledgeInput,
     ) -> Result<GlobalKnowledge, StorageError> {
         let mut tx = self.pool.begin().await?;
@@ -109,7 +110,7 @@ impl PgStorage {
                 None,
             ))
         } else {
-            let id = uuid::Uuid::new_v4().to_string();
+            let id = id.map_or_else(|| uuid::Uuid::new_v4().to_string(), ToOwned::to_owned);
             let source_projects: Vec<String> = input
                 .source_project
                 .as_ref()
@@ -167,8 +168,17 @@ impl PgStorage {
 #[async_trait]
 impl KnowledgeStore for PgStorage {
     async fn save_knowledge(&self, input: KnowledgeInput) -> Result<GlobalKnowledge, StorageError> {
+        self.save_knowledge_with_id(&uuid::Uuid::new_v4().to_string(), input)
+            .await
+    }
+
+    async fn save_knowledge_with_id(
+        &self,
+        id: &str,
+        input: KnowledgeInput,
+    ) -> Result<GlobalKnowledge, StorageError> {
         for attempt in 0u8..3u8 {
-            match self.save_knowledge_inner(&input).await {
+            match self.save_knowledge_inner(Some(id), &input).await {
                 Ok(knowledge) => return Ok(knowledge),
                 Err(ref e) if e.is_duplicate() && attempt < 2 => {
                     tracing::debug!(
