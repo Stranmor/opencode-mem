@@ -57,9 +57,7 @@ impl EmbeddingService {
     ///
     /// # Errors
     /// Returns error if model initialization fails
-    pub fn new() -> Result<Self, EmbeddingError> {
-        let thread_count = Self::get_thread_count();
-
+    pub fn new(thread_count: usize) -> Result<Self, EmbeddingError> {
         ORT_INIT.call_once(|| {
             // OMP_NUM_THREADS is the ONLY reliable way to limit threads when ONNX Runtime
             // is built with OpenMP (Microsoft's prebuilt binaries). Per-session
@@ -114,20 +112,6 @@ impl EmbeddingService {
             model: Mutex::new(model),
         })
     }
-
-    fn get_thread_count() -> usize {
-        let max_threads = std::thread::available_parallelism()
-            .map(|p| p.get())
-            .unwrap_or(1);
-        let default_threads = max_threads.saturating_sub(1).max(1);
-        let configured =
-            opencode_mem_core::env_parse_with_default("OPENCODE_MEM_EMBEDDING_THREADS", 0_usize);
-        if configured == 0 {
-            default_threads
-        } else {
-            configured.clamp(1, max_threads)
-        }
-    }
 }
 
 impl EmbeddingProvider for EmbeddingService {
@@ -169,7 +153,7 @@ mod tests {
         reason = "test code - panic on failure is acceptable"
     )]
     fn test_embedding_dimension() {
-        let service = EmbeddingService::new().expect("Failed to create service");
+        let service = EmbeddingService::new(1).expect("Failed to create service");
         assert_eq!(service.dimension(), EMBEDDING_DIMENSION);
     }
 }

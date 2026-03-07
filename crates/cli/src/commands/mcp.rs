@@ -28,7 +28,7 @@ pub(crate) async fn run(config: Arc<AppConfig>) -> Result<()> {
         eprintln!("Embeddings disabled via OPENCODE_MEM_DISABLE_EMBEDDINGS");
         None
     } else {
-        match EmbeddingService::new() {
+        match EmbeddingService::new(config.embedding_threads) {
             Ok(emb) => Some(Arc::new(emb)),
             Err(e) => {
                 eprintln!("Warning: Embeddings not available: {e}. Semantic search disabled.");

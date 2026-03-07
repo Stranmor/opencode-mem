@@ -8,6 +8,12 @@
 pub fn strip_markdown_json(content: &str) -> &str {
     let trimmed = content.trim();
 
+    // If it already looks like raw JSON (starts with { or [), return as-is.
+    // This prevents incorrectly stripping JSON that contains nested code blocks.
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        return trimmed;
+    }
+
     let Some(open_pos) = trimmed.find("```") else {
         return trimmed;
     };

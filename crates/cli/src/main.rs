@@ -123,16 +123,8 @@ pub async fn create_storage_from_env() -> Result<StorageBackend> {
 
 fn main() -> Result<()> {
     // Load config early (before tokio) to set OMP_NUM_THREADS.
-    // Config loading may fail for commands that don't need full config (search, hook),
-    // so we only validate required vars for serve/mcp inside async_main.
-    let thread_count = opencode_mem_core::env_parse_with_default(
-        "OPENCODE_MEM_EMBEDDING_THREADS",
-        std::thread::available_parallelism()
-            .map(std::num::NonZeroUsize::get)
-            .unwrap_or(4)
-            .saturating_sub(1)
-            .max(1),
-    );
+    // Consolidate threading logic through core app_config (SPOT).
+    let thread_count = opencode_mem_core::AppConfig::resolve_embedding_threads();
     if std::env::var("OMP_NUM_THREADS").is_err() {
         // SAFETY: Called before tokio runtime starts — no other threads exist yet.
         #[allow(unused_unsafe, reason = "set_var is unsafe in edition 2024")]

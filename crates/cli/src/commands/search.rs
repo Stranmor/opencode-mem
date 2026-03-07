@@ -61,7 +61,8 @@ pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
     let storage = crate::create_storage_from_env().await?;
 
     println!("Initializing embedding model (first run downloads ~100MB)...");
-    let embeddings = EmbeddingService::new()?;
+    let thread_count = opencode_mem_core::AppConfig::resolve_embedding_threads();
+    let embeddings = EmbeddingService::new(thread_count)?;
 
     let mut total = 0;
     let mut failed_ids: HashSet<ObservationId> = HashSet::new();

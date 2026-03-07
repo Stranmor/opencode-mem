@@ -76,8 +76,8 @@ pub async fn update_settings(
             .cloned();
         let base_url = env
             .get("OPENCODE_MEM_API_URL")
-            .or_else(|| env.get("ANTIGRAVITY_BASE_URL"))
-            .or_else(|| env.get("OPENAI_BASE_URL"))
+            .or_else(|| env.get("ANTIGRAVITY_API_URL"))
+            .or_else(|| env.get("OPENAI_API_URL"))
             .cloned();
         let model = env.get("OPENCODE_MEM_MODEL").cloned();
 

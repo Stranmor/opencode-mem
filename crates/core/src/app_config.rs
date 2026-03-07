@@ -126,6 +126,38 @@ fn parse_clamped_threshold(var: &str, default: f32) -> f32 {
 }
 
 impl AppConfig {
+    /// Resolve LLM API key with fallbacks.
+    pub fn resolve_api_key() -> Option<String> {
+        std::env::var("OPENCODE_MEM_API_KEY")
+            .or_else(|_| std::env::var("ANTIGRAVITY_API_KEY"))
+            .or_else(|_| std::env::var("OPENAI_API_KEY"))
+            .ok()
+    }
+
+    /// Resolve LLM API URL with fallbacks.
+    pub fn resolve_api_url() -> String {
+        std::env::var("OPENCODE_MEM_API_URL")
+            .or_else(|_| std::env::var("ANTIGRAVITY_API_URL"))
+            .or_else(|_| std::env::var("OPENAI_API_URL"))
+            .unwrap_or_else(|_| "https://api.openai.com".to_owned())
+    }
+
+    /// Resolve the embedding thread count from env or auto-detect.
+    ///
+    /// Consolidates logic to ensure consistency between process OpenMP configuration
+    /// and internal model inference thresholds.
+    pub fn resolve_embedding_threads() -> usize {
+        let max_threads = std::thread::available_parallelism()
+            .map(|p| p.get())
+            .unwrap_or(1);
+        let configured = crate::env_parse_with_default("OPENCODE_MEM_EMBEDDING_THREADS", 0_usize);
+        if configured == 0 {
+            max_threads.saturating_sub(1).max(1)
+        } else {
+            configured.clamp(1, max_threads)
+        }
+    }
+
     /// Load configuration from environment variables.
     ///
     /// # Errors
@@ -136,23 +168,20 @@ impl AppConfig {
             ConfigError::Missing("DATABASE_URL environment variable must be set".to_owned())
         })?;
 
-        let api_key = std::env::var("OPENCODE_MEM_API_KEY")
-            .or_else(|_| std::env::var("ANTIGRAVITY_API_KEY"))
-            .map_err(|_| {
-                ConfigError::Missing(
-                    "OPENCODE_MEM_API_KEY or ANTIGRAVITY_API_KEY environment variable must be set"
-                        .to_owned(),
-                )
-            })?;
+        let api_key = Self::resolve_api_key().ok_or_else(|| {
+            ConfigError::Missing(
+                "OPENCODE_MEM_API_KEY or ANTIGRAVITY_API_KEY or OPENAI_API_KEY environment variable must be set"
+                    .to_owned(),
+            )
+        })?;
 
-        let api_url = std::env::var("OPENCODE_MEM_API_URL")
-            .unwrap_or_else(|_| "https://api.openai.com".to_owned());
+        let api_url = Self::resolve_api_url();
 
         let model = std::env::var("OPENCODE_MEM_MODEL").unwrap_or_else(|_| "gpt-4o".to_owned());
 
         let disable_embeddings = parse_bool_env("OPENCODE_MEM_DISABLE_EMBEDDINGS");
 
-        let embedding_threads = env_parse_with_default("OPENCODE_MEM_EMBEDDING_THREADS", 0_usize);
+        let embedding_threads = Self::resolve_embedding_threads();
 
         let infinite_memory_url = std::env::var("INFINITE_MEMORY_URL")
             .or_else(|_| std::env::var("OPENCODE_MEM_INFINITE_MEMORY"))
@@ -190,19 +219,6 @@ impl AppConfig {
             max_total_chars,
             max_events,
         })
-    }
-
-    /// Resolved embedding thread count (auto-detect if configured as 0).
-    #[must_use]
-    pub fn resolved_embedding_threads(&self) -> usize {
-        let max_threads = std::thread::available_parallelism()
-            .map(|p| p.get())
-            .unwrap_or(1);
-        if self.embedding_threads == 0 {
-            max_threads.saturating_sub(1).max(1)
-        } else {
-            self.embedding_threads.clamp(1, max_threads)
-        }
     }
 
     /// DLQ TTL in seconds (days × 86400).

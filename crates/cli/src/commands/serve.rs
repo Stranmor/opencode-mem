@@ -62,7 +62,7 @@ pub(crate) async fn run(port: u16, host: String, config: Arc<AppConfig>) -> Resu
         tracing::info!("Embeddings disabled via OPENCODE_MEM_DISABLE_EMBEDDINGS");
         None
     } else {
-        match EmbeddingService::new() {
+        match EmbeddingService::new(config.embedding_threads) {
             Ok(emb) => {
                 tracing::info!("Embedding service initialized (BGE-M3, 1024 dimensions)");
                 Some(Arc::new(emb))
