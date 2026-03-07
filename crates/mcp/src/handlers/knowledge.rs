@@ -157,12 +157,21 @@ pub(super) async fn handle_knowledge_save(
 
     let input = opencode_mem_core::KnowledgeInput::new(
         knowledge_type,
-        title,
-        description,
-        instructions,
-        triggers,
-        source_project,
-        source_observation,
+        opencode_mem_core::sanitize_input(&title),
+        opencode_mem_core::sanitize_input(&description),
+        instructions
+            .as_deref()
+            .map(opencode_mem_core::sanitize_input),
+        triggers
+            .iter()
+            .map(|s| opencode_mem_core::sanitize_input(s))
+            .collect(),
+        source_project
+            .as_deref()
+            .map(opencode_mem_core::sanitize_input),
+        source_observation
+            .as_deref()
+            .map(opencode_mem_core::sanitize_input),
     );
 
     let cb = knowledge_service.circuit_breaker();

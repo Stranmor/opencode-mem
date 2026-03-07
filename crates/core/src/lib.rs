@@ -30,3 +30,17 @@ pub use knowledge::*;
 pub use observation::*;
 pub use project_filter::*;
 pub use session::*;
+
+/// Truncates a string to the given maximum length at a char boundary.
+#[must_use]
+pub fn truncate(s: &str, max_len: usize) -> &str {
+    if s.len() <= max_len {
+        s
+    } else {
+        let mut end = max_len;
+        while end > 0 && !s.is_char_boundary(end) {
+            end = end.saturating_sub(1);
+        }
+        s.get(..end).unwrap_or("")
+    }
+}

@@ -10,6 +10,7 @@ async fn pg_pending_queue_lifecycle() {
     let msg_id = storage
         .queue_message(
             &session,
+            Some("call-123"),
             Some("test_tool"),
             Some(r#"{"key":"value"}"#),
             Some("tool response"),

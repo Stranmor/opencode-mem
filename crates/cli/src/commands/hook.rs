@@ -93,11 +93,12 @@ fn build_observation_request(
     let tool_name = tool.unwrap_or_else(|| "unknown".to_owned());
     let input: Option<serde_json::Value> = match input_json {
         Some(s) => {
-            let filtered = sanitize_input(&s);
-            Some(
-                serde_json::from_str(&filtered)
-                    .map_err(|e| anyhow::anyhow!("Failed to parse input_json: {}", e))?,
-            )
+            // Parse FIRST to ensure valid JSON structure, then sanitize leaf values recursively.
+            // String-level sanitization across raw JSON envelopes corrupts them.
+            let mut val: serde_json::Value = serde_json::from_str(&s)
+                .map_err(|e| anyhow::anyhow!("Failed to parse input_json: {}", e))?;
+            opencode_mem_core::sanitize_json_values(&mut val);
+            Some(val)
         }
         None => None,
     };
@@ -158,18 +159,18 @@ pub(crate) async fn run(cmd: HookCommands) -> Result<()> {
             endpoint,
         } => {
             let req = build_observation_request(tool, session_id, project, input)?;
-            if let Some(project) = req.project.as_deref()
-                && ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project))
-            {
-                println!(
-                    "{}",
-                    serde_json::json!({
-                        "queued": false,
-                        "skipped": true,
-                        "reason": "project excluded",
-                    })
-                );
-                return Ok(());
+            if let Some(project) = req.project.as_deref() {
+                if ProjectFilter::global().is_some_and(|filter| filter.is_excluded(project)) {
+                    println!(
+                        "{}",
+                        serde_json::json!({
+                            "queued": false,
+                            "skipped": true,
+                            "reason": "project excluded",
+                        })
+                    );
+                    return Ok(());
+                }
             }
             let url = format!("{endpoint}/observe");
             let resp = client.post(&url).json(&req).send().await?;

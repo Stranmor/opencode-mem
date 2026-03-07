@@ -1,4 +1,4 @@
-use crate::client::{MAX_OUTPUT_LEN, truncate};
+use crate::client::MAX_OUTPUT_LEN;
 
 pub(crate) fn build_compression_prompt(
     tool: &str,
@@ -151,7 +151,7 @@ ANTI-DEFAULT RULE: If you choose noise_level="medium", you MUST explain in noise
 {json_schema}"#,
         tool = tool,
         title = title,
-        output = truncate(output, MAX_OUTPUT_LEN),
+        output = opencode_mem_core::truncate(output, MAX_OUTPUT_LEN),
         types_prompt = types_prompt,
         existing_context = existing_context,
         json_schema = json_schema,

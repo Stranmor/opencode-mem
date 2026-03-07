@@ -58,9 +58,13 @@ pub trait ObservationStore: Send + Sync {
     ) -> Result<(), StorageError>;
 
     /// Merge a newer observation data into an existing one (updates facts, keywords, etc.).
+    ///
+    /// If `force_newer` is true, the `newer` observation's fields (title, type, narrative, subtitle)
+    /// unconditionally overwrite the `existing` ones.
     async fn merge_into_existing(
         &self,
         existing_id: &str,
         newer: &Observation,
+        force_newer: bool,
     ) -> Result<(), StorageError>;
 }

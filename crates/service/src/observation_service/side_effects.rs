@@ -60,8 +60,15 @@ impl ObservationService {
         observation: Option<&Observation>,
     ) -> Result<(), crate::ServiceError> {
         if let Some(ref infinite_mem) = self.infinite_mem {
-            let filtered_output = sanitize_input(&tool_call.output);
-            let filtered_input = opencode_mem_core::sanitize_json_values(&tool_call.input);
+            // Impose strict ceiling trims to prevent JSONB bloat and OOM in cron aggregation.
+            // Truncate multi-megabyte tool outputs (like cat or multi-file grep) to a manageable size.
+            const MAX_INFINITE_FIELD_LEN: usize = 10000;
+            let sanitized_output = sanitize_input(&tool_call.output);
+            let filtered_output =
+                opencode_mem_core::truncate(&sanitized_output, MAX_INFINITE_FIELD_LEN);
+
+            let mut filtered_input = tool_call.input.clone();
+            opencode_mem_core::sanitize_json_values(&mut filtered_input);
 
             let files_modified = observation.map_or_else(Vec::new, |o| o.files_modified.clone());
             let obs_id_for_log =
@@ -72,7 +79,7 @@ impl ObservationService {
                 tool_call.project.as_deref(),
                 &tool_call.tool,
                 filtered_input,
-                serde_json::json!({"output": filtered_output}),
+                serde_json::json!({ "output": filtered_output }),
                 files_modified,
                 Some(tool_call.call_id.clone()),
             );

@@ -106,7 +106,7 @@ impl ObservationService {
 
         match self
             .storage
-            .merge_into_existing(existing.observation_id.as_ref(), observation)
+            .merge_into_existing(existing.observation_id.as_ref(), observation, true)
             .await
         {
             Ok(()) => Ok(Some(existing.observation_id.to_string())),

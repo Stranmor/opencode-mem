@@ -30,31 +30,50 @@ pub struct MergeResult {
 }
 
 /// Compute merged fields for two observations.
-/// Does not mutate them directly; returns a `MergeResult` struct with the resolved fields.
-pub fn compute_merge(existing: &Observation, newer: &Observation) -> MergeResult {
+///
+/// If `force_newer` is true, the `newer` observation's fields (title, type, narrative, subtitle)
+/// unconditionally overwrite the `existing` ones, regardless of length or priority.
+/// This is used for context-aware LLM updates where the AI explicitly refined the observation.
+pub fn compute_merge(
+    existing: &Observation,
+    newer: &Observation,
+    force_newer: bool,
+) -> MergeResult {
     let facts = union_dedup(&existing.facts, &newer.facts);
     let keywords = union_dedup(&existing.keywords, &newer.keywords);
     let files_read = union_dedup(&existing.files_read, &newer.files_read);
     let files_modified = union_dedup(&existing.files_modified, &newer.files_modified);
     let concepts = union_dedup_concepts(&existing.concepts, &newer.concepts);
 
-    let narrative = pick_longer_optional(&existing.narrative, &newer.narrative);
-    let subtitle = pick_longer_optional(&existing.subtitle, &newer.subtitle);
+    let (narrative, subtitle) = if force_newer {
+        (newer.narrative.clone(), newer.subtitle.clone())
+    } else {
+        (
+            pick_longer_optional(&existing.narrative, &newer.narrative),
+            pick_longer_optional(&existing.subtitle, &newer.subtitle),
+        )
+    };
 
     // NoiseLevel Ord: Critical(0) < High(1) < ... < Negligible(4)
     // min picks the most important (lowest discriminant = highest importance)
-    let noise_level = std::cmp::min(existing.noise_level, newer.noise_level);
+    let noise_level = if force_newer {
+        newer.noise_level
+    } else {
+        std::cmp::min(existing.noise_level, newer.noise_level)
+    };
 
     let prompt_number = newer.prompt_number.or(existing.prompt_number);
     let discovery_tokens = newer.discovery_tokens.or(existing.discovery_tokens);
 
     let created_at = existing.created_at.max(newer.created_at);
 
-    // Context-aware compressions might refine the title or change type based on new context.
-    // In background dedup, we might pass a low-priority observation as "newer" just because
-    // it was found later. We should prefer the title/type/reason of the observation with the higher
-    // noise level (i.e. more important), or the newer one if equal.
-    let (title, observation_type, noise_reason) = if existing.noise_level < newer.noise_level {
+    let (title, observation_type, noise_reason) = if force_newer {
+        (
+            newer.title.clone(),
+            newer.observation_type,
+            newer.noise_reason.clone(),
+        )
+    } else if existing.noise_level < newer.noise_level {
         (
             existing.title.clone(),
             existing.observation_type,
@@ -137,7 +156,7 @@ mod tests {
         let mut newer = make_obs("test2");
         newer.narrative = Some("much longer narrative".to_owned());
 
-        let result = compute_merge(&existing, &newer);
+        let result = compute_merge(&existing, &newer, false);
         assert_eq!(result.narrative.as_deref(), Some("much longer narrative"));
     }
 
@@ -148,7 +167,7 @@ mod tests {
         let mut newer = make_obs("test2");
         newer.narrative = Some("bbbb".to_owned());
 
-        let result = compute_merge(&existing, &newer);
+        let result = compute_merge(&existing, &newer, false);
         assert_eq!(result.narrative.as_deref(), Some("aaaa"));
     }
 
@@ -159,7 +178,7 @@ mod tests {
         let mut newer = make_obs("test2");
         newer.facts = vec!["b".to_owned(), "c".to_owned()];
 
-        let result = compute_merge(&existing, &newer);
+        let result = compute_merge(&existing, &newer, false);
         assert_eq!(result.facts, vec!["a", "b", "c"]);
     }
 
@@ -170,7 +189,7 @@ mod tests {
         let mut newer = make_obs("test2");
         newer.noise_level = NoiseLevel::Critical;
 
-        let result = compute_merge(&existing, &newer);
+        let result = compute_merge(&existing, &newer, false);
         assert_eq!(result.noise_level, NoiseLevel::Critical);
     }
 
@@ -183,7 +202,7 @@ mod tests {
         let t2 = t1 + chrono::Duration::seconds(10);
         newer.created_at = t2;
 
-        let result = compute_merge(&existing, &newer);
+        let result = compute_merge(&existing, &newer, false);
         assert_eq!(result.created_at, t2);
     }
 
@@ -192,7 +211,7 @@ mod tests {
         let existing = make_obs("test");
         let newer = make_obs("test2");
 
-        let result = compute_merge(&existing, &newer);
+        let result = compute_merge(&existing, &newer, false);
         assert!(result.narrative.is_none());
     }
 
@@ -202,7 +221,7 @@ mod tests {
         let mut newer = make_obs("test2");
         newer.narrative = Some("new text".to_owned());
 
-        let result = compute_merge(&existing, &newer);
+        let result = compute_merge(&existing, &newer, false);
         assert_eq!(result.narrative.as_deref(), Some("new text"));
     }
 }

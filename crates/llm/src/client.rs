@@ -169,7 +169,7 @@ impl LlmClient {
                     serde_json::from_str(&body).map_err(|e| LlmError::JsonParse {
                         context: format!(
                             "chat completion response (body: {})",
-                            truncate(&body, 200)
+                            opencode_mem_core::truncate(&body, 200)
                         ),
                         source: e,
                     })?;
@@ -202,19 +202,5 @@ impl LlmClient {
         Err(LlmError::RetriesExhausted(Box::new(
             last_error.unwrap_or(LlmError::EmptyResponse),
         )))
-    }
-}
-
-/// Truncates a string to the given maximum length at a char boundary.
-#[must_use]
-pub fn truncate(s: &str, max_len: usize) -> &str {
-    if s.len() <= max_len {
-        s
-    } else {
-        let mut end = max_len;
-        while end > 0 && !s.is_char_boundary(end) {
-            end = end.saturating_sub(1);
-        }
-        s.get(..end).unwrap_or("")
     }
 }

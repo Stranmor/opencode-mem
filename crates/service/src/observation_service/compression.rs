@@ -94,7 +94,7 @@ impl ObservationService {
 
                 match self
                     .storage
-                    .merge_into_existing(&target_id, &observation)
+                    .merge_into_existing(&target_id, &observation, true)
                     .await
                 {
                     Ok(()) => {

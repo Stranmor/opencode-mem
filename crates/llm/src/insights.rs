@@ -4,7 +4,7 @@ use opencode_mem_core::{Concept, Observation, ObservationType};
 use serde::Deserialize;
 
 use crate::ai_types::{ChatRequest, Message, ResponseFormat, ResponseFormatType};
-use crate::client::{LlmClient, truncate};
+use crate::client::LlmClient;
 use crate::error::LlmError;
 
 /// Single insight extracted from session analysis
@@ -69,7 +69,7 @@ fn format_part(output: &mut String, part: &serde_json::Value) {
     match part_type {
         "text" => {
             if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                let preview = truncate(text, 1000);
+                let preview = opencode_mem_core::truncate(text, 1000);
                 output.push_str(preview);
                 output.push('\n');
             }
@@ -80,13 +80,13 @@ fn format_part(output: &mut String, part: &serde_json::Value) {
 
             if let Some(input) = part.get("input") {
                 let input_str = input.to_string();
-                let preview = truncate(&input_str, 200);
+                let preview = opencode_mem_core::truncate(&input_str, 200);
                 _ = writeln!(output, "Input: {preview}");
             }
 
             if let Some(out) = part.get("output") {
                 let out_str = out.to_string();
-                let preview = truncate(&out_str, 500);
+                let preview = opencode_mem_core::truncate(&out_str, 500);
                 _ = writeln!(output, "Output: {preview}");
             }
         }
@@ -198,7 +198,10 @@ impl LlmClient {
         let content = self.chat_completion(&request).await?;
         let clean_json = opencode_mem_core::strip_markdown_json(&content);
         serde_json::from_str(clean_json).map_err(|e| LlmError::JsonParse {
-            context: format!("insights response (content: {})", truncate(clean_json, 300)),
+            context: format!(
+                "insights response (content: {})",
+                opencode_mem_core::truncate(clean_json, 300)
+            ),
             source: e,
         })
     }

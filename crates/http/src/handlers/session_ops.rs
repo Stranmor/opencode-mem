@@ -23,7 +23,9 @@ pub(crate) async fn create_session(
         opencode_mem_core::ContentSessionId(content_session_id),
         None,
         opencode_mem_core::ProjectId(project.unwrap_or_default()),
-        user_prompt,
+        user_prompt
+            .as_deref()
+            .map(opencode_mem_core::sanitize_input),
         chrono::Utc::now(),
         None,
         SessionStatus::Active,

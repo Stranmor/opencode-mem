@@ -202,6 +202,7 @@ impl ObservationStore for PgStorage {
         &self,
         existing_id: &str,
         newer: &Observation,
+        force_newer: bool,
     ) -> Result<(), StorageError> {
         let mut tx = self.pool.begin().await?;
 
@@ -221,7 +222,7 @@ impl ObservationStore for PgStorage {
                 id: existing_id.to_owned(),
             })?;
 
-        let merged = opencode_mem_core::compute_merge(&existing, newer);
+        let merged = opencode_mem_core::compute_merge(&existing, newer, force_newer);
 
         sqlx::query(
             "UPDATE observations SET facts = $1, keywords = $2, files_read = $3,
@@ -310,8 +311,8 @@ impl ObservationStore for PgStorage {
                 id: duplicate_id.to_owned(),
             })?;
 
-        // 2. Compute merge
-        let merged = opencode_mem_core::compute_merge(&keeper, &duplicate);
+        // 2. Compute merge (background dedup uses standard metric-based merging)
+        let merged = opencode_mem_core::compute_merge(&keeper, &duplicate, false);
 
         // 3. Update keeper with merged data
         sqlx::query(

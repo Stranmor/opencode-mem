@@ -103,12 +103,21 @@ pub async fn save_knowledge(
 
     let input = KnowledgeInput::new(
         req.knowledge_type,
-        req.title,
-        req.description,
-        req.instructions,
-        req.triggers,
-        req.source_project,
-        req.source_observation,
+        opencode_mem_core::sanitize_input(&req.title),
+        opencode_mem_core::sanitize_input(&req.description),
+        req.instructions
+            .as_deref()
+            .map(opencode_mem_core::sanitize_input),
+        req.triggers
+            .iter()
+            .map(|s| opencode_mem_core::sanitize_input(s))
+            .collect(),
+        req.source_project
+            .as_deref()
+            .map(opencode_mem_core::sanitize_input),
+        req.source_observation
+            .as_deref()
+            .map(opencode_mem_core::sanitize_input),
     );
 
     state
