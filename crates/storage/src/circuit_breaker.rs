@@ -168,6 +168,12 @@ impl CircuitBreaker {
         self.state.load(Ordering::Acquire) == STATE_OPEN
     }
 
+    /// Whether the circuit is currently closed (database considered available).
+    #[must_use]
+    pub fn is_closed(&self) -> bool {
+        self.state.load(Ordering::Acquire) == STATE_CLOSED
+    }
+
     /// Whether the circuit is in half-open (probing) state.
     #[must_use]
     pub fn is_half_open(&self) -> bool {

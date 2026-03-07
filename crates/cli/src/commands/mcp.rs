@@ -82,6 +82,7 @@ pub(crate) async fn run(config: Arc<AppConfig>) -> Result<()> {
         storage,
         embeddings,
         infinite_mem.clone(),
+        config.dedup_threshold,
     ));
 
     let handle = tokio::runtime::Handle::current();

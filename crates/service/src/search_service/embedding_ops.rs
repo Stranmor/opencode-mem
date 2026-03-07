@@ -11,9 +11,6 @@ use crate::ServiceError;
 
 use super::SearchService;
 
-/// Cosine similarity threshold above which two observations are considered semantic duplicates.
-const DEDUP_SIMILARITY_THRESHOLD: f32 = 0.85;
-
 impl SearchService {
     pub async fn clear_embeddings(&self) -> Result<(), ServiceError> {
         let result = self
@@ -125,6 +122,7 @@ impl SearchService {
             .collect();
 
         let embedding_owned: Vec<(String, Vec<f32>)> = embedding_pairs;
+        let dedup_threshold = self.dedup_threshold;
 
         let kept_indices = tokio::task::spawn_blocking(move || {
             let emb_map: HashMap<&str, &[f32]> = embedding_owned
@@ -164,7 +162,7 @@ impl SearchService {
                         continue;
                     };
                     let sim = cosine_similarity(emb_a, emb_b);
-                    if sim > DEDUP_SIMILARITY_THRESHOLD {
+                    if sim > dedup_threshold {
                         let ra = find(&mut parent, i);
                         let rb = find(&mut parent, j);
                         if ra != rb {

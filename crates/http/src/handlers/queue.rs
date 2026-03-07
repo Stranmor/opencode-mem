@@ -53,8 +53,10 @@ pub async fn process_pending_queue(
         }));
     }
     let max_workers = max_queue_workers(&state);
-    let available_permits = state.semaphore.available_permits().min(max_workers);
 
+    // Reserve permits FIRST to avoid thundering herd and unnecessary DB load.
+    // If multiple callers fire concurrently, they will strictly share the semaphore capacity.
+    let available_permits = state.semaphore.available_permits().min(max_workers);
     if available_permits == 0 {
         return Ok(Json(ProcessQueueResponse {
             processed: 0,
@@ -62,9 +64,26 @@ pub async fn process_pending_queue(
         }));
     }
 
+    let mut permits = Vec::with_capacity(available_permits);
+    for _ in 0..available_permits {
+        if let Ok(p) = Arc::clone(&state.semaphore).try_acquire_owned() {
+            permits.push(p);
+        } else {
+            break;
+        }
+    }
+
+    if permits.is_empty() {
+        return Ok(Json(ProcessQueueResponse {
+            processed: 0,
+            failed: 0,
+        }));
+    }
+
+    let claim_limit = permits.len();
     let messages = state
         .queue_service
-        .claim_pending_messages(available_permits, default_visibility_timeout_secs())
+        .claim_pending_messages(claim_limit, default_visibility_timeout_secs())
         .await
         .map_err(ApiError::from)?;
 
@@ -76,23 +95,12 @@ pub async fn process_pending_queue(
     }
 
     let mut handles = Vec::with_capacity(messages.len());
-
     let mut messages_iter = messages.into_iter();
 
     while let Some(msg) = messages_iter.next() {
-        let permit = match Arc::clone(&state.semaphore).try_acquire_owned() {
-            Ok(p) => p,
-            Err(_) => {
-                // Return remaining messages to queue
-                let mut remaining_ids = vec![msg.id];
-                remaining_ids.extend(messages_iter.map(|m| m.id));
-                if let Err(e) = state.queue_service.release_messages(&remaining_ids).await {
-                    tracing::error!("Failed to release un-acquired messages: {}", e);
-                }
-                break;
-            }
-        };
-
+        let permit = permits
+            .pop()
+            .expect("permit must exist for claimed message");
         let state_clone = Arc::clone(&state);
         let handle = tokio::spawn(async move {
             let _permit = permit;

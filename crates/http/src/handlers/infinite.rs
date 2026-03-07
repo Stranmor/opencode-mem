@@ -34,7 +34,7 @@ pub async fn infinite_expand_summary(
             if infinite_mem.circuit_breaker().is_open() {
                 crate::api_error::ApiError::Degraded(serde_json::json!([]))
             } else {
-                crate::api_error::ApiError::Internal(e)
+                crate::api_error::ApiError::Internal(e.into())
             }
         })
 }
@@ -63,7 +63,7 @@ pub async fn infinite_time_range(
             if infinite_mem.circuit_breaker().is_open() {
                 crate::api_error::ApiError::Degraded(serde_json::json!([]))
             } else {
-                crate::api_error::ApiError::Internal(e)
+                crate::api_error::ApiError::Internal(e.into())
             }
         })
 }
@@ -81,7 +81,7 @@ pub async fn infinite_drill_hour(
             if infinite_mem.circuit_breaker().is_open() {
                 crate::api_error::ApiError::Degraded(serde_json::json!([]))
             } else {
-                crate::api_error::ApiError::Internal(e)
+                crate::api_error::ApiError::Internal(e.into())
             }
         })
 }
@@ -99,7 +99,7 @@ pub async fn infinite_drill_day(
             if infinite_mem.circuit_breaker().is_open() {
                 crate::api_error::ApiError::Degraded(serde_json::json!([]))
             } else {
-                crate::api_error::ApiError::Internal(e)
+                crate::api_error::ApiError::Internal(e.into())
             }
         })
 }
@@ -121,7 +121,7 @@ pub async fn infinite_search_entities(
             } else if infinite_mem.circuit_breaker().is_open() {
                 crate::api_error::ApiError::Degraded(serde_json::json!([]))
             } else {
-                crate::api_error::ApiError::Internal(e)
+                crate::api_error::ApiError::Internal(e.into())
             }
         })
 }

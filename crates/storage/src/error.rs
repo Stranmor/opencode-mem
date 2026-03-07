@@ -79,6 +79,17 @@ impl StorageError {
     pub fn is_unavailable(&self) -> bool {
         matches!(self, Self::Unavailable { .. }) || self.is_transient()
     }
+
+    /// Whether this error indicates a missing table or column (migration needed).
+    pub fn is_missing_relation(&self) -> bool {
+        match self {
+            Self::Database(sqlx::Error::Database(db_err)) => {
+                let msg = db_err.message();
+                msg.contains("relation") && msg.contains("does not exist")
+            }
+            _ => false,
+        }
+    }
 }
 
 /// Custom `From<sqlx::Error>` — NOT blanket `#[from]`.

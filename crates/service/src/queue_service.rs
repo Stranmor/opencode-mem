@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use opencode_mem_core::{ProjectFilter, ToolCall, cap_query_limit, sanitize_input};
 use opencode_mem_storage::traits::PendingQueueStore;
-use opencode_mem_storage::{PendingMessage, QueueStats, StorageBackend};
+use opencode_mem_storage::{PendingMessage, QueueStats, StorageBackend, StorageError};
 
 use crate::{PendingWriteQueue, ServiceError};
 
@@ -26,6 +26,39 @@ impl QueueService {
             storage,
             pending_writes,
         }
+    }
+
+    pub fn circuit_breaker(&self) -> &opencode_mem_storage::CircuitBreaker {
+        self.storage.circuit_breaker()
+    }
+
+    fn fast_fail_if_db_unavailable(&self) -> Result<(), ServiceError> {
+        let cb = self.storage.circuit_breaker();
+        if cb.should_allow() {
+            Ok(())
+        } else {
+            Err(ServiceError::Storage(StorageError::Unavailable {
+                seconds_until_probe: cb.seconds_until_probe(),
+            }))
+        }
+    }
+
+    pub(crate) fn with_cb<T>(&self, result: Result<T, ServiceError>) -> Result<T, ServiceError> {
+        match &result {
+            Ok(_) => {
+                self.storage.circuit_breaker().record_success();
+            }
+            Err(e) if e.is_db_unavailable() => self.storage.circuit_breaker().record_failure(),
+            Err(e) if self.storage.circuit_breaker().is_half_open() => {
+                if e.is_db_unavailable() || e.is_transient() {
+                    self.storage.circuit_breaker().record_failure();
+                } else {
+                    self.storage.circuit_breaker().record_success();
+                }
+            }
+            Err(_) => {}
+        }
+        result
     }
 
     /// Push a write operation to the in-memory buffer for later flush.
@@ -55,7 +88,8 @@ impl QueueService {
 
         let filtered_output = sanitize_input(&tool_call.output);
 
-        let id = self
+        self.fast_fail_if_db_unavailable()?;
+        let result = self
             .storage
             .queue_message(
                 &tool_call.session_id,
@@ -65,7 +99,9 @@ impl QueueService {
                 Some(&filtered_output),
                 tool_call.project.as_deref(),
             )
-            .await?;
+            .await
+            .map_err(ServiceError::from);
+        let id = self.with_cb(result)?;
 
         Ok(QueueToolCallResult::Queued(id))
     }
@@ -114,7 +150,8 @@ impl QueueService {
         tool_response: Option<&str>,
         project: Option<&str>,
     ) -> Result<i64, ServiceError> {
-        Ok(self
+        self.fast_fail_if_db_unavailable()?;
+        let result = self
             .storage
             .queue_message(
                 session_id,
@@ -124,7 +161,9 @@ impl QueueService {
                 tool_response,
                 project,
             )
-            .await?)
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result)
     }
 
     pub async fn get_all_pending_messages(
@@ -132,11 +171,23 @@ impl QueueService {
         limit: usize,
     ) -> Result<Vec<PendingMessage>, ServiceError> {
         let limit = cap_query_limit(limit);
-        Ok(self.storage.get_all_pending_messages(limit).await?)
+        self.fast_fail_if_db_unavailable()?;
+        let result = self
+            .storage
+            .get_all_pending_messages(limit)
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result)
     }
 
     pub async fn get_queue_stats(&self) -> Result<QueueStats, ServiceError> {
-        Ok(self.storage.get_queue_stats().await?)
+        self.fast_fail_if_db_unavailable()?;
+        let result = self
+            .storage
+            .get_queue_stats()
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result)
     }
 
     pub async fn claim_pending_messages(
@@ -144,51 +195,105 @@ impl QueueService {
         max: usize,
         visibility_timeout_secs: i64,
     ) -> Result<Vec<PendingMessage>, ServiceError> {
-        Ok(self
+        self.fast_fail_if_db_unavailable()?;
+        let result = self
             .storage
             .claim_pending_messages(max, visibility_timeout_secs)
-            .await?)
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result)
     }
 
     pub async fn complete_message(&self, id: i64) -> Result<(), ServiceError> {
-        Ok(self.storage.complete_message(id).await?)
+        self.fast_fail_if_db_unavailable()?;
+        let result = self
+            .storage
+            .complete_message(id)
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result)
     }
 
     pub async fn fail_message(&self, id: i64, permanent: bool) -> Result<(), ServiceError> {
-        Ok(self.storage.fail_message(id, permanent).await?)
+        self.fast_fail_if_db_unavailable()?;
+        let result = self
+            .storage
+            .fail_message(id, permanent)
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result)
     }
 
     pub async fn clear_failed_messages(&self) -> Result<usize, ServiceError> {
-        Ok(self.storage.clear_failed_messages().await?)
+        self.fast_fail_if_db_unavailable()?;
+        let result = self
+            .storage
+            .clear_failed_messages()
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result)
     }
 
     pub async fn clear_stale_failed_messages(&self, ttl_secs: i64) -> Result<usize, ServiceError> {
-        Ok(self.storage.clear_stale_failed_messages(ttl_secs).await?)
+        self.fast_fail_if_db_unavailable()?;
+        let result = self
+            .storage
+            .clear_stale_failed_messages(ttl_secs)
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result)
     }
 
     pub async fn retry_failed_messages(&self) -> Result<usize, ServiceError> {
-        Ok(self.storage.retry_failed_messages().await?)
+        self.fast_fail_if_db_unavailable()?;
+        let result = self
+            .storage
+            .retry_failed_messages()
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result)
     }
 
     pub async fn clear_all_pending_messages(&self) -> Result<usize, ServiceError> {
-        Ok(self.storage.clear_all_pending_messages().await?)
+        self.fast_fail_if_db_unavailable()?;
+        let result = self
+            .storage
+            .clear_all_pending_messages()
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result)
     }
 
     pub async fn get_pending_count(&self) -> Result<usize, ServiceError> {
-        Ok(self.storage.get_pending_count().await?)
+        self.fast_fail_if_db_unavailable()?;
+        let result = self
+            .storage
+            .get_pending_count()
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result)
     }
 
     pub async fn release_stale_messages(
         &self,
         visibility_timeout_secs: i64,
     ) -> Result<usize, ServiceError> {
-        Ok(self
+        self.fast_fail_if_db_unavailable()?;
+        let result = self
             .storage
             .release_stale_messages(visibility_timeout_secs)
-            .await?)
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result)
     }
 
     pub async fn release_messages(&self, ids: &[i64]) -> Result<usize, ServiceError> {
-        Ok(self.storage.release_messages(ids).await?)
+        self.fast_fail_if_db_unavailable()?;
+        let result = self
+            .storage
+            .release_messages(ids)
+            .await
+            .map_err(ServiceError::from);
+        self.with_cb(result)
     }
 }

@@ -90,6 +90,7 @@ pub(crate) async fn run(port: u16, host: String, config: Arc<AppConfig>) -> Resu
         storage.clone(),
         embeddings.clone(),
         infinite_mem.clone(),
+        config.dedup_threshold,
     ));
     let queue_service = Arc::new(QueueService::new(storage.clone(), pending_writes.clone()));
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::broadcast::channel(1);

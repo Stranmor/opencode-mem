@@ -115,14 +115,37 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
             continue;
         }
 
+        // Reserve permits synchronously before DB query to avoid thundering herd.
+        let mut permits = Vec::with_capacity(available_permits);
+        for _ in 0..available_permits {
+            if let Ok(p) = Arc::clone(&state.semaphore).try_acquire_owned() {
+                permits.push(p);
+            } else {
+                break;
+            }
+        }
+
+        if permits.is_empty() {
+            tokio::select! {
+                _ = tokio::time::sleep(poll_interval) => {},
+                _ = shutdown_rx.recv() => {
+                    tracing::info!("Queue poller: shutting down");
+                    return;
+                }
+            }
+            continue;
+        }
+
+        let claim_limit = permits.len();
         let messages = match state
             .queue_service
-            .claim_pending_messages(available_permits, state.config.visibility_timeout_secs)
+            .claim_pending_messages(claim_limit, state.config.visibility_timeout_secs)
             .await
         {
             Ok(msgs) => msgs,
             Err(e) => {
                 tracing::error!("Background processor: claim failed: {}", e);
+                // Permits will be automatically released when 'permits' vector is dropped.
                 tokio::select! {
                     _ = tokio::time::sleep(poll_interval) => {},
                     _ = shutdown_rx.recv() => {
@@ -138,17 +161,21 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
 
         if !messages.is_empty() {
             let mut spawned = 0;
-            let mut unspawned = Vec::new();
+            // Any unused permits will be dropped at the end of this loop iteration.
+
+            // Before processing new messages, check if we need to flush pending writes from degraded mode.
+            // This ensures HTTP-only deployments also recover stage data.
+            if state.search_service.circuit_breaker().is_closed() {
+                opencode_mem_service::spawn_pending_flush(
+                    &state.observation_service,
+                    &state.pending_writes,
+                );
+            }
 
             for msg in messages {
-                let permit = match Arc::clone(&state.semaphore).try_acquire_owned() {
-                    Ok(p) => p,
-                    Err(_) => {
-                        unspawned.push(msg);
-                        continue;
-                    }
-                };
-
+                let permit = permits
+                    .pop()
+                    .expect("permit must exist for claimed message");
                 spawned += 1;
                 let state_clone = Arc::clone(&state);
                 tokio::spawn(async move {
@@ -175,16 +202,6 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
                         }
                     }
                 });
-            }
-
-            if !unspawned.is_empty() {
-                let unspawned_ids: Vec<i64> = unspawned.iter().map(|m| m.id).collect();
-                if let Err(e) = state.queue_service.release_messages(&unspawned_ids).await {
-                    tracing::error!(
-                        "Background processor: failed to release unspawned messages: {}",
-                        e
-                    );
-                }
             }
 
             if spawned > 0 {

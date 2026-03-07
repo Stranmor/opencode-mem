@@ -42,7 +42,7 @@ pub use infinite_memory_service::InfiniteMemoryService;
 pub use infinite_memory_service::init_compression_config;
 pub use knowledge_service::KnowledgeService;
 pub use observation_service::{ObservationService, SaveMemoryResult};
-pub use pending_write_queue::{PendingWrite, PendingWriteQueue};
+pub use pending_write_queue::{PendingWrite, PendingWriteQueue, spawn_pending_flush};
 pub use queue_service::{QueueService, QueueToolCallResult};
 pub use search_service::SearchService;
 pub use session_service::SessionService;

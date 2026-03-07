@@ -20,6 +20,7 @@ pub struct SearchService {
     pub(crate) storage: Arc<StorageBackend>,
     pub(crate) embeddings: Option<Arc<EmbeddingService>>,
     infinite_mem: Option<Arc<InfiniteMemoryService>>,
+    pub(crate) dedup_threshold: f32,
 }
 
 impl SearchService {
@@ -28,11 +29,13 @@ impl SearchService {
         storage: Arc<StorageBackend>,
         embeddings: Option<Arc<EmbeddingService>>,
         infinite_mem: Option<Arc<InfiniteMemoryService>>,
+        dedup_threshold: f32,
     ) -> Self {
         Self {
             storage,
             embeddings,
             infinite_mem,
+            dedup_threshold,
         }
     }
 

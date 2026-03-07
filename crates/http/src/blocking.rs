@@ -8,6 +8,7 @@
 
 use axum::{Json, http::StatusCode};
 use serde::Serialize;
+use std::sync::Arc;
 use tokio::task::spawn_blocking;
 
 /// Runs a blocking closure and returns `Result<Json<T>, StatusCode>`.
@@ -34,11 +35,11 @@ where
             tracing::error!("Join error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?
-        .map(Json)
         .map_err(|e| {
             tracing::error!("Storage error: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })
+        .map(Json)
 }
 
 /// Runs a blocking closure and returns `Result<T, StatusCode>` without Json wrapper.

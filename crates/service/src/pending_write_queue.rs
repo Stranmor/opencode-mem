@@ -136,6 +136,75 @@ impl Drop for FlushGuard {
     }
 }
 
+pub fn spawn_pending_flush(
+    observation_service: &Arc<crate::ObservationService>,
+    pending_writes_ref: &Arc<PendingWriteQueue>,
+) {
+    if pending_writes_ref.is_empty() {
+        return;
+    }
+    let guard = match pending_writes_ref.start_flush() {
+        Some(g) => g,
+        None => return,
+    };
+
+    let observation_service = Arc::clone(observation_service);
+    let pending_writes = Arc::clone(pending_writes_ref);
+    tokio::spawn(async move {
+        // Transfer guard to task
+        let _guard = guard;
+        let pending_count = pending_writes.len();
+        tracing::info!(
+            pending_count,
+            "Flushing pending save_memory writes after DB recovery"
+        );
+
+        loop {
+            let Some(item) = pending_writes.pop_front() else {
+                break;
+            };
+
+            let PendingWrite::SaveMemory {
+                text,
+                title,
+                project,
+                observation_type,
+                noise_level,
+            } = item;
+            match observation_service
+                .save_memory(
+                    &text,
+                    title.as_deref(),
+                    project.as_deref(),
+                    observation_type,
+                    noise_level,
+                )
+                .await
+            {
+                Ok(_) => {}
+                Err(e) if e.is_db_unavailable() || e.is_transient() => {
+                    pending_writes.push_front(PendingWrite::SaveMemory {
+                        text,
+                        title,
+                        project,
+                        observation_type,
+                        noise_level,
+                    });
+                    tracing::warn!(
+                        error = %e,
+                        remaining = pending_writes.len(),
+                        "Pending write flush paused: database became unavailable again"
+                    );
+                    break;
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Pending save_memory flush dropped one invalid item");
+                }
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
