@@ -70,6 +70,17 @@ impl ObservationService {
             let mut filtered_input = tool_call.input.clone();
             opencode_mem_core::sanitize_json_values(&mut filtered_input);
 
+            // Enforce input size guards to prevent memory explosion/DB bloat.
+            // If the total serialized JSON exceeds 50KB, truncate it.
+            let mut input_str = serde_json::to_string(&filtered_input).unwrap_or_default();
+            if input_str.len() > 50000 {
+                input_str = format!(
+                    "{}\n... (truncated due to large size)",
+                    opencode_mem_core::truncate(&input_str, 50000)
+                );
+                filtered_input = serde_json::Value::String(input_str);
+            }
+
             let files_modified = observation.map_or_else(Vec::new, |o| o.files_modified.clone());
             let obs_id_for_log =
                 observation.map_or_else(|| tool_call.call_id.as_str(), |o| o.id.0.as_str());

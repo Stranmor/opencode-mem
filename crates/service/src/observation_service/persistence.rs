@@ -53,7 +53,11 @@ impl ObservationService {
                 self.regenerate_embedding(&merged_id).await;
                 // Fetch the actual merged observation from storage so callers
                 // get a real persisted entity, not a phantom with a temporary ID.
-                let merged_obs = self.storage.get_by_id(&merged_id).await?;
+                let result = self
+                    .storage
+                    .guarded(|| self.storage.get_by_id(&merged_id))
+                    .await;
+                let merged_obs = self.with_cb(result)?;
                 return match merged_obs {
                     Some(obs) => Ok(Some((obs, false))),
                     None => {
@@ -83,15 +87,17 @@ impl ObservationService {
             return Ok(None);
         }
 
-        let existing = match self
+        let result = self
             .storage
-            .find_similar(
-                embedding,
-                self.dedup_threshold,
-                observation.project.as_ref().map(AsRef::as_ref),
-            )
-            .await
-        {
+            .guarded(|| {
+                self.storage.find_similar(
+                    embedding,
+                    self.dedup_threshold,
+                    observation.project.as_ref().map(AsRef::as_ref),
+                )
+            })
+            .await;
+        let existing = match self.with_cb(result) {
             Ok(Some(m)) => m,
             Ok(None) => return Ok(None),
             Err(e) => {
@@ -108,11 +114,17 @@ impl ObservationService {
             "Semantic dedup: merging into existing observation"
         );
 
-        match self
+        let result = self
             .storage
-            .merge_into_existing(existing.observation_id.as_ref(), observation, true)
-            .await
-        {
+            .guarded(|| {
+                self.storage.merge_into_existing(
+                    existing.observation_id.as_ref(),
+                    observation,
+                    true,
+                )
+            })
+            .await;
+        match self.with_cb(result) {
             Ok(()) => Ok(Some(existing.observation_id.to_string())),
             Err(e) => {
                 tracing::warn!(
@@ -125,7 +137,11 @@ impl ObservationService {
     }
 
     pub(crate) async fn regenerate_embedding(&self, observation_id: &str) {
-        let merged_obs = match self.storage.get_by_id(observation_id).await {
+        let result = self
+            .storage
+            .guarded(|| self.storage.get_by_id(observation_id))
+            .await;
+        let merged_obs = match self.with_cb(result) {
             Ok(Some(obs)) => obs,
             Ok(None) => {
                 tracing::warn!(
@@ -145,7 +161,11 @@ impl ObservationService {
         };
 
         if let Some(emb) = self.generate_embedding(&merged_obs).await {
-            if let Err(e) = self.storage.store_embedding(observation_id, &emb).await {
+            let result = self
+                .storage
+                .guarded(|| self.storage.store_embedding(observation_id, &emb))
+                .await;
+            if let Err(e) = self.with_cb(result) {
                 tracing::warn!("Failed to update embedding after merge: {}", e);
             }
         }
@@ -161,13 +181,17 @@ impl ObservationService {
         let mut last_was_title_collision = false;
 
         for i in 0_u32..5_u32 {
-            match self.storage.save_observation(&obs).await {
+            let result = self
+                .storage
+                .guarded(|| self.storage.save_observation(&obs))
+                .await;
+            match self.with_cb(result) {
                 Ok(is_new) => {
                     inserted = is_new;
                     last_was_title_collision = false;
                     break;
                 }
-                Err(opencode_mem_storage::StorageError::Duplicate(msg)) => {
+                Err(ServiceError::Storage(opencode_mem_storage::StorageError::Duplicate(msg))) => {
                     tracing::warn!(
                         "Title collision (23505): {}, mutating title and retrying",
                         msg
@@ -175,7 +199,7 @@ impl ObservationService {
                     obs.title = format!("{} ({})", observation.title, i.saturating_add(1));
                     last_was_title_collision = true;
                 }
-                Err(e) => return Err(e.into()),
+                Err(e) => return Err(e),
             }
         }
 
@@ -207,13 +231,12 @@ impl ObservationService {
         }
 
         if let Some(vec) = embedding_vec {
-            match self.storage.store_embedding(obs.id.as_ref(), &vec).await {
-                Ok(()) => {
-                    tracing::info!("Stored embedding for {}", obs.id);
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to store embedding for {}: {}", obs.id, e);
-                }
+            let result = self
+                .storage
+                .guarded(|| self.storage.store_embedding(obs.id.as_ref(), &vec))
+                .await;
+            if let Err(e) = self.with_cb(result) {
+                tracing::warn!("Failed to store embedding for {}: {}", obs.id, e);
             }
         }
 

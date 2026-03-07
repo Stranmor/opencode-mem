@@ -121,11 +121,14 @@ impl InfiniteMemoryService {
     }
 
     pub async fn store_event(&self, event: RawInfiniteEvent) -> Result<i64, StorageError> {
-        let result = opencode_mem_storage::pg_storage::infinite_memory::store_infinite_event(
-            &self.pool, event,
-        )
-        .await;
-        self.record_result_storage(&result);
+        let result = self
+            .guarded(|| {
+                opencode_mem_storage::pg_storage::infinite_memory::store_infinite_event(
+                    &self.pool,
+                    event.clone(),
+                )
+            })
+            .await;
         result
     }
 
@@ -142,11 +145,19 @@ impl InfiniteMemoryService {
         summary: &str,
         entities: Option<&SummaryEntities>,
     ) -> Result<i64, StorageError> {
-        let result = opencode_mem_storage::pg_storage::infinite_memory::create_5min_summary(
-            &self.pool, events, summary, entities,
-        )
-        .await;
-        self.record_result_storage(&result);
+        let events = events.to_vec();
+        let summary = summary.to_owned();
+        let entities = entities.cloned();
+        let result = self
+            .guarded(|| {
+                opencode_mem_storage::pg_storage::infinite_memory::create_5min_summary(
+                    &self.pool,
+                    &events,
+                    &summary,
+                    entities.as_ref(),
+                )
+            })
+            .await;
         result
     }
 
@@ -160,11 +171,19 @@ impl InfiniteMemoryService {
         content: &str,
         entities: Option<&SummaryEntities>,
     ) -> Result<i64, StorageError> {
-        let result = opencode_mem_storage::pg_storage::infinite_memory::create_hour_summary(
-            &self.pool, summaries, content, entities,
-        )
-        .await;
-        self.record_result_storage(&result);
+        let summaries = summaries.to_vec();
+        let content = content.to_owned();
+        let entities = entities.cloned();
+        let result = self
+            .guarded(|| {
+                opencode_mem_storage::pg_storage::infinite_memory::create_hour_summary(
+                    &self.pool,
+                    &summaries,
+                    &content,
+                    entities.as_ref(),
+                )
+            })
+            .await;
         result
     }
 
@@ -174,11 +193,19 @@ impl InfiniteMemoryService {
         content: &str,
         entities: Option<&SummaryEntities>,
     ) -> Result<i64, StorageError> {
-        let result = opencode_mem_storage::pg_storage::infinite_memory::create_day_summary(
-            &self.pool, summaries, content, entities,
-        )
-        .await;
-        self.record_result_storage(&result);
+        let summaries = summaries.to_vec();
+        let content = content.to_owned();
+        let entities = entities.cloned();
+        let result = self
+            .guarded(|| {
+                opencode_mem_storage::pg_storage::infinite_memory::create_day_summary(
+                    &self.pool,
+                    &summaries,
+                    &content,
+                    entities.as_ref(),
+                )
+            })
+            .await;
         result
     }
 
@@ -188,6 +215,21 @@ impl InfiniteMemoryService {
 
     pub async fn run_full_compression(&self) -> Result<(u32, u32, u32)> {
         pipeline::run_full_compression(&self.pool, &self.llm).await
+    }
+
+    pub async fn guarded<F, Fut, T>(&self, op_f: F) -> Result<T, StorageError>
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = Result<T, StorageError>>,
+    {
+        if !self.circuit_breaker.should_allow() {
+            return Err(StorageError::Unavailable {
+                seconds_until_probe: self.circuit_breaker.seconds_until_probe(),
+            });
+        }
+        let result = op_f().await;
+        self.record_result_storage(&result);
+        result
     }
 
     fn record_result_storage<T>(&self, result: &Result<T, StorageError>) {

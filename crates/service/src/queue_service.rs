@@ -41,20 +41,6 @@ impl QueueService {
     }
 
     pub(crate) fn with_cb<T>(&self, result: Result<T, ServiceError>) -> Result<T, ServiceError> {
-        match &result {
-            Ok(_) => {
-                self.storage.circuit_breaker().record_success();
-            }
-            Err(e) if e.is_db_unavailable() => self.storage.circuit_breaker().record_failure(),
-            Err(e) if self.storage.circuit_breaker().is_half_open() => {
-                if e.is_db_unavailable() || e.is_transient() {
-                    self.storage.circuit_breaker().record_failure();
-                } else {
-                    self.storage.circuit_breaker().record_success();
-                }
-            }
-            Err(_) => {}
-        }
         result
     }
 

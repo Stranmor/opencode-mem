@@ -128,7 +128,8 @@ impl CircuitBreaker {
         let state = self.state.load(Ordering::Acquire);
 
         if state == STATE_HALF_OPEN {
-            // Probe failed — re-open with doubled backoff
+            // Probe failed — re-open with doubled backoff.
+            // Reset the backoff anchor to now.
             let current_backoff = self.backoff_secs.load(Ordering::Relaxed);
             let new_backoff = current_backoff.saturating_mul(2).min(MAX_BACKOFF_SECS);
             self.backoff_secs.store(new_backoff, Ordering::Relaxed);
@@ -146,11 +147,13 @@ impl CircuitBreaker {
                 .fetch_add(1, Ordering::Relaxed)
                 .saturating_add(1);
             if count >= FAILURE_THRESHOLD {
-                if let Ok(mut lock) = self.last_failure_time.write() {
-                    *lock = Instant::now();
-                }
-                let prev = self.state.swap(STATE_OPEN, Ordering::Release);
+                let prev = self.state.swap(STATE_OPEN, Ordering::AcqRel);
                 if prev != STATE_OPEN {
+                    // Critical: only update the backoff anchor when the circuit transitions to Open.
+                    // This prevents subsequent failures from extending the backoff timer indefinitely.
+                    if let Ok(mut lock) = self.last_failure_time.write() {
+                        *lock = Instant::now();
+                    }
                     let backoff = self.backoff_secs.load(Ordering::Relaxed);
                     tracing::warn!(
                         consecutive_failures = count,
