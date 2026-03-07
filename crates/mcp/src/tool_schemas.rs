@@ -193,7 +193,8 @@ pub fn get_tools_json() -> serde_json::Value {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "id": { "type": "integer", "description": "Summary ID to expand" }
+                        "id": { "type": "integer", "description": "Summary ID to expand" },
+                        "limit": { "type": "integer", "default": 1000 }
                     },
                     "required": ["id"]
                 }
@@ -206,7 +207,8 @@ pub fn get_tools_json() -> serde_json::Value {
                     "properties": {
                         "start": { "type": "string", "description": "Start time (ISO 8601)" },
                         "end": { "type": "string", "description": "End time (ISO 8601)" },
-                        "session_id": { "type": "string", "description": "Optional session filter" }
+                        "session_id": { "type": "string", "description": "Optional session filter" },
+                        "limit": { "type": "integer", "default": 1000 }
                     },
                     "required": ["start", "end"]
                 }
@@ -217,7 +219,8 @@ pub fn get_tools_json() -> serde_json::Value {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "id": { "type": "integer", "description": "Day summary ID" }
+                        "id": { "type": "integer", "description": "Day summary ID" },
+                        "limit": { "type": "integer", "default": 100 }
                     },
                     "required": ["id"]
                 }
@@ -228,7 +231,8 @@ pub fn get_tools_json() -> serde_json::Value {
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "id": { "type": "integer", "description": "Hour summary ID" }
+                        "id": { "type": "integer", "description": "Hour summary ID" },
+                        "limit": { "type": "integer", "default": 100 }
                     },
                     "required": ["id"]
                 }

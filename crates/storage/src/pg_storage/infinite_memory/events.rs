@@ -168,6 +168,7 @@ pub async fn search_infinite_events(
     query: &str,
     limit: i64,
 ) -> Result<Vec<StoredInfiniteEvent>, StorageError> {
+    let escaped = crate::pg_storage::escape_like(query);
     let rows = sqlx::query_as::<_, StoredEventRow>(&format!(
         "SELECT {} \
         FROM raw_events \
@@ -176,7 +177,7 @@ pub async fn search_infinite_events(
         LIMIT $2",
         crate::pg_storage::EVENT_COLUMNS
     ))
-    .bind(query)
+    .bind(escaped)
     .bind(limit)
     .fetch_all(pool)
     .await?;

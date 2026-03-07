@@ -195,7 +195,8 @@ impl AppConfig {
 
         let infinite_memory_url = std::env::var("INFINITE_MEMORY_URL")
             .or_else(|_| std::env::var("OPENCODE_MEM_INFINITE_MEMORY"))
-            .ok();
+            .ok()
+            .or_else(|| Some(database_url.clone()));
 
         let dedup_threshold = parse_clamped_threshold("OPENCODE_MEM_DEDUP_THRESHOLD", 0.85);
         let injection_dedup_threshold =
