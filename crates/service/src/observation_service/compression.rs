@@ -52,8 +52,10 @@ impl ObservationService {
             .project
             .as_deref()
             .filter(|p| !p.is_empty() && *p != "unknown");
+        let input_text = serde_json::to_string(&tool_call.input).unwrap_or_default();
         let candidates = self
             .find_candidate_observations(
+                &input_text,
                 &filtered_output,
                 tool_call.session_id.as_ref(),
                 parsed_project,
@@ -83,23 +85,10 @@ impl ObservationService {
                 let candidate_ids: HashSet<&str> =
                     candidates.iter().map(|o| o.id.as_ref()).collect();
 
-                // Security: Only allow context-aware updates if the target observation
-                // was in the candidate set AND belongs to the current session.
-                // This prevents a hallucinating LLM from corrupting historical data
-                // across project boundaries.
-                let target_in_session = candidates
-                    .iter()
-                    .find(|o| o.id.as_ref() == target_id.as_str())
-                    .map_or(false, |o| {
-                        o.session_id.as_ref() == tool_call.session_id.as_ref()
-                    });
-
-                if !candidate_ids.contains(target_id.as_str()) || !target_in_session {
+                if !candidate_ids.contains(target_id.as_str()) {
                     tracing::warn!(
                         target_id = %target_id,
-                        in_candidate_set = candidate_ids.contains(target_id.as_str()),
-                        in_current_session = target_in_session,
-                        "Update target not eligible for context-aware refinement — treating as create"
+                        "Update target not in candidate set — treating as create"
                     );
                     return self
                         .persist_and_notify(&observation, Some(tool_call.session_id.as_ref()))
@@ -148,43 +137,92 @@ impl ObservationService {
         }
     }
 
+    /// Build a search query from tool input + output, taking head+tail to capture
+    /// both the beginning context and the final results of the tool call.
+    fn build_candidate_query(tool_input: &str, tool_output: &str, max_len: usize) -> String {
+        let half = max_len / 2;
+        let mut parts = Vec::new();
+
+        // Include tool input (file paths, function names, queries — high signal)
+        if !tool_input.is_empty() {
+            let input_budget = half.min(tool_input.len());
+            let end = Self::find_char_boundary(tool_input, input_budget);
+            if let Some(s) = tool_input.get(..end) {
+                if !s.is_empty() {
+                    parts.push(s.to_owned());
+                }
+            }
+        }
+
+        // Include head + tail of tool output
+        if !tool_output.is_empty() {
+            let output_budget =
+                max_len.saturating_sub(parts.iter().map(String::len).sum::<usize>());
+            if tool_output.len() <= output_budget {
+                parts.push(tool_output.to_owned());
+            } else {
+                let head_size = output_budget / 2;
+                let tail_size = output_budget.saturating_sub(head_size);
+                let head_end = Self::find_char_boundary(tool_output, head_size);
+                if let Some(s) = tool_output.get(..head_end) {
+                    if !s.is_empty() {
+                        parts.push(s.to_owned());
+                    }
+                }
+                let tail_start_raw = tool_output.len().saturating_sub(tail_size);
+                let tail_start = Self::find_char_boundary_up(tool_output, tail_start_raw);
+                if let Some(s) = tool_output.get(tail_start..) {
+                    if !s.is_empty() {
+                        parts.push(s.to_owned());
+                    }
+                }
+            }
+        }
+
+        parts.join(" ")
+    }
+
+    /// Find the nearest char boundary at or below `pos`.
+    fn find_char_boundary(s: &str, pos: usize) -> usize {
+        let mut boundary = pos.min(s.len());
+        while boundary > 0 && !s.is_char_boundary(boundary) {
+            boundary = boundary.saturating_sub(1);
+        }
+        boundary
+    }
+
+    /// Find the nearest char boundary at or above `pos`.
+    fn find_char_boundary_up(s: &str, pos: usize) -> usize {
+        let mut boundary = pos.min(s.len());
+        while boundary < s.len() && !s.is_char_boundary(boundary) {
+            boundary = boundary.saturating_add(1);
+        }
+        boundary
+    }
+
     async fn find_candidate_observations(
         &self,
-        raw_text: &str,
+        tool_input: &str,
+        tool_output: &str,
         session_id: &str,
         project: Option<&str>,
     ) -> Vec<Observation> {
+        let query_str = Self::build_candidate_query(tool_input, tool_output, 500);
         let mut hybrid_candidates = Vec::new();
-        if let Some(ref embeddings) = self.embeddings {
-            let max_query_len = 500;
-            let end = if raw_text.len() <= max_query_len {
-                raw_text.len()
-            } else {
-                let mut boundary = max_query_len;
-                while boundary > 0 && !raw_text.is_char_boundary(boundary) {
-                    boundary = boundary.saturating_sub(1);
-                }
-                boundary
-            };
-            let query_str = raw_text.get(..end).unwrap_or("").to_owned();
 
-            if !query_str.is_empty() {
+        if !query_str.is_empty() {
+            if let Some(ref embeddings) = self.embeddings {
+                let embed_input = query_str.clone();
                 let embeddings_clone = Arc::clone(embeddings);
                 let vector_res =
-                    tokio::task::spawn_blocking(move || embeddings_clone.embed(&query_str)).await;
+                    tokio::task::spawn_blocking(move || embeddings_clone.embed(&embed_input)).await;
 
                 match vector_res {
                     Ok(Ok(query_vec)) => {
                         match self
                             .storage
                             .hybrid_search_v2_with_filters(
-                                raw_text.get(..end).unwrap_or(""),
-                                &query_vec,
-                                project,
-                                None,
-                                None,
-                                None,
-                                5,
+                                &query_str, &query_vec, project, None, None, None, 5,
                             )
                             .await
                         {
@@ -215,11 +253,12 @@ impl ObservationService {
             }
         }
 
-        let fts_candidates = self.find_fts_candidates(raw_text, project).await;
+        let fts_query = Self::build_candidate_query(tool_input, tool_output, 500);
+        let fts_candidates = self.find_fts_candidates(&fts_query, project).await;
 
         let session_candidates = match self
             .storage
-            .get_recent_session_observations(session_id, 3)
+            .get_recent_session_observations(session_id, 10)
             .await
         {
             Ok(obs) => obs,
@@ -252,18 +291,7 @@ impl ObservationService {
         result
     }
 
-    async fn find_fts_candidates(&self, raw_text: &str, project: Option<&str>) -> Vec<Observation> {
-        let max_query_len = 500;
-        let end = if raw_text.len() <= max_query_len {
-            raw_text.len()
-        } else {
-            let mut boundary = max_query_len;
-            while boundary > 0 && !raw_text.is_char_boundary(boundary) {
-                boundary = boundary.saturating_sub(1);
-            }
-            boundary
-        };
-        let query = raw_text.get(..end).unwrap_or("");
+    async fn find_fts_candidates(&self, query: &str, project: Option<&str>) -> Vec<Observation> {
         if query.is_empty() {
             return Vec::new();
         }
