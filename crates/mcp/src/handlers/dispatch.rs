@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use opencode_mem_core::DEFAULT_QUERY_LIMIT;
 use opencode_mem_service::{
-    InfiniteMemoryService, KnowledgeService, ObservationService, PendingWrite, PendingWriteQueue,
+    InfiniteMemoryService, KnowledgeService, ObservationService, PendingWriteQueue,
     SearchService, SessionService,
 };
 use serde_json::json;

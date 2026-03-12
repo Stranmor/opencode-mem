@@ -4,7 +4,7 @@ use serde_json::json;
 use std::str::FromStr;
 use uuid::Uuid;
 
-use crate::handlers::{cb_fast_fail_write, degrade_write_err, mcp_err, mcp_ok};
+use crate::handlers::{cb_fast_fail_write, mcp_err, mcp_ok};
 
 pub(in crate::handlers) async fn handle_save_memory(
     observation_service: &ObservationService,

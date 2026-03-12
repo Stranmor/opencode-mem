@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use opencode_mem_core::{ProjectFilter, ToolCall, cap_query_limit, sanitize_input};
+use opencode_mem_core::{ToolCall, cap_query_limit, sanitize_input};
 use opencode_mem_storage::traits::PendingQueueStore;
-use opencode_mem_storage::{PendingMessage, QueueStats, StorageBackend, StorageError};
+use opencode_mem_storage::{PendingMessage, QueueStats, StorageBackend};
 
 use crate::{PendingWriteQueue, ServiceError};
 
