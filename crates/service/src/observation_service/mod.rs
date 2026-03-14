@@ -12,7 +12,7 @@ use opencode_mem_embeddings::EmbeddingService;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_storage::StorageBackend;
 use opencode_mem_storage::traits::ObservationStore;
-use tokio::sync::broadcast;
+use tokio::sync::{Semaphore, broadcast};
 
 use crate::InfiniteMemoryService;
 
@@ -32,6 +32,7 @@ pub struct ObservationService {
     pub(crate) injection_dedup_threshold: f32,
     pub(crate) project_filter: Option<opencode_mem_core::ProjectFilter>,
     pub(crate) low_value_filter: opencode_mem_core::LowValueFilter,
+    pub(crate) enrichment_semaphore: Arc<Semaphore>,
 }
 
 impl ObservationService {
@@ -86,6 +87,7 @@ impl ObservationService {
             injection_dedup_threshold,
             project_filter,
             low_value_filter,
+            enrichment_semaphore: Arc::new(Semaphore::new(3)),
         }
     }
 

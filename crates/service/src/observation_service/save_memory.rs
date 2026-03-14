@@ -104,8 +104,14 @@ impl ObservationService {
         let llm = self.llm.clone();
         let storage = self.storage.clone();
         let svc = self.clone();
+        let semaphore = self.enrichment_semaphore.clone();
 
         tokio::spawn(async move {
+            let _permit = match semaphore.acquire().await {
+                Ok(permit) => permit,
+                Err(_) => return, // Semaphore closed — shut down gracefully
+            };
+
             let narrative = obs.narrative.as_deref().unwrap_or("");
             if narrative.is_empty() && obs.title.is_empty() {
                 return;
