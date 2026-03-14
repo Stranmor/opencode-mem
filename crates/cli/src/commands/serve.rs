@@ -1,6 +1,6 @@
 use anyhow::Result;
 use opencode_mem_core::AppConfig;
-use opencode_mem_embeddings::EmbeddingService;
+use opencode_mem_embeddings::LazyEmbeddingService;
 use opencode_mem_http::{
     AppState, Settings, create_router, run_startup_recovery, start_background_processor,
 };
@@ -64,16 +64,9 @@ pub(crate) async fn run(port: u16, host: String, config: Arc<AppConfig>) -> Resu
         tracing::info!("Embeddings disabled via OPENCODE_MEM_DISABLE_EMBEDDINGS");
         None
     } else {
-        match EmbeddingService::new(config.embedding_threads) {
-            Ok(emb) => {
-                tracing::info!("Embedding service initialized (BGE-M3, 1024 dimensions)");
-                Some(Arc::new(emb))
-            }
-            Err(e) => {
-                tracing::warn!("Failed to initialize embeddings: {}", e);
-                None
-            }
-        }
+        Some(Arc::new(LazyEmbeddingService::new(
+            config.embedding_threads,
+        )))
     };
 
     let pending_writes = Arc::new(opencode_mem_service::PendingWriteQueue::new());

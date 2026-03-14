@@ -8,7 +8,7 @@ mod side_effects;
 use std::sync::Arc;
 
 use opencode_mem_core::{AppConfig, Observation, ToolCall};
-use opencode_mem_embeddings::EmbeddingService;
+use opencode_mem_embeddings::LazyEmbeddingService;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_storage::StorageBackend;
 use opencode_mem_storage::traits::ObservationStore;
@@ -27,7 +27,7 @@ pub struct ObservationService {
     pub(crate) llm: Arc<LlmClient>,
     pub(crate) infinite_mem: Option<Arc<InfiniteMemoryService>>,
     pub(crate) event_tx: broadcast::Sender<String>,
-    pub(crate) embeddings: Option<Arc<EmbeddingService>>,
+    pub(crate) embeddings: Option<Arc<LazyEmbeddingService>>,
     pub(crate) dedup_threshold: f32,
     pub(crate) injection_dedup_threshold: f32,
     pub(crate) project_filter: Option<opencode_mem_core::ProjectFilter>,
@@ -62,7 +62,7 @@ impl ObservationService {
         llm: Arc<LlmClient>,
         infinite_mem: Option<Arc<InfiniteMemoryService>>,
         event_tx: broadcast::Sender<String>,
-        embeddings: Option<Arc<EmbeddingService>>,
+        embeddings: Option<Arc<LazyEmbeddingService>>,
         config: &AppConfig,
     ) -> Self {
         let dedup_threshold = config.dedup_threshold;

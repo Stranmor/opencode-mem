@@ -1,6 +1,6 @@
 use anyhow::Result;
 use opencode_mem_core::AppConfig;
-use opencode_mem_embeddings::{EmbeddingProvider as _, EmbeddingService};
+use opencode_mem_embeddings::{EmbeddingProvider as _, EmbeddingService, LazyEmbeddingService};
 use opencode_mem_service::SearchService;
 use opencode_mem_storage::traits::{EmbeddingStore, KnowledgeStore, ObservationStore, StatsStore};
 use std::sync::Arc;
@@ -16,9 +16,9 @@ pub(crate) async fn run_search(
     let embeddings = if config.disable_embeddings {
         None
     } else {
-        EmbeddingService::new(config.embedding_threads)
-            .ok()
-            .map(Arc::new)
+        Some(Arc::new(LazyEmbeddingService::new(
+            config.embedding_threads,
+        )))
     };
     let search = SearchService::new(storage, embeddings, None, config.dedup_threshold);
     let results = search

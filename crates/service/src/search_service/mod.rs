@@ -7,7 +7,7 @@ mod query_ops;
 use std::sync::Arc;
 
 use opencode_mem_core::{Observation, SearchResult, cap_query_limit};
-use opencode_mem_embeddings::EmbeddingService;
+use opencode_mem_embeddings::LazyEmbeddingService;
 use opencode_mem_storage::traits::{ObservationStore, SearchStore, StatsStore};
 use opencode_mem_storage::{
     CircuitBreaker, PaginatedResult, StorageBackend, StorageError, StorageStats,
@@ -18,7 +18,7 @@ use crate::ServiceError;
 
 pub struct SearchService {
     pub(crate) storage: Arc<StorageBackend>,
-    pub(crate) embeddings: Option<Arc<EmbeddingService>>,
+    pub(crate) embeddings: Option<Arc<LazyEmbeddingService>>,
     infinite_mem: Option<Arc<InfiniteMemoryService>>,
     pub(crate) dedup_threshold: f32,
 }
@@ -27,7 +27,7 @@ impl SearchService {
     #[must_use]
     pub fn new(
         storage: Arc<StorageBackend>,
-        embeddings: Option<Arc<EmbeddingService>>,
+        embeddings: Option<Arc<LazyEmbeddingService>>,
         infinite_mem: Option<Arc<InfiniteMemoryService>>,
         dedup_threshold: f32,
     ) -> Self {

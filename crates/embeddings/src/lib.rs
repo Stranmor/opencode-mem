@@ -11,7 +11,7 @@ pub mod error;
 use error::EmbeddingError;
 use fastembed::{InitOptions, TextEmbedding};
 use std::fmt::{Debug, Formatter, Result as FmtResult};
-use std::sync::{Mutex, Once};
+use std::sync::{Mutex, Once, OnceLock};
 
 /// Embedding dimension for `BGE-M3` model (re-exported from core)
 pub use opencode_mem_core::EMBEDDING_DIMENSION;
@@ -42,6 +42,37 @@ pub struct EmbeddingService {
 /// Ensures ORT global thread pool is configured exactly once
 static ORT_INIT: Once = Once::new();
 
+/// Configures ORT global thread pool (idempotent via `Once`).
+fn init_ort(thread_count: usize) {
+    ORT_INIT.call_once(|| {
+        // OMP_NUM_THREADS is the ONLY reliable way to limit threads when ONNX Runtime
+        // is built with OpenMP (Microsoft's prebuilt binaries). Per-session
+        // `with_intra_threads` and global pool options have no effect in OpenMP builds.
+        // Safe here: called once via Once, before any ONNX/OpenMP initialization.
+        // TODO(edition-2024): wrap in unsafe {} when migrating to Rust edition 2024
+
+        let pool_opts = ort::environment::GlobalThreadPoolOptions::default()
+            .with_intra_threads(thread_count)
+            .and_then(|opts| opts.with_spin_control(false));
+
+        match pool_opts {
+            Ok(opts) => {
+                let applied = ort::init().with_global_thread_pool(opts).commit();
+                if applied {
+                    tracing::info!(threads = thread_count, "ORT global thread pool configured");
+                } else {
+                    tracing::debug!(
+                        "ORT environment already configured, thread pool settings skipped"
+                    );
+                }
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to configure ORT global thread pool, using defaults");
+            }
+        }
+    });
+}
+
 impl Debug for EmbeddingService {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         f.debug_struct("EmbeddingService")
@@ -54,36 +85,12 @@ impl EmbeddingService {
     /// Create a new embedding service
     ///
     /// Downloads the model on first use if not cached.
+    /// This is CPU-intensive (~28s) — prefer [`LazyEmbeddingService`] for server startup.
     ///
     /// # Errors
     /// Returns error if model initialization fails
     pub fn new(thread_count: usize) -> Result<Self, EmbeddingError> {
-        ORT_INIT.call_once(|| {
-            // OMP_NUM_THREADS is the ONLY reliable way to limit threads when ONNX Runtime
-            // is built with OpenMP (Microsoft's prebuilt binaries). Per-session
-            // `with_intra_threads` and global pool options have no effect in OpenMP builds.
-            // Safe here: called once via Once, before any ONNX/OpenMP initialization.
-            // TODO(edition-2024): wrap in unsafe {} when migrating to Rust edition 2024
-
-
-            let pool_opts = ort::environment::GlobalThreadPoolOptions::default()
-                .with_intra_threads(thread_count)
-                .and_then(|opts| opts.with_spin_control(false));
-
-            match pool_opts {
-                Ok(opts) => {
-                    let applied = ort::init().with_global_thread_pool(opts).commit();
-                    if applied {
-                        tracing::info!(threads = thread_count, "ORT global thread pool configured");
-                    } else {
-                        tracing::debug!("ORT environment already configured, thread pool settings skipped");
-                    }
-                }
-                Err(e) => {
-                    tracing::warn!(error = %e, "Failed to configure ORT global thread pool, using defaults");
-                }
-            }
-        });
+        init_ort(thread_count);
 
         #[allow(unused_mut, reason = "mut needed when cuda feature is enabled")]
         let mut options =
@@ -136,6 +143,73 @@ impl EmbeddingProvider for EmbeddingService {
             .embed(texts, None)
             .map_err(|e| EmbeddingError::Generation(e.to_string()))?;
         Ok(embeddings)
+    }
+
+    fn dimension(&self) -> usize {
+        EMBEDDING_DIMENSION
+    }
+}
+
+/// Lazy-loading wrapper around [`EmbeddingService`].
+///
+/// Defers the expensive ONNX model initialization (~28s) until the first
+/// actual embedding call. This allows MCP/HTTP servers to start instantly
+/// and respond to handshake within OpenCode's 30-second timeout.
+///
+/// Thread-safe: the inner `OnceLock` ensures initialization runs exactly once,
+/// even under concurrent access from multiple `spawn_blocking` tasks.
+pub struct LazyEmbeddingService {
+    inner: OnceLock<Result<EmbeddingService, String>>,
+    thread_count: usize,
+}
+
+impl Debug for LazyEmbeddingService {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        let initialized = self
+            .inner
+            .get()
+            .map_or("pending", |r| if r.is_ok() { "ready" } else { "failed" });
+        f.debug_struct("LazyEmbeddingService")
+            .field("state", &initialized)
+            .field("thread_count", &self.thread_count)
+            .finish()
+    }
+}
+
+impl LazyEmbeddingService {
+    /// Create a lazy embedding service that defers model loading to first use.
+    #[must_use]
+    pub fn new(thread_count: usize) -> Self {
+        tracing::info!(
+            threads = thread_count,
+            "Lazy embedding service created (model will load on first use)"
+        );
+        Self {
+            inner: OnceLock::new(),
+            thread_count,
+        }
+    }
+
+    /// Get or initialize the inner service. Returns error if initialization failed.
+    fn get_or_init(&self) -> Result<&EmbeddingService, EmbeddingError> {
+        let result = self.inner.get_or_init(|| {
+            tracing::info!("First embedding request — initializing model (this may take ~30s)...");
+            EmbeddingService::new(self.thread_count).map_err(|e| e.to_string())
+        });
+        match result {
+            Ok(svc) => Ok(svc),
+            Err(msg) => Err(EmbeddingError::ModelInit(msg.clone())),
+        }
+    }
+}
+
+impl EmbeddingProvider for LazyEmbeddingService {
+    fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
+        self.get_or_init()?.embed(text)
+    }
+
+    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        self.get_or_init()?.embed_batch(texts)
     }
 
     fn dimension(&self) -> usize {

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use opencode_mem_core::AppConfig;
-use opencode_mem_embeddings::EmbeddingService;
+use opencode_mem_embeddings::LazyEmbeddingService;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_mcp::run_mcp_server;
 use opencode_mem_service::{
@@ -28,13 +28,9 @@ pub(crate) async fn run(config: Arc<AppConfig>) -> Result<()> {
         eprintln!("Embeddings disabled via OPENCODE_MEM_DISABLE_EMBEDDINGS");
         None
     } else {
-        match EmbeddingService::new(config.embedding_threads) {
-            Ok(emb) => Some(Arc::new(emb)),
-            Err(e) => {
-                eprintln!("Warning: Embeddings not available: {e}. Semantic search disabled.");
-                None
-            }
-        }
+        Some(Arc::new(LazyEmbeddingService::new(
+            config.embedding_threads,
+        )))
     };
 
     let infinite_mem = if let Some(ref url) = config.infinite_memory_url {

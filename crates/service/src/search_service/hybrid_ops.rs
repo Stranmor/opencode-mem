@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use opencode_mem_core::SearchResult;
-use opencode_mem_embeddings::{EmbeddingProvider, EmbeddingService};
+use opencode_mem_embeddings::{EmbeddingProvider, LazyEmbeddingService};
 use opencode_mem_storage::traits::SearchStore;
 
 use crate::ServiceError;
@@ -195,7 +195,10 @@ impl SearchService {
     }
 }
 
-async fn embed_query(emb: &Arc<EmbeddingService>, query: &str) -> Result<Vec<f32>, ServiceError> {
+async fn embed_query(
+    emb: &Arc<LazyEmbeddingService>,
+    query: &str,
+) -> Result<Vec<f32>, ServiceError> {
     let emb_clone = emb.clone();
     let query_str = query.to_owned();
     let vec = tokio::task::spawn_blocking(move || emb_clone.embed(&query_str))
