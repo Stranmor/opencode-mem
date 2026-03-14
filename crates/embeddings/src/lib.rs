@@ -11,7 +11,7 @@ pub mod error;
 use error::EmbeddingError;
 use fastembed::{InitOptions, TextEmbedding};
 use std::fmt::{Debug, Formatter, Result as FmtResult};
-use std::sync::{Mutex, Once};
+use std::sync::{Arc, Mutex, Once};
 
 /// Embedding dimension for `BGE-M3` model (re-exported from core)
 pub use opencode_mem_core::EMBEDDING_DIMENSION;
@@ -140,11 +140,12 @@ impl EmbeddingProvider for EmbeddingService {
     }
 
     fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
+        let texts_vec: Vec<&str> = texts.to_vec();
         let embeddings = self
             .model
             .lock()
             .map_err(|_| EmbeddingError::LockPoisoned)?
-            .embed(texts, None)
+            .embed(texts_vec, None)
             .map_err(|e| EmbeddingError::Generation(e.to_string()))?;
         Ok(embeddings)
     }
@@ -164,7 +165,7 @@ impl EmbeddingProvider for EmbeddingService {
 /// (e.g., network issues during model download) are retried on the next call,
 /// rather than permanently caching the error.
 pub struct LazyEmbeddingService {
-    inner: Mutex<Option<EmbeddingService>>,
+    inner: Mutex<Option<Arc<EmbeddingService>>>,
     thread_count: usize,
 }
 
@@ -202,25 +203,29 @@ impl LazyEmbeddingService {
         &self,
         f: impl FnOnce(&EmbeddingService) -> Result<T, EmbeddingError>,
     ) -> Result<T, EmbeddingError> {
-        let mut guard = self
-            .inner
-            .lock()
-            .map_err(|_| EmbeddingError::LockPoisoned)?;
-        if guard.is_none() {
-            tracing::info!("First embedding request — initializing model (this may take ~30s)...");
-            match EmbeddingService::new(self.thread_count) {
-                Ok(svc) => {
-                    *guard = Some(svc);
-                }
-                Err(e) => {
-                    tracing::warn!(error = %e, "Embedding model init failed (will retry on next call)");
-                    return Err(e);
+        let svc = {
+            let mut guard = self
+                .inner
+                .lock()
+                .map_err(|_| EmbeddingError::LockPoisoned)?;
+            if guard.is_none() {
+                tracing::info!(
+                    "First embedding request — initializing model (this may take ~30s)..."
+                );
+                match EmbeddingService::new(self.thread_count) {
+                    Ok(svc) => {
+                        *guard = Some(Arc::new(svc));
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Embedding model init failed (will retry on next call)");
+                        return Err(e);
+                    }
                 }
             }
-        }
-        // SAFETY: we just ensured `guard` is `Some` above
-        let svc = guard.as_ref().expect("just initialized");
-        f(svc)
+            Arc::clone(guard.as_ref().expect("just initialized"))
+        };
+
+        f(&svc)
     }
 }
 

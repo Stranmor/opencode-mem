@@ -164,9 +164,7 @@ impl ObservationService {
     }
 }
 
-#[cfg(test)]
 mod adversarial_tests;
 #[cfg(test)]
 mod privacy_tests;
 
-#[cfg(test)]

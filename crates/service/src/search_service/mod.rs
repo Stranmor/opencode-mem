@@ -167,4 +167,3 @@ impl SearchService {
     }
 }
 
-#[cfg(test)]

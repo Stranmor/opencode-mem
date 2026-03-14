@@ -17,15 +17,14 @@ pub(crate) fn check_admin_access(
     headers: &axum::http::HeaderMap,
     config: &opencode_mem_core::AppConfig,
 ) -> bool {
-    // 1. Check for explicit admin token (required for non-localhost or behind proxy)
-    if let Some(ref token) = config.admin_token
-        && let Some(provided) = headers.get("x-admin-token").and_then(|h| h.to_str().ok())
-        && provided == token
-    {
-        return true;
+    if let Some(ref token) = config.admin_token {
+        if let Some(provided) = headers.get("x-admin-token").and_then(|h| h.to_str().ok()) {
+            if subtle::ConstantTimeEq::ct_eq(provided.as_bytes(), token.as_bytes()).into() {
+                return true;
+            }
+        }
     }
 
-    // 2. Fallback to loopback check (only if no token is configured)
     if config.admin_token.is_none() && addr.ip().is_loopback() {
         return true;
     }
@@ -47,5 +46,3 @@ pub mod search;
 pub(crate) mod session_ops;
 pub mod sessions;
 pub mod sessions_api;
-
-#[cfg(test)]

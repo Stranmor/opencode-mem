@@ -447,19 +447,37 @@ impl ObservationStore for PgStorage {
     async fn get_observations_with_empty_metadata(
         &self,
         limit: usize,
+        excluded_ids: &[String],
     ) -> Result<Vec<Observation>, StorageError> {
-        let rows = sqlx::query(&format!(
-            "SELECT {} \
-             FROM observations \
-             WHERE (facts IS NULL OR jsonb_array_length(facts) = 0) \
-               AND (concepts IS NULL OR jsonb_array_length(concepts) = 0) \
-               AND (keywords IS NULL OR jsonb_array_length(keywords) = 0) \
-             ORDER BY created_at DESC, id DESC LIMIT $1",
-            super::OBSERVATION_COLUMNS
-        ))
-        .bind(usize_to_i64(limit))
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = if excluded_ids.is_empty() {
+            sqlx::query(&format!(
+                "SELECT {} \
+                 FROM observations \
+                 WHERE (facts IS NULL OR jsonb_array_length(facts) = 0) \
+                   AND (concepts IS NULL OR jsonb_array_length(concepts) = 0) \
+                   AND (keywords IS NULL OR jsonb_array_length(keywords) = 0) \
+                 ORDER BY created_at DESC, id DESC LIMIT $1",
+                super::OBSERVATION_COLUMNS
+            ))
+            .bind(usize_to_i64(limit))
+            .fetch_all(&self.pool)
+            .await?
+        } else {
+            sqlx::query(&format!(
+                "SELECT {} \
+                 FROM observations \
+                 WHERE (facts IS NULL OR jsonb_array_length(facts) = 0) \
+                   AND (concepts IS NULL OR jsonb_array_length(concepts) = 0) \
+                   AND (keywords IS NULL OR jsonb_array_length(keywords) = 0) \
+                   AND NOT (id = ANY($2)) \
+                 ORDER BY created_at DESC, id DESC LIMIT $1",
+                super::OBSERVATION_COLUMNS
+            ))
+            .bind(usize_to_i64(limit))
+            .bind(excluded_ids)
+            .fetch_all(&self.pool)
+            .await?
+        };
         Ok(collect_skipping_corrupt(
             rows.iter().map(row_to_observation),
         )?)
