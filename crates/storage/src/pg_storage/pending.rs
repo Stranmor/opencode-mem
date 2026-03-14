@@ -121,7 +121,23 @@ impl PendingQueueStore for PgStorage {
     ) -> Result<usize, StorageError> {
         let now = Utc::now().timestamp();
         let stale_threshold = now - visibility_timeout_secs;
-        let result = sqlx::query(
+        let mut tx = self.pool.begin().await?;
+
+        let failed_result = sqlx::query(
+            "UPDATE pending_messages \
+               SET status = 'failed', \
+                   claimed_at_epoch = NULL, \
+                   retry_count = retry_count + 1 \
+               WHERE status = 'processing' \
+                 AND claimed_at_epoch <= $1 \
+                 AND retry_count + 1 >= $2",
+        )
+        .bind(stale_threshold)
+        .bind(max_retry_count())
+        .execute(&mut *tx)
+        .await?;
+
+        let pending_result = sqlx::query(
             "UPDATE pending_messages \
                SET status = 'pending', \
                    claimed_at_epoch = NULL, \
@@ -129,9 +145,13 @@ impl PendingQueueStore for PgStorage {
                WHERE status = 'processing' AND claimed_at_epoch <= $1",
         )
         .bind(stale_threshold)
-        .execute(&self.pool)
+        .execute(&mut *tx)
         .await?;
-        Ok(usize::try_from(result.rows_affected()).unwrap_or(0))
+
+        tx.commit().await?;
+
+        let affected = failed_result.rows_affected() + pending_result.rows_affected();
+        Ok(usize::try_from(affected).unwrap_or(0))
     }
 
     async fn release_messages(&self, ids: &[i64]) -> Result<usize, StorageError> {

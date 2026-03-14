@@ -27,3 +27,4 @@ tracing = { workspace = true }
 async-stream = { workspace = true }
 futures-util = { workspace = true }
 chrono = { workspace = true }
+subtle = "2.6.1"

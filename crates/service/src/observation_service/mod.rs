@@ -106,11 +106,11 @@ impl ObservationService {
             let extract_fut = self.extract_knowledge(&obs);
 
             let (extract_res, infinite_res) = tokio::join!(extract_fut, infinite_fut);
-            extract_res?;
-            // Gracefully handle infinite memory failures to avoid poisoning primary pipeline
+
             if let Err(e) = infinite_res {
                 tracing::warn!(error = %e, "Failed to store existing observation in infinite memory (ignoring)");
             }
+            extract_res?;
 
             return Ok(Some(obs));
         }
@@ -118,30 +118,30 @@ impl ObservationService {
         let infinite_fut = self.store_infinite_memory(&tool_call, None);
         let compress_fut = async {
             let result = self.compress_and_save(id, &tool_call).await?;
-            if let Some((ref obs, false)) = result
-                && obs.id.0 != id
-            {
-                let tombstone = Observation::builder(
-                    id.to_owned(),
-                    obs.session_id.clone(),
-                    obs.observation_type,
-                    format!("[merged into {}]", obs.id),
-                )
-                .noise_level(opencode_mem_core::NoiseLevel::Negligible)
-                .noise_reason(format!("Tombstone: merged into {}", obs.id))
-                .build();
+            if let Some((ref obs, false)) = result {
+                if obs.id.0 != id {
+                    let tombstone = Observation::builder(
+                        id.to_owned(),
+                        obs.session_id.clone(),
+                        obs.observation_type,
+                        format!("[merged into {}]", obs.id),
+                    )
+                    .noise_level(opencode_mem_core::NoiseLevel::Negligible)
+                    .noise_reason(format!("Tombstone: merged into {}", obs.id))
+                    .build();
 
-                let result = self
-                    .storage
-                    .guarded(|| self.storage.save_observation(&tombstone))
-                    .await;
-                if let Err(e) = self.with_cb(result) {
-                    tracing::warn!(
-                        tombstone_id = %id,
-                        merged_into = %obs.id,
-                        error = %e,
-                        "Failed to save tombstone observation — stale original may remain visible"
-                    );
+                    let result = self
+                        .storage
+                        .guarded(|| self.storage.save_observation(&tombstone))
+                        .await;
+                    if let Err(e) = self.with_cb(result) {
+                        tracing::warn!(
+                            tombstone_id = %id,
+                            merged_into = %obs.id,
+                            error = %e,
+                            "Failed to save tombstone observation — stale original may remain visible"
+                        );
+                    }
                 }
             }
             Ok::<_, crate::ServiceError>(result)
@@ -149,12 +149,11 @@ impl ObservationService {
 
         let (infinite_res, compress_res) = tokio::join!(infinite_fut, compress_fut);
 
-        let save_result = compress_res?;
-
-        // Gracefully handle infinite memory failures to avoid poisoning primary pipeline
         if let Err(e) = infinite_res {
             tracing::warn!(error = %e, "Failed to store observation in infinite memory (ignoring)");
         }
+
+        let save_result = compress_res?;
 
         if let Some((ref obs, _)) = save_result {
             self.extract_knowledge(obs).await?;
@@ -167,4 +166,3 @@ impl ObservationService {
 mod adversarial_tests;
 #[cfg(test)]
 mod privacy_tests;
-

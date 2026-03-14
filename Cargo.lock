@@ -2320,6 +2320,7 @@ dependencies = [
  "opencode-mem-storage",
  "serde",
  "serde_json",
+ "subtle",
  "tokio",
  "tracing",
  "uuid",
