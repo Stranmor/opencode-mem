@@ -58,6 +58,7 @@ impl ObservationService {
                 &input_text,
                 &filtered_output,
                 tool_call.session_id.as_ref(),
+                parsed_project,
             )
             .await;
 
@@ -204,6 +205,7 @@ impl ObservationService {
         tool_input: &str,
         tool_output: &str,
         session_id: &str,
+        project: Option<&str>,
     ) -> Vec<Observation> {
         let query_str = Self::build_candidate_query(tool_input, tool_output, 500);
         let mut hybrid_candidates = Vec::new();
@@ -221,7 +223,7 @@ impl ObservationService {
                     match self
                         .storage
                         .hybrid_search_v2_with_filters(
-                            &query_str, &query_vec, None, None, None, None, 5,
+                            &query_str, &query_vec, project, None, None, None, 5,
                         )
                         .await
                     {
@@ -252,7 +254,7 @@ impl ObservationService {
         }
 
         let fts_query = Self::build_candidate_query(tool_input, tool_output, 500);
-        let fts_candidates = self.find_fts_candidates(&fts_query, None).await;
+        let fts_candidates = self.find_fts_candidates(&fts_query, project).await;
 
         let session_candidates = match self
             .storage
