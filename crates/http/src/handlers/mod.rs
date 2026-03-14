@@ -47,3 +47,6 @@ pub mod search;
 pub(crate) mod session_ops;
 pub mod sessions;
 pub mod sessions_api;
+
+#[cfg(test)]
+mod breaker_tests;

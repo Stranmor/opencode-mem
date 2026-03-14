@@ -266,3 +266,4 @@ LLM always creates NEW observations even when near-identical ones exist. The `ex
 - ~~Multi-byte truncation OOM in LLM error messages~~ — replaced `response.get(..300).unwrap_or(&response)` with `core::truncate()` char-boundary-safe helper
 - ~~Panic in spawned tokio tasks aborts server~~ — removed `.expect()` and `.unwrap()` from queue_processor, queue, serve spawned tasks
 - ~~Enrichment clobbers concurrent observation updates~~ — `update_observation_metadata` checks `rows_affected()`, logs and skips on concurrent modification
+- ~~save_memory enrichment silently failing (all 53 manual observations had empty metadata)~~ — root cause: `OPENCODE_MEM_API_URL` missing from both systemd service and opencode MCP config, causing LLM calls to go to `api.openai.com` with an Antigravity API key (silent auth failure). Fixed by adding `OPENCODE_MEM_API_URL=https://antigravity.quantumind.ru` to both configs. Added `backfill-metadata` CLI command for re-enrichment.

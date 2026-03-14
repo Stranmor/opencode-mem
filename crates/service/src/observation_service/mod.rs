@@ -168,3 +168,6 @@ impl ObservationService {
 mod adversarial_tests;
 #[cfg(test)]
 mod privacy_tests;
+
+#[cfg(test)]
+mod breaker_tests;
