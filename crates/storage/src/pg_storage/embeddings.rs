@@ -30,11 +30,12 @@ impl EmbeddingStore for PgStorage {
             });
         }
         if is_zero_vector(embedding) {
-            tracing::warn!(
-                observation_id,
-                "Rejecting zero vector embedding (would produce NaN in cosine distance)"
-            );
-            return Ok(());
+            return Err(StorageError::DataCorruption {
+                context: format!(
+                    "rejecting zero vector embedding for observation {observation_id} (would produce NaN in cosine distance)"
+                ),
+                source: "zero vector check".into(),
+            });
         }
         if contains_non_finite(embedding) {
             return Err(StorageError::DataCorruption {
