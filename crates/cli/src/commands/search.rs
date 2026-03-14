@@ -21,11 +21,12 @@ pub(crate) async fn run_search(
         )))
     };
     let search = SearchService::new(storage, embeddings, None, config.dedup_threshold);
+    let obs_type_lower = obs_type.as_ref().map(|s| s.to_lowercase());
     let results = search
         .smart_search(
             Some(&query),
             project.as_deref(),
-            obs_type.as_deref(),
+            obs_type_lower.as_deref(),
             None,
             None,
             limit,
