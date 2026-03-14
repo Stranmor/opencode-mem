@@ -22,7 +22,7 @@ pub(crate) async fn create_session(
         opencode_mem_core::SessionId(session_db_id.clone()),
         opencode_mem_core::ContentSessionId(content_session_id),
         None,
-        opencode_mem_core::ProjectId(project.unwrap_or_default()),
+        opencode_mem_core::ProjectId::new(project.unwrap_or_default()),
         user_prompt
             .as_deref()
             .map(opencode_mem_core::sanitize_input),

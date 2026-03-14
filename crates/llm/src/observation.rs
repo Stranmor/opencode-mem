@@ -198,9 +198,21 @@ impl LlmClient {
              - \"concepts\": array from [{concepts}]\n\
              - \"keywords\": array of search keywords (3-8 terms)\n\
              - \"files_read\": array of file paths mentioned as read/referenced\n\
-             - \"files_modified\": array of file paths mentioned as modified/created\n\n\
-             If a field has no relevant data, return an empty array.",
+             - \"files_modified\": array of file paths mentioned as modified/created\n\
+             - \"observation_type\": one of [{obs_types}]\n\
+               {obs_type_guide}\n\
+             - \"noise_level\": one of [{noise_levels}]\n\
+               \"critical\" = fundamental insight, must never forget; \"high\" = important for future work; \
+               \"medium\" = useful context; \"low\" = minor detail; \"negligible\" = trivial\n\n\
+             If a field has no relevant data, return an empty array (for arrays) or \"discovery\"/\"medium\" (for type/noise defaults).",
             concepts = Concept::ALL_VARIANTS_STR,
+            obs_types = ObservationType::ALL_VARIANTS_STR,
+            noise_levels = NoiseLevel::ALL_VARIANTS_STR,
+            obs_type_guide = ObservationType::ALL_VARIANTS
+                .iter()
+                .map(|t| format!("\"{}\" = {}", t.as_str(), t.description()))
+                .collect::<Vec<_>>()
+                .join("; "),
         );
 
         let request = ChatRequest {
@@ -232,12 +244,44 @@ impl LlmClient {
             .filter_map(|s| Concept::from_str(s).ok())
             .collect();
 
+        let observation_type = if meta.observation_type.is_empty() {
+            None
+        } else {
+            match ObservationType::from_str(&meta.observation_type) {
+                Ok(t) => Some(t),
+                Err(_) => {
+                    tracing::warn!(
+                        value = %meta.observation_type,
+                        "LLM returned invalid observation_type in enrichment — ignoring"
+                    );
+                    None
+                }
+            }
+        };
+
+        let noise_level = if meta.noise_level.is_empty() {
+            None
+        } else {
+            match NoiseLevel::from_str(&meta.noise_level) {
+                Ok(n) => Some(n),
+                Err(_) => {
+                    tracing::warn!(
+                        value = %meta.noise_level,
+                        "LLM returned invalid noise_level in enrichment — ignoring"
+                    );
+                    None
+                }
+            }
+        };
+
         Ok(ObservationMetadata {
             facts: meta.facts,
             concepts,
             keywords: meta.keywords,
             files_read: meta.files_read,
             files_modified: meta.files_modified,
+            observation_type,
+            noise_level,
         })
     }
 }

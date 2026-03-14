@@ -132,7 +132,9 @@ impl ObservationService {
                             observation_id = %obs.id,
                             facts = metadata.facts.len(),
                             keywords = metadata.keywords.len(),
-                            "Enriched save_memory observation with metadata"
+                            observation_type = ?metadata.observation_type,
+                            noise_level = ?metadata.noise_level,
+                            "Enriched save_memory observation with metadata and classification"
                         );
                     }
                 }

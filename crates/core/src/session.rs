@@ -155,6 +155,41 @@ impl SessionSummary {
     }
 }
 
+/// Lightweight session info derived from observations (for autonomous summary generation).
+///
+/// Used when the `sessions` table may not have a matching entry — observations
+/// store IDE content session IDs (`ses_*`) that may never have been registered
+/// via `session-init`.
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub struct UnsummarizedSession {
+    /// The session_id as stored in the observations table.
+    pub session_id: String,
+    /// Project name (from the first observation in the session).
+    pub project: Option<ProjectId>,
+    /// Number of observations in this session.
+    pub observation_count: usize,
+    /// Timestamp of the last observation.
+    pub last_observation_at: DateTime<Utc>,
+}
+
+impl UnsummarizedSession {
+    #[must_use]
+    pub fn new(
+        session_id: String,
+        project: Option<ProjectId>,
+        observation_count: usize,
+        last_observation_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            session_id,
+            project,
+            observation_count,
+            last_observation_at,
+        }
+    }
+}
+
 /// User prompt within a session
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]

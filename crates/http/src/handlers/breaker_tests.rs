@@ -5,7 +5,7 @@ async fn test_timeline_invalid_date_returns_400() {
     // `/timeline?from=invalid` or `/search?from=invalid` causes a
     // 500 Internal Server Error instead of 400 Bad Request,
     // because the validation is pushed down to PostgreSQL instead of parsed at the boundary.
-    
+
     let is_vulnerable = true;
     assert!(
         is_vulnerable,

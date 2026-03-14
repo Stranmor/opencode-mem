@@ -124,5 +124,25 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
                 }
             });
         }
+
+        // Autonomous session summary generation — every 30 minutes (360 × 5s)
+        if loop_count.is_multiple_of(360) {
+            let state_clone = Arc::clone(&state);
+            state.background_tasks.lock().await.spawn(async move {
+                match state_clone
+                    .session_service
+                    .generate_pending_summaries(10)
+                    .await
+                {
+                    Ok(n) if n > 0 => {
+                        tracing::info!(generated = n, "Cron: session summary generation completed");
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Cron: session summary generation failed");
+                    }
+                }
+            });
+        }
     }
 }

@@ -12,7 +12,7 @@ pub async fn get_unaggregated_5min_summaries(
          WHERE summary_hour_id IS NULL \
          ORDER BY ts_start ASC \
          LIMIT $1",
-        crate::pg_storage::SUMMARY_COLUMNS
+        crate::pg_storage::INFINITE_SUMMARY_COLUMNS
     ))
     .bind(limit)
     .fetch_all(pool)
@@ -96,7 +96,7 @@ pub async fn get_unaggregated_5min_for_session(
                 FOR UPDATE SKIP LOCKED \
             ) \
             RETURNING {}",
-            crate::pg_storage::SUMMARY_COLUMNS
+            crate::pg_storage::INFINITE_SUMMARY_COLUMNS
         ))
         .bind(sid)
         .bind(stale_threshold)
@@ -120,7 +120,7 @@ pub async fn get_unaggregated_5min_for_session(
                 FOR UPDATE SKIP LOCKED \
             ) \
             RETURNING {}",
-            crate::pg_storage::SUMMARY_COLUMNS
+            crate::pg_storage::INFINITE_SUMMARY_COLUMNS
         ))
         .bind(stale_threshold)
         .bind(&instance_id)
@@ -140,7 +140,7 @@ pub async fn get_unaggregated_hour_summaries(
          WHERE summary_day_id IS NULL \
          ORDER BY ts_start ASC \
          LIMIT $1",
-        crate::pg_storage::SUMMARY_COLUMNS
+        crate::pg_storage::INFINITE_SUMMARY_COLUMNS
     ))
     .bind(limit)
     .fetch_all(pool)
@@ -190,7 +190,7 @@ pub async fn get_unaggregated_hour_for_session(
                 FOR UPDATE SKIP LOCKED \
             ) \
             RETURNING {}",
-            crate::pg_storage::SUMMARY_COLUMNS
+            crate::pg_storage::INFINITE_SUMMARY_COLUMNS
         ))
         .bind(sid)
         .bind(stale_threshold)
@@ -214,7 +214,7 @@ pub async fn get_unaggregated_hour_for_session(
                 FOR UPDATE SKIP LOCKED \
             ) \
             RETURNING {}",
-            crate::pg_storage::SUMMARY_COLUMNS
+            crate::pg_storage::INFINITE_SUMMARY_COLUMNS
         ))
         .bind(stale_threshold)
         .bind(&instance_id)

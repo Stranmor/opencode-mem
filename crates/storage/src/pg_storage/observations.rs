@@ -379,25 +379,66 @@ impl ObservationStore for PgStorage {
         metadata: &ObservationMetadata,
     ) -> Result<(), StorageError> {
         let concepts_str: Vec<String> = metadata.concepts.iter().map(|c| c.to_string()).collect();
-        let result = sqlx::query(
-            "UPDATE observations \
-             SET facts = $1, concepts = $2, keywords = $3, \
-                 files_read = $4, files_modified = $5 \
-             WHERE id = $6",
-        )
-        .bind(serde_json::to_value(&metadata.facts)?)
-        .bind(serde_json::to_value(&concepts_str)?)
-        .bind(serde_json::to_value(&metadata.keywords)?)
-        .bind(serde_json::to_value(&metadata.files_read)?)
-        .bind(serde_json::to_value(&metadata.files_modified)?)
-        .bind(id)
-        .execute(&self.pool)
-        .await?;
+
+        let has_classification =
+            metadata.observation_type.is_some() || metadata.noise_level.is_some();
+
+        let result = if has_classification {
+            let obs_type = metadata
+                .observation_type
+                .as_ref()
+                .map(opencode_mem_core::ObservationType::as_str);
+            let noise = metadata
+                .noise_level
+                .as_ref()
+                .map(opencode_mem_core::NoiseLevel::as_str);
+
+            sqlx::query(
+                "UPDATE observations \
+                 SET facts = $1, concepts = $2, keywords = $3, \
+                     files_read = $4, files_modified = $5, \
+                     observation_type = COALESCE($7, observation_type), \
+                     noise_level = COALESCE($8, noise_level) \
+                 WHERE id = $6",
+            )
+            .bind(serde_json::to_value(&metadata.facts)?)
+            .bind(serde_json::to_value(&concepts_str)?)
+            .bind(serde_json::to_value(&metadata.keywords)?)
+            .bind(serde_json::to_value(&metadata.files_read)?)
+            .bind(serde_json::to_value(&metadata.files_modified)?)
+            .bind(id)
+            .bind(obs_type)
+            .bind(noise)
+            .execute(&self.pool)
+            .await?
+        } else {
+            sqlx::query(
+                "UPDATE observations \
+                 SET facts = $1, concepts = $2, keywords = $3, \
+                     files_read = $4, files_modified = $5 \
+                 WHERE id = $6",
+            )
+            .bind(serde_json::to_value(&metadata.facts)?)
+            .bind(serde_json::to_value(&concepts_str)?)
+            .bind(serde_json::to_value(&metadata.keywords)?)
+            .bind(serde_json::to_value(&metadata.files_read)?)
+            .bind(serde_json::to_value(&metadata.files_modified)?)
+            .bind(id)
+            .execute(&self.pool)
+            .await?
+        };
 
         if result.rows_affected() == 0 {
             tracing::warn!(
                 observation_id = %id,
                 "Enrichment update skipped: observation not found or already updated"
+            );
+        } else if has_classification {
+            tracing::info!(
+                observation_id = %id,
+                observation_type = ?metadata.observation_type,
+                noise_level = ?metadata.noise_level,
+                "Updated observation classification via enrichment"
             );
         }
         Ok(())

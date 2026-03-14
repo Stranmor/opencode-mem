@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use opencode_mem_core::{Session, SessionStatus, SessionSummary};
+use opencode_mem_core::{Session, SessionStatus, SessionSummary, UnsummarizedSession};
 
 use crate::error::StorageError;
 use crate::pending_queue::PaginatedResult;
@@ -67,4 +67,12 @@ pub trait SummaryStore: Send + Sync {
         query: &str,
         limit: usize,
     ) -> Result<Vec<SessionSummary>, StorageError>;
+
+    /// Get sessions that have observations but no summary (for autonomous generation).
+    /// Queries observations directly (not the sessions table) to handle orphaned
+    /// session IDs. Only includes sessions idle for 1+ hour with 2+ observations.
+    async fn get_sessions_without_summaries(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<UnsummarizedSession>, StorageError>;
 }

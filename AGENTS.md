@@ -29,7 +29,7 @@ Last reviewed commit: `eea4f599c0c54eb8d7dcc0d81a9364f2302fd1e6`
 | Project Exclusion | ✅ 100% | OPENCODE_MEM_EXCLUDED_PROJECTS env var, glob patterns, ~ expansion |
 | Save Memory | ✅ 100% | Direct observation storage (MCP + HTTP), bypasses LLM compression |
 | Circuit Breaker | ✅ 100% | Graceful degradation when PostgreSQL unavailable — MCP tools return empty results, HTTP returns 200 + X-Memory-Degraded header, auto-recovery on reconnect |
-| Memory Quality | ✅ | Cross-project dedup, metadata enrichment, knowledge extraction for all types, usage tracking |
+| Memory Quality | ✅ | Cross-project dedup, metadata enrichment, knowledge extraction for all types, usage tracking, trigram similarity dedup for knowledge |
 
 ### NOT Implemented
 
@@ -273,3 +273,4 @@ LLM always creates NEW observations even when near-identical ones exist. The `ex
 - ~~observation_type search filter case-sensitive~~ — fixed: lowercased at service layer in hybrid_ops.rs
 - ~~CLI search bypasses SearchService~~ — fixed: uses smart_search() for semantic/hybrid routing
 - ~~backfill-metadata single-batch truncation~~ — fixed: proper loop with progress tracking and infinite-loop prevention
+- ~~Session summaries never generated (0/2168 sessions)~~ — `get_sessions_without_summaries` joined on `sessions.id` (UUID) but observations store IDE content session IDs (`ses_*`) that never match. Fixed: query now groups observations by `session_id` directly, bypassing the sessions table. `generate_pending_summaries` uses `save_summary` instead of `update_session_status_with_summary`.

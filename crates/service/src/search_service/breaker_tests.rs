@@ -1,4 +1,3 @@
-
 #[tokio::test]
 #[ignore = "Demonstrates vulnerability #128: try_embed(?)-propagation bypasses fallback"]
 async fn test_hybrid_search_fails_on_embedding_error_instead_of_fallback() {

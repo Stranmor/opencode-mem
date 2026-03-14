@@ -38,6 +38,18 @@ pub const EMBEDDING_DIMENSION: usize = 1024;
 /// in a spawn_blocking thread (~2-3 seconds on modern CPU).
 pub const DEDUP_SWEEP_MAX_OBSERVATIONS: usize = 5000;
 
+/// Trigram similarity threshold for merging knowledge entries.
+/// Titles with similarity above this are considered duplicates and merged.
+pub const KNOWLEDGE_TRIGRAM_MERGE_THRESHOLD: f32 = 0.7;
+
+/// Trigram similarity threshold for logging near-misses.
+/// Titles with similarity between this and `KNOWLEDGE_TRIGRAM_MERGE_THRESHOLD`
+/// are logged at info level for monitoring but not merged.
+pub const KNOWLEDGE_TRIGRAM_LOG_THRESHOLD: f32 = 0.5;
+
+/// Maximum number of trigram similarity candidates to consider.
+pub const KNOWLEDGE_TRIGRAM_CANDIDATE_LIMIT: i64 = 3;
+
 /// Cap a user-supplied query limit to `MAX_QUERY_LIMIT`.
 ///
 /// Both HTTP and MCP transports need to clamp user-supplied limits for DoS

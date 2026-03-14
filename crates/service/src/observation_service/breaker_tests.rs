@@ -6,7 +6,7 @@ async fn test_save_observation_succeeds_even_if_embedding_fails() {
     // The `?` on `try_embed` aborts the save operation.
     // It should instead save the observation with `embedding = NULL` and log a warning,
     // preserving data integrity.
-    
+
     let is_vulnerable = true;
     assert!(
         is_vulnerable,

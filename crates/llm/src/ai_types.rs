@@ -138,4 +138,10 @@ pub struct MetadataJson {
     pub files_read: Vec<String>,
     #[serde(default, deserialize_with = "null_or_invalid_as_default_vec")]
     pub files_modified: Vec<String>,
+    /// LLM-classified observation type (e.g. "bugfix", "gotcha", "decision").
+    #[serde(default, deserialize_with = "null_as_default")]
+    pub observation_type: String,
+    /// LLM-classified noise level (e.g. "critical", "high", "medium").
+    #[serde(default, deserialize_with = "null_as_default")]
+    pub noise_level: String,
 }

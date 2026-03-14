@@ -32,6 +32,8 @@ pub struct ObservationMetadata {
     pub keywords: Vec<String>,
     pub files_read: Vec<String>,
     pub files_modified: Vec<String>,
+    pub observation_type: Option<ObservationType>,
+    pub noise_level: Option<NoiseLevel>,
 }
 
 impl ObservationMetadata {
@@ -43,6 +45,8 @@ impl ObservationMetadata {
             keywords: Vec::new(),
             files_read: Vec::new(),
             files_modified: Vec::new(),
+            observation_type: None,
+            noise_level: None,
         }
     }
 }

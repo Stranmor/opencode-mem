@@ -6,30 +6,121 @@ use crate::error::StorageError;
 use crate::traits::KnowledgeStore;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use opencode_mem_core::{GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType};
+use opencode_mem_core::{
+    GlobalKnowledge, KNOWLEDGE_TRIGRAM_CANDIDATE_LIMIT, KNOWLEDGE_TRIGRAM_LOG_THRESHOLD,
+    KNOWLEDGE_TRIGRAM_MERGE_THRESHOLD, KnowledgeInput, KnowledgeSearchResult, KnowledgeType,
+};
 use sqlx::Row;
 
+type ExistingKnowledgeRow = (
+    String,
+    DateTime<Utc>,
+    serde_json::Value,
+    serde_json::Value,
+    serde_json::Value,
+    f64,
+    i64,
+    Option<DateTime<Utc>>,
+);
+
 impl PgStorage {
+    fn merge_provenance(existing: &mut Vec<String>, new_value: Option<&String>) {
+        if let Some(val) = new_value
+            && !existing.contains(val)
+        {
+            existing.push(val.clone());
+        }
+    }
+
+    fn merge_triggers(existing: &mut Vec<String>, new_triggers: &[String]) {
+        for t in new_triggers {
+            if !existing.contains(t) {
+                existing.push(t.clone());
+            }
+        }
+    }
+
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "mirrors ExistingKnowledgeRow tuple fields for merge operation"
+    )]
+    async fn merge_into_existing(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        existing_id: &str,
+        existing_created_at: DateTime<Utc>,
+        existing_triggers: serde_json::Value,
+        existing_src_proj: serde_json::Value,
+        existing_src_obs: serde_json::Value,
+        existing_confidence: f64,
+        existing_usage_count: i64,
+        existing_last_used_at: Option<DateTime<Utc>>,
+        existing_title: &str,
+        input: &KnowledgeInput,
+        now: DateTime<Utc>,
+    ) -> Result<GlobalKnowledge, StorageError> {
+        let mut triggers: Vec<String> = parse_json_value(existing_triggers, "triggers")?;
+        let mut source_projects: Vec<String> =
+            parse_json_value(existing_src_proj, "source_projects")?;
+        let mut source_observations: Vec<String> =
+            parse_json_value(existing_src_obs, "source_observations")?;
+
+        Self::merge_triggers(&mut triggers, &input.triggers);
+        Self::merge_provenance(&mut source_projects, input.source_project.as_ref());
+        Self::merge_provenance(&mut source_observations, input.source_observation.as_ref());
+
+        sqlx::query(
+            "UPDATE global_knowledge
+             SET knowledge_type = $1, description = $2, instructions = $3,
+                 triggers = $4, source_projects = $5, source_observations = $6,
+                 updated_at = $7, archived_at = NULL
+             WHERE id = $8",
+        )
+        .bind(input.knowledge_type.as_str())
+        .bind(&input.description)
+        .bind(&input.instructions)
+        .bind(serde_json::to_value(&triggers)?)
+        .bind(serde_json::to_value(&source_projects)?)
+        .bind(serde_json::to_value(&source_observations)?)
+        .bind(now)
+        .bind(existing_id)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(GlobalKnowledge::new(
+            existing_id.to_owned(),
+            input.knowledge_type,
+            existing_title.to_owned(),
+            input.description.clone(),
+            input.instructions.clone(),
+            triggers,
+            source_projects,
+            source_observations,
+            existing_confidence,
+            existing_usage_count,
+            existing_last_used_at.map(|d| d.to_rfc3339()),
+            existing_created_at.to_rfc3339(),
+            now.to_rfc3339(),
+            None,
+        ))
+    }
+
     async fn save_knowledge_inner(
         &self,
         id: Option<&str>,
         input: &KnowledgeInput,
     ) -> Result<GlobalKnowledge, StorageError> {
         let mut tx = self.pool.begin().await?;
+
+        sqlx::query("SELECT pg_advisory_xact_lock(84572910)")
+            .execute(&mut *tx)
+            .await?;
+
         let now = Utc::now();
 
-        type ExistingRow = (
-            String,
-            DateTime<Utc>,
-            serde_json::Value,
-            serde_json::Value,
-            serde_json::Value,
-            f64,
-            i64,
-            Option<DateTime<Utc>>,
-        );
         let trimmed_title = input.title.trim();
-        let existing: Option<ExistingRow> = sqlx::query_as(
+
+        let existing: Option<ExistingKnowledgeRow> = sqlx::query_as(
             "SELECT id, created_at, triggers, source_projects, source_observations,
                         confidence, usage_count, last_used_at
                  FROM global_knowledge
@@ -41,7 +132,7 @@ impl PgStorage {
         .await?;
 
         if let Some((
-            id,
+            existing_id,
             created_at,
             triggers_json,
             src_proj_json,
@@ -51,117 +142,207 @@ impl PgStorage {
             last_used_at,
         )) = existing
         {
-            let mut triggers: Vec<String> = parse_json_value(triggers_json, "triggers")?;
-            let mut source_projects: Vec<String> =
-                parse_json_value(src_proj_json, "source_projects")?;
-            let mut source_observations: Vec<String> =
-                parse_json_value(src_obs_json, "source_observations")?;
-
-            for t in &input.triggers {
-                if !triggers.contains(t) {
-                    triggers.push(t.clone());
-                }
-            }
-            if let Some(ref p) = input.source_project
-                && !source_projects.contains(p)
-            {
-                source_projects.push(p.clone());
-            }
-            if let Some(ref o) = input.source_observation
-                && !source_observations.contains(o)
-            {
-                source_observations.push(o.clone());
-            }
-
-            sqlx::query(
-                "UPDATE global_knowledge
-                 SET knowledge_type = $1, description = $2, instructions = $3,
-                     triggers = $4, source_projects = $5, source_observations = $6,
-                     updated_at = $7, archived_at = NULL
-                 WHERE id = $8",
-            )
-            .bind(input.knowledge_type.as_str())
-            .bind(&input.description)
-            .bind(&input.instructions)
-            .bind(serde_json::to_value(&triggers)?)
-            .bind(serde_json::to_value(&source_projects)?)
-            .bind(serde_json::to_value(&source_observations)?)
-            .bind(now)
-            .bind(&id)
-            .execute(&mut *tx)
-            .await?;
-
+            let result = self
+                .merge_into_existing(
+                    &mut tx,
+                    &existing_id,
+                    created_at,
+                    triggers_json,
+                    src_proj_json,
+                    src_obs_json,
+                    confidence,
+                    usage_count,
+                    last_used_at,
+                    trimmed_title,
+                    input,
+                    now,
+                )
+                .await?;
             tx.commit().await?;
-
-            Ok(GlobalKnowledge::new(
-                id,
-                input.knowledge_type,
-                trimmed_title.to_owned(),
-                input.description.clone(),
-                input.instructions.clone(),
-                triggers,
-                source_projects,
-                source_observations,
-                confidence,
-                usage_count,
-                last_used_at.map(|d| d.to_rfc3339()),
-                created_at.to_rfc3339(),
-                now.to_rfc3339(),
-                None,
-            ))
-        } else {
-            let id = id.map_or_else(|| uuid::Uuid::new_v4().to_string(), ToOwned::to_owned);
-            let source_projects: Vec<String> = input
-                .source_project
-                .as_ref()
-                .map(|p| vec![p.clone()])
-                .unwrap_or_default();
-            let source_observations: Vec<String> = input
-                .source_observation
-                .as_ref()
-                .map(|o| vec![o.clone()])
-                .unwrap_or_default();
-
-            sqlx::query(&format!(
-                "INSERT INTO global_knowledge ({KNOWLEDGE_COLUMNS})
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)"
-            ))
-            .bind(&id)
-            .bind(input.knowledge_type.as_str())
-            .bind(trimmed_title)
-            .bind(&input.description)
-            .bind(&input.instructions)
-            .bind(serde_json::to_value(&input.triggers)?)
-            .bind(serde_json::to_value(&source_projects)?)
-            .bind(serde_json::to_value(&source_observations)?)
-            .bind(0.5f64)
-            .bind(0i64)
-            .bind(Option::<DateTime<Utc>>::None)
-            .bind(now)
-            .bind(now)
-            .bind(Option::<DateTime<Utc>>::None)
-            .execute(&mut *tx)
-            .await?;
-
-            tx.commit().await?;
-
-            Ok(GlobalKnowledge::new(
-                id,
-                input.knowledge_type,
-                trimmed_title.to_owned(),
-                input.description.clone(),
-                input.instructions.clone(),
-                input.triggers.clone(),
-                source_projects,
-                source_observations,
-                0.5,
-                0,
-                None,
-                now.to_rfc3339(),
-                now.to_rfc3339(),
-                None,
-            ))
+            return Ok(result);
         }
+
+        if let Some(similar) = self
+            .find_trigram_similar_in_tx(&mut tx, trimmed_title)
+            .await?
+        {
+            let result = self
+                .merge_into_existing(
+                    &mut tx, &similar.0, similar.1, similar.2, similar.3, similar.4, similar.5,
+                    similar.6, similar.7, &similar.8, input, now,
+                )
+                .await?;
+            tx.commit().await?;
+
+            tracing::info!(
+                new_title = trimmed_title,
+                merged_into = %result.id,
+                existing_title = %result.title,
+                "knowledge trigram dedup: merged similar entry"
+            );
+            return Ok(result);
+        }
+
+        let id = id.map_or_else(|| uuid::Uuid::new_v4().to_string(), ToOwned::to_owned);
+        let source_projects: Vec<String> = input
+            .source_project
+            .as_ref()
+            .map(|p| vec![p.clone()])
+            .unwrap_or_default();
+        let source_observations: Vec<String> = input
+            .source_observation
+            .as_ref()
+            .map(|o| vec![o.clone()])
+            .unwrap_or_default();
+
+        sqlx::query(&format!(
+            "INSERT INTO global_knowledge ({KNOWLEDGE_COLUMNS})
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)"
+        ))
+        .bind(&id)
+        .bind(input.knowledge_type.as_str())
+        .bind(trimmed_title)
+        .bind(&input.description)
+        .bind(&input.instructions)
+        .bind(serde_json::to_value(&input.triggers)?)
+        .bind(serde_json::to_value(&source_projects)?)
+        .bind(serde_json::to_value(&source_observations)?)
+        .bind(0.5f64)
+        .bind(0i64)
+        .bind(Option::<DateTime<Utc>>::None)
+        .bind(now)
+        .bind(now)
+        .bind(Option::<DateTime<Utc>>::None)
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+
+        Ok(GlobalKnowledge::new(
+            id,
+            input.knowledge_type,
+            trimmed_title.to_owned(),
+            input.description.clone(),
+            input.instructions.clone(),
+            input.triggers.clone(),
+            source_projects,
+            source_observations,
+            0.5,
+            0,
+            None,
+            now.to_rfc3339(),
+            now.to_rfc3339(),
+            None,
+        ))
+    }
+
+    #[expect(
+        clippy::type_complexity,
+        reason = "tuple matches ExistingKnowledgeRow + title + similarity"
+    )]
+    async fn find_trigram_similar_in_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        title: &str,
+    ) -> Result<
+        Option<(
+            String,
+            DateTime<Utc>,
+            serde_json::Value,
+            serde_json::Value,
+            serde_json::Value,
+            f64,
+            i64,
+            Option<DateTime<Utc>>,
+            String,
+        )>,
+        StorageError,
+    > {
+        let rows: Vec<(
+            String,
+            DateTime<Utc>,
+            serde_json::Value,
+            serde_json::Value,
+            serde_json::Value,
+            f64,
+            i64,
+            Option<DateTime<Utc>>,
+            String,
+            f32,
+        )> = sqlx::query_as(
+            "SELECT id, created_at, triggers, source_projects, source_observations,
+                    confidence, usage_count, last_used_at, title,
+                    similarity(LOWER(title), LOWER($1)) as sim
+             FROM global_knowledge
+             WHERE archived_at IS NULL
+               AND similarity(LOWER(title), LOWER($1)) > $2
+             ORDER BY sim DESC
+             LIMIT $3
+             FOR UPDATE",
+        )
+        .bind(title)
+        .bind(KNOWLEDGE_TRIGRAM_LOG_THRESHOLD)
+        .bind(KNOWLEDGE_TRIGRAM_CANDIDATE_LIMIT)
+        .fetch_all(&mut **tx)
+        .await?;
+
+        let mut best_merge: Option<(
+            String,
+            DateTime<Utc>,
+            serde_json::Value,
+            serde_json::Value,
+            serde_json::Value,
+            f64,
+            i64,
+            Option<DateTime<Utc>>,
+            String,
+        )> = None;
+
+        for (
+            id,
+            created_at,
+            triggers,
+            src_proj,
+            src_obs,
+            confidence,
+            usage_count,
+            last_used_at,
+            existing_title,
+            sim,
+        ) in rows
+        {
+            if sim >= KNOWLEDGE_TRIGRAM_MERGE_THRESHOLD {
+                if best_merge.is_none() {
+                    best_merge = Some((
+                        id.clone(),
+                        created_at,
+                        triggers,
+                        src_proj,
+                        src_obs,
+                        confidence,
+                        usage_count,
+                        last_used_at,
+                        existing_title.clone(),
+                    ));
+                }
+                tracing::debug!(
+                    new_title = title,
+                    existing_title = %existing_title,
+                    similarity = %sim,
+                    "knowledge trigram match above merge threshold"
+                );
+            } else {
+                tracing::info!(
+                    new_title = title,
+                    existing_title = %existing_title,
+                    existing_id = %id,
+                    similarity = %sim,
+                    "similar knowledge exists but below merge threshold"
+                );
+            }
+        }
+
+        Ok(best_merge)
     }
 }
 

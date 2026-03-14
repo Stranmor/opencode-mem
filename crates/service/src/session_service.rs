@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use opencode_mem_core::{Observation, Session, SessionStatus};
+use chrono::Utc;
+use opencode_mem_core::{
+    Observation, ProjectId, Session, SessionId, SessionStatus, SessionSummary,
+};
 use opencode_mem_llm::LlmClient;
 use opencode_mem_storage::traits::{ObservationStore, SessionStore, SummaryStore};
 use opencode_mem_storage::{StorageBackend, StorageError};
@@ -151,5 +154,177 @@ impl SessionService {
             .await;
         self.with_cb(result)?;
         Ok(summary)
+    }
+
+    pub async fn generate_pending_summaries(&self, limit: usize) -> Result<usize, ServiceError> {
+        let result = self
+            .storage
+            .guarded(|| self.storage.get_sessions_without_summaries(limit))
+            .await;
+        let sessions = self.with_cb(result)?;
+
+        if sessions.is_empty() {
+            return Ok(0);
+        }
+
+        let mut generated: usize = 0;
+        for session in &sessions {
+            let exists_result = self
+                .storage
+                .guarded(|| self.storage.get_summary(&session.session_id))
+                .await;
+
+            match self.with_cb(exists_result) {
+                Ok(Some(_)) => continue,
+                Ok(None) => {}
+                Err(_) => continue,
+            }
+
+            let placeholder = SessionSummary::new(
+                SessionId::from(session.session_id.clone()),
+                ProjectId::new("processing"),
+                None,
+                None,
+                Some("processing".to_owned()),
+                None,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+                None,
+                None,
+                Utc::now(),
+            );
+
+            let claim_result = self
+                .storage
+                .guarded(|| self.storage.save_summary(&placeholder))
+                .await;
+
+            if self.with_cb(claim_result).is_err() {
+                continue;
+            }
+
+            let obs_result = self
+                .storage
+                .guarded(|| self.storage.get_session_observations(&session.session_id))
+                .await;
+            let mut observations = match self.with_cb(obs_result) {
+                Ok(obs) => obs,
+                Err(e) => {
+                    tracing::warn!(
+                        session_id = %session.session_id,
+                        error = %e,
+                        "Failed to fetch observations for session summary"
+                    );
+                    continue;
+                }
+            };
+
+            if observations.len() < 2 {
+                continue;
+            }
+
+            if observations.len() > 150 {
+                tracing::warn!(
+                    session_id = %session.session_id,
+                    count = observations.len(),
+                    "Session has too many observations, truncating to last 150 for summary"
+                );
+                let start_idx = observations.len() - 150;
+                observations = observations.into_iter().skip(start_idx).collect();
+            }
+
+            let summary_text = match self.llm.generate_session_summary(&observations).await {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!(
+                        session_id = %session.session_id,
+                        error = %e,
+                        "LLM session summary generation failed"
+                    );
+                    let _ = self
+                        .storage
+                        .guarded(|| self.storage.delete_summary(&session.session_id))
+                        .await;
+                    continue;
+                }
+            };
+
+            if observations.len() < 2 {
+                continue;
+            }
+
+            // Truncate to prevent LLM token overflow
+            if observations.len() > 150 {
+                tracing::warn!(
+                    session_id = %session.session_id,
+                    count = observations.len(),
+                    "Session has too many observations, truncating to last 150 for summary"
+                );
+                let start_idx = observations.len() - 150;
+                observations = observations.into_iter().skip(start_idx).collect();
+            }
+
+            let summary_text = match self.llm.generate_session_summary(&observations).await {
+                Ok(s) => s,
+                Err(e) => {
+                    tracing::warn!(
+                        session_id = %session.session_id,
+                        error = %e,
+                        "LLM session summary generation failed"
+                    );
+                    // Remove placeholder so it can be retried later
+                    let _ = self
+                        .storage
+                        .guarded(|| self.storage.delete_summary(&session.session_id))
+                        .await;
+                    continue;
+                }
+            };
+
+            let project = session
+                .project
+                .clone()
+                .unwrap_or_else(|| ProjectId::new("unknown"));
+
+            let summary = SessionSummary::new(
+                SessionId::from(session.session_id.clone()),
+                project,
+                None,
+                None,
+                Some(summary_text),
+                None,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+                None,
+                None,
+                Utc::now(),
+            );
+
+            let result = self
+                .storage
+                .guarded(|| self.storage.save_summary(&summary))
+                .await;
+            if let Err(e) = self.with_cb(result) {
+                tracing::warn!(
+                    session_id = %session.session_id,
+                    error = %e,
+                    "Failed to store session summary"
+                );
+                continue;
+            }
+
+            tracing::info!(
+                session_id = %session.session_id,
+                observations = observations.len(),
+                "Generated autonomous session summary"
+            );
+            generated = generated.saturating_add(1);
+        }
+
+        Ok(generated)
     }
 }

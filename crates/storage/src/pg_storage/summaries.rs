@@ -7,13 +7,14 @@ use crate::pending_queue::PaginatedResult;
 use crate::traits::SummaryStore;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use opencode_mem_core::{SessionStatus, SessionSummary};
+use opencode_mem_core::{ProjectId, SessionStatus, SessionSummary, UnsummarizedSession};
+use sqlx::Row;
 
 #[async_trait]
 impl SummaryStore for PgStorage {
     async fn save_summary(&self, summary: &SessionSummary) -> Result<(), StorageError> {
         sqlx::query(&format!(
-            "INSERT INTO session_summaries ({SUMMARY_COLUMNS})
+            "INSERT INTO session_summaries ({SESSION_SUMMARY_COLUMNS})
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
              ON CONFLICT (session_id) DO UPDATE SET
                project = EXCLUDED.project, request = EXCLUDED.request,
@@ -64,7 +65,7 @@ impl SummaryStore for PgStorage {
         session_id: &str,
     ) -> Result<Option<SessionSummary>, StorageError> {
         let row = sqlx::query(&format!(
-            "SELECT {SUMMARY_COLUMNS} FROM session_summaries WHERE session_id = $1"
+            "SELECT {SESSION_SUMMARY_COLUMNS} FROM session_summaries WHERE session_id = $1"
         ))
         .bind(session_id)
         .fetch_optional(&self.pool)
@@ -110,7 +111,7 @@ impl SummaryStore for PgStorage {
                 let now = Utc::now();
                 let empty_json = serde_json::json!([]);
                 sqlx::query(&format!(
-                    "INSERT INTO session_summaries ({SUMMARY_COLUMNS})
+                    "INSERT INTO session_summaries ({SESSION_SUMMARY_COLUMNS})
                      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
                      ON CONFLICT (session_id) DO UPDATE SET
                        learned = EXCLUDED.learned, created_at = EXCLUDED.created_at"
@@ -158,7 +159,7 @@ impl SummaryStore for PgStorage {
 
         let rows = if let Some(p) = project {
             sqlx::query(&format!(
-                "SELECT {SUMMARY_COLUMNS} FROM session_summaries
+                "SELECT {SESSION_SUMMARY_COLUMNS} FROM session_summaries
                  WHERE (project = $1 OR project IS NULL) ORDER BY created_at DESC, session_id ASC LIMIT $2 OFFSET $3"
             ))
             .bind(p)
@@ -168,7 +169,7 @@ impl SummaryStore for PgStorage {
             .await?
         } else {
             sqlx::query(&format!(
-                "SELECT {SUMMARY_COLUMNS} FROM session_summaries
+                "SELECT {SESSION_SUMMARY_COLUMNS} FROM session_summaries
                  ORDER BY created_at DESC, session_id ASC LIMIT $1 OFFSET $2"
             ))
             .bind(usize_to_i64(limit))
@@ -190,7 +191,7 @@ impl SummaryStore for PgStorage {
             return Ok(Vec::new());
         };
         let rows = sqlx::query(&format!(
-            "SELECT {SUMMARY_COLUMNS} FROM session_summaries
+            "SELECT {SESSION_SUMMARY_COLUMNS} FROM session_summaries
              WHERE search_vec @@ to_tsquery('simple', $1)
              ORDER BY ts_rank_cd(search_vec, to_tsquery('simple', $1)) DESC
              LIMIT $2"
@@ -200,5 +201,46 @@ impl SummaryStore for PgStorage {
         .fetch_all(&self.pool)
         .await?;
         Ok(collect_skipping_corrupt(rows.iter().map(row_to_summary)))
+    }
+
+    async fn get_sessions_without_summaries(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<UnsummarizedSession>, StorageError> {
+        let rows = sqlx::query(
+            "SELECT o.session_id,
+                    MIN(o.project) as project,
+                    COUNT(*) as obs_count,
+                    MAX(o.created_at) as last_obs
+             FROM observations o
+             WHERE o.session_id != 'manual'
+               AND NOT EXISTS (
+                   SELECT 1 FROM session_summaries ss
+                   WHERE ss.session_id = o.session_id
+               )
+               AND o.created_at < NOW() - INTERVAL '1 hour'
+             GROUP BY o.session_id
+             HAVING COUNT(*) >= 2
+             ORDER BY last_obs ASC
+             LIMIT $1",
+        )
+        .bind(usize_to_i64(limit))
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut results = Vec::with_capacity(rows.len());
+        for row in &rows {
+            let session_id: String = row.try_get("session_id")?;
+            let project: Option<String> = row.try_get("project")?;
+            let obs_count: i64 = row.try_get("obs_count")?;
+            let last_obs: DateTime<Utc> = row.try_get("last_obs")?;
+            results.push(UnsummarizedSession::new(
+                session_id,
+                project.map(ProjectId::new),
+                usize::try_from(obs_count).unwrap_or(0),
+                last_obs,
+            ));
+        }
+        Ok(results)
     }
 }

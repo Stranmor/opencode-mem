@@ -65,6 +65,15 @@ impl PgStorage {
         &self.circuit_breaker
     }
 
+    #[cfg(test)]
+    pub(crate) fn from_pool(pool: PgPool) -> Self {
+        Self {
+            pool,
+            circuit_breaker: Arc::new(CircuitBreaker::new()),
+            migrations_pending: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
     pub async fn new(database_url: &str) -> Result<Self, StorageError> {
         let pool = PgPoolOptions::new()
             .max_connections(PG_POOL_MAX_CONNECTIONS)
@@ -225,8 +234,10 @@ pub(crate) const KNOWLEDGE_COLUMNS: &str =
      source_projects, source_observations, confidence, usage_count,
      last_used_at, created_at, updated_at, archived_at";
 
-pub(crate) const SUMMARY_COLUMNS: &str =
+pub(crate) const INFINITE_SUMMARY_COLUMNS: &str =
     "id, ts_start, ts_end, session_id, project, content, event_count, entities";
+
+pub(crate) const SESSION_SUMMARY_COLUMNS: &str = "session_id, project, request, investigated, learned, completed, next_steps, notes, files_read, files_edited, prompt_number, discovery_tokens, created_at";
 
 pub(crate) const OBSERVATION_COLUMNS: &str = "id, session_id, project, observation_type, title, subtitle, narrative, facts, concepts, files_read, files_modified, keywords, prompt_number, discovery_tokens, noise_level, noise_reason, created_at";
 
