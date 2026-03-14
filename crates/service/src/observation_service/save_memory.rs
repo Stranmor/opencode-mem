@@ -140,9 +140,28 @@ impl ObservationService {
                 }
             }
 
-            if let Err(e) = svc.extract_knowledge(&obs).await {
+            let fresh_obs = match storage.guarded(|| storage.get_by_id(obs.id.as_ref())).await {
+                Ok(Some(refreshed)) => refreshed,
+                Ok(None) => {
+                    tracing::warn!(
+                        observation_id = %obs.id,
+                        "Observation disappeared after metadata update — skipping knowledge extraction"
+                    );
+                    return;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        observation_id = %obs.id,
+                        error = %e,
+                        "Failed to re-fetch observation after metadata update — using stale data"
+                    );
+                    obs
+                }
+            };
+
+            if let Err(e) = svc.extract_knowledge(&fresh_obs).await {
                 tracing::warn!(
-                    observation_id = %obs.id,
+                    observation_id = %fresh_obs.id,
                     error = %e,
                     "Knowledge extraction failed for save_memory observation"
                 );
