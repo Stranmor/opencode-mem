@@ -182,23 +182,18 @@ pub async fn start_queue_poller(state: Arc<AppState>) {
             }
 
             for msg in messages {
-                let permit = permits
-                    .pop()
-                    .expect("permit must exist for claimed message");
+                let Some(permit) = permits.pop() else {
+                    tracing::error!(
+                        msg_id = msg.id,
+                        "No permit available for message — skipping"
+                    );
+                    continue;
+                };
                 spawned += 1;
                 let state_clone = Arc::clone(&state);
                 state.background_tasks.lock().await.spawn(async move {
                     let _permit = permit;
-                    use futures_util::FutureExt;
-                    let result =
-                        std::panic::AssertUnwindSafe(process_pending_message(&state_clone, &msg))
-                            .catch_unwind()
-                            .await
-                            .unwrap_or_else(|_| {
-                                Err(anyhow::anyhow!(
-                                    "Panic during background message processing"
-                                ))
-                            });
+                    let result = process_pending_message(&state_clone, &msg).await;
 
                     match result {
                         Ok(()) => {

@@ -98,17 +98,17 @@ pub async fn process_pending_queue(
     let messages_iter = messages.into_iter();
 
     for msg in messages_iter {
-        let permit = permits
-            .pop()
-            .expect("permit must exist for claimed message");
+        let Some(permit) = permits.pop() else {
+            tracing::error!(
+                msg_id = msg.id,
+                "No permit available for message — skipping"
+            );
+            continue;
+        };
         let state_clone = Arc::clone(&state);
         let handle = tokio::spawn(async move {
             let _permit = permit;
-            use futures_util::FutureExt;
-            let result = std::panic::AssertUnwindSafe(process_pending_message(&state_clone, &msg))
-                .catch_unwind()
-                .await
-                .unwrap_or_else(|_| Err(anyhow::anyhow!("Panic during message processing")));
+            let result = process_pending_message(&state_clone, &msg).await;
             match result {
                 Ok(()) => {
                     if let Err(e) = state_clone.queue_service.complete_message(msg.id).await {

@@ -35,7 +35,12 @@ pub(crate) async fn run(port: u16, host: String, config: Arc<AppConfig>) -> Resu
             .acquire_timeout(std::time::Duration::from_secs(
                 opencode_mem_core::PG_POOL_ACQUIRE_TIMEOUT_SECS,
             ))
-            .connect_lazy(&config.infinite_memory_url.clone().unwrap());
+            .connect_lazy(
+                config
+                    .infinite_memory_url
+                    .as_deref()
+                    .unwrap_or(&config.database_url),
+            );
 
         match pool {
             Ok(p) => match InfiniteMemoryService::new(p, llm.clone()).await {
