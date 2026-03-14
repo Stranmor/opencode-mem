@@ -81,5 +81,6 @@ pub trait ObservationStore: Send + Sync {
     async fn get_observations_with_empty_metadata(
         &self,
         limit: usize,
+        excluded_ids: &[String],
     ) -> Result<Vec<Observation>, StorageError>;
 }

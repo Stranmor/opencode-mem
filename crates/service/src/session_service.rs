@@ -171,7 +171,7 @@ impl SessionService {
         for session in &sessions {
             let exists_result = self
                 .storage
-                .guarded(|| self.storage.get_summary(&session.session_id))
+                .guarded(|| self.storage.get_session_summary(&session.session_id))
                 .await;
 
             match self.with_cb(exists_result) {

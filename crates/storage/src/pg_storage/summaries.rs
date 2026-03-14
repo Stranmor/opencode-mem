@@ -60,6 +60,14 @@ impl SummaryStore for PgStorage {
         Ok(())
     }
 
+    async fn delete_summary(&self, session_id: &str) -> Result<(), StorageError> {
+        sqlx::query("DELETE FROM session_summaries WHERE session_id = $1")
+            .bind(session_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
     async fn get_session_summary(
         &self,
         session_id: &str,

@@ -168,12 +168,13 @@ pub(crate) async fn run_backfill_metadata(batch_size: usize) -> Result<()> {
 
             let narrative = obs.narrative.as_deref().unwrap_or("");
             if narrative.is_empty() && obs.title.is_empty() {
-                // Mark as processed with placeholder to prevent infinite loop
                 if let Err(e) = storage
                     .update_observation_metadata(obs.id.as_ref(), &placeholder)
                     .await
                 {
                     eprintln!("  Placeholder update failed for {}: {e}", obs.id);
+                } else {
+                    batch_progress = true;
                 }
                 skipped_ids.push(obs.id.to_string());
                 continue;
