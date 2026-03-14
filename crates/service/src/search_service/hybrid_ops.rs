@@ -99,14 +99,18 @@ impl SearchService {
                 .storage
                 .guarded(|| self.storage.hybrid_search_v2(query, &query_vec, limit))
                 .await;
-            self.with_cb(result)
-        } else {
-            let result = self
-                .storage
-                .guarded(|| self.storage.hybrid_search(query, limit))
-                .await;
-            self.with_cb(result)
+            match self.with_cb(result) {
+                Ok(results) => return Ok(results),
+                Err(e) => {
+                    tracing::warn!(error = %e, "hybrid_search_v2 failed, falling back to text-only hybrid_search");
+                }
+            }
         }
+        let result = self
+            .storage
+            .guarded(|| self.storage.hybrid_search(query, limit))
+            .await;
+        self.with_cb(result)
     }
 
     async fn run_search_with_filters(
@@ -172,10 +176,10 @@ impl SearchService {
                         self.with_cb(res)
                     }
                     Err(e) => {
-                        tracing::warn!(error = %e, "Semantic search failed, falling back to hybrid");
+                        tracing::warn!(error = %e, "Semantic search failed, falling back to text-only hybrid");
                         let res = self
                             .storage
-                            .guarded(|| self.storage.hybrid_search_v2(query, &query_vec, limit))
+                            .guarded(|| self.storage.hybrid_search(query, limit))
                             .await;
                         self.with_cb(res)
                     }

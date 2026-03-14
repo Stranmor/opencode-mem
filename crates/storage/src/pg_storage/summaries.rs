@@ -225,6 +225,8 @@ impl SummaryStore for PgStorage {
                AND NOT EXISTS (
                    SELECT 1 FROM session_summaries ss
                    WHERE ss.session_id = o.session_id
+                     AND NOT (ss.learned = 'processing'
+                              AND ss.created_at < NOW() - INTERVAL '10 minutes')
                )
              GROUP BY o.session_id
              HAVING MAX(o.created_at) < NOW() - INTERVAL '1 hour' AND COUNT(*) >= 2

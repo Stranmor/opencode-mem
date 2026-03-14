@@ -149,6 +149,8 @@ pub(crate) async fn run_backfill_metadata(batch_size: usize) -> Result<()> {
     let mut total_failed = 0_usize;
     let mut skipped_ids: Vec<String> = Vec::new();
     let placeholder = opencode_mem_core::ObservationMetadata::placeholder();
+    let mut consecutive_no_progress: u32 = 0;
+    const MAX_CONSECUTIVE_STALLS: u32 = 3;
 
     loop {
         let observations = storage
@@ -205,7 +207,15 @@ pub(crate) async fn run_backfill_metadata(batch_size: usize) -> Result<()> {
         }
 
         if !batch_progress {
-            break;
+            consecutive_no_progress += 1;
+            if consecutive_no_progress >= MAX_CONSECUTIVE_STALLS {
+                eprintln!(
+                    "Warning: {MAX_CONSECUTIVE_STALLS} consecutive batches with zero progress, stopping"
+                );
+                break;
+            }
+        } else {
+            consecutive_no_progress = 0;
         }
     }
 
