@@ -58,7 +58,6 @@ impl ObservationService {
                 &input_text,
                 &filtered_output,
                 tool_call.session_id.as_ref(),
-                parsed_project,
             )
             .await;
 
@@ -147,10 +146,10 @@ impl ObservationService {
         if !tool_input.is_empty() {
             let input_budget = half.min(tool_input.len());
             let end = Self::find_char_boundary(tool_input, input_budget);
-            if let Some(s) = tool_input.get(..end) {
-                if !s.is_empty() {
-                    parts.push(s.to_owned());
-                }
+            if let Some(s) = tool_input.get(..end)
+                && !s.is_empty()
+            {
+                parts.push(s.to_owned());
             }
         }
 
@@ -164,17 +163,17 @@ impl ObservationService {
                 let head_size = output_budget / 2;
                 let tail_size = output_budget.saturating_sub(head_size);
                 let head_end = Self::find_char_boundary(tool_output, head_size);
-                if let Some(s) = tool_output.get(..head_end) {
-                    if !s.is_empty() {
-                        parts.push(s.to_owned());
-                    }
+                if let Some(s) = tool_output.get(..head_end)
+                    && !s.is_empty()
+                {
+                    parts.push(s.to_owned());
                 }
                 let tail_start_raw = tool_output.len().saturating_sub(tail_size);
                 let tail_start = Self::find_char_boundary_up(tool_output, tail_start_raw);
-                if let Some(s) = tool_output.get(tail_start..) {
-                    if !s.is_empty() {
-                        parts.push(s.to_owned());
-                    }
+                if let Some(s) = tool_output.get(tail_start..)
+                    && !s.is_empty()
+                {
+                    parts.push(s.to_owned());
                 }
             }
         }
@@ -205,56 +204,55 @@ impl ObservationService {
         tool_input: &str,
         tool_output: &str,
         session_id: &str,
-        project: Option<&str>,
     ) -> Vec<Observation> {
         let query_str = Self::build_candidate_query(tool_input, tool_output, 500);
         let mut hybrid_candidates = Vec::new();
 
-        if !query_str.is_empty() {
-            if let Some(ref embeddings) = self.embeddings {
-                let embed_input = query_str.clone();
-                let embeddings_clone = Arc::clone(embeddings);
-                let vector_res =
-                    tokio::task::spawn_blocking(move || embeddings_clone.embed(&embed_input)).await;
+        if !query_str.is_empty()
+            && let Some(ref embeddings) = self.embeddings
+        {
+            let embed_input = query_str.clone();
+            let embeddings_clone = Arc::clone(embeddings);
+            let vector_res =
+                tokio::task::spawn_blocking(move || embeddings_clone.embed(&embed_input)).await;
 
-                match vector_res {
-                    Ok(Ok(query_vec)) => {
-                        match self
-                            .storage
-                            .hybrid_search_v2_with_filters(
-                                &query_str, &query_vec, project, None, None, None, 5,
-                            )
-                            .await
-                        {
-                            Ok(results) => {
-                                let ids: Vec<String> =
-                                    results.into_iter().map(|r| String::from(r.id)).collect();
-                                if !ids.is_empty() {
-                                    match self.storage.get_observations_by_ids(&ids).await {
-                                        Ok(obs) => hybrid_candidates = obs,
-                                        Err(e) => {
-                                            tracing::warn!(error = %e, "Failed to fetch hybrid candidate observations by ids")
-                                        }
+            match vector_res {
+                Ok(Ok(query_vec)) => {
+                    match self
+                        .storage
+                        .hybrid_search_v2_with_filters(
+                            &query_str, &query_vec, None, None, None, None, 5,
+                        )
+                        .await
+                    {
+                        Ok(results) => {
+                            let ids: Vec<String> =
+                                results.into_iter().map(|r| String::from(r.id)).collect();
+                            if !ids.is_empty() {
+                                match self.storage.get_observations_by_ids(&ids).await {
+                                    Ok(obs) => hybrid_candidates = obs,
+                                    Err(e) => {
+                                        tracing::warn!(error = %e, "Failed to fetch hybrid candidate observations by ids")
                                     }
                                 }
                             }
-                            Err(e) => {
-                                tracing::warn!(error = %e, "Hybrid search for candidates failed")
-                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(error = %e, "Hybrid search for candidates failed")
                         }
                     }
-                    Ok(Err(e)) => {
-                        tracing::warn!(error = %e, "Failed to generate embedding for candidates")
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = %e, "Spawn blocking failed for candidate embedding generation")
-                    }
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!(error = %e, "Failed to generate embedding for candidates")
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Spawn blocking failed for candidate embedding generation")
                 }
             }
         }
 
         let fts_query = Self::build_candidate_query(tool_input, tool_output, 500);
-        let fts_candidates = self.find_fts_candidates(&fts_query, project).await;
+        let fts_candidates = self.find_fts_candidates(&fts_query, None).await;
 
         let session_candidates = match self
             .storage
