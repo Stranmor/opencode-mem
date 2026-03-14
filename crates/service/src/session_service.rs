@@ -251,38 +251,6 @@ impl SessionService {
                 }
             };
 
-            if observations.len() < 2 {
-                continue;
-            }
-
-            // Truncate to prevent LLM token overflow
-            if observations.len() > 150 {
-                tracing::warn!(
-                    session_id = %session.session_id,
-                    count = observations.len(),
-                    "Session has too many observations, truncating to last 150 for summary"
-                );
-                let start_idx = observations.len() - 150;
-                observations = observations.into_iter().skip(start_idx).collect();
-            }
-
-            let summary_text = match self.llm.generate_session_summary(&observations).await {
-                Ok(s) => s,
-                Err(e) => {
-                    tracing::warn!(
-                        session_id = %session.session_id,
-                        error = %e,
-                        "LLM session summary generation failed"
-                    );
-                    // Remove placeholder so it can be retried later
-                    let _ = self
-                        .storage
-                        .guarded(|| self.storage.delete_summary(&session.session_id))
-                        .await;
-                    continue;
-                }
-            };
-
             let project = session
                 .project
                 .clone()

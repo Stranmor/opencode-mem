@@ -85,7 +85,8 @@ impl StatsStore for PgStorage {
             .fetch_all(&self.pool)
             .await?
         };
-        let items: Vec<Observation> = collect_skipping_corrupt(rows.iter().map(row_to_observation));
+        let items: Vec<Observation> =
+            collect_skipping_corrupt(rows.iter().map(row_to_observation))?;
         Ok(PaginatedResult::new(items, total, offset, limit))
     }
 }

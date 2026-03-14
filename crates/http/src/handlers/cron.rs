@@ -22,29 +22,29 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
 
         loop_count = loop_count.wrapping_add(1);
 
-        if loop_count.is_multiple_of(60)
-            && let Some(ref infinite_mem) = state.infinite_mem
-        {
-            tracing::debug!("Cron: running infinite memory compression...");
-            let mem = Arc::clone(infinite_mem);
-            state.background_tasks.lock().await.spawn(async move {
-                match mem.run_full_compression().await {
-                    Ok((five_min, hour, day)) => {
-                        if five_min > 0 || hour > 0 || day > 0 {
-                            tracing::info!(
-                                "Cron: created {} 5min, {} hour, {} day summaries",
-                                five_min,
-                                hour,
-                                day,
-                            );
+        if loop_count % 60 == 0 {
+            if let Some(ref infinite_mem) = state.infinite_mem {
+                tracing::debug!("Cron: running infinite memory compression...");
+                let mem = Arc::clone(infinite_mem);
+                state.background_tasks.lock().await.spawn(async move {
+                    match mem.run_full_compression().await {
+                        Ok((five_min, hour, day)) => {
+                            if five_min > 0 || hour > 0 || day > 0 {
+                                tracing::info!(
+                                    "Cron: created {} 5min, {} hour, {} day summaries",
+                                    five_min,
+                                    hour,
+                                    day,
+                                );
+                            }
                         }
+                        Err(e) => tracing::warn!("Cron: infinite memory error: {e:?}"),
                     }
-                    Err(e) => tracing::warn!("Cron: infinite memory error: {e:?}"),
-                }
-            });
+                });
+            }
         }
 
-        if loop_count.is_multiple_of(180) {
+        if loop_count % 180 == 0 {
             tracing::debug!("Cron: running embedding backfill...");
             let state_clone = Arc::clone(&state);
             state.background_tasks.lock().await.spawn(async move {
@@ -58,7 +58,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
             });
         }
 
-        if loop_count.is_multiple_of(360) {
+        if loop_count % 360 == 0 {
             let state_clone = Arc::clone(&state);
             state.background_tasks.lock().await.spawn(async move {
                 match state_clone.observation_service.run_dedup_sweep().await {
@@ -71,7 +71,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
             });
         }
 
-        if loop_count.is_multiple_of(720) {
+        if loop_count % 720 == 0 {
             let state_clone = Arc::clone(&state);
             state.background_tasks.lock().await.spawn(async move {
                 if let Err(e) = state_clone
@@ -84,7 +84,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
             });
         }
 
-        if loop_count.is_multiple_of(17280) {
+        if loop_count % 17280 == 0 {
             let ttl_secs = state.config.dlq_ttl_secs();
             let state_clone = Arc::clone(&state);
             state.background_tasks.lock().await.spawn(async move {
@@ -102,7 +102,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
             });
         }
 
-        if loop_count.is_multiple_of(2160) {
+        if loop_count % 2160 == 0 {
             let state_clone = Arc::clone(&state);
             state.background_tasks.lock().await.spawn(async move {
                 match state_clone
@@ -125,8 +125,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
             });
         }
 
-        // Autonomous session summary generation — every 30 minutes (360 × 5s)
-        if loop_count.is_multiple_of(360) {
+        if loop_count % 360 == 0 {
             let state_clone = Arc::clone(&state);
             state.background_tasks.lock().await.spawn(async move {
                 match state_clone

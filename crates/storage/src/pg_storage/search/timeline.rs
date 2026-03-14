@@ -50,7 +50,7 @@ pub(crate) async fn get_timeline(
     q = q.bind(usize_to_i64(limit));
     let rows = q.fetch_all(&storage.pool).await?;
     let mut results: Vec<SearchResult> =
-        collect_skipping_corrupt(rows.into_iter().map(|r| row_to_search_result(&r)));
+        collect_skipping_corrupt(rows.into_iter().map(|r| row_to_search_result(&r)))?;
 
     if order_direction == "ASC" {
         results.reverse();

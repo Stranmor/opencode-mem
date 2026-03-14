@@ -168,4 +168,3 @@ impl SearchService {
 }
 
 #[cfg(test)]
-mod breaker_tests;

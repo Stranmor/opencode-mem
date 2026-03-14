@@ -86,7 +86,7 @@ pub(crate) async fn hybrid_search_v2_with_filters(
             q = q.bind(&tsquery);
             q = q.bind(fetch_limit);
             let rows = q.fetch_all(&storage.pool).await?;
-            collect_skipping_corrupt(rows.iter().map(row_to_search_result))
+            collect_skipping_corrupt(rows.iter().map(row_to_search_result))?
         }
         None => Vec::new(),
     };
@@ -113,7 +113,7 @@ pub(crate) async fn hybrid_search_v2_with_filters(
         q = q.bind(&query_vector);
         q = q.bind(fetch_limit);
         let rows = q.fetch_all(&storage.pool).await?;
-        collect_skipping_corrupt(rows.iter().map(row_to_search_result))
+        collect_skipping_corrupt(rows.iter().map(row_to_search_result))?
     };
 
     Ok(merge_and_rank(fts_results, vector_results, limit))

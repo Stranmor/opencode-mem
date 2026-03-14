@@ -27,5 +27,5 @@ pub(crate) async fn semantic_search(
     .await?;
     Ok(collect_skipping_corrupt(
         rows.iter().map(row_to_search_result),
-    ))
+    )?)
 }

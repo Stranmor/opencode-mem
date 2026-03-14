@@ -178,7 +178,7 @@ impl SummaryStore for PgStorage {
             .await?
         };
 
-        let items: Vec<SessionSummary> = collect_skipping_corrupt(rows.iter().map(row_to_summary));
+        let items: Vec<SessionSummary> = collect_skipping_corrupt(rows.iter().map(row_to_summary))?;
         Ok(PaginatedResult::new(items, total, offset, limit))
     }
 
@@ -200,7 +200,7 @@ impl SummaryStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        Ok(collect_skipping_corrupt(rows.iter().map(row_to_summary)))
+        Ok(collect_skipping_corrupt(rows.iter().map(row_to_summary))?)
     }
 
     async fn get_sessions_without_summaries(
@@ -218,9 +218,8 @@ impl SummaryStore for PgStorage {
                    SELECT 1 FROM session_summaries ss
                    WHERE ss.session_id = o.session_id
                )
-               AND o.created_at < NOW() - INTERVAL '1 hour'
              GROUP BY o.session_id
-             HAVING COUNT(*) >= 2
+             HAVING MAX(o.created_at) < NOW() - INTERVAL '1 hour' AND COUNT(*) >= 2
              ORDER BY last_obs ASC
              LIMIT $1",
         )

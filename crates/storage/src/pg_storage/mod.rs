@@ -107,18 +107,21 @@ impl PgStorage {
     /// Attempt to run pending migrations. Safe to call repeatedly — idempotent.
     /// Returns `Ok(true)` if migrations ran, `Ok(false)` if DB unavailable or not needed.
     pub async fn try_run_migrations(&self) -> Result<bool, StorageError> {
-        // Try to acquire the execution lock
-        if !self.migrations_pending.load(Ordering::Acquire) {
+        if self
+            .migrations_pending
+            .compare_exchange(true, false, Ordering::Acquire, Ordering::Relaxed)
+            .is_err()
+        {
             return Ok(false);
         }
 
         match run_pg_migrations(&self.pool).await {
             Ok(()) => {
-                self.migrations_pending.store(false, Ordering::Release);
                 tracing::info!("Deferred migrations completed successfully");
                 Ok(true)
             }
             Err(e) => {
+                self.migrations_pending.store(true, Ordering::Release);
                 tracing::debug!("Deferred migration attempt failed (DB may still be down): {e}");
                 Ok(false)
             }
@@ -169,12 +172,12 @@ impl PgStorage {
         }
     }
 
-    #[allow(dead_code, reason = "CB guard infrastructure — used by guarded()")]
+    #[allow(dead_code, reason = "CB guard infrastructure")]
     pub(crate) fn record_success(&self) {
         self.circuit_breaker.record_success();
     }
 
-    #[allow(dead_code, reason = "CB guard infrastructure — used by guarded()")]
+    #[allow(dead_code, reason = "CB guard infrastructure")]
     pub(crate) fn record_failure_if_connection_error(&self, err: &StorageError) {
         if err.is_transient() || matches!(err, StorageError::Database(_)) {
             self.circuit_breaker.record_failure();
@@ -198,14 +201,10 @@ impl PgStorage {
             Err(e) if e.is_unavailable() => {
                 self.circuit_breaker.record_failure();
             }
-            Err(e) if self.circuit_breaker.is_half_open() => {
-                if e.is_unavailable() {
-                    self.circuit_breaker.record_failure();
-                } else {
-                    let recovered = self.circuit_breaker.record_success();
-                    if recovered {
-                        self.handle_recovery_static();
-                    }
+            Err(_) if self.circuit_breaker.is_half_open() => {
+                let recovered = self.circuit_breaker.record_success();
+                if recovered {
+                    self.handle_recovery_static();
                 }
             }
             Err(_) => {}

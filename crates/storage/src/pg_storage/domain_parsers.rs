@@ -163,18 +163,16 @@ pub(crate) fn row_to_pending_message(
 
 pub(crate) fn collect_skipping_corrupt<T>(
     results: impl Iterator<Item = Result<T, StorageError>>,
-) -> Vec<T> {
-    results
-        .filter_map(|r| match r {
-            Ok(val) => Some(val),
+) -> Result<Vec<T>, StorageError> {
+    let mut vec = Vec::new();
+    for r in results {
+        match r {
+            Ok(val) => vec.push(val),
             Err(StorageError::DataCorruption { ref context, .. }) => {
                 tracing::warn!("Skipping corrupt row: {context}");
-                None
             }
-            Err(e) => {
-                tracing::warn!("Skipping row with unexpected error: {e}");
-                None
-            }
-        })
-        .collect()
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(vec)
 }

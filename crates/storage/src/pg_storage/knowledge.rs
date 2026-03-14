@@ -465,7 +465,7 @@ impl KnowledgeStore for PgStorage {
             .fetch_all(&self.pool)
             .await?
         };
-        Ok(collect_skipping_corrupt(rows.iter().map(row_to_knowledge)))
+        Ok(collect_skipping_corrupt(rows.iter().map(row_to_knowledge))?)
     }
 
     async fn update_knowledge_usage(&self, id: &str) -> Result<(), StorageError> {

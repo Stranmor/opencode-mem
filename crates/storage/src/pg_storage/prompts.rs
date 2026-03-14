@@ -71,7 +71,7 @@ impl PromptStore for PgStorage {
             .await?
         };
 
-        let items: Vec<UserPrompt> = collect_skipping_corrupt(rows.iter().map(row_to_prompt));
+        let items: Vec<UserPrompt> = collect_skipping_corrupt(rows.iter().map(row_to_prompt))?;
         Ok(PaginatedResult::new(items, total, offset, limit))
     }
 
@@ -106,6 +106,6 @@ impl PromptStore for PgStorage {
         .bind(usize_to_i64(limit))
         .fetch_all(&self.pool)
         .await?;
-        Ok(collect_skipping_corrupt(rows.iter().map(row_to_prompt)))
+        Ok(collect_skipping_corrupt(rows.iter().map(row_to_prompt))?)
     }
 }

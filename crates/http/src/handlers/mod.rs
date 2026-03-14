@@ -49,4 +49,3 @@ pub mod sessions;
 pub mod sessions_api;
 
 #[cfg(test)]
-mod breaker_tests;

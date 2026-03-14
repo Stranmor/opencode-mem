@@ -86,10 +86,11 @@ async fn trigram_dedup_merges_similar_titles() {
 #[ignore = "requires PostgreSQL with pg_trgm"]
 async fn trigram_dedup_creates_for_different_titles() {
     let storage = test_storage().await;
-    let unique_suffix = uuid::Uuid::new_v4().to_string();
+    let unique_suffix_a = uuid::Uuid::new_v4().to_string();
+    let unique_suffix_b = uuid::Uuid::new_v4().to_string();
 
-    let title_a = format!("Rust async patterns and tokio setup [{unique_suffix}]");
-    let title_b = format!("PostgreSQL connection pooling configuration [{unique_suffix}]");
+    let title_a = format!("Rust async patterns and tokio setup [{unique_suffix_a}]");
+    let title_b = format!("PostgreSQL connection pooling configuration [{unique_suffix_b}]");
 
     let first = storage
         .save_knowledge(knowledge_input(&title_a, "Description A", Some("proj-a")))
@@ -101,15 +102,13 @@ async fn trigram_dedup_creates_for_different_titles() {
         .await
         .unwrap();
 
-    // Should create separate entries
     assert_ne!(
         first.id, second.id,
         "different titles should create separate entries"
     );
 
-    // Cleanup
-    storage.delete_knowledge(&first.id).await.unwrap();
-    storage.delete_knowledge(&second.id).await.unwrap();
+    let _ = storage.delete_knowledge(&first.id).await;
+    let _ = storage.delete_knowledge(&second.id).await;
 }
 
 #[tokio::test]

@@ -170,4 +170,3 @@ mod adversarial_tests;
 mod privacy_tests;
 
 #[cfg(test)]
-mod breaker_tests;

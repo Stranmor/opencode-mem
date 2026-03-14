@@ -112,7 +112,7 @@ fn parse_observation_response(
     // Determine action: update requires valid target_id in candidate set
     if action == "update" {
         if let Some(ref target_id) = obs_json.target_id {
-            if candidate_ids.contains(target_id.as_str()) {
+            if candidate_ids.contains(&target_id.as_str()) {
                 return Ok(CompressionResult::Update {
                     target_id: target_id.clone(),
                     observation,

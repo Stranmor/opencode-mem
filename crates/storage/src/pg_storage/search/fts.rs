@@ -26,7 +26,7 @@ pub(crate) async fn search(
     .await?;
     Ok(collect_skipping_corrupt(
         rows.iter().map(row_to_search_result),
-    ))
+    )?)
 }
 
 pub(crate) async fn search_with_filters(
@@ -94,7 +94,7 @@ pub(crate) async fn search_with_filters(
         let rows = q.fetch_all(&storage.pool).await?;
         return Ok(collect_skipping_corrupt(
             rows.iter().map(row_to_search_result),
-        ));
+        )?);
     }
 
     let where_clause = if conditions.is_empty() {
@@ -117,5 +117,5 @@ pub(crate) async fn search_with_filters(
     let rows = q.fetch_all(&storage.pool).await?;
     Ok(collect_skipping_corrupt(
         rows.iter().map(row_to_search_result),
-    ))
+    )?)
 }

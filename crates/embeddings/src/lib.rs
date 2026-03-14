@@ -11,7 +11,7 @@ pub mod error;
 use error::EmbeddingError;
 use fastembed::{InitOptions, TextEmbedding};
 use std::fmt::{Debug, Formatter, Result as FmtResult};
-use std::sync::{Mutex, Once, OnceLock};
+use std::sync::{Mutex, Once};
 
 /// Embedding dimension for `BGE-M3` model (re-exported from core)
 pub use opencode_mem_core::EMBEDDING_DIMENSION;
@@ -160,21 +160,21 @@ impl EmbeddingProvider for EmbeddingService {
 /// actual embedding call. This allows MCP/HTTP servers to start instantly
 /// and respond to handshake within OpenCode's 30-second timeout.
 ///
-/// Thread-safe: the inner `OnceLock` ensures initialization runs exactly once,
-/// even under concurrent access from multiple `spawn_blocking` tasks.
+/// Thread-safe: uses `Mutex<Option<...>>` so that transient init failures
+/// (e.g., network issues during model download) are retried on the next call,
+/// rather than permanently caching the error.
 pub struct LazyEmbeddingService {
-    inner: OnceLock<Result<EmbeddingService, String>>,
+    inner: Mutex<Option<EmbeddingService>>,
     thread_count: usize,
 }
 
 impl Debug for LazyEmbeddingService {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        let initialized = self
-            .inner
-            .get()
-            .map_or("pending", |r| if r.is_ok() { "ready" } else { "failed" });
+        let state = self.inner.lock().map_or("poisoned", |guard| {
+            if guard.is_some() { "ready" } else { "pending" }
+        });
         f.debug_struct("LazyEmbeddingService")
-            .field("state", &initialized)
+            .field("state", &state)
             .field("thread_count", &self.thread_count)
             .finish()
     }
@@ -189,31 +189,48 @@ impl LazyEmbeddingService {
             "Lazy embedding service created (model will load on first use)"
         );
         Self {
-            inner: OnceLock::new(),
+            inner: Mutex::new(None),
             thread_count,
         }
     }
 
-    /// Get or initialize the inner service. Returns error if initialization failed.
-    fn get_or_init(&self) -> Result<&EmbeddingService, EmbeddingError> {
-        let result = self.inner.get_or_init(|| {
+    /// Get or initialize the inner service.
+    ///
+    /// Unlike `OnceLock`, transient init failures leave the slot as `None`
+    /// so the next call retries initialization.
+    fn with_service<T>(
+        &self,
+        f: impl FnOnce(&EmbeddingService) -> Result<T, EmbeddingError>,
+    ) -> Result<T, EmbeddingError> {
+        let mut guard = self
+            .inner
+            .lock()
+            .map_err(|_| EmbeddingError::LockPoisoned)?;
+        if guard.is_none() {
             tracing::info!("First embedding request — initializing model (this may take ~30s)...");
-            EmbeddingService::new(self.thread_count).map_err(|e| e.to_string())
-        });
-        match result {
-            Ok(svc) => Ok(svc),
-            Err(msg) => Err(EmbeddingError::ModelInit(msg.clone())),
+            match EmbeddingService::new(self.thread_count) {
+                Ok(svc) => {
+                    *guard = Some(svc);
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "Embedding model init failed (will retry on next call)");
+                    return Err(e);
+                }
+            }
         }
+        // SAFETY: we just ensured `guard` is `Some` above
+        let svc = guard.as_ref().expect("just initialized");
+        f(svc)
     }
 }
 
 impl EmbeddingProvider for LazyEmbeddingService {
     fn embed(&self, text: &str) -> Result<Vec<f32>, EmbeddingError> {
-        self.get_or_init()?.embed(text)
+        self.with_service(|svc| svc.embed(text))
     }
 
     fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, EmbeddingError> {
-        self.get_or_init()?.embed_batch(texts)
+        self.with_service(|svc| svc.embed_batch(texts))
     }
 
     fn dimension(&self) -> usize {

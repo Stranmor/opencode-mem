@@ -82,7 +82,7 @@ impl EmbeddingStore for PgStorage {
         };
         Ok(collect_skipping_corrupt(
             rows.iter().map(row_to_observation),
-        ))
+        )?)
     }
 
     async fn clear_embeddings(&self) -> Result<(), StorageError> {
