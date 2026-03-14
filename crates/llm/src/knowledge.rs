@@ -1,6 +1,4 @@
-use opencode_mem_core::{
-    Concept, KnowledgeExtractionResult, KnowledgeInput, KnowledgeType, Observation,
-};
+use opencode_mem_core::{KnowledgeExtractionResult, KnowledgeInput, KnowledgeType, Observation};
 
 use crate::ai_types::{ChatRequest, Message, ResponseFormat, ResponseFormatType};
 use crate::client::LlmClient;
@@ -24,18 +22,6 @@ impl LlmClient {
                 noise = ?observation.noise_level,
                 "Skipping knowledge extraction for low-value observation"
             );
-            return Ok(None);
-        }
-
-        let dominated_by_generalizable = matches!(
-            observation.observation_type,
-            opencode_mem_core::ObservationType::Gotcha
-        ) || observation
-            .concepts
-            .iter()
-            .any(|c| matches!(c, Concept::Pattern | Concept::Gotcha | Concept::HowItWorks));
-
-        if !dominated_by_generalizable {
             return Ok(None);
         }
 
@@ -124,29 +110,56 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
 #[cfg(test)]
 mod tests {
 
-    use opencode_mem_core::{Concept, Observation, ObservationType};
+    use opencode_mem_core::{NoiseLevel, Observation, ObservationType};
 
     #[test]
-    fn test_knowledge_extraction_type_bypass() {
-        let mut obs = Observation::builder(
-            "test".to_string(),
-            "manual".to_string(),
+    fn test_noise_level_gate_skips_low_and_negligible() {
+        for noise in [NoiseLevel::Low, NoiseLevel::Negligible] {
+            let mut obs = Observation::builder(
+                "test".to_string(),
+                "manual".to_string(),
+                ObservationType::Discovery,
+                "Test Discovery".to_string(),
+            )
+            .build();
+            obs.noise_level = noise;
+
+            let should_skip = matches!(obs.noise_level, NoiseLevel::Low | NoiseLevel::Negligible);
+            assert!(
+                should_skip,
+                "Low/Negligible noise observations must be skipped"
+            );
+        }
+    }
+
+    #[test]
+    fn test_all_observation_types_eligible_when_not_noisy() {
+        let types = [
+            ObservationType::Discovery,
+            ObservationType::Bugfix,
+            ObservationType::Decision,
+            ObservationType::Change,
+            ObservationType::Feature,
+            ObservationType::Refactor,
+            ObservationType::Preference,
             ObservationType::Gotcha,
-            "Test Gotcha".to_string(),
-        )
-        .build();
-        obs.concepts = vec![Concept::WhyItExists, Concept::WhatChanged];
+        ];
 
-        // Simulated logic from maybe_extract_knowledge
-        let dominated = matches!(obs.observation_type, ObservationType::Gotcha)
-            || obs
-                .concepts
-                .iter()
-                .any(|c| matches!(c, Concept::Pattern | Concept::Gotcha | Concept::HowItWorks));
+        for obs_type in types {
+            let mut obs = Observation::builder(
+                "test".to_string(),
+                "manual".to_string(),
+                obs_type.clone(),
+                format!("Test {obs_type:?}"),
+            )
+            .build();
+            obs.noise_level = NoiseLevel::Medium;
 
-        assert!(
-            dominated,
-            "Vulnerability fixed: ObservationType::Gotcha triggers extraction even if concepts are generic"
-        );
+            let should_skip = matches!(obs.noise_level, NoiseLevel::Low | NoiseLevel::Negligible);
+            assert!(
+                !should_skip,
+                "{obs_type:?} with Medium noise must proceed to LLM extraction"
+            );
+        }
     }
 }
