@@ -267,3 +267,9 @@ LLM always creates NEW observations even when near-identical ones exist. The `ex
 - ~~Panic in spawned tokio tasks aborts server~~ — removed `.expect()` and `.unwrap()` from queue_processor, queue, serve spawned tasks
 - ~~Enrichment clobbers concurrent observation updates~~ — `update_observation_metadata` checks `rows_affected()`, logs and skips on concurrent modification
 - ~~save_memory enrichment silently failing (all 53 manual observations had empty metadata)~~ — root cause: `OPENCODE_MEM_API_URL` missing from both systemd service and opencode MCP config, causing LLM calls to go to `api.openai.com` with an Antigravity API key (silent auth failure). Fixed by adding `OPENCODE_MEM_API_URL=https://antigravity.quantumind.ru` to both configs. Added `backfill-metadata` CLI command for re-enrichment.
+- ~~MCP binary split-brain (opencode-memory SQLite vs opencode-mem PostgreSQL)~~ — fixed by unifying MCP config to use opencode-mem with explicit DATABASE_URL, INFINITE_MEMORY_URL env vars in opencode.json
+- ~~Missing OPENCODE_MEM_API_URL in systemd and MCP config~~ — fixed by adding https://antigravity.quantumind.ru to both configs, enabling LLM enrichment
+- ~~Outdated model in systemd (gemini-3-pro-high)~~ — fixed: updated to gemini-3.1-pro-high
+- ~~observation_type search filter case-sensitive~~ — fixed: lowercased at service layer in hybrid_ops.rs
+- ~~CLI search bypasses SearchService~~ — fixed: uses smart_search() for semantic/hybrid routing
+- ~~backfill-metadata single-batch truncation~~ — fixed: proper loop with progress tracking and infinite-loop prevention
