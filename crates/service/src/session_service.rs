@@ -231,7 +231,7 @@ impl SessionService {
                     count = observations.len(),
                     "Session has too many observations, truncating to last 150 for summary"
                 );
-                let start_idx = observations.len() - 150;
+                let start_idx = observations.len().saturating_sub(150);
                 observations = observations.into_iter().skip(start_idx).collect();
             }
 
