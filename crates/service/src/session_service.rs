@@ -217,18 +217,56 @@ impl SessionService {
                         error = %e,
                         "Failed to fetch observations for session summary"
                     );
+                    let error_summary = SessionSummary::new(
+                        SessionId::from(session.session_id.clone()),
+                        session
+                            .project
+                            .clone()
+                            .unwrap_or_else(|| ProjectId::new("unknown")),
+                        None,
+                        None,
+                        Some(format!(
+                            "Summary generation failed: unable to fetch observations ({e})"
+                        )),
+                        None,
+                        None,
+                        None,
+                        Vec::new(),
+                        Vec::new(),
+                        None,
+                        None,
+                        Utc::now(),
+                    );
                     let _ = self
                         .storage
-                        .guarded(|| self.storage.delete_summary(&session.session_id))
+                        .guarded(|| self.storage.save_summary(&error_summary))
                         .await;
                     continue;
                 }
             };
 
             if observations.len() < 2 {
+                let skip_summary = SessionSummary::new(
+                    SessionId::from(session.session_id.clone()),
+                    session
+                        .project
+                        .clone()
+                        .unwrap_or_else(|| ProjectId::new("unknown")),
+                    None,
+                    None,
+                    Some("Session had insufficient observations for summarization.".to_owned()),
+                    None,
+                    None,
+                    None,
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                    None,
+                    Utc::now(),
+                );
                 let _ = self
                     .storage
-                    .guarded(|| self.storage.delete_summary(&session.session_id))
+                    .guarded(|| self.storage.save_summary(&skip_summary))
                     .await;
                 continue;
             }
