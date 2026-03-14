@@ -99,6 +99,10 @@ enum Commands {
         #[arg(short, long, default_value = "100")]
         batch_size: usize,
     },
+    BackfillMetadata {
+        #[arg(short, long, default_value = "50")]
+        batch_size: usize,
+    },
     ImportInsights {
         #[arg(short, long)]
         file: Option<String>,
@@ -179,6 +183,9 @@ async fn async_main() -> Result<()> {
         }
         Commands::BackfillEmbeddings { batch_size } => {
             commands::search::run_backfill_embeddings(batch_size).await?;
+        }
+        Commands::BackfillMetadata { batch_size } => {
+            commands::search::run_backfill_metadata(batch_size).await?;
         }
         Commands::ImportInsights { file, dir } => {
             commands::import_insights::run(file, dir).await?;
