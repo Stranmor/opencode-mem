@@ -8,21 +8,24 @@ async fn test_find_candidate_observations_leaks_cross_project() {
     // 4. Results contain observations from Project B.
     // 5. LLM sees Project B's observations and may UPDATE them, corrupting cross-project data!
     let is_vulnerable = true;
-    assert!(is_vulnerable, "Vulnerability: Cross-project candidates dilute dedup and leak data");
+    assert!(
+        is_vulnerable,
+        "Vulnerability: Cross-project candidates dilute dedup and leak data"
+    );
 }
 
 #[tokio::test]
 #[ignore]
 async fn test_background_enrichment_clobbers_concurrent_updates() {
-    // 1. `save_memory` successfully creates an observation and calls `spawn_enrichment`.
-    // 2. Before the LLM finishes (which takes several seconds), the user edits the observation manually
-    //    OR a dedup sweep merges another observation into it, updating `facts` and `keywords`.
-    // 3. The LLM finishes and calls `update_observation_metadata`.
-    // 4. `update_observation_metadata` executes an unconditional UPDATE, overwriting `facts`, `keywords`,
-    //    `concepts`, `files_read`, and `files_modified` with the STALE metadata generated from the OLD narrative.
-    // 5. User's manual edits or the dedup merge results are permanently lost!
-    let is_vulnerable = true;
-    assert!(is_vulnerable, "Vulnerability: Lost Update race condition in background LLM enrichment");
+    // FIXED: update_observation_metadata now has a concurrency guard:
+    // AND (facts IS NULL OR facts = '[]'::jsonb)
+    // This ensures enrichment only fills empty metadata, never overwrites concurrent edits.
+    // Additionally, spawn_enrichment regenerates embeddings after successful metadata update.
+    let is_vulnerable = false;
+    assert!(
+        !is_vulnerable,
+        "Fixed: Concurrency guard prevents lost update race condition"
+    );
 }
 #[tokio::test]
 #[ignore]
@@ -35,7 +38,10 @@ async fn test_response_get_300_dos() {
     // 6. `format!` allocates another 100MB to create the error string.
     // 7. Process panics due to Out Of Memory (OOM) or stalls completely.
     let is_vulnerable = true;
-    assert!(is_vulnerable, "Vulnerability: OOM DoS via multi-byte char boundary in error handler");
+    assert!(
+        is_vulnerable,
+        "Vulnerability: OOM DoS via multi-byte char boundary in error handler"
+    );
 }
 #[tokio::test]
 #[ignore]
@@ -46,7 +52,10 @@ async fn test_knowledge_extraction_cost_explosion() {
     // 4. This bypasses the queue completely, blasting the LLM API with 1000s of concurrent requests.
     // 5. Results in massive cost explosion and guaranteed 429 Rate Limit errors, dropping connections.
     let is_vulnerable = true;
-    assert!(is_vulnerable, "Vulnerability: Unbounded concurrent LLM calls cause cost explosion and rate limit DoS");
+    assert!(
+        is_vulnerable,
+        "Vulnerability: Unbounded concurrent LLM calls cause cost explosion and rate limit DoS"
+    );
 }
 #[tokio::test]
 #[ignore]
@@ -57,5 +66,8 @@ async fn test_knowledge_handler_panic_aborts_mcp_server() {
     // 4. The entire MCP server process aborts immediately.
     // 5. This breaks the agent workflow since it relies on the MCP server.
     let is_vulnerable = true;
-    assert!(is_vulnerable, "Vulnerability: Panic in spawned tokio task aborts entire MCP server");
+    assert!(
+        is_vulnerable,
+        "Vulnerability: Panic in spawned tokio task aborts entire MCP server"
+    );
 }

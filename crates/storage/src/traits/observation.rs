@@ -70,11 +70,14 @@ pub trait ObservationStore: Send + Sync {
 
     /// Update only metadata fields (facts, concepts, keywords, files_read, files_modified)
     /// on an existing observation.
+    ///
+    /// Returns `true` if the row was actually updated, `false` if the update was skipped
+    /// (e.g. because metadata was already populated by a concurrent writer).
     async fn update_observation_metadata(
         &self,
         id: &str,
         metadata: &ObservationMetadata,
-    ) -> Result<(), StorageError>;
+    ) -> Result<bool, StorageError>;
 
     /// Get observations that have empty metadata (facts, concepts, keywords all empty).
     /// Used by the backfill-metadata CLI command to find observations needing enrichment.

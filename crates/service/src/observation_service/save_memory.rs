@@ -116,26 +116,41 @@ impl ObservationService {
                 return;
             }
 
-            match llm.enrich_observation_metadata(&obs.title, narrative).await {
+            let metadata_updated = match llm
+                .enrich_observation_metadata(&obs.title, narrative)
+                .await
+            {
                 Ok(metadata) => {
                     let result = storage
                         .guarded(|| storage.update_observation_metadata(obs.id.as_ref(), &metadata))
                         .await;
-                    if let Err(e) = result {
-                        tracing::warn!(
-                            observation_id = %obs.id,
-                            error = %e,
-                            "Failed to persist enriched metadata"
-                        );
-                    } else {
-                        tracing::info!(
-                            observation_id = %obs.id,
-                            facts = metadata.facts.len(),
-                            keywords = metadata.keywords.len(),
-                            observation_type = ?metadata.observation_type,
-                            noise_level = ?metadata.noise_level,
-                            "Enriched save_memory observation with metadata and classification"
-                        );
+                    match result {
+                        Ok(updated) => {
+                            if updated {
+                                tracing::info!(
+                                    observation_id = %obs.id,
+                                    facts = metadata.facts.len(),
+                                    keywords = metadata.keywords.len(),
+                                    observation_type = ?metadata.observation_type,
+                                    noise_level = ?metadata.noise_level,
+                                    "Enriched save_memory observation with metadata and classification"
+                                );
+                            } else {
+                                tracing::info!(
+                                    observation_id = %obs.id,
+                                    "Enrichment skipped: metadata already populated by concurrent writer"
+                                );
+                            }
+                            updated
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                observation_id = %obs.id,
+                                error = %e,
+                                "Failed to persist enriched metadata"
+                            );
+                            false
+                        }
                     }
                 }
                 Err(e) => {
@@ -144,7 +159,13 @@ impl ObservationService {
                         error = %e,
                         "LLM metadata enrichment failed"
                     );
+                    false
                 }
+            };
+
+            // Regenerate embedding to sync vector space with newly enriched metadata
+            if metadata_updated {
+                svc.regenerate_embedding(obs.id.as_ref()).await;
             }
 
             let fresh_obs = match storage.guarded(|| storage.get_by_id(obs.id.as_ref())).await {
