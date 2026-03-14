@@ -152,7 +152,7 @@ pub(crate) async fn run_backfill_metadata(batch_size: usize) -> Result<()> {
 
     loop {
         let observations = storage
-            .get_observations_with_empty_metadata(batch_size)
+            .get_observations_with_empty_metadata(batch_size, &skipped_ids)
             .await?;
 
         if observations.is_empty() {
@@ -162,10 +162,6 @@ pub(crate) async fn run_backfill_metadata(batch_size: usize) -> Result<()> {
         let mut batch_progress = false;
 
         for obs in &observations {
-            if skipped_ids.contains(&obs.id.to_string()) {
-                continue;
-            }
-
             let narrative = obs.narrative.as_deref().unwrap_or("");
             if narrative.is_empty() && obs.title.is_empty() {
                 if let Err(e) = storage
