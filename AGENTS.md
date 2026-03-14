@@ -29,6 +29,7 @@ Last reviewed commit: `eea4f599c0c54eb8d7dcc0d81a9364f2302fd1e6`
 | Project Exclusion | ✅ 100% | OPENCODE_MEM_EXCLUDED_PROJECTS env var, glob patterns, ~ expansion |
 | Save Memory | ✅ 100% | Direct observation storage (MCP + HTTP), bypasses LLM compression |
 | Circuit Breaker | ✅ 100% | Graceful degradation when PostgreSQL unavailable — MCP tools return empty results, HTTP returns 200 + X-Memory-Degraded header, auto-recovery on reconnect |
+| Memory Quality | ✅ | Cross-project dedup, metadata enrichment, knowledge extraction for all types, usage tracking |
 
 ### NOT Implemented
 
@@ -258,3 +259,10 @@ LLM always creates NEW observations even when near-identical ones exist. The `ex
 - ~~deduplicate_by_embedding O(N²) blocks async runtime~~ — O(N²) comparison loop moved into `spawn_blocking`
 - ~~Unstable pagination in get_observations_paginated~~ — added `id` as secondary `ORDER BY` tie-breaker
 - ~~Tombstone save silent discard~~ — `save_observation(&tombstone)` errors now logged at warn level with context
+- ~~Cross-project dedup failure (5x duplicate noise-classification observations)~~ — `find_candidate_observations` now searches across all projects instead of current-only, preventing cross-project knowledge duplication
+- ~~save_memory metadata poverty (empty facts/concepts/keywords)~~ — background LLM enrichment extracts structured metadata after persist, with re-fetch from DB before knowledge extraction
+- ~~Knowledge extraction gate too restrictive (Gotcha-only)~~ — removed observation_type filter, all non-Low/Negligible observations now eligible for LLM-driven knowledge extraction
+- ~~MCP knowledge usage_count always zero~~ — increment moved from MCP handlers to KnowledgeService (SPOT), both MCP and HTTP paths now track usage
+- ~~Multi-byte truncation OOM in LLM error messages~~ — replaced `response.get(..300).unwrap_or(&response)` with `core::truncate()` char-boundary-safe helper
+- ~~Panic in spawned tokio tasks aborts server~~ — removed `.expect()` and `.unwrap()` from queue_processor, queue, serve spawned tasks
+- ~~Enrichment clobbers concurrent observation updates~~ — `update_observation_metadata` checks `rows_affected()`, logs and skips on concurrent modification
