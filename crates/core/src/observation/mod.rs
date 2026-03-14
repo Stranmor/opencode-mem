@@ -34,6 +34,19 @@ pub struct ObservationMetadata {
     pub files_modified: Vec<String>,
 }
 
+impl ObservationMetadata {
+    #[must_use]
+    pub fn placeholder() -> Self {
+        Self {
+            facts: vec!["no content".to_owned()],
+            concepts: Vec::new(),
+            keywords: Vec::new(),
+            files_read: Vec::new(),
+            files_modified: Vec::new(),
+        }
+    }
+}
+
 /// Ordinal position of a prompt within a session.
 ///
 /// Semantically distinct from token counts or other numeric identifiers —
