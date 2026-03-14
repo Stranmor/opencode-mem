@@ -32,7 +32,11 @@ impl KnowledgeService {
             .storage
             .guarded(|| self.storage.get_knowledge(id))
             .await;
-        self.with_cb(result)
+        let knowledge = self.with_cb(result)?;
+        if knowledge.is_some() {
+            self.spawn_usage_increment(vec![id.to_owned()]);
+        }
+        Ok(knowledge)
     }
 
     pub async fn save_knowledge(
@@ -73,7 +77,12 @@ impl KnowledgeService {
             .storage
             .guarded(|| self.storage.search_knowledge(query, limit))
             .await;
-        self.with_cb(result)
+        let results = self.with_cb(result)?;
+        let ids: Vec<String> = results.iter().map(|r| r.knowledge.id.clone()).collect();
+        if !ids.is_empty() {
+            self.spawn_usage_increment(ids);
+        }
+        Ok(results)
     }
 
     pub async fn list_knowledge(
@@ -91,6 +100,22 @@ impl KnowledgeService {
 
     pub async fn update_knowledge_usage(&self, id: &str) -> Result<(), ServiceError> {
         self.update_knowledge_usage_batch(&[id.to_owned()]).await
+    }
+
+    /// Fire-and-forget usage_count increment. Failures are logged at warn level
+    /// and never propagate to the caller — reading knowledge must never fail
+    /// because of a usage tracking issue.
+    fn spawn_usage_increment(&self, ids: Vec<String>) {
+        let storage = Arc::clone(&self.storage);
+        tokio::spawn(async move {
+            if let Err(e) = storage.update_knowledge_usage_batch(&ids).await {
+                tracing::warn!(
+                    error = %e,
+                    count = ids.len(),
+                    "Failed to increment knowledge usage_count"
+                );
+            }
+        });
     }
 
     pub async fn update_knowledge_usage_batch(&self, ids: &[String]) -> Result<(), ServiceError> {

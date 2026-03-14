@@ -17,18 +17,7 @@ pub(super) async fn handle_knowledge_search(
         return degraded;
     }
     match knowledge_service.search_knowledge(query, limit).await {
-        Ok(results) => {
-            let ids: Vec<String> = results.iter().map(|r| r.knowledge.id.clone()).collect();
-            if !ids.is_empty() {
-                let ks = Arc::clone(knowledge_service);
-                tokio::spawn(async move {
-                    if let Err(e) = ks.update_knowledge_usage_batch(&ids).await {
-                        tracing::debug!(error = %e, "Failed to update knowledge usage_count after search");
-                    }
-                });
-            }
-            mcp_ok(&results)
-        }
+        Ok(results) => mcp_ok(&results),
         Err(e) => degrade_read_err::<Vec<opencode_mem_core::KnowledgeSearchResult>>(e, cb),
     }
 }
@@ -46,16 +35,7 @@ pub(super) async fn handle_knowledge_get(
         return degraded;
     }
     match knowledge_service.get_knowledge(id_str).await {
-        Ok(Some(knowledge)) => {
-            let ks = Arc::clone(knowledge_service);
-            let id_owned = knowledge.id.clone();
-            tokio::spawn(async move {
-                if let Err(e) = ks.update_knowledge_usage(&id_owned).await {
-                    tracing::debug!(error = %e, "Failed to update knowledge usage_count after get");
-                }
-            });
-            mcp_ok(&knowledge)
-        }
+        Ok(Some(knowledge)) => mcp_ok(&knowledge),
         Ok(None) => mcp_ok(&serde_json::Value::Null),
         Err(e) if e.is_db_unavailable() || e.is_transient() => {
             cb.record_failure();
