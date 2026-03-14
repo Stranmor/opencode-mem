@@ -39,6 +39,9 @@ pub trait SummaryStore: Send + Sync {
     /// Save session summary.
     async fn save_summary(&self, summary: &SessionSummary) -> Result<(), StorageError>;
 
+    /// Delete session summary by session ID.
+    async fn delete_summary(&self, session_id: &str) -> Result<(), StorageError>;
+
     /// Get session summary by session ID.
     async fn get_session_summary(
         &self,
