@@ -71,7 +71,9 @@ impl PgStorage {
 
         sqlx::query(
             "UPDATE global_knowledge
-             SET knowledge_type = $1, description = $2, instructions = $3,
+             SET knowledge_type = $1,
+                 description = COALESCE(NULLIF($2, ''), description),
+                 instructions = COALESCE(NULLIF($3, ''), instructions),
                  triggers = $4, source_projects = $5, source_observations = $6,
                  updated_at = $7, archived_at = NULL
              WHERE id = $8",

@@ -266,10 +266,9 @@ impl QueueService {
     pub async fn get_pending_count(&self) -> Result<usize, ServiceError> {
         let result = self
             .storage
-            .get_pending_count()
-            .await
-            .map_err(ServiceError::from);
-        self.with_cb(result)
+            .guarded(|| self.storage.get_pending_count())
+            .await;
+        self.with_cb(result.map_err(ServiceError::from))
     }
 
     pub async fn release_stale_messages(
