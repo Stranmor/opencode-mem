@@ -40,14 +40,13 @@ pub async fn get_context_recent(
 
     if let Some(ref session_id) = query.session_id {
         let ids: Vec<String> = observations.iter().map(|o| o.id.to_string()).collect();
-        if !ids.is_empty() {
-            if let Err(e) = state
+        if !ids.is_empty()
+            && let Err(e) = state
                 .observation_service
                 .save_injected_observations(session_id, &ids)
                 .await
-            {
-                tracing::warn!("Failed to record injected observations: {}", e);
-            }
+        {
+            tracing::warn!("Failed to record injected observations: {}", e);
         }
     }
 

@@ -16,7 +16,7 @@ pub async fn get_branch_status(
     let timeout_duration = std::time::Duration::from_secs(10);
 
     let branch_fut = async {
-        let output = tokio::process::Command::new("git")
+        tokio::process::Command::new("git")
             .args(["rev-parse", "--abbrev-ref", "HEAD"])
             .stdin(std::process::Stdio::null())
             .output()
@@ -24,12 +24,11 @@ pub async fn get_branch_status(
             .ok()
             .filter(|o| o.status.success())
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_owned())
-            .unwrap_or_default();
-        output
+            .unwrap_or_default()
     };
 
     let dirty_fut = async {
-        let output = tokio::process::Command::new("git")
+        tokio::process::Command::new("git")
             .args(["status", "--porcelain"])
             .stdin(std::process::Stdio::null())
             .output()
@@ -37,8 +36,7 @@ pub async fn get_branch_status(
             .ok()
             .filter(|o| o.status.success())
             .map(|o| !o.stdout.is_empty())
-            .unwrap_or(false);
-        output
+            .unwrap_or(false)
     };
 
     let branch = tokio::time::timeout(timeout_duration, branch_fut)

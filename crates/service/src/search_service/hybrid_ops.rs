@@ -63,10 +63,8 @@ impl SearchService {
         let has_filters = project.is_some() || obs_type.is_some() || from.is_some() || to.is_some();
         let query_normalized = query.filter(|s| !s.is_empty());
 
-        if !has_filters {
-            if let Some(q) = query_normalized {
-                return self.hybrid_search(q, limit).await;
-            }
+        if !has_filters && let Some(q) = query_normalized {
+            return self.hybrid_search(q, limit).await;
         }
         self.search_with_filters(query_normalized, project, obs_type, from, to, limit)
             .await
@@ -116,18 +114,18 @@ impl SearchService {
         to: Option<&str>,
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
-        if let Some(q) = query {
-            if let Some(query_vec) = self.try_embed(q).await? {
-                let result = self
-                    .storage
-                    .guarded(|| {
-                        self.storage.hybrid_search_v2_with_filters(
-                            q, &query_vec, project, obs_type, from, to, limit,
-                        )
-                    })
-                    .await;
-                return self.with_cb(result);
-            }
+        if let Some(q) = query
+            && let Some(query_vec) = self.try_embed(q).await?
+        {
+            let result = self
+                .storage
+                .guarded(|| {
+                    self.storage.hybrid_search_v2_with_filters(
+                        q, &query_vec, project, obs_type, from, to, limit,
+                    )
+                })
+                .await;
+            return self.with_cb(result);
         }
         let result = self
             .storage

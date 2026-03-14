@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use opencode_mem_core::DEFAULT_QUERY_LIMIT;
 use opencode_mem_service::{
-    InfiniteMemoryService, KnowledgeService, ObservationService, PendingWriteQueue,
-    SearchService, SessionService,
+    InfiniteMemoryService, KnowledgeService, ObservationService, PendingWriteQueue, SearchService,
+    SessionService,
 };
 use serde_json::json;
 use tokio::runtime::Handle;

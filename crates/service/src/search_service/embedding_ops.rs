@@ -31,7 +31,7 @@ impl SearchService {
         let mut total = 0;
         let mut failed_ids_vec = Vec::new();
         loop {
-            let ids: Vec<String> = failed_ids_vec.iter().cloned().collect();
+            let ids: Vec<String> = failed_ids_vec.to_vec();
             let all_obs = self
                 .storage
                 .guarded(|| {
@@ -171,10 +171,10 @@ impl SearchService {
                     if sim > dedup_threshold {
                         let ra = find(&mut parent, i);
                         let rb = find(&mut parent, j);
-                        if ra != rb {
-                            if let Some(slot) = parent.get_mut(rb) {
-                                *slot = ra;
-                            }
+                        if ra != rb
+                            && let Some(slot) = parent.get_mut(rb)
+                        {
+                            *slot = ra;
                         }
                     }
                 }
@@ -192,7 +192,7 @@ impl SearchService {
                     .iter()
                     .filter_map(|&idx| obs_for_blocking.get(idx).map(|o| (idx, o)))
                     .min_by(|(_, a), (_, b)| {
-                        let keeper = Observation::prioritize_duplicate(*a, *b);
+                        let keeper = Observation::prioritize_duplicate(a, b);
                         if std::ptr::eq(keeper, *a) {
                             std::cmp::Ordering::Less
                         } else {

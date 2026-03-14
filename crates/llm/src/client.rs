@@ -65,20 +65,20 @@ impl LlmClient {
         base_url: Option<String>,
         model: Option<String>,
     ) {
-        if let Some(key) = api_key {
-            if let Ok(mut k) = self.api_key.write() {
-                *k = key;
-            }
+        if let Some(key) = api_key
+            && let Ok(mut k) = self.api_key.write()
+        {
+            *k = key;
         }
-        if let Some(url) = base_url {
-            if let Ok(mut u) = self.base_url.write() {
-                *u = url.trim_end_matches('/').to_owned();
-            }
+        if let Some(url) = base_url
+            && let Ok(mut u) = self.base_url.write()
+        {
+            *u = url.trim_end_matches('/').to_owned();
         }
-        if let Some(m) = model {
-            if let Ok(mut md) = self.model.write() {
-                *md = m;
-            }
+        if let Some(m) = model
+            && let Ok(mut md) = self.model.write()
+        {
+            *md = m;
         }
     }
 

@@ -22,26 +22,26 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
 
         loop_count = loop_count.wrapping_add(1);
 
-        if loop_count.is_multiple_of(60) {
-            if let Some(ref infinite_mem) = state.infinite_mem {
-                tracing::debug!("Cron: running infinite memory compression...");
-                let mem = Arc::clone(infinite_mem);
-                state.background_tasks.lock().await.spawn(async move {
-                    match mem.run_full_compression().await {
-                        Ok((five_min, hour, day)) => {
-                            if five_min > 0 || hour > 0 || day > 0 {
-                                tracing::info!(
-                                    "Cron: created {} 5min, {} hour, {} day summaries",
-                                    five_min,
-                                    hour,
-                                    day,
-                                );
-                            }
+        if loop_count.is_multiple_of(60)
+            && let Some(ref infinite_mem) = state.infinite_mem
+        {
+            tracing::debug!("Cron: running infinite memory compression...");
+            let mem = Arc::clone(infinite_mem);
+            state.background_tasks.lock().await.spawn(async move {
+                match mem.run_full_compression().await {
+                    Ok((five_min, hour, day)) => {
+                        if five_min > 0 || hour > 0 || day > 0 {
+                            tracing::info!(
+                                "Cron: created {} 5min, {} hour, {} day summaries",
+                                five_min,
+                                hour,
+                                day,
+                            );
                         }
-                        Err(e) => tracing::warn!("Cron: infinite memory error: {e:?}"),
                     }
-                });
-            }
+                    Err(e) => tracing::warn!("Cron: infinite memory error: {e:?}"),
+                }
+            });
         }
 
         if loop_count.is_multiple_of(180) {

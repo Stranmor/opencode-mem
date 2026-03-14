@@ -54,13 +54,13 @@ impl SearchService {
     pub fn handle_recovery(&self) {
         self.storage.handle_recovery_static();
 
-        if let Some(ref im) = self.infinite_mem {
-            if im.has_pending_migrations() {
-                let im = Arc::clone(im);
-                tokio::spawn(async move {
-                    im.try_run_migrations().await;
-                });
-            }
+        if let Some(ref im) = self.infinite_mem
+            && im.has_pending_migrations()
+        {
+            let im = Arc::clone(im);
+            tokio::spawn(async move {
+                im.try_run_migrations().await;
+            });
         }
     }
 

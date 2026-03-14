@@ -99,7 +99,7 @@ impl PgStorage {
     /// Returns `Ok(true)` if migrations ran, `Ok(false)` if DB unavailable or not needed.
     pub async fn try_run_migrations(&self) -> Result<bool, StorageError> {
         // Try to acquire the execution lock
-        if self.migrations_pending.load(Ordering::Acquire) == false {
+        if !self.migrations_pending.load(Ordering::Acquire) {
             return Ok(false);
         }
 

@@ -18,12 +18,11 @@ pub(crate) fn check_admin_access(
     config: &opencode_mem_core::AppConfig,
 ) -> bool {
     // 1. Check for explicit admin token (required for non-localhost or behind proxy)
-    if let Some(ref token) = config.admin_token {
-        if let Some(provided) = headers.get("x-admin-token").and_then(|h| h.to_str().ok()) {
-            if provided == token {
-                return true;
-            }
-        }
+    if let Some(ref token) = config.admin_token
+        && let Some(provided) = headers.get("x-admin-token").and_then(|h| h.to_str().ok())
+        && provided == token
+    {
+        return true;
     }
 
     // 2. Fallback to loopback check (only if no token is configured)

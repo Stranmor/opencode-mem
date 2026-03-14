@@ -99,7 +99,7 @@ pub(crate) fn degrade_read_err<T: Serialize + Default>(
 /// When the database is unavailable, silently skips the write and returns
 /// a valid JSON object instead of failing. Returns `{"success": false, "degraded": true}`
 /// so the IDE plugin can parse it without crashing (plugin expects JSON, not plain text).
-pub(crate) fn degrade_write_err(
+pub(crate) fn _degrade_write_err(
     err: ServiceError,
     cb: &opencode_mem_storage::CircuitBreaker,
 ) -> serde_json::Value {

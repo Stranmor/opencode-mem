@@ -62,10 +62,10 @@ pub async fn update_settings(
     if let Some(mut env) = req.env {
         // Build merged env: start from incoming, restore redacted from existing
         for (key, value) in env.iter_mut() {
-            if *value == "***REDACTED***" {
-                if let Some(existing) = settings.env.get(key) {
-                    *value = existing.clone();
-                }
+            if *value == "***REDACTED***"
+                && let Some(existing) = settings.env.get(key)
+            {
+                *value = existing.clone();
             }
         }
         env.retain(|_, v| v != "***REDACTED***");

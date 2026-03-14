@@ -1,10 +1,8 @@
 use anyhow::Result;
-use opencode_mem_core::ObservationId;
 use opencode_mem_embeddings::{EmbeddingProvider as _, EmbeddingService};
 use opencode_mem_storage::traits::{
     EmbeddingStore, KnowledgeStore, ObservationStore, SearchStore, StatsStore,
 };
-use std::collections::HashSet;
 
 pub(crate) async fn run_search(
     query: String,

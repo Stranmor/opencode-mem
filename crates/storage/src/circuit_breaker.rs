@@ -206,11 +206,11 @@ impl CircuitBreaker {
             .read()
             .unwrap_or_else(|e| e.into_inner());
         let backoff = Duration::from_secs(self.backoff_secs.load(Ordering::Relaxed));
-        let target = last_failure + backoff;
+        let target = last_failure.checked_add(backoff).unwrap_or(last_failure);
         if now >= target {
             0
         } else {
-            (target - now).as_secs()
+            target.saturating_duration_since(now).as_secs()
         }
     }
 }

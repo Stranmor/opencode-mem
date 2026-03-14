@@ -58,10 +58,10 @@ impl QueueService {
         &self,
         tool_call: &ToolCall,
     ) -> Result<QueueToolCallResult, ServiceError> {
-        if let Some(project) = tool_call.project.as_deref() {
-            if self.is_project_excluded(Some(project)) {
-                return Ok(QueueToolCallResult::ExcludedProject);
-            }
+        if let Some(project) = tool_call.project.as_deref()
+            && self.is_project_excluded(Some(project))
+        {
+            return Ok(QueueToolCallResult::ExcludedProject);
         }
 
         // Use recursive JSON sanitization to avoid corrupting JSON envelopes (SPOT compliance with Infinite Memory path)
@@ -133,24 +133,23 @@ impl QueueService {
     /// Check if a project is excluded by the current `ProjectFilter`.
     #[must_use]
     pub fn is_project_excluded(&self, project: Option<&str>) -> bool {
-        if let Some(project) = project {
-            if self
+        if let Some(project) = project
+            && self
                 .project_filter
                 .as_ref()
                 .is_some_and(|filter| filter.is_excluded(project))
-            {
-                return true;
-            }
+        {
+            return true;
         }
         false
     }
 
     #[must_use]
     pub fn should_skip_project(&self, project: Option<&str>) -> bool {
-        if let Some(value) = project {
-            if value.is_empty() || value == "unknown" {
-                return true;
-            }
+        if let Some(value) = project
+            && (value.is_empty() || value == "unknown")
+        {
+            return true;
         }
         self.is_project_excluded(project)
     }

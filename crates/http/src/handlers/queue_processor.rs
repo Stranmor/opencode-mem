@@ -261,10 +261,10 @@ pub fn start_background_processor(state: Arc<AppState>) {
             let mut tasks = state_tasks.background_tasks.lock().await;
             // Drain completed tasks from JoinSet to prevent memory leak
             while let Some(res) = tasks.try_join_next() {
-                if let Err(e) = res {
-                    if e.is_panic() {
-                        tracing::error!("Background task panicked: {}", e);
-                    }
+                if let Err(e) = res
+                    && e.is_panic()
+                {
+                    tracing::error!("Background task panicked: {}", e);
                 }
             }
         }

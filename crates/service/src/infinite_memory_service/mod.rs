@@ -94,7 +94,7 @@ impl InfiniteMemoryService {
 
     pub async fn try_run_migrations(&self) -> bool {
         // Try to acquire the execution lock
-        if self.migrations_pending.load(Ordering::Acquire) == false {
+        if !self.migrations_pending.load(Ordering::Acquire) {
             return false;
         }
 
@@ -121,15 +121,13 @@ impl InfiniteMemoryService {
     }
 
     pub async fn store_event(&self, event: RawInfiniteEvent) -> Result<i64, StorageError> {
-        let result = self
-            .guarded(|| {
-                opencode_mem_storage::pg_storage::infinite_memory::store_infinite_event(
-                    &self.pool,
-                    event.clone(),
-                )
-            })
-            .await;
-        result
+        self.guarded(|| {
+            opencode_mem_storage::pg_storage::infinite_memory::store_infinite_event(
+                &self.pool,
+                event.clone(),
+            )
+        })
+        .await
     }
 
     pub async fn compress_events(
@@ -148,17 +146,15 @@ impl InfiniteMemoryService {
         let events = events.to_vec();
         let summary = summary.to_owned();
         let entities = entities.cloned();
-        let result = self
-            .guarded(|| {
-                opencode_mem_storage::pg_storage::infinite_memory::create_5min_summary(
-                    &self.pool,
-                    &events,
-                    &summary,
-                    entities.as_ref(),
-                )
-            })
-            .await;
-        result
+        self.guarded(|| {
+            opencode_mem_storage::pg_storage::infinite_memory::create_5min_summary(
+                &self.pool,
+                &events,
+                &summary,
+                entities.as_ref(),
+            )
+        })
+        .await
     }
 
     pub async fn run_compression_pipeline(&self) -> Result<u32> {
@@ -174,17 +170,15 @@ impl InfiniteMemoryService {
         let summaries = summaries.to_vec();
         let content = content.to_owned();
         let entities = entities.cloned();
-        let result = self
-            .guarded(|| {
-                opencode_mem_storage::pg_storage::infinite_memory::create_hour_summary(
-                    &self.pool,
-                    &summaries,
-                    &content,
-                    entities.as_ref(),
-                )
-            })
-            .await;
-        result
+        self.guarded(|| {
+            opencode_mem_storage::pg_storage::infinite_memory::create_hour_summary(
+                &self.pool,
+                &summaries,
+                &content,
+                entities.as_ref(),
+            )
+        })
+        .await
     }
 
     pub async fn create_day_summary(
@@ -196,17 +190,15 @@ impl InfiniteMemoryService {
         let summaries = summaries.to_vec();
         let content = content.to_owned();
         let entities = entities.cloned();
-        let result = self
-            .guarded(|| {
-                opencode_mem_storage::pg_storage::infinite_memory::create_day_summary(
-                    &self.pool,
-                    &summaries,
-                    &content,
-                    entities.as_ref(),
-                )
-            })
-            .await;
-        result
+        self.guarded(|| {
+            opencode_mem_storage::pg_storage::infinite_memory::create_day_summary(
+                &self.pool,
+                &summaries,
+                &content,
+                entities.as_ref(),
+            )
+        })
+        .await
     }
 
     pub async fn compress_summaries(&self, summaries: &[InfiniteSummary]) -> Result<String> {

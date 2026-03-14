@@ -50,20 +50,20 @@ pub async fn unified_search(
         serde_json::to_value(UnifiedSearchResult::default()).unwrap_or(serde_json::Value::Null)
     };
 
-    if let Err(e) = &obs_result {
-        if e.is_db_unavailable() || e.is_transient() {
-            return Err(ApiError::Degraded(degraded_body()));
-        }
+    if let Err(e) = &obs_result
+        && (e.is_db_unavailable() || e.is_transient())
+    {
+        return Err(ApiError::Degraded(degraded_body()));
     }
-    if let Err(e) = &sess_result {
-        if e.is_db_unavailable() || e.is_transient() {
-            return Err(ApiError::Degraded(degraded_body()));
-        }
+    if let Err(e) = &sess_result
+        && (e.is_db_unavailable() || e.is_transient())
+    {
+        return Err(ApiError::Degraded(degraded_body()));
     }
-    if let Err(e) = &prompt_result {
-        if e.is_db_unavailable() || e.is_transient() {
-            return Err(ApiError::Degraded(degraded_body()));
-        }
+    if let Err(e) = &prompt_result
+        && (e.is_db_unavailable() || e.is_transient())
+    {
+        return Err(ApiError::Degraded(degraded_body()));
     }
 
     let observations = obs_result.unwrap_or_else(|e| {
@@ -210,15 +210,15 @@ pub async fn unified_timeline(
             serde_json::to_value(TimelineResult::default()).unwrap_or(serde_json::Value::Null)
         };
 
-        if let Err(e) = &before_result {
-            if e.is_db_unavailable() || e.is_transient() {
-                return Err(ApiError::Degraded(degraded_timeline()));
-            }
+        if let Err(e) = &before_result
+            && (e.is_db_unavailable() || e.is_transient())
+        {
+            return Err(ApiError::Degraded(degraded_timeline()));
         }
-        if let Err(e) = &after_result {
-            if e.is_db_unavailable() || e.is_transient() {
-                return Err(ApiError::Degraded(degraded_timeline()));
-            }
+        if let Err(e) = &after_result
+            && (e.is_db_unavailable() || e.is_transient())
+        {
+            return Err(ApiError::Degraded(degraded_timeline()));
         }
 
         let anchor_id = anchor_sr.id.clone();

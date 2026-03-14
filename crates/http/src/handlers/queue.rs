@@ -95,9 +95,9 @@ pub async fn process_pending_queue(
     }
 
     let mut handles = Vec::with_capacity(messages.len());
-    let mut messages_iter = messages.into_iter();
+    let messages_iter = messages.into_iter();
 
-    while let Some(msg) = messages_iter.next() {
+    for msg in messages_iter {
         let permit = permits
             .pop()
             .expect("permit must exist for claimed message");
