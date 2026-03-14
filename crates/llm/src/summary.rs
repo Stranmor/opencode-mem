@@ -58,7 +58,7 @@ Return JSON: {{"summary": "..."}}"#
             serde_json::from_str(stripped).map_err(|e| LlmError::JsonParse {
                 context: format!(
                     "session summary (content: {})",
-                    content.get(..300).unwrap_or(&content)
+                    opencode_mem_core::truncate(&content, 300)
                 ),
                 source: e,
             })?;

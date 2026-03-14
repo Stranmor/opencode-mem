@@ -37,7 +37,7 @@ fn parse_observation_response(
         serde_json::from_str(stripped).map_err(|e| LlmError::JsonParse {
             context: format!(
                 "observation response (content: {})",
-                response.get(..300).unwrap_or(response)
+                opencode_mem_core::truncate(response, 300)
             ),
             source: e,
         })?;
@@ -221,7 +221,7 @@ impl LlmClient {
             serde_json::from_str(stripped).map_err(|e| LlmError::JsonParse {
                 context: format!(
                     "metadata enrichment (content: {})",
-                    response.get(..300).unwrap_or(&response)
+                    opencode_mem_core::truncate(&response, 300)
                 ),
                 source: e,
             })?;
