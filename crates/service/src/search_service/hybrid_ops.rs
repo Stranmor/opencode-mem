@@ -133,7 +133,12 @@ impl SearchService {
                     )
                 })
                 .await;
-            return self.with_cb(result);
+            match self.with_cb(result) {
+                Ok(results) => return Ok(results),
+                Err(e) => {
+                    tracing::warn!(error = %e, "hybrid_search_v2_with_filters failed, falling back to text-only search_with_filters");
+                }
+            }
         }
         let result = self
             .storage
@@ -196,14 +201,19 @@ impl SearchService {
         }
     }
 
-    /// Try to embed the query. Returns `Ok(None)` if embeddings are not configured.
-    /// Returns `Ok(Some(vec))` on success, `Err` on embedding failure.
+    /// Try to embed the query. Returns `Ok(None)` if embeddings are not configured
+    /// or if embedding generation fails (graceful degradation to text-only search).
     async fn try_embed(&self, query: &str) -> Result<Option<Vec<f32>>, ServiceError> {
         let Some(ref emb) = self.embeddings else {
             return Ok(None);
         };
-        let vec = embed_query(emb, query).await?;
-        Ok(Some(vec))
+        match embed_query(emb, query).await {
+            Ok(vec) => Ok(Some(vec)),
+            Err(e) => {
+                tracing::warn!(error = %e, "Embedding generation failed, falling back to text-only search");
+                Ok(None)
+            }
+        }
     }
 }
 
