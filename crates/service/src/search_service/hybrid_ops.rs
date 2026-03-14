@@ -163,11 +163,19 @@ impl SearchService {
                     .guarded(|| self.storage.semantic_search(&query_vec, limit))
                     .await;
                 match sem_res {
-                    Ok(results) if !results.is_empty() => Ok(results),
-                    _ => {
+                    Ok(results) if !results.is_empty() => self.with_cb(Ok(results)),
+                    Ok(_) => {
                         let res = self
                             .storage
-                            .guarded(|| self.storage.hybrid_search(query, limit))
+                            .guarded(|| self.storage.hybrid_search_v2(query, &query_vec, limit))
+                            .await;
+                        self.with_cb(res)
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Semantic search failed, falling back to hybrid");
+                        let res = self
+                            .storage
+                            .guarded(|| self.storage.hybrid_search_v2(query, &query_vec, limit))
                             .await;
                         self.with_cb(res)
                     }

@@ -34,7 +34,11 @@ pub trait EmbeddingProvider: Send + Sync {
     fn dimension(&self) -> usize;
 }
 
-/// Embedding service using fastembed with `BGE-M3` multilingual model
+/// Embedding service using fastembed with `BGE-M3` multilingual model.
+///
+/// `Mutex` is required because `TextEmbedding::embed()` takes `&mut self`.
+/// The underlying `ort::Session` is `Send + Sync`, but fastembed's API
+/// requires mutable access for tokenization + inference pipeline state.
 pub struct EmbeddingService {
     model: Mutex<TextEmbedding>,
 }
