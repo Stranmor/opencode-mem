@@ -72,7 +72,7 @@ impl EmbeddingStore for PgStorage {
             sqlx::query(&format!(
                 "SELECT {OBSERVATION_COLUMNS} \
                    FROM observations \
-                   WHERE embedding IS NULL AND id != ANY($2) \
+                   WHERE embedding IS NULL AND id != ALL($2) \
                    LIMIT $1",
             ))
             .bind(usize_to_i64(limit))
