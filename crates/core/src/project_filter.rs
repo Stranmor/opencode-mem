@@ -2,7 +2,10 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 
 #[derive(Clone)]
 pub struct ProjectFilter {
-    matcher: GlobSet,
+    /// Original patterns (preserves glob syntax like `[a-z]`)
+    raw_matcher: GlobSet,
+    /// Normalized patterns (lowercase, hyphens→underscores for ProjectId matching)
+    normalized_matcher: GlobSet,
 }
 
 impl ProjectFilter {
@@ -11,7 +14,7 @@ impl ProjectFilter {
     }
 
     pub fn is_excluded(&self, project: &str) -> bool {
-        self.matcher.is_match(project)
+        self.raw_matcher.is_match(project) || self.normalized_matcher.is_match(project)
     }
 
     fn from_env_value(raw: Option<&str>) -> Option<Self> {
@@ -23,17 +26,23 @@ impl ProjectFilter {
     where
         I: IntoIterator<Item = &'a str>,
     {
-        let mut builder = GlobSetBuilder::new();
+        let mut raw_builder = GlobSetBuilder::new();
+        let mut norm_builder = GlobSetBuilder::new();
         let mut added = 0usize;
 
         for pattern in patterns {
             let expanded = expand_home(pattern);
-            // Normalize pattern the same way ProjectId::normalize() does
-            // (lowercase, hyphens → underscores) so that a pattern like
-            // "My-Secret-Project" matches the normalized input "my_secret_project".
+
+            if let Ok(glob) = Glob::new(&expanded) {
+                raw_builder.add(glob);
+            }
+
+            // Normalized pattern — lowercase + hyphens→underscores for ProjectId matching.
+            // This may corrupt character classes ([a-z] → [a_z]) but that's fine:
+            // the raw matcher already handles those correctly.
             let normalized = expanded.to_lowercase().replace('-', "_");
             if let Ok(glob) = Glob::new(&normalized) {
-                builder.add(glob);
+                norm_builder.add(glob);
                 added = added.saturating_add(1);
             }
         }
@@ -42,8 +51,12 @@ impl ProjectFilter {
             return None;
         }
 
-        let matcher = builder.build().ok()?;
-        Some(Self { matcher })
+        let raw_matcher = raw_builder.build().ok()?;
+        let normalized_matcher = norm_builder.build().ok()?;
+        Some(Self {
+            raw_matcher,
+            normalized_matcher,
+        })
     }
 }
 
@@ -89,9 +102,10 @@ mod tests {
     #[test]
     fn normalizes_patterns_to_match_project_id() {
         let filter = ProjectFilter::from_env_value(Some("My-Secret-Project")).expect("filter");
-        // ProjectId::new("My-Secret-Project").to_string() == "my_secret_project"
+        // Normalized matcher: my_secret_project matches
         assert!(filter.is_excluded("my_secret_project"));
-        assert!(!filter.is_excluded("My-Secret-Project"));
+        // Raw matcher: exact case match
+        assert!(filter.is_excluded("My-Secret-Project"));
     }
 
     #[test]
@@ -99,6 +113,15 @@ mod tests {
         let filter = ProjectFilter::from_env_value(Some("My-Secret-*")).expect("filter");
         assert!(filter.is_excluded("my_secret_project"));
         assert!(filter.is_excluded("my_secret_other"));
+    }
+
+    #[test]
+    fn preserves_glob_character_classes() {
+        // [a-z] must NOT become [a_z] — raw matcher preserves original syntax
+        let filter = ProjectFilter::from_env_value(Some("[a-z]*_project")).expect("filter");
+        assert!(filter.is_excluded("my_project"));
+        assert!(filter.is_excluded("x_project"));
+        assert!(!filter.is_excluded("1_project"));
     }
 
     #[test]
