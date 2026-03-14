@@ -89,12 +89,21 @@ impl PgStorage {
         .execute(&mut **tx)
         .await?;
 
+        // Re-read description/instructions from DB to capture COALESCE results
+        let updated =
+            sqlx::query("SELECT description, instructions FROM global_knowledge WHERE id = $1")
+                .bind(existing_id)
+                .fetch_one(&mut **tx)
+                .await?;
+        let merged_description: String = updated.get("description");
+        let merged_instructions: Option<String> = updated.get("instructions");
+
         Ok(GlobalKnowledge::new(
             existing_id.to_owned(),
             input.knowledge_type,
             existing_title.to_owned(),
-            input.description.clone(),
-            input.instructions.clone(),
+            merged_description,
+            merged_instructions,
             triggers,
             source_projects,
             source_observations,

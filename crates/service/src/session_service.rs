@@ -105,7 +105,7 @@ impl SessionService {
             .await;
         let observations = self.with_cb(observations)?;
 
-        let summary = if observations.is_empty() {
+        let summary_text = if observations.is_empty() {
             None
         } else {
             let bounded = truncate_observations_for_summary(&observations);
@@ -118,12 +118,42 @@ impl SessionService {
                 self.storage.update_session_status_with_summary(
                     session_id,
                     SessionStatus::Completed,
-                    summary.as_deref(),
+                    summary_text.as_deref(),
                 )
             })
             .await;
         self.with_cb(result)?;
-        Ok(summary)
+
+        if let Some(ref text) = summary_text {
+            let project = observations
+                .first()
+                .and_then(|o| o.project.clone())
+                .unwrap_or_else(|| ProjectId::new("unknown"));
+            let summary = SessionSummary::new(
+                SessionId::from(session_id.to_owned()),
+                project,
+                None,
+                None,
+                Some(text.clone()),
+                None,
+                None,
+                None,
+                Vec::new(),
+                Vec::new(),
+                None,
+                None,
+                Utc::now(),
+            );
+            let result = self
+                .storage
+                .guarded(|| self.storage.save_summary(&summary))
+                .await;
+            if let Err(e) = self.with_cb(result) {
+                tracing::warn!(session_id, error = %e, "Failed to persist session summary via save_summary");
+            }
+        }
+
+        Ok(summary_text)
     }
 
     pub async fn generate_summary(
@@ -159,7 +189,7 @@ impl SessionService {
             return Ok("No observations in this session.".to_owned());
         }
         let bounded = truncate_observations_for_summary(&observations);
-        let summary = self.llm.generate_session_summary(bounded).await?;
+        let summary_text = self.llm.generate_session_summary(bounded).await?;
 
         let result = self
             .storage
@@ -167,12 +197,40 @@ impl SessionService {
                 self.storage.update_session_status_with_summary(
                     session_id,
                     SessionStatus::Completed,
-                    Some(&summary),
+                    Some(&summary_text),
                 )
             })
             .await;
         self.with_cb(result)?;
-        Ok(summary)
+
+        let project = observations
+            .first()
+            .and_then(|o| o.project.clone())
+            .unwrap_or_else(|| ProjectId::new("unknown"));
+        let summary = SessionSummary::new(
+            SessionId::from(session_id.to_owned()),
+            project,
+            None,
+            None,
+            Some(summary_text.clone()),
+            None,
+            None,
+            None,
+            Vec::new(),
+            Vec::new(),
+            None,
+            None,
+            Utc::now(),
+        );
+        let result = self
+            .storage
+            .guarded(|| self.storage.save_summary(&summary))
+            .await;
+        if let Err(e) = self.with_cb(result) {
+            tracing::warn!(session_id, error = %e, "Failed to persist session summary via save_summary");
+        }
+
+        Ok(summary_text)
     }
 
     pub async fn generate_pending_summaries(&self, limit: usize) -> Result<usize, ServiceError> {
