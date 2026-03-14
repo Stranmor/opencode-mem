@@ -379,7 +379,7 @@ impl ObservationStore for PgStorage {
         metadata: &ObservationMetadata,
     ) -> Result<(), StorageError> {
         let concepts_str: Vec<String> = metadata.concepts.iter().map(|c| c.to_string()).collect();
-        sqlx::query(
+        let result = sqlx::query(
             "UPDATE observations \
              SET facts = $1, concepts = $2, keywords = $3, \
                  files_read = $4, files_modified = $5 \
@@ -393,6 +393,13 @@ impl ObservationStore for PgStorage {
         .bind(id)
         .execute(&self.pool)
         .await?;
+
+        if result.rows_affected() == 0 {
+            tracing::warn!(
+                observation_id = %id,
+                "Enrichment update skipped: observation not found or already updated"
+            );
+        }
         Ok(())
     }
 }
