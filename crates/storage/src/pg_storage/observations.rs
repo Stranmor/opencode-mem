@@ -5,7 +5,7 @@ use super::*;
 use crate::error::StorageError;
 use crate::traits::ObservationStore;
 use async_trait::async_trait;
-use opencode_mem_core::{Observation, SearchResult};
+use opencode_mem_core::{Observation, ObservationMetadata, SearchResult};
 
 impl PgStorage {
     async fn update_observation_fields(
@@ -370,6 +370,29 @@ impl ObservationStore for PgStorage {
             .await?;
 
         tx.commit().await?;
+        Ok(())
+    }
+
+    async fn update_observation_metadata(
+        &self,
+        id: &str,
+        metadata: &ObservationMetadata,
+    ) -> Result<(), StorageError> {
+        let concepts_str: Vec<String> = metadata.concepts.iter().map(|c| c.to_string()).collect();
+        sqlx::query(
+            "UPDATE observations \
+             SET facts = $1, concepts = $2, keywords = $3, \
+                 files_read = $4, files_modified = $5 \
+             WHERE id = $6",
+        )
+        .bind(serde_json::to_value(&metadata.facts)?)
+        .bind(serde_json::to_value(&concepts_str)?)
+        .bind(serde_json::to_value(&metadata.keywords)?)
+        .bind(serde_json::to_value(&metadata.files_read)?)
+        .bind(serde_json::to_value(&metadata.files_modified)?)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 }

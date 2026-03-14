@@ -1,10 +1,13 @@
 use chrono::Utc;
 use opencode_mem_core::{
-    Concept, NoiseLevel, Observation, ObservationInput, ObservationType, sanitize_input,
+    Concept, NoiseLevel, Observation, ObservationInput, ObservationMetadata, ObservationType,
+    sanitize_input,
 };
 use std::str::FromStr as _;
 
-use crate::ai_types::{ChatRequest, Message, ObservationJson, ResponseFormat, ResponseFormatType};
+use crate::ai_types::{
+    ChatRequest, Message, MetadataJson, ObservationJson, ResponseFormat, ResponseFormatType,
+};
 use crate::client::LlmClient;
 use crate::compression_prompt::build_compression_prompt;
 use crate::error::LlmError;
@@ -175,5 +178,66 @@ impl LlmClient {
             project,
             &candidate_ids,
         )
+    }
+
+    /// Extract structured metadata from an observation's title and narrative.
+    ///
+    /// # Errors
+    /// Returns an error if the API call or JSON parsing fails.
+    pub async fn enrich_observation_metadata(
+        &self,
+        title: &str,
+        narrative: &str,
+    ) -> Result<ObservationMetadata, LlmError> {
+        let prompt = format!(
+            "Extract structured metadata from this observation.\n\n\
+             Title: {title}\n\
+             Narrative: {narrative}\n\n\
+             Return JSON with these fields:\n\
+             - \"facts\": array of specific facts (file paths, function names, decisions, concrete details)\n\
+             - \"concepts\": array from [{concepts}]\n\
+             - \"keywords\": array of search keywords (3-8 terms)\n\
+             - \"files_read\": array of file paths mentioned as read/referenced\n\
+             - \"files_modified\": array of file paths mentioned as modified/created\n\n\
+             If a field has no relevant data, return an empty array.",
+            concepts = Concept::ALL_VARIANTS_STR,
+        );
+
+        let request = ChatRequest {
+            model: self.model(),
+            messages: vec![Message {
+                role: "user".to_owned(),
+                content: prompt,
+            }],
+            response_format: ResponseFormat {
+                format_type: ResponseFormatType::JsonObject,
+            },
+            max_tokens: None,
+        };
+
+        let response = self.chat_completion(&request).await?;
+        let stripped = opencode_mem_core::strip_markdown_json(&response);
+        let meta: MetadataJson =
+            serde_json::from_str(stripped).map_err(|e| LlmError::JsonParse {
+                context: format!(
+                    "metadata enrichment (content: {})",
+                    response.get(..300).unwrap_or(&response)
+                ),
+                source: e,
+            })?;
+
+        let concepts = meta
+            .concepts
+            .iter()
+            .filter_map(|s| Concept::from_str(s).ok())
+            .collect();
+
+        Ok(ObservationMetadata {
+            facts: meta.facts,
+            concepts,
+            keywords: meta.keywords,
+            files_read: meta.files_read,
+            files_modified: meta.files_modified,
+        })
     }
 }

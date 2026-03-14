@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use opencode_mem_core::{Observation, SearchResult};
+use opencode_mem_core::{Observation, ObservationMetadata, SearchResult};
 
 use crate::error::StorageError;
 
@@ -66,5 +66,13 @@ pub trait ObservationStore: Send + Sync {
         existing_id: &str,
         newer: &Observation,
         force_newer: bool,
+    ) -> Result<(), StorageError>;
+
+    /// Update only metadata fields (facts, concepts, keywords, files_read, files_modified)
+    /// on an existing observation.
+    async fn update_observation_metadata(
+        &self,
+        id: &str,
+        metadata: &ObservationMetadata,
     ) -> Result<(), StorageError>;
 }

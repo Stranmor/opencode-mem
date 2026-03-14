@@ -1,6 +1,7 @@
 //! Direct memory storage — bypasses LLM compression pipeline.
 
 use opencode_mem_core::{NoiseLevel, Observation, ObservationType, sanitize_input};
+use opencode_mem_storage::traits::ObservationStore;
 
 use super::{ObservationService, SaveMemoryResult};
 use crate::ServiceError;
@@ -42,13 +43,12 @@ impl ObservationService {
         }
 
         // Project filter check (Privacy)
-        if let Some(p) = project {
-            if let Some(ref filter) = self.project_filter {
-                if filter.is_excluded(p) {
-                    tracing::info!(project = %p, "Skipping save_memory — project is excluded by privacy policy");
-                    return Ok(SaveMemoryResult::Filtered);
-                }
-            }
+        if let Some(p) = project
+            && let Some(ref filter) = self.project_filter
+            && filter.is_excluded(p)
+        {
+            tracing::info!(project = %p, "Skipping save_memory — project is excluded by privacy policy");
+            return Ok(SaveMemoryResult::Filtered);
         }
 
         let title_str = match title {
@@ -92,8 +92,61 @@ impl ObservationService {
 
         let result = self.persist_and_notify(&obs, None).await?;
         match result {
-            Some((persisted_obs, _was_new)) => Ok(SaveMemoryResult::Created(persisted_obs)),
+            Some((persisted_obs, _was_new)) => {
+                self.spawn_enrichment(persisted_obs.clone());
+                Ok(SaveMemoryResult::Created(persisted_obs))
+            }
             None => Ok(SaveMemoryResult::Duplicate(obs)),
         }
+    }
+
+    fn spawn_enrichment(&self, obs: Observation) {
+        let llm = self.llm.clone();
+        let storage = self.storage.clone();
+        let svc = self.clone();
+
+        tokio::spawn(async move {
+            let narrative = obs.narrative.as_deref().unwrap_or("");
+            if narrative.is_empty() && obs.title.is_empty() {
+                return;
+            }
+
+            match llm.enrich_observation_metadata(&obs.title, narrative).await {
+                Ok(metadata) => {
+                    let result = storage
+                        .guarded(|| storage.update_observation_metadata(obs.id.as_ref(), &metadata))
+                        .await;
+                    if let Err(e) = result {
+                        tracing::warn!(
+                            observation_id = %obs.id,
+                            error = %e,
+                            "Failed to persist enriched metadata"
+                        );
+                    } else {
+                        tracing::info!(
+                            observation_id = %obs.id,
+                            facts = metadata.facts.len(),
+                            keywords = metadata.keywords.len(),
+                            "Enriched save_memory observation with metadata"
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        observation_id = %obs.id,
+                        error = %e,
+                        "LLM metadata enrichment failed"
+                    );
+                }
+            }
+
+            if let Err(e) = svc.extract_knowledge(&obs).await {
+                tracing::warn!(
+                    observation_id = %obs.id,
+                    error = %e,
+                    "Knowledge extraction failed for save_memory observation"
+                );
+            }
+        });
     }
 }

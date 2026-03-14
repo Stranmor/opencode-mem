@@ -124,3 +124,18 @@ pub struct ObservationJson {
 pub struct SummaryJson {
     pub summary: String,
 }
+
+/// LLM response for metadata enrichment of save_memory observations.
+#[derive(Deserialize)]
+pub struct MetadataJson {
+    #[serde(default, deserialize_with = "null_or_invalid_as_default_vec")]
+    pub facts: Vec<String>,
+    #[serde(default, deserialize_with = "null_or_invalid_as_default_vec")]
+    pub concepts: Vec<String>,
+    #[serde(default, deserialize_with = "null_or_invalid_as_default_vec")]
+    pub keywords: Vec<String>,
+    #[serde(default, deserialize_with = "null_or_invalid_as_default_vec")]
+    pub files_read: Vec<String>,
+    #[serde(default, deserialize_with = "null_or_invalid_as_default_vec")]
+    pub files_modified: Vec<String>,
+}

@@ -25,6 +25,15 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
+/// Extracted metadata fields for enriching save_memory observations.
+pub struct ObservationMetadata {
+    pub facts: Vec<String>,
+    pub concepts: Vec<Concept>,
+    pub keywords: Vec<String>,
+    pub files_read: Vec<String>,
+    pub files_modified: Vec<String>,
+}
+
 /// Ordinal position of a prompt within a session.
 ///
 /// Semantically distinct from token counts or other numeric identifiers —
