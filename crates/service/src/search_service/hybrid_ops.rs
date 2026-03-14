@@ -40,7 +40,9 @@ impl SearchService {
         limit: usize,
     ) -> Result<Vec<SearchResult>, ServiceError> {
         let limit = Self::normalize_limit(limit);
-        self.run_search_with_filters(query, project, obs_type, from, to, limit)
+        let obs_type_lower = obs_type.map(|t| t.to_lowercase());
+        let obs_type_ref = obs_type_lower.as_deref();
+        self.run_search_with_filters(query, project, obs_type_ref, from, to, limit)
             .await
     }
 
@@ -66,7 +68,9 @@ impl SearchService {
         if !has_filters && let Some(q) = query_normalized {
             return self.hybrid_search(q, limit).await;
         }
-        self.search_with_filters(query_normalized, project, obs_type, from, to, limit)
+        let obs_type_lower = obs_type.map(|t| t.to_lowercase());
+        let obs_type_ref = obs_type_lower.as_deref();
+        self.run_search_with_filters(query_normalized, project, obs_type_ref, from, to, limit)
             .await
     }
 

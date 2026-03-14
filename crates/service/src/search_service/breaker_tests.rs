@@ -1,7 +1,6 @@
-// These tests document adversarial edge cases found during security review.
 
 #[tokio::test]
-#[ignore]
+#[ignore = "Demonstrates vulnerability #128: try_embed(?)-propagation bypasses fallback"]
 async fn test_hybrid_search_fails_on_embedding_error_instead_of_fallback() {
     // This test documents that `SearchService::hybrid_search` and `search_with_filters`
     // do NOT fall back to text-only search if embedding generation fails, causing a DoS.
@@ -10,7 +9,6 @@ async fn test_hybrid_search_fails_on_embedding_error_instead_of_fallback() {
     // 3. The `?` propagates the `Err` immediately instead of matching on it.
     // 4. Text-only `hybrid_search` fallback is never reached.
     // 5. User receives a 500 error instead of degraded search results.
-
     let is_vulnerable = true;
     assert!(
         is_vulnerable,
