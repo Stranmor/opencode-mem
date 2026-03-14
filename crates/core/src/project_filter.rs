@@ -28,7 +28,11 @@ impl ProjectFilter {
 
         for pattern in patterns {
             let expanded = expand_home(pattern);
-            if let Ok(glob) = Glob::new(&expanded) {
+            // Normalize pattern the same way ProjectId::normalize() does
+            // (lowercase, hyphens → underscores) so that a pattern like
+            // "My-Secret-Project" matches the normalized input "my_secret_project".
+            let normalized = expanded.to_lowercase().replace('-', "_");
+            if let Ok(glob) = Glob::new(&normalized) {
                 builder.add(glob);
                 added = added.saturating_add(1);
             }
@@ -80,6 +84,21 @@ mod tests {
         let expected_prefix = dirs::home_dir().expect("home dir").display().to_string();
         assert!(expanded.starts_with(&expected_prefix));
         assert!(expanded.ends_with("kunden/**"));
+    }
+
+    #[test]
+    fn normalizes_patterns_to_match_project_id() {
+        let filter = ProjectFilter::from_env_value(Some("My-Secret-Project")).expect("filter");
+        // ProjectId::new("My-Secret-Project").to_string() == "my_secret_project"
+        assert!(filter.is_excluded("my_secret_project"));
+        assert!(!filter.is_excluded("My-Secret-Project"));
+    }
+
+    #[test]
+    fn normalizes_glob_patterns_with_wildcards() {
+        let filter = ProjectFilter::from_env_value(Some("My-Secret-*")).expect("filter");
+        assert!(filter.is_excluded("my_secret_project"));
+        assert!(filter.is_excluded("my_secret_other"));
     }
 
     #[test]
