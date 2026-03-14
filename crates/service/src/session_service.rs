@@ -217,11 +217,19 @@ impl SessionService {
                         error = %e,
                         "Failed to fetch observations for session summary"
                     );
+                    let _ = self
+                        .storage
+                        .guarded(|| self.storage.delete_summary(&session.session_id))
+                        .await;
                     continue;
                 }
             };
 
             if observations.len() < 2 {
+                let _ = self
+                    .storage
+                    .guarded(|| self.storage.delete_summary(&session.session_id))
+                    .await;
                 continue;
             }
 
