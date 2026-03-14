@@ -42,8 +42,10 @@ impl ObservationService {
             ));
         }
 
-        // Project filter check (Privacy)
-        if let Some(p) = project
+        let project_trimmed = project.map(str::trim).filter(|p| !p.is_empty());
+
+        // Project filter check (Privacy) — trim BEFORE checking
+        if let Some(p) = project_trimmed
             && let Some(ref filter) = self.project_filter
             && filter.is_excluded(p)
         {
@@ -56,10 +58,7 @@ impl ObservationService {
             _ => text.chars().take(50).collect(),
         };
 
-        let project_str = project
-            .map(str::trim)
-            .filter(|p| !p.is_empty())
-            .map(ToOwned::to_owned);
+        let project_str = project_trimmed.map(ToOwned::to_owned);
 
         let resolved_observation_type = observation_type.unwrap_or(ObservationType::Discovery);
         let resolved_noise_level = noise_level.unwrap_or(NoiseLevel::Medium);
