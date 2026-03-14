@@ -131,15 +131,16 @@ impl QueueService {
     }
 
     /// Check if a project is excluded by the current `ProjectFilter`.
+    ///
+    /// Normalizes the project name via `ProjectId` before checking,
+    /// so that `My-Secret/` is correctly matched against a pattern for `my_secret`.
     #[must_use]
     pub fn is_project_excluded(&self, project: Option<&str>) -> bool {
         if let Some(project) = project
-            && self
-                .project_filter
-                .as_ref()
-                .is_some_and(|filter| filter.is_excluded(project))
+            && let Some(ref filter) = self.project_filter
         {
-            return true;
+            let normalized = opencode_mem_core::ProjectId::new(project).to_string();
+            return filter.is_excluded(&normalized);
         }
         false
     }

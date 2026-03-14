@@ -44,13 +44,17 @@ impl ObservationService {
 
         let project_trimmed = project.map(str::trim).filter(|p| !p.is_empty());
 
-        // Project filter check (Privacy) — trim BEFORE checking
+        // Normalize before exclusion check — ProjectFilter uses glob matching on raw strings,
+        // but ProjectId::new() normalizes (lowercase, hyphens→underscores, trim slashes).
+        // Without pre-normalization, "My-Secret/" bypasses a pattern for "my_secret".
         if let Some(p) = project_trimmed
             && let Some(ref filter) = self.project_filter
-            && filter.is_excluded(p)
         {
-            tracing::info!(project = %p, "Skipping save_memory — project is excluded by privacy policy");
-            return Ok(SaveMemoryResult::Filtered);
+            let normalized = opencode_mem_core::ProjectId::new(p).to_string();
+            if filter.is_excluded(&normalized) {
+                tracing::info!(project = %p, normalized = %normalized, "Skipping save_memory — project is excluded by privacy policy");
+                return Ok(SaveMemoryResult::Filtered);
+            }
         }
 
         let title_str = match title {
