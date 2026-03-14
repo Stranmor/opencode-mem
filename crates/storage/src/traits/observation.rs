@@ -75,4 +75,11 @@ pub trait ObservationStore: Send + Sync {
         id: &str,
         metadata: &ObservationMetadata,
     ) -> Result<(), StorageError>;
+
+    /// Get observations that have empty metadata (facts, concepts, keywords all empty).
+    /// Used by the backfill-metadata CLI command to find observations needing enrichment.
+    async fn get_observations_with_empty_metadata(
+        &self,
+        limit: usize,
+    ) -> Result<Vec<Observation>, StorageError>;
 }
