@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chrono::Utc;
+use chrono::{TimeDelta, Utc};
 use opencode_mem_core::{
     Observation, ProjectId, Session, SessionId, SessionStatus, SessionSummary,
 };
@@ -9,6 +9,23 @@ use opencode_mem_storage::traits::{ObservationStore, SessionStore, SummaryStore}
 use opencode_mem_storage::{StorageBackend, StorageError};
 
 use crate::ServiceError;
+
+/// Maximum observations sent to LLM for session summary generation.
+/// Keeps the last N observations (most recent context).
+const MAX_OBSERVATIONS_FOR_SUMMARY: usize = 150;
+
+/// Stale "processing" placeholder threshold.
+const STALE_PLACEHOLDER_MINUTES: i64 = 10;
+
+/// Truncate observations to the last [`MAX_OBSERVATIONS_FOR_SUMMARY`] items.
+/// Returns a slice of the most recent observations.
+fn truncate_observations_for_summary(observations: &[Observation]) -> &[Observation] {
+    if observations.len() > MAX_OBSERVATIONS_FOR_SUMMARY {
+        &observations[observations.len() - MAX_OBSERVATIONS_FOR_SUMMARY..]
+    } else {
+        observations
+    }
+}
 
 pub struct SessionService {
     storage: Arc<StorageBackend>,
@@ -91,7 +108,8 @@ impl SessionService {
         let summary = if observations.is_empty() {
             None
         } else {
-            Some(self.generate_summary(&observations).await?)
+            let bounded = truncate_observations_for_summary(&observations);
+            Some(self.generate_summary(bounded).await?)
         };
 
         let result = self
@@ -140,7 +158,8 @@ impl SessionService {
             self.with_cb(result)?;
             return Ok("No observations in this session.".to_owned());
         }
-        let summary = self.llm.generate_session_summary(&observations).await?;
+        let bounded = truncate_observations_for_summary(&observations);
+        let summary = self.llm.generate_session_summary(bounded).await?;
 
         let result = self
             .storage
@@ -175,7 +194,27 @@ impl SessionService {
                 .await;
 
             match self.with_cb(exists_result) {
-                Ok(Some(_)) => continue,
+                Ok(Some(existing)) => {
+                    let is_processing = existing
+                        .learned
+                        .as_deref()
+                        .is_some_and(|l| l == "processing");
+                    let stale_threshold =
+                        Utc::now() - TimeDelta::minutes(STALE_PLACEHOLDER_MINUTES);
+                    if is_processing && existing.created_at < stale_threshold {
+                        tracing::warn!(
+                            session_id = %session.session_id,
+                            age_minutes = (Utc::now() - existing.created_at).num_minutes(),
+                            "Deleting stale processing placeholder"
+                        );
+                        let _ = self
+                            .storage
+                            .guarded(|| self.storage.delete_summary(&session.session_id))
+                            .await;
+                    } else {
+                        continue;
+                    }
+                }
                 Ok(None) => {}
                 Err(_) => continue,
             }
@@ -271,13 +310,16 @@ impl SessionService {
                 continue;
             }
 
-            if observations.len() > 150 {
+            if observations.len() > MAX_OBSERVATIONS_FOR_SUMMARY {
                 tracing::warn!(
                     session_id = %session.session_id,
                     count = observations.len(),
-                    "Session has too many observations, truncating to last 150 for summary"
+                    "Session has too many observations, truncating to last {} for summary",
+                    MAX_OBSERVATIONS_FOR_SUMMARY,
                 );
-                let start_idx = observations.len().saturating_sub(150);
+                let start_idx = observations
+                    .len()
+                    .saturating_sub(MAX_OBSERVATIONS_FOR_SUMMARY);
                 observations = observations.into_iter().skip(start_idx).collect();
             }
 
@@ -326,8 +368,12 @@ impl SessionService {
                 tracing::warn!(
                     session_id = %session.session_id,
                     error = %e,
-                    "Failed to store session summary"
+                    "Failed to store session summary, deleting placeholder"
                 );
+                let _ = self
+                    .storage
+                    .guarded(|| self.storage.delete_summary(&session.session_id))
+                    .await;
                 continue;
             }
 
