@@ -91,11 +91,15 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
             LlmError::MissingField(format!("unknown knowledge_type: {}", knowledge_type_str))
         })?;
 
-        Ok(Some(KnowledgeInput::new(
-            knowledge_type,
-            extraction
+        let title = opencode_mem_core::strip_uuid_from_title(
+            &extraction
                 .title
                 .unwrap_or_else(|| observation.title.clone()),
+        );
+
+        Ok(Some(KnowledgeInput::new(
+            knowledge_type,
+            title,
             extraction
                 .description
                 .unwrap_or_else(|| observation.narrative.clone().unwrap_or_default()),

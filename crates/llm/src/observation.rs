@@ -30,7 +30,7 @@ fn parse_observation_response(
     id: &str,
     session_id: &str,
     project: Option<&str>,
-    candidate_ids: &std::collections::HashSet<&str>,
+    candidates: &[opencode_mem_core::Observation],
 ) -> Result<CompressionResult, LlmError> {
     let stripped = opencode_mem_core::strip_markdown_json(response);
     let obs_json: ObservationJson =
@@ -109,22 +109,37 @@ fn parse_observation_response(
     .created_at(Utc::now())
     .build();
 
-    // Determine action: update requires valid target_id in candidate set
+    // Determine action: update requires valid target resolved from candidates
     if action == "update" {
-        if let Some(ref target_id) = obs_json.target_id {
-            if candidate_ids.contains(&target_id.as_str()) {
-                return Ok(CompressionResult::Update {
-                    target_id: target_id.clone(),
-                    observation,
-                });
-            }
-            tracing::warn!(
-                target_id = %target_id,
-                "LLM returned update with target_id not in candidate set — treating as create"
-            );
-        } else {
-            tracing::warn!("LLM returned action=update without target_id — treating as create");
+        // Resolve target: prefer target_number (index into candidates), fall back to target_id (legacy)
+        let resolved_target_id = obs_json
+            .target_number
+            .and_then(|n| {
+                let idx = n.checked_sub(1)? as usize;
+                candidates.get(idx).map(|o| o.id.to_string())
+            })
+            .or_else(|| {
+                obs_json.target_id.as_ref().and_then(|tid| {
+                    if candidates.iter().any(|o| o.id.as_ref() == tid.as_str()) {
+                        Some(tid.clone())
+                    } else {
+                        None
+                    }
+                })
+            });
+
+        if let Some(target_id) = resolved_target_id {
+            return Ok(CompressionResult::Update {
+                target_id,
+                observation,
+            });
         }
+        tracing::warn!(
+            target_number = ?obs_json.target_number,
+            target_id = ?obs_json.target_id,
+            candidates_len = candidates.len(),
+            "LLM returned update with unresolvable target — treating as create"
+        );
     }
 
     if action != "create" {
@@ -167,16 +182,13 @@ impl LlmClient {
             max_tokens: None,
         };
 
-        let candidate_ids: std::collections::HashSet<&str> =
-            candidates.iter().map(|o| o.id.as_ref()).collect();
-
         let response = self.chat_completion(&request).await?;
         parse_observation_response(
             &response,
             id,
             input.session_id.as_ref(),
             project,
-            &candidate_ids,
+            candidates,
         )
     }
 

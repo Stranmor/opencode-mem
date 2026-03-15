@@ -112,9 +112,12 @@ pub struct ObservationJson {
     /// Context-aware compression action: "create", "update", or "skip"
     #[serde(default = "default_action")]
     pub action: String,
-    /// UUID of existing observation to update (only for action="update")
+    /// UUID of existing observation to update (only for action="update") — legacy field
     #[serde(default)]
     pub target_id: Option<String>,
+    /// 1-based index of existing observation to update (only for action="update")
+    #[serde(default)]
+    pub target_number: Option<u32>,
     /// Reason for skipping (only for action="skip")
     #[serde(default)]
     pub skip_reason: Option<String>,

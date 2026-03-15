@@ -41,9 +41,8 @@ pub(crate) fn build_compression_prompt(
                 format!(" facts=[{}]", obs.facts.join(", "))
             };
             entries.push_str(&format!(
-                "[{}] id=\"{}\" type={} title=\"{}\" | {}{}\n",
+                "[{}] type={} title=\"{}\" | {}{}\n",
                 i.saturating_add(1),
-                obs.id,
                 obs.observation_type.as_str(),
                 obs.title,
                 narrative_preview,
@@ -57,7 +56,7 @@ EXISTING OBSERVATIONS (potentially related):
 {entries}
 DECISION (MANDATORY — choose exactly one):
 - If this is genuinely NEW knowledge not covered by any existing observation → action: "create"
-- If this REFINES or ADDS TO an existing observation above → action: "update", target_id: "<id of the observation to update>"
+- If this REFINES or ADDS TO an existing observation above → action: "update", target_number: <number in brackets of the observation to update>
 - If this adds ZERO new information beyond what already exists → action: "skip""#
         )
     };
@@ -86,7 +85,7 @@ DECISION (MANDATORY — choose exactly one):
         format!(
             r#"Return JSON:
 - action: one of "create", "update", "skip"
-- target_id: id of existing observation to update (required if action is "update")
+- target_number: number in brackets of existing observation to update (required if action is "update")
 - skip_reason: why this should be skipped (required if action is "skip")
 - noise_level: one of [{noise_levels}]
 - noise_reason: why this is/isn't worth remembering (max 100 chars)
