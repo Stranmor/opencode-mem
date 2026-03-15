@@ -164,6 +164,10 @@ impl KnowledgeService {
     fn spawn_usage_increment(&self, ids: Vec<String>) {
         let storage = Arc::clone(&self.storage);
         tokio::spawn(async move {
+            if !storage.circuit_breaker().should_allow() {
+                tracing::debug!("Skipping knowledge usage increment: circuit breaker open");
+                return;
+            }
             if let Err(e) = storage.update_knowledge_usage_batch(&ids).await {
                 tracing::warn!(
                     error = %e,
@@ -223,6 +227,14 @@ impl KnowledgeService {
                 }
             };
 
+            if !storage.circuit_breaker().should_allow() {
+                tracing::debug!(
+                    knowledge_id = %knowledge_id,
+                    "Skipping provenance linking: circuit breaker open"
+                );
+                return;
+            }
+
             let similar = match storage
                 .find_similar(&embedding, PROVENANCE_SIMILARITY_THRESHOLD, None)
                 .await
@@ -238,6 +250,14 @@ impl KnowledgeService {
                     return;
                 }
             };
+
+            if !storage.circuit_breaker().should_allow() {
+                tracing::debug!(
+                    knowledge_id = %knowledge_id,
+                    "Skipping provenance link_source: circuit breaker open"
+                );
+                return;
+            }
 
             match storage
                 .link_source_observation(&knowledge_id, &similar.observation_id)

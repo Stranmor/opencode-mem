@@ -82,7 +82,7 @@ pub async fn get_unaggregated_5min_for_session(
     let rows = if let Some(sid) = session_id {
         sqlx::query_as::<_, SummaryRow>(&format!(
             "UPDATE summaries_5min \
-            SET processing_started_at = NULL, \
+            SET processing_started_at = NOW(), \
                 processing_instance_id = $3, \
                 retry_count = CASE WHEN processing_started_at IS NOT NULL THEN retry_count + 1 ELSE retry_count END \
             WHERE id IN ( \
@@ -106,7 +106,7 @@ pub async fn get_unaggregated_5min_for_session(
     } else {
         sqlx::query_as::<_, SummaryRow>(&format!(
             "UPDATE summaries_5min \
-            SET processing_started_at = NULL, \
+            SET processing_started_at = NOW(), \
                 processing_instance_id = $2, \
                 retry_count = CASE WHEN processing_started_at IS NOT NULL THEN retry_count + 1 ELSE retry_count END \
             WHERE id IN ( \
@@ -176,7 +176,7 @@ pub async fn get_unaggregated_hour_for_session(
     let rows = if let Some(sid) = session_id {
         sqlx::query_as::<_, SummaryRow>(&format!(
             "UPDATE summaries_hour \
-            SET processing_started_at = NULL, \
+            SET processing_started_at = NOW(), \
                 processing_instance_id = $3, \
                 retry_count = CASE WHEN processing_started_at IS NOT NULL THEN retry_count + 1 ELSE retry_count END \
             WHERE id IN ( \
@@ -200,7 +200,7 @@ pub async fn get_unaggregated_hour_for_session(
     } else {
         sqlx::query_as::<_, SummaryRow>(&format!(
             "UPDATE summaries_hour \
-            SET processing_started_at = NULL, \
+            SET processing_started_at = NOW(), \
                 processing_instance_id = $2, \
                 retry_count = CASE WHEN processing_started_at IS NOT NULL THEN retry_count + 1 ELSE retry_count END \
             WHERE id IN ( \

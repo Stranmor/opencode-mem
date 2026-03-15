@@ -113,7 +113,7 @@ pub(in crate::handlers) async fn handle_memory_get(
         return mcp_err("'id' parameter is required and must not be empty");
     };
     let cb = search_service.circuit_breaker();
-    if let Some(degraded) = cb_fast_fail_read::<Vec<opencode_mem_core::Observation>>(cb) {
+    if let Some(degraded) = cb_fast_fail_read::<Option<opencode_mem_core::Observation>>(cb) {
         return degraded;
     }
     match search_service.get_observation_by_id(id_str).await {
@@ -125,12 +125,7 @@ pub(in crate::handlers) async fn handle_memory_get(
             cb.record_success();
             mcp_ok(&serde_json::Value::Null)
         }
-        Err(e) if e.is_db_unavailable() || e.is_transient() => {
-            cb.record_failure();
-            tracing::warn!(error = %e, "MCP read: database unavailable, returning empty array");
-            mcp_ok(&Vec::<opencode_mem_core::Observation>::new())
-        }
-        Err(e) => mcp_err(e),
+        Err(e) => degrade_read_err::<Option<opencode_mem_core::Observation>>(e, cb),
     }
 }
 

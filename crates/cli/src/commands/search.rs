@@ -1,5 +1,5 @@
 use anyhow::Result;
-use opencode_mem_core::AppConfig;
+use opencode_mem_core::{AppConfig, observation_embedding_text};
 use opencode_mem_embeddings::{EmbeddingProvider as _, EmbeddingService, LazyEmbeddingService};
 use opencode_mem_service::SearchService;
 use opencode_mem_storage::traits::{EmbeddingStore, KnowledgeStore, ObservationStore, StatsStore};
@@ -84,12 +84,7 @@ pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
         }
 
         for obs in &all_observations {
-            let text = format!(
-                "{} {} {}",
-                obs.title,
-                obs.narrative.as_deref().unwrap_or(""),
-                obs.facts.join(" ")
-            );
+            let text = observation_embedding_text(obs);
 
             match embeddings.embed(&text) {
                 Ok(vec) => {
@@ -140,6 +135,23 @@ pub(crate) async fn run_backfill_metadata(batch_size: usize) -> Result<()> {
         config.model.clone(),
     )?;
 
+    let embeddings = if config.disable_embeddings {
+        println!("Embeddings disabled — skipping embedding regeneration");
+        None
+    } else {
+        println!("Initializing embedding model (first run downloads ~100MB)...");
+        let thread_count = AppConfig::resolve_embedding_threads();
+        match EmbeddingService::new(thread_count) {
+            Ok(svc) => Some(svc),
+            Err(e) => {
+                eprintln!(
+                    "Warning: embedding init failed ({e}), metadata will be enriched without embedding regen"
+                );
+                None
+            }
+        }
+    };
+
     println!(
         "Backfilling metadata (LLM: {} via {})",
         config.model, config.api_url
@@ -147,6 +159,7 @@ pub(crate) async fn run_backfill_metadata(batch_size: usize) -> Result<()> {
 
     let mut total_success = 0_usize;
     let mut total_failed = 0_usize;
+    let mut total_embeddings = 0_usize;
     let mut skipped_ids: Vec<String> = Vec::new();
     let placeholder = opencode_mem_core::ObservationMetadata::placeholder();
     let mut consecutive_no_progress: u32 = 0;
@@ -196,6 +209,35 @@ pub(crate) async fn run_backfill_metadata(batch_size: usize) -> Result<()> {
                             metadata.facts.len(),
                             metadata.keywords.len()
                         );
+                        if let Some(ref emb_svc) = embeddings {
+                            match storage.get_by_id(obs.id.as_ref()).await {
+                                Ok(Some(updated_obs)) => {
+                                    let text = observation_embedding_text(&updated_obs);
+                                    match emb_svc.embed(&text) {
+                                        Ok(vec) => {
+                                            if let Err(e) =
+                                                storage.store_embedding(obs.id.as_ref(), &vec).await
+                                            {
+                                                eprintln!(
+                                                    "  Embedding store failed for {}: {e}",
+                                                    obs.id
+                                                );
+                                            } else {
+                                                total_embeddings += 1;
+                                            }
+                                        }
+                                        Err(e) => {
+                                            eprintln!("  Embedding gen failed for {}: {e}", obs.id)
+                                        }
+                                    }
+                                }
+                                Ok(None) => eprintln!(
+                                    "  Observation {} not found after metadata update",
+                                    obs.id
+                                ),
+                                Err(e) => eprintln!("  Re-fetch failed for {}: {e}", obs.id),
+                            }
+                        }
                     }
                 }
                 Err(e) => {
@@ -225,7 +267,9 @@ pub(crate) async fn run_backfill_metadata(batch_size: usize) -> Result<()> {
             skipped_ids.len()
         );
     }
-    println!("Backfill complete: {total_success} enriched, {total_failed} failed.");
+    println!(
+        "Backfill complete: {total_success} enriched, {total_embeddings} embeddings regenerated, {total_failed} failed."
+    );
     Ok(())
 }
 

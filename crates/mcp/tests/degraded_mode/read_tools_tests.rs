@@ -159,15 +159,9 @@ async fn read_tools_return_empty_results_in_degraded_mode() {
 
         let text = result["content"][0]["text"].as_str().unwrap();
         let parsed: serde_json::Value = serde_json::from_str(text).unwrap();
-        let arr = parsed.as_array().unwrap_or_else(|| {
-            panic!(
-                "Read tool '{tool_name}' should return a JSON array in degraded mode, got: {text}"
-            )
-        });
         assert!(
-            arr.is_empty(),
-            "Read tool '{tool_name}' should return an empty array in degraded mode, got {len} items",
-            len = arr.len()
+            parsed.is_null(),
+            "Single-lookup tool '{tool_name}' should return null in degraded mode, got: {text}"
         );
     }
 }

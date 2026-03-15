@@ -31,18 +31,13 @@ pub(super) async fn handle_knowledge_get(
         None => return mcp_err("id is required"),
     };
     let cb = knowledge_service.circuit_breaker();
-    if let Some(degraded) = cb_fast_fail_read::<Vec<opencode_mem_core::GlobalKnowledge>>(cb) {
+    if let Some(degraded) = cb_fast_fail_read::<Option<opencode_mem_core::GlobalKnowledge>>(cb) {
         return degraded;
     }
     match knowledge_service.get_knowledge(id_str).await {
         Ok(Some(knowledge)) => mcp_ok(&knowledge),
         Ok(None) => mcp_ok(&serde_json::Value::Null),
-        Err(e) if e.is_db_unavailable() || e.is_transient() => {
-            cb.record_failure();
-            tracing::warn!(error = %e, "MCP read: database unavailable, returning empty array for knowledge");
-            mcp_ok(&Vec::<opencode_mem_core::GlobalKnowledge>::new())
-        }
-        Err(e) => mcp_err(e),
+        Err(e) => degrade_read_err::<Option<opencode_mem_core::GlobalKnowledge>>(e, cb),
     }
 }
 
