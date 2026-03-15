@@ -4,7 +4,7 @@
 -- 1. Strip UUID suffixes from knowledge titles.
 -- Pattern: optional whitespace + hex UUID (8-4-4+ with optional trailing segments).
 UPDATE global_knowledge
-SET title = TRIM(REGEXP_REPLACE(title, '\\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4,}(-[0-9a-f]*)*\\s*', ' ', 'gi')),
+SET title = TRIM(REGEXP_REPLACE(title, '\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4,}(-[0-9a-f]*)*\s*', ' ', 'gi')),
     updated_at = NOW()
 WHERE title ~* '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4,}';
 
