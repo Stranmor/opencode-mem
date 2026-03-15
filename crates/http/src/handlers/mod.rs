@@ -17,12 +17,11 @@ pub(crate) fn check_admin_access(
     headers: &axum::http::HeaderMap,
     config: &opencode_mem_core::AppConfig,
 ) -> bool {
-    if let Some(ref token) = config.admin_token {
-        if let Some(provided) = headers.get("x-admin-token").and_then(|h| h.to_str().ok()) {
-            if subtle::ConstantTimeEq::ct_eq(provided.as_bytes(), token.as_bytes()).into() {
-                return true;
-            }
-        }
+    if let Some(ref token) = config.admin_token
+        && let Some(provided) = headers.get("x-admin-token").and_then(|h| h.to_str().ok())
+        && subtle::ConstantTimeEq::ct_eq(provided.as_bytes(), token.as_bytes()).into()
+    {
+        return true;
     }
 
     if config.admin_token.is_none() && addr.ip().is_loopback() {
