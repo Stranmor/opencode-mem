@@ -8,27 +8,24 @@
 //! other process (CLI commands, concurrent servers) from running migrations.
 
 use anyhow::Result;
+use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
-use sqlx::{ConnectOptions, PgPool};
 
-/// Run all PostgreSQL migrations on a dedicated short-lived connection.
+/// Run all PostgreSQL migrations on a dedicated short-lived pool.
 ///
-/// This avoids the advisory lock leak that occurs when running migrations
-/// on a long-lived connection pool.
+/// Uses a single-connection pool (not `&mut PgConnection`) because
+/// `sqlx::migrate!().run()` requires `impl Acquire` with `'static`
+/// bounds when called from `tokio::spawn`. The pool is closed after
+/// migrations, releasing the session-level advisory lock.
 pub async fn run_pg_migrations(pool: &PgPool) -> Result<()> {
-    // Extract connection string from the pool's connect options
-    let opts = pool.connect_options();
-    let url = opts.to_url_lossy().to_string();
-
     let migration_pool = PgPoolOptions::new()
         .max_connections(1)
         .acquire_timeout(std::time::Duration::from_secs(30))
-        .connect(&url)
+        .connect_with(pool.connect_options().as_ref().clone())
         .await?;
 
     sqlx::migrate!("./migrations").run(&migration_pool).await?;
 
-    // Explicitly close — releases the advisory lock
     migration_pool.close().await;
 
     tracing::info!("PostgreSQL migrations completed");
