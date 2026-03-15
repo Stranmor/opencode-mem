@@ -4,8 +4,10 @@ use axum::{
     extract::{Query, State},
     response::sse::{Event, Sse},
 };
+use chrono::{Datelike, Utc};
 use futures_util::stream::Stream;
 use serde_json::json;
+use std::collections::HashSet;
 use std::convert::Infallible;
 use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
@@ -87,8 +89,16 @@ async fn fetch_relevant_knowledge(
     selected
 }
 
+/// Selects knowledge entries using a multi-tier allocation strategy to prevent
+/// popularity bias (rich-get-richer death spiral where 93%+ entries never get retrieved).
+///
+/// Tier allocation for `limit=10`:
+/// - Tier 1 (40%): Project-relevant entries sorted by confidence
+/// - Tier 2 (20%): Recent entries (recency boost for new knowledge)
+/// - Tier 3 (20%): Proven entries with highest usage_count
+/// - Tier 4 (remaining): Exploration — never-seen entries rotated daily
 fn select_relevant_knowledge(
-    mut entries: Vec<GlobalKnowledge>,
+    entries: Vec<GlobalKnowledge>,
     project: &str,
     limit: usize,
 ) -> Vec<GlobalKnowledge> {
@@ -97,35 +107,86 @@ fn select_relevant_knowledge(
     }
 
     let normalized_project = project.trim().to_ascii_lowercase();
-    entries.sort_by(|a, b| {
+    let mut selected: Vec<GlobalKnowledge> = Vec::with_capacity(limit);
+    let mut used_ids: HashSet<String> = HashSet::new();
+
+    // Tier 1: Project-relevant entries (up to 40% of slots)
+    let project_slots = (limit * 2 / 5).max(1);
+    let mut project_entries: Vec<_> = entries
+        .iter()
+        .filter(|k| {
+            k.source_projects
+                .iter()
+                .any(|p| p.trim().to_ascii_lowercase() == normalized_project)
+        })
+        .cloned()
+        .collect();
+    project_entries.sort_by(|a, b| b.confidence.total_cmp(&a.confidence));
+    for entry in project_entries.into_iter().take(project_slots) {
+        used_ids.insert(entry.id.clone());
+        selected.push(entry);
+    }
+
+    // Tier 2: Recent entries (up to 20% of slots) — recency boost for new knowledge
+    let recency_slots = (limit / 5).max(1);
+    let mut recent_entries: Vec<_> = entries
+        .iter()
+        .filter(|k| !used_ids.contains(&k.id))
+        .cloned()
+        .collect();
+    recent_entries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    for entry in recent_entries.into_iter().take(recency_slots) {
+        used_ids.insert(entry.id.clone());
+        selected.push(entry);
+    }
+
+    // Tier 3: High-value proven entries (up to 20% of slots) — usage_count matters here
+    let proven_slots = (limit / 5).max(1);
+    let mut proven_entries: Vec<_> = entries
+        .iter()
+        .filter(|k| !used_ids.contains(&k.id) && k.usage_count > 0)
+        .cloned()
+        .collect();
+    proven_entries.sort_by(|a, b| {
         b.usage_count
             .cmp(&a.usage_count)
             .then_with(|| b.confidence.total_cmp(&a.confidence))
-            .then_with(|| a.title.cmp(&b.title))
     });
+    for entry in proven_entries.into_iter().take(proven_slots) {
+        used_ids.insert(entry.id.clone());
+        selected.push(entry);
+    }
 
-    let mut selected = Vec::with_capacity(limit);
-
-    for entry in &entries {
-        if entry.source_projects.iter().any(|source| {
-            let normalized_source = source.trim().to_ascii_lowercase();
-            normalized_source == normalized_project
-        }) {
-            selected.push(entry.clone());
-            if selected.len() == limit {
-                return selected;
-            }
+    // Tier 4: Exploration — never-seen entries (remaining slots)
+    // Breaks the death spiral: entries with usage_count=0 get a chance.
+    // Deterministic daily rotation ensures different entries surface each day.
+    let remaining = limit.saturating_sub(selected.len());
+    if remaining > 0 {
+        let mut unseen: Vec<_> = entries
+            .iter()
+            .filter(|k| !used_ids.contains(&k.id) && k.usage_count == 0)
+            .cloned()
+            .collect();
+        if !unseen.is_empty() {
+            let day_seed = u32::try_from(Utc::now().num_days_from_ce()).unwrap_or(0) as usize;
+            let rotate_by = day_seed % unseen.len();
+            unseen.rotate_left(rotate_by);
+        }
+        for entry in unseen.into_iter().take(remaining) {
+            selected.push(entry);
         }
     }
 
-    for entry in entries {
-        if selected.iter().any(|picked| picked.id == entry.id) {
-            continue;
-        }
-        selected.push(entry);
-        if selected.len() == limit {
-            break;
-        }
+    // If we still have room (fewer unseen than remaining), backfill from any unused
+    let still_remaining = limit.saturating_sub(selected.len());
+    if still_remaining > 0 {
+        let final_used: HashSet<_> = selected.iter().map(|k| k.id.as_str()).collect();
+        let backfill: Vec<_> = entries
+            .into_iter()
+            .filter(|k| !final_used.contains(k.id.as_str()))
+            .take(still_remaining)
+            .collect();
+        selected.extend(backfill);
     }
 
     selected
@@ -184,6 +245,24 @@ mod tests {
         source_projects: Vec<&str>,
         usage_count: i64,
     ) -> GlobalKnowledge {
+        sample_knowledge_full(
+            id,
+            title,
+            source_projects,
+            usage_count,
+            0.5,
+            "2026-01-01T00:00:00Z",
+        )
+    }
+
+    fn sample_knowledge_full(
+        id: &str,
+        title: &str,
+        source_projects: Vec<&str>,
+        usage_count: i64,
+        confidence: f64,
+        created_at: &str,
+    ) -> GlobalKnowledge {
         GlobalKnowledge::new(
             id.to_owned(),
             KnowledgeType::Pattern,
@@ -193,17 +272,17 @@ mod tests {
             vec![],
             source_projects.into_iter().map(str::to_owned).collect(),
             vec![],
-            0.5,
+            confidence,
             usage_count,
             None,
-            "2026-01-01T00:00:00Z".to_owned(),
-            "2026-01-01T00:00:00Z".to_owned(),
+            created_at.to_owned(),
+            created_at.to_owned(),
             None,
         )
     }
 
     #[test]
-    fn select_relevant_knowledge_prioritizes_project_matches_then_usage() {
+    fn select_relevant_knowledge_prioritizes_project_matches() {
         let entries = vec![
             sample_knowledge("global-100", "global high", vec![], 100),
             sample_knowledge("global-90", "global medium", vec![], 90),
@@ -214,9 +293,123 @@ mod tests {
         let selected = select_relevant_knowledge(entries, "demo", 3);
 
         assert_eq!(selected.len(), 3);
-        assert_eq!(selected[0].id, "project-10");
-        assert_eq!(selected[1].id, "project-1");
-        assert_eq!(selected[2].id, "global-100");
+        // Tier 1 should include both project entries (limit*2/5 = 1 for limit=3, but we have 2 project entries)
+        assert!(selected.iter().any(|k| k.id == "project-10"));
+    }
+
+    #[test]
+    fn empty_input_returns_empty() {
+        let selected = select_relevant_knowledge(vec![], "demo", 10);
+        assert!(selected.is_empty());
+    }
+
+    #[test]
+    fn zero_limit_returns_empty() {
+        let entries = vec![sample_knowledge("a", "a", vec![], 0)];
+        let selected = select_relevant_knowledge(entries, "demo", 0);
+        assert!(selected.is_empty());
+    }
+
+    #[test]
+    fn tier4_exploration_surfaces_unseen_entries() {
+        // All entries have usage_count=0, none are project-specific
+        let entries: Vec<_> = (0..20)
+            .map(|i| sample_knowledge(&format!("k-{i}"), &format!("knowledge {i}"), vec![], 0))
+            .collect();
+
+        let selected = select_relevant_knowledge(entries, "demo", 10);
+
+        assert_eq!(selected.len(), 10);
+        // With daily rotation, different entries get surfaced
+    }
+
+    #[test]
+    fn no_duplicate_ids_in_selection() {
+        let entries = vec![
+            sample_knowledge_full(
+                "a",
+                "proj entry",
+                vec!["demo"],
+                5,
+                0.9,
+                "2026-03-15T00:00:00Z",
+            ),
+            sample_knowledge_full("b", "recent", vec![], 0, 0.5, "2026-03-14T00:00:00Z"),
+            sample_knowledge_full("c", "proven", vec![], 10, 0.7, "2026-01-01T00:00:00Z"),
+            sample_knowledge_full("d", "unseen", vec![], 0, 0.3, "2026-01-01T00:00:00Z"),
+        ];
+
+        let selected = select_relevant_knowledge(entries, "demo", 4);
+
+        let ids: Vec<_> = selected.iter().map(|k| k.id.as_str()).collect();
+        let unique: std::collections::HashSet<_> = ids.iter().collect();
+        assert_eq!(
+            ids.len(),
+            unique.len(),
+            "duplicate IDs in selection: {ids:?}"
+        );
+    }
+
+    #[test]
+    fn multi_tier_allocation_with_limit_10() {
+        let mut entries = Vec::new();
+        // 3 project entries
+        for i in 0..3 {
+            entries.push(sample_knowledge_full(
+                &format!("proj-{i}"),
+                &format!("proj {i}"),
+                vec!["demo"],
+                0,
+                0.9 - (i as f64 * 0.1),
+                "2026-01-01T00:00:00Z",
+            ));
+        }
+        // 3 proven entries (high usage)
+        for i in 0..3 {
+            entries.push(sample_knowledge_full(
+                &format!("proven-{i}"),
+                &format!("proven {i}"),
+                vec![],
+                50 - (i as i64 * 10),
+                0.8,
+                "2026-01-01T00:00:00Z",
+            ));
+        }
+        // 10 unseen entries
+        for i in 0..10 {
+            entries.push(sample_knowledge_full(
+                &format!("unseen-{i}"),
+                &format!("unseen {i}"),
+                vec![],
+                0,
+                0.5,
+                "2026-01-01T00:00:00Z",
+            ));
+        }
+
+        let selected = select_relevant_knowledge(entries, "demo", 10);
+
+        assert_eq!(selected.len(), 10);
+
+        let project_count = selected
+            .iter()
+            .filter(|k| k.id.starts_with("proj-"))
+            .count();
+        let proven_count = selected
+            .iter()
+            .filter(|k| k.id.starts_with("proven-"))
+            .count();
+        let unseen_count = selected
+            .iter()
+            .filter(|k| k.id.starts_with("unseen-"))
+            .count();
+
+        // Tier 1: 4 project slots, but only 3 available
+        assert!(project_count >= 1, "should include project entries");
+        // Tier 3: proven entries should appear
+        assert!(proven_count >= 1, "should include proven entries");
+        // Tier 4: unseen entries should fill remaining slots
+        assert!(unseen_count >= 1, "should include exploration entries");
     }
 }
 
