@@ -274,3 +274,9 @@ LLM always creates NEW observations even when near-identical ones exist. The `ex
 - ~~CLI search bypasses SearchService~~ — fixed: uses smart_search() for semantic/hybrid routing
 - ~~backfill-metadata single-batch truncation~~ — fixed: proper loop with progress tracking and infinite-loop prevention
 - ~~Session summaries never generated (0/2168 sessions)~~ — `get_sessions_without_summaries` joined on `sessions.id` (UUID) but observations store IDE content session IDs (`ses_*`) that never match. Fixed: query now groups observations by `session_id` directly, bypassing the sessions table. `generate_pending_summaries` uses `save_summary` instead of `update_session_status_with_summary`.
+- ~~Infinite Memory migration 20260314000000 references `events` instead of `raw_events`~~ — fixed table name in normalize_project_names migration
+- ~~Semantic search poor relevance (scores 0.48-0.55)~~ — root cause: IVFFlat index with lists=100 on 959 vectors, probes=1 searched only 1% of vector space. Fixed by replacing with HNSW(m=16, ef_construction=64). Scores improved to 0.55-0.94 with correct semantic ranking.
+- ~~Missing `updated_at` column on observations table~~ — added migration 20260315000003
+- ~~Knowledge duplicates (4x Telegram MTProto entries)~~ — cleaned up, kept entry with highest usage_count
+- ~~5 observations with empty metadata from manual import~~ — backfilled via CLI
+- ~~`/api/semantic-search` route inconsistency~~ — added alias alongside existing `/semantic-search`

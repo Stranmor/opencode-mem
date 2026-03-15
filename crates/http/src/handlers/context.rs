@@ -97,8 +97,12 @@ async fn fetch_relevant_knowledge(
 /// - Tier 2 (20%): Recent entries (recency boost for new knowledge)
 /// - Tier 3 (20%): Proven entries with highest usage_count
 /// - Tier 4 (remaining): Exploration — never-seen entries rotated daily
+#[expect(
+    clippy::indexing_slicing,
+    reason = "all indices come from enumerate() over the same entries slice"
+)]
 fn select_relevant_knowledge(
-    entries: Vec<GlobalKnowledge>,
+    mut entries: Vec<GlobalKnowledge>,
     project: &str,
     limit: usize,
 ) -> Vec<GlobalKnowledge> {
@@ -107,89 +111,121 @@ fn select_relevant_knowledge(
     }
 
     let normalized_project = project.trim().to_ascii_lowercase();
-    let mut selected: Vec<GlobalKnowledge> = Vec::with_capacity(limit);
-    let mut used_ids: HashSet<String> = HashSet::new();
+    let mut selected_indices: Vec<usize> = Vec::with_capacity(limit);
+    let mut used: HashSet<usize> = HashSet::new();
+
+    let remaining = |selected: &[usize]| limit.saturating_sub(selected.len());
 
     // Tier 1: Project-relevant entries (up to 40% of slots)
     let project_slots = (limit * 2 / 5).max(1);
-    let mut project_entries: Vec<_> = entries
+    let tier1_take = remaining(&selected_indices).min(project_slots);
+    let mut project_indices: Vec<usize> = entries
         .iter()
-        .filter(|k| {
+        .enumerate()
+        .filter(|(_, k)| {
             k.source_projects
                 .iter()
                 .any(|p| p.trim().to_ascii_lowercase() == normalized_project)
         })
-        .cloned()
+        .map(|(i, _)| i)
         .collect();
-    project_entries.sort_by(|a, b| b.confidence.total_cmp(&a.confidence));
-    for entry in project_entries.into_iter().take(project_slots) {
-        used_ids.insert(entry.id.clone());
-        selected.push(entry);
+    project_indices.sort_by(|&a, &b| entries[b].confidence.total_cmp(&entries[a].confidence));
+    for idx in project_indices.into_iter().take(tier1_take) {
+        used.insert(idx);
+        selected_indices.push(idx);
     }
 
-    // Tier 2: Recent entries (up to 20% of slots) — recency boost for new knowledge
+    if remaining(&selected_indices) == 0 {
+        return extract_by_indices(&mut entries, selected_indices);
+    }
+
+    // Tier 2: Recent entries (up to 20% of slots)
     let recency_slots = (limit / 5).max(1);
-    let mut recent_entries: Vec<_> = entries
+    let tier2_take = remaining(&selected_indices).min(recency_slots);
+    let mut recent_indices: Vec<usize> = entries
         .iter()
-        .filter(|k| !used_ids.contains(&k.id))
-        .cloned()
+        .enumerate()
+        .filter(|(i, _)| !used.contains(i))
+        .map(|(i, _)| i)
         .collect();
-    recent_entries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
-    for entry in recent_entries.into_iter().take(recency_slots) {
-        used_ids.insert(entry.id.clone());
-        selected.push(entry);
+    recent_indices.sort_by(|&a, &b| entries[b].created_at.cmp(&entries[a].created_at));
+    for idx in recent_indices.into_iter().take(tier2_take) {
+        used.insert(idx);
+        selected_indices.push(idx);
     }
 
-    // Tier 3: High-value proven entries (up to 20% of slots) — usage_count matters here
+    if remaining(&selected_indices) == 0 {
+        return extract_by_indices(&mut entries, selected_indices);
+    }
+
+    // Tier 3: High-value proven entries (up to 20% of slots)
     let proven_slots = (limit / 5).max(1);
-    let mut proven_entries: Vec<_> = entries
+    let tier3_take = remaining(&selected_indices).min(proven_slots);
+    let mut proven_indices: Vec<usize> = entries
         .iter()
-        .filter(|k| !used_ids.contains(&k.id) && k.usage_count > 0)
-        .cloned()
+        .enumerate()
+        .filter(|(i, k)| !used.contains(i) && k.usage_count > 0)
+        .map(|(i, _)| i)
         .collect();
-    proven_entries.sort_by(|a, b| {
-        b.usage_count
-            .cmp(&a.usage_count)
-            .then_with(|| b.confidence.total_cmp(&a.confidence))
+    proven_indices.sort_by(|&a, &b| {
+        entries[b]
+            .usage_count
+            .cmp(&entries[a].usage_count)
+            .then_with(|| entries[b].confidence.total_cmp(&entries[a].confidence))
     });
-    for entry in proven_entries.into_iter().take(proven_slots) {
-        used_ids.insert(entry.id.clone());
-        selected.push(entry);
+    for idx in proven_indices.into_iter().take(tier3_take) {
+        used.insert(idx);
+        selected_indices.push(idx);
+    }
+
+    if remaining(&selected_indices) == 0 {
+        return extract_by_indices(&mut entries, selected_indices);
     }
 
     // Tier 4: Exploration — never-seen entries (remaining slots)
-    // Breaks the death spiral: entries with usage_count=0 get a chance.
-    // Deterministic daily rotation ensures different entries surface each day.
-    let remaining = limit.saturating_sub(selected.len());
-    if remaining > 0 {
-        let mut unseen: Vec<_> = entries
-            .iter()
-            .filter(|k| !used_ids.contains(&k.id) && k.usage_count == 0)
-            .cloned()
-            .collect();
-        if !unseen.is_empty() {
-            let day_seed = u32::try_from(Utc::now().num_days_from_ce()).unwrap_or(0) as usize;
-            let rotate_by = day_seed % unseen.len();
-            unseen.rotate_left(rotate_by);
-        }
-        for entry in unseen.into_iter().take(remaining) {
-            selected.push(entry);
-        }
+    let tier4_take = remaining(&selected_indices);
+    let mut unseen_indices: Vec<usize> = entries
+        .iter()
+        .enumerate()
+        .filter(|(i, k)| !used.contains(i) && k.usage_count == 0)
+        .map(|(i, _)| i)
+        .collect();
+    if !unseen_indices.is_empty() {
+        let day_seed = u32::try_from(Utc::now().num_days_from_ce()).unwrap_or(0) as usize;
+        let rotate_by = day_seed % unseen_indices.len();
+        unseen_indices.rotate_left(rotate_by);
+    }
+    for idx in unseen_indices.into_iter().take(tier4_take) {
+        used.insert(idx);
+        selected_indices.push(idx);
     }
 
-    // If we still have room (fewer unseen than remaining), backfill from any unused
-    let still_remaining = limit.saturating_sub(selected.len());
-    if still_remaining > 0 {
-        let final_used: HashSet<_> = selected.iter().map(|k| k.id.as_str()).collect();
-        let backfill: Vec<_> = entries
-            .into_iter()
-            .filter(|k| !final_used.contains(k.id.as_str()))
-            .take(still_remaining)
-            .collect();
-        selected.extend(backfill);
+    if remaining(&selected_indices) == 0 {
+        return extract_by_indices(&mut entries, selected_indices);
     }
 
-    selected
+    // Backfill from any unused entries
+    let backfill_take = remaining(&selected_indices);
+    for idx in (0..entries.len())
+        .filter(|i| !used.contains(i))
+        .take(backfill_take)
+    {
+        selected_indices.push(idx);
+    }
+
+    extract_by_indices(&mut entries, selected_indices)
+}
+
+fn extract_by_indices(
+    entries: &mut Vec<GlobalKnowledge>,
+    mut indices: Vec<usize>,
+) -> Vec<GlobalKnowledge> {
+    indices.sort_unstable_by(|a, b| b.cmp(a));
+    let mut result = Vec::with_capacity(indices.len());
+    for idx in indices {
+        result.push(entries.swap_remove(idx));
+    }
+    result
 }
 
 fn format_context_sections(observations: &[Observation], knowledge: &[GlobalKnowledge]) -> String {
@@ -348,6 +384,54 @@ mod tests {
             unique.len(),
             "duplicate IDs in selection: {ids:?}"
         );
+    }
+
+    #[test]
+    fn select_relevant_knowledge_obeys_limit() {
+        let mut entries = Vec::new();
+        // 5 project entries
+        for i in 0..5 {
+            entries.push(sample_knowledge_full(
+                &format!("proj-{i}"),
+                &format!("proj {i}"),
+                vec!["demo"],
+                0,
+                0.9 - (i as f64 * 0.1),
+                "2026-01-01T00:00:00Z",
+            ));
+        }
+        // 5 proven entries
+        for i in 0..5 {
+            entries.push(sample_knowledge_full(
+                &format!("proven-{i}"),
+                &format!("proven {i}"),
+                vec![],
+                50 - (i as i64 * 10),
+                0.8,
+                "2026-01-01T00:00:00Z",
+            ));
+        }
+        // 5 unseen entries
+        for i in 0..5 {
+            entries.push(sample_knowledge_full(
+                &format!("unseen-{i}"),
+                &format!("unseen {i}"),
+                vec![],
+                0,
+                0.5,
+                "2026-01-01T00:00:00Z",
+            ));
+        }
+
+        // Test with various limits, especially small ones where the fractional rounding might exceed
+        for limit in 1..=5 {
+            let selected = select_relevant_knowledge(entries.clone(), "demo", limit);
+            assert!(
+                selected.len() <= limit,
+                "Limit exceeded! requested: {limit}, returned: {}",
+                selected.len()
+            );
+        }
     }
 
     #[test]

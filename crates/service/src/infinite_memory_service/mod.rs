@@ -55,17 +55,29 @@ impl InfiniteMemoryService {
         if migrations_pending {
             let svc_clone = svc.clone();
             tokio::spawn(async move {
+                const INITIAL_DELAY_SECS: u64 = 30;
+                const MAX_DELAY_SECS: u64 = 600; // 10 minutes
+                let mut delay_secs = INITIAL_DELAY_SECS;
+                let mut attempt: u32 = 0;
                 loop {
-                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(delay_secs)).await;
                     if !svc_clone.has_pending_migrations() {
                         break;
                     }
+                    attempt = attempt.saturating_add(1);
                     if svc_clone.try_run_migrations().await {
                         tracing::info!(
                             "Infinite Memory deferred migrations resolved by background retry"
                         );
                         break;
                     }
+                    let next_delay = delay_secs.saturating_mul(2).min(MAX_DELAY_SECS);
+                    tracing::warn!(
+                        attempt,
+                        next_retry_secs = next_delay,
+                        "Infinite Memory migration retry failed, backing off"
+                    );
+                    delay_secs = next_delay;
                 }
             });
         }

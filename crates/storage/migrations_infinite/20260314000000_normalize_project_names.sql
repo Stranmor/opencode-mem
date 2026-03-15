@@ -1,7 +1,7 @@
 -- Normalize project names in infinite memory tables
 -- Matches ProjectId::normalize() in crates/core/src/identifiers.rs.
 
-UPDATE events
+UPDATE raw_events
 SET project = LOWER(REPLACE(RTRIM(TRIM(project), '/'), '-', '_'))
 WHERE project IS NOT NULL AND project != LOWER(REPLACE(RTRIM(TRIM(project), '/'), '-', '_'));
 

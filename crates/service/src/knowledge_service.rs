@@ -66,7 +66,7 @@ impl KnowledgeService {
 
         let embedding = self.generate_knowledge_embedding(&input).await;
 
-        let result = if let Some(emb) = embedding {
+        let result = if let Some(ref emb) = embedding {
             self.storage
                 .guarded(|| {
                     self.storage
@@ -81,7 +81,7 @@ impl KnowledgeService {
         let knowledge = self.with_cb(result)?;
 
         if needs_provenance {
-            self.spawn_provenance_linking(knowledge.clone());
+            self.spawn_provenance_linking(knowledge.clone(), embedding);
         }
 
         Ok(knowledge)
@@ -174,7 +174,11 @@ impl KnowledgeService {
         });
     }
 
-    fn spawn_provenance_linking(&self, knowledge: GlobalKnowledge) {
+    fn spawn_provenance_linking(
+        &self,
+        knowledge: GlobalKnowledge,
+        precomputed_embedding: Option<Vec<f32>>,
+    ) {
         let Some(ref embeddings) = self.embeddings else {
             return;
         };
@@ -187,31 +191,35 @@ impl KnowledgeService {
         let knowledge_id = knowledge.id.clone();
 
         tokio::spawn(async move {
-            let text = format!("{} {}", knowledge.title, knowledge.description);
-            let embeddings_clone = Arc::clone(&embeddings);
-            let embed_result = tokio::task::spawn_blocking(move || {
-                use opencode_mem_embeddings::EmbeddingProvider;
-                embeddings_clone.embed(&text)
-            })
-            .await;
+            let embedding = if let Some(emb) = precomputed_embedding {
+                emb
+            } else {
+                let text = format!("{} {}", knowledge.title, knowledge.description);
+                let embeddings_clone = Arc::clone(&embeddings);
+                let embed_result = tokio::task::spawn_blocking(move || {
+                    use opencode_mem_embeddings::EmbeddingProvider;
+                    embeddings_clone.embed(&text)
+                })
+                .await;
 
-            let embedding = match embed_result {
-                Ok(Ok(vec)) => vec,
-                Ok(Err(e)) => {
-                    tracing::warn!(
-                        knowledge_id = %knowledge_id,
-                        error = %e,
-                        "Provenance linking: embedding generation failed"
-                    );
-                    return;
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        knowledge_id = %knowledge_id,
-                        error = %e,
-                        "Provenance linking: spawn_blocking panicked"
-                    );
-                    return;
+                match embed_result {
+                    Ok(Ok(vec)) => vec,
+                    Ok(Err(e)) => {
+                        tracing::warn!(
+                            knowledge_id = %knowledge_id,
+                            error = %e,
+                            "Provenance linking: embedding generation failed"
+                        );
+                        return;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            knowledge_id = %knowledge_id,
+                            error = %e,
+                            "Provenance linking: spawn_blocking panicked"
+                        );
+                        return;
+                    }
                 }
             };
 

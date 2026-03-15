@@ -6,7 +6,7 @@
 UPDATE global_knowledge
 SET title = TRIM(REGEXP_REPLACE(title, '\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4,}(-[0-9a-f]*)*\s*', '', 'gi')),
     updated_at = NOW()
-WHERE title ~ '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4,}';
+WHERE title ~* '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4,}';
 
 -- 2. Merge duplicate knowledge entries (same lowercased title after UUID stripping).
 -- Keep the entry with highest usage_count (ties broken by earliest created_at).
@@ -22,16 +22,20 @@ BEGIN
     -- Find groups of duplicates (2+ entries with same normalized title)
     FOR dup IN
         SELECT LOWER(TRIM(title)) AS norm_title,
+               knowledge_type,
                COUNT(*) AS cnt
         FROM global_knowledge
         WHERE archived_at IS NULL
-        GROUP BY LOWER(TRIM(title))
+          AND LENGTH(TRIM(title)) > 10
+        GROUP BY LOWER(TRIM(title)), knowledge_type
         HAVING COUNT(*) > 1
     LOOP
         -- Determine the keeper: highest usage_count, then earliest created_at
         SELECT id INTO keeper_id
         FROM global_knowledge
-        WHERE LOWER(TRIM(title)) = dup.norm_title AND archived_at IS NULL
+        WHERE LOWER(TRIM(title)) = dup.norm_title
+          AND knowledge_type = dup.knowledge_type
+          AND archived_at IS NULL
         ORDER BY usage_count DESC, created_at ASC
         LIMIT 1;
 
@@ -42,6 +46,7 @@ BEGIN
                     FROM global_knowledge g2,
                          jsonb_array_elements(g2.source_observations) AS elem
                     WHERE LOWER(TRIM(g2.title)) = dup.norm_title
+                      AND g2.knowledge_type = dup.knowledge_type
                       AND g2.archived_at IS NULL
                       AND elem != 'null'::jsonb),
                    '[]'::jsonb
@@ -49,7 +54,9 @@ BEGIN
                COALESCE(MAX(confidence), 0.5)
         INTO merged_usage, merged_obs, max_confidence
         FROM global_knowledge
-        WHERE LOWER(TRIM(title)) = dup.norm_title AND archived_at IS NULL;
+        WHERE LOWER(TRIM(title)) = dup.norm_title
+          AND knowledge_type = dup.knowledge_type
+          AND archived_at IS NULL;
 
         UPDATE global_knowledge
         SET usage_count = merged_usage,
@@ -60,6 +67,7 @@ BEGIN
 
         DELETE FROM global_knowledge
         WHERE LOWER(TRIM(title)) = dup.norm_title
+          AND knowledge_type = dup.knowledge_type
           AND archived_at IS NULL
           AND id != keeper_id;
     END LOOP;

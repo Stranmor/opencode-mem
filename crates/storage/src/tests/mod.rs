@@ -42,8 +42,8 @@ pub fn create_test_session(id: &str) -> Session {
     )
 }
 
+mod classification_race_tests;
 mod embedding_text_tests;
+mod knowledge_race_tests;
 mod knowledge_trigram_tests;
 mod union_dedup_tests;
-mod knowledge_race_tests;
-mod classification_race_tests;

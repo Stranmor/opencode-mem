@@ -13,7 +13,8 @@ use std::sync::LazyLock;
     reason = "static regex patterns are compile-time validated"
 )]
 static INSIGHT_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"###\s*\u{418}\u{43d}\u{441}\u{430}\u{439}\u{442}\s*\d+:\s*\[([^\]]+)\]").unwrap()
+    Regex::new(r"###\s*\u{418}\u{43d}\u{441}\u{430}\u{439}\u{442}\s*\d+:\s*(?:\[([^\]]+)\]|(.+))")
+        .unwrap()
 });
 
 #[expect(
@@ -63,16 +64,15 @@ struct ParsedInsight {
 
 /// Map Russian category to `KnowledgeType`
 fn category_to_knowledge_type(category: &str) -> KnowledgeType {
-    match category.to_lowercase().as_str() {
-        "слабость" => KnowledgeType::Gotcha,
-        "паттерн" => KnowledgeType::Pattern,
-        "missing for agi" => KnowledgeType::Gotcha,
-        "неоптимальные решения" => KnowledgeType::Gotcha,
-        "планирование" => KnowledgeType::Pattern,
-        "ригидность" => KnowledgeType::Gotcha,
-        "галлюцинации" => KnowledgeType::Gotcha,
-        "позитивный" => KnowledgeType::Pattern,
-        _ => KnowledgeType::Gotcha,
+    let lower = category.to_lowercase();
+    if lower.starts_with("паттерн")
+        || lower.starts_with("планирован")
+        || lower.starts_with("позитивн")
+    {
+        KnowledgeType::Pattern
+    } else {
+        // Слабость, Missing, Галлюцинации, Неоптимальные, Ригидность, etc.
+        KnowledgeType::Gotcha
     }
 }
 
@@ -99,10 +99,11 @@ fn parse_insights(content: &str) -> Vec<ParsedInsight> {
     for section in sections.iter().skip(1) {
         let full_section = format!("### \u{418}\u{43d}\u{441}\u{430}\u{439}\u{442}{section}");
 
-        let title = INSIGHT_RE
-            .captures(&full_section)
-            .and_then(|c| c.get(1))
-            .map(|m| m.as_str().to_owned());
+        let title = INSIGHT_RE.captures(&full_section).and_then(|c| {
+            c.get(1)
+                .or_else(|| c.get(2))
+                .map(|m| m.as_str().trim().to_owned())
+        });
 
         let category = CATEGORY_RE
             .captures(&full_section)
@@ -190,6 +191,82 @@ async fn import_file(storage: &StorageBackend, path: &Path) -> Result<(usize, us
     }
 
     Ok((imported, skipped))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_unbracketed_title() {
+        let md = r#"### Инсайт 1: Синдром "Работает на моём curl"
+**Категория:** Слабость (Ригидность / Неоптимальные решения)
+**Наблюдение:** Агент починил ошибку и объявил победу.
+**Импликация для AGI:** AGI должен понимать разницу.
+**Рекомендация:** Запретить агенту объявлять задачу решенной.
+"#;
+        let insights = parse_insights(md);
+        assert_eq!(insights.len(), 1);
+        let i = &insights[0];
+        assert_eq!(i.title, "Синдром \"Работает на моём curl\"");
+        assert_eq!(i.category, "Слабость (Ригидность / Неоптимальные решения)");
+        assert!(i.observation.starts_with("Агент починил"));
+        assert!(i.implication.is_some());
+        assert!(i.recommendation.is_some());
+    }
+
+    #[test]
+    fn parse_bracketed_title() {
+        let md = r#"### Инсайт 1: [Title In Brackets]
+**Категория:** Паттерн
+**Наблюдение:** Some observation text.
+"#;
+        let insights = parse_insights(md);
+        assert_eq!(insights.len(), 1);
+        assert_eq!(insights[0].title, "Title In Brackets");
+    }
+
+    #[test]
+    fn parse_multiple_insights() {
+        let md = r#"## Session 1
+
+### Инсайт 1: First Title
+**Категория:** Слабость
+**Наблюдение:** First observation.
+
+### Инсайт 2: Second Title
+**Категория:** Паттерн (Повторяющиеся ошибки)
+**Наблюдение:** Second observation.
+**Импликация для AGI:** Some implication.
+**Рекомендация:** Some recommendation.
+"#;
+        let insights = parse_insights(md);
+        assert_eq!(insights.len(), 2);
+        assert_eq!(insights[0].title, "First Title");
+        assert_eq!(insights[1].title, "Second Title");
+        assert!(insights[0].implication.is_none());
+        assert!(insights[1].implication.is_some());
+    }
+
+    #[test]
+    fn category_mapping_with_parenthetical() {
+        assert_eq!(
+            category_to_knowledge_type("Слабость (Ригидность)"),
+            KnowledgeType::Gotcha
+        );
+        assert_eq!(
+            category_to_knowledge_type("Паттерн (Повторяющиеся ошибки)"),
+            KnowledgeType::Pattern
+        );
+        assert_eq!(
+            category_to_knowledge_type("Missing for AGI (Мета-когниция)"),
+            KnowledgeType::Gotcha
+        );
+        assert_eq!(
+            category_to_knowledge_type("Галлюцинации / Слабость"),
+            KnowledgeType::Gotcha
+        );
+    }
 }
 
 /// Run import-insights command

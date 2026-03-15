@@ -1,7 +1,7 @@
-use std::sync::Arc;
-use opencode_mem_core::{KnowledgeInput, KnowledgeType};
 use crate::pg_storage::PgStorage;
 use crate::traits::KnowledgeStore;
+use opencode_mem_core::{KnowledgeInput, KnowledgeType};
+use std::sync::Arc;
 
 #[tokio::test]
 #[ignore]
@@ -13,10 +13,13 @@ async fn test_knowledge_trigram_race_condition() {
         .await
         .unwrap();
     let storage = Arc::new(PgStorage::from_pool(pool));
-    
+
     let unique_suffix = uuid::Uuid::new_v4().to_string();
-    let title = format!("Concurrent Trigram Dedup Race Condition [{}]", unique_suffix);
-    
+    let title = format!(
+        "Concurrent Trigram Dedup Race Condition [{}]",
+        unique_suffix
+    );
+
     let mut handles = vec![];
     for i in 0..10 {
         let st = Arc::clone(&storage);
@@ -34,12 +37,16 @@ async fn test_knowledge_trigram_race_condition() {
             st.save_knowledge(input).await.unwrap()
         }));
     }
-    
+
     let mut ids = std::collections::HashSet::new();
     for h in handles {
         let res = h.await.unwrap();
         ids.insert(res.id);
     }
-    
-    assert_eq!(ids.len(), 1, "Race condition: Multiple duplicate knowledge entries created!");
+
+    assert_eq!(
+        ids.len(),
+        1,
+        "Race condition: Multiple duplicate knowledge entries created!"
+    );
 }

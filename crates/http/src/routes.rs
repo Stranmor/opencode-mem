@@ -28,6 +28,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/hybrid-search", get(handlers::search::hybrid_search))
         .route("/semantic-search", get(handlers::search::semantic_search))
         .route(
+            "/api/semantic-search",
+            get(handlers::search::semantic_search),
+        )
+        .route(
             "/observations/{id}",
             get(handlers::observations::get_observation)
                 .delete(handlers::observations::delete_observation),

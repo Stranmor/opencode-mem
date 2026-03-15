@@ -166,4 +166,3 @@ impl SearchService {
         self.with_cb(result)
     }
 }
-

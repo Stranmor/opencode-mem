@@ -49,7 +49,12 @@ pub fn strip_uuid_from_title(title: &str) -> String {
         .unwrap()
     });
 
-    UUID_RE.replace_all(title, " ").trim().to_string()
+    let result = UUID_RE.replace_all(title, " ").trim().to_string();
+    if result.is_empty() {
+        title.to_string()
+    } else {
+        result
+    }
 }
 
 /// Truncates a string to the given maximum length at a char boundary.
@@ -105,6 +110,14 @@ mod tests {
     #[test]
     fn strip_uuid_empty() {
         assert_eq!(strip_uuid_from_title(""), "");
+    }
+
+    #[test]
+    fn strip_uuid_only_uuid() {
+        assert_eq!(
+            strip_uuid_from_title("b3b61de2-1234-5678-9abc-def012345678"),
+            "b3b61de2-1234-5678-9abc-def012345678"
+        );
     }
 
     #[test]

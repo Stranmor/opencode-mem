@@ -74,14 +74,12 @@ impl PgStorage {
 
         sqlx::query(
             "UPDATE global_knowledge
-             SET knowledge_type = $1,
-                 description = COALESCE(NULLIF($2, ''), description),
-                 instructions = COALESCE(NULLIF($3, ''), instructions),
-                 triggers = $4, source_projects = $5, source_observations = $6,
-                 updated_at = $7, archived_at = NULL
-             WHERE id = $8",
+             SET description = COALESCE(NULLIF($1, ''), description),
+                 instructions = COALESCE(NULLIF($2, ''), instructions),
+                 triggers = $3, source_projects = $4, source_observations = $5,
+                 updated_at = $6, archived_at = NULL
+             WHERE id = $7",
         )
-        .bind(input.knowledge_type.as_str())
         .bind(&input.description)
         .bind(&input.instructions)
         .bind(serde_json::to_value(&triggers)?)
@@ -93,17 +91,23 @@ impl PgStorage {
         .await?;
 
         // Re-read description/instructions from DB to capture COALESCE results
-        let updated =
-            sqlx::query("SELECT description, instructions FROM global_knowledge WHERE id = $1")
-                .bind(existing_id)
-                .fetch_one(&mut **tx)
-                .await?;
+        let updated = sqlx::query(
+            "SELECT knowledge_type, description, instructions FROM global_knowledge WHERE id = $1",
+        )
+        .bind(existing_id)
+        .fetch_one(&mut **tx)
+        .await?;
+        let existing_knowledge_type: String = updated.get("knowledge_type");
         let merged_description: String = updated.get("description");
         let merged_instructions: Option<String> = updated.get("instructions");
 
+        let knowledge_type = existing_knowledge_type
+            .parse::<KnowledgeType>()
+            .unwrap_or(input.knowledge_type);
+
         Ok(GlobalKnowledge::new(
             existing_id.to_owned(),
-            input.knowledge_type,
+            knowledge_type,
             existing_title.to_owned(),
             merged_description,
             merged_instructions,
@@ -428,6 +432,8 @@ impl PgStorage {
 
         let vector = Vector::from(embedding.to_vec());
 
+        let threshold = f64::from(KNOWLEDGE_SEMANTIC_DEDUP_THRESHOLD);
+
         let row: Option<(
             String,
             DateTime<Utc>,
@@ -446,11 +452,13 @@ impl PgStorage {
              FROM global_knowledge
              WHERE archived_at IS NULL
                AND embedding IS NOT NULL
+               AND 1.0 - (embedding <=> $1) >= $2
              ORDER BY embedding <=> $1
              LIMIT 1
              FOR UPDATE",
         )
         .bind(vector)
+        .bind(threshold)
         .fetch_optional(&mut **tx)
         .await?;
 
@@ -467,41 +475,29 @@ impl PgStorage {
                 title,
                 similarity,
             )) => {
+                // All rows already meet the threshold via WHERE clause
                 #[expect(
                     clippy::cast_possible_truncation,
                     reason = "similarity f64→f32 is acceptable lossy narrowing"
                 )]
                 let sim_f32 = similarity as f32;
-                if sim_f32 >= KNOWLEDGE_SEMANTIC_DEDUP_THRESHOLD {
-                    tracing::debug!(
-                        existing_title = %title,
-                        existing_id = %id,
-                        similarity = %sim_f32,
-                        "knowledge semantic match above threshold"
-                    );
-                    Ok(Some((
-                        id,
-                        created_at,
-                        triggers,
-                        src_proj,
-                        src_obs,
-                        confidence,
-                        usage_count,
-                        last_used_at,
-                        title,
-                    )))
-                } else {
-                    if sim_f32 >= 0.7 {
-                        tracing::info!(
-                            existing_title = %title,
-                            existing_id = %id,
-                            similarity = %sim_f32,
-                            threshold = %KNOWLEDGE_SEMANTIC_DEDUP_THRESHOLD,
-                            "knowledge semantic near-miss (below threshold)"
-                        );
-                    }
-                    Ok(None)
-                }
+                tracing::debug!(
+                    existing_title = %title,
+                    existing_id = %id,
+                    similarity = %sim_f32,
+                    "knowledge semantic match above threshold"
+                );
+                Ok(Some((
+                    id,
+                    created_at,
+                    triggers,
+                    src_proj,
+                    src_obs,
+                    confidence,
+                    usage_count,
+                    last_used_at,
+                    title,
+                )))
             }
             None => Ok(None),
         }
