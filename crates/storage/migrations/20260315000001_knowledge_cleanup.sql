@@ -34,7 +34,7 @@ BEGIN
         SELECT id INTO keeper_id
         FROM global_knowledge
         WHERE LOWER(TRIM(title)) = dup.norm_title
-          AND knowledge_type = dup.knowledge_type
+          AND knowledge_type IS NOT DISTINCT FROM dup.knowledge_type
           AND archived_at IS NULL
         ORDER BY usage_count DESC, created_at ASC
         LIMIT 1;
@@ -45,8 +45,8 @@ BEGIN
                    (SELECT jsonb_agg(DISTINCT elem)
                     FROM global_knowledge g2,
                           jsonb_array_elements(COALESCE(g2.source_observations, '[]'::jsonb)) AS elem
-                    WHERE LOWER(TRIM(g2.title)) = dup.norm_title
-                      AND g2.knowledge_type = dup.knowledge_type
+                     WHERE LOWER(TRIM(g2.title)) = dup.norm_title
+                       AND g2.knowledge_type IS NOT DISTINCT FROM dup.knowledge_type
                       AND g2.archived_at IS NULL
                       AND elem != 'null'::jsonb),
                    '[]'::jsonb
@@ -55,7 +55,7 @@ BEGIN
         INTO merged_usage, merged_obs, max_confidence
         FROM global_knowledge
         WHERE LOWER(TRIM(title)) = dup.norm_title
-          AND knowledge_type = dup.knowledge_type
+          AND knowledge_type IS NOT DISTINCT FROM dup.knowledge_type
           AND archived_at IS NULL;
 
         UPDATE global_knowledge
@@ -67,7 +67,7 @@ BEGIN
 
         DELETE FROM global_knowledge
         WHERE LOWER(TRIM(title)) = dup.norm_title
-          AND knowledge_type = dup.knowledge_type
+          AND knowledge_type IS NOT DISTINCT FROM dup.knowledge_type
           AND archived_at IS NULL
           AND id != keeper_id;
     END LOOP;
