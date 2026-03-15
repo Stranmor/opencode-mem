@@ -24,9 +24,7 @@ pub(crate) async fn search(
     .bind(usize_to_i64(limit))
     .fetch_all(&storage.pool)
     .await?;
-    Ok(collect_skipping_corrupt(
-        rows.iter().map(row_to_search_result),
-    )?)
+    collect_skipping_corrupt(rows.iter().map(row_to_search_result))
 }
 
 pub(crate) async fn search_with_filters(
@@ -92,9 +90,7 @@ pub(crate) async fn search_with_filters(
         q = q.bind(&tsquery);
         q = q.bind(usize_to_i64(limit));
         let rows = q.fetch_all(&storage.pool).await?;
-        return Ok(collect_skipping_corrupt(
-            rows.iter().map(row_to_search_result),
-        )?);
+        return collect_skipping_corrupt(rows.iter().map(row_to_search_result));
     }
 
     let where_clause = if conditions.is_empty() {
@@ -115,7 +111,5 @@ pub(crate) async fn search_with_filters(
     }
     q = q.bind(usize_to_i64(limit));
     let rows = q.fetch_all(&storage.pool).await?;
-    Ok(collect_skipping_corrupt(
-        rows.iter().map(row_to_search_result),
-    )?)
+    collect_skipping_corrupt(rows.iter().map(row_to_search_result))
 }

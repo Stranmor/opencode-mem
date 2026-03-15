@@ -21,7 +21,10 @@ const STALE_PLACEHOLDER_MINUTES: i64 = 10;
 /// Returns a slice of the most recent observations.
 fn truncate_observations_for_summary(observations: &[Observation]) -> &[Observation] {
     if observations.len() > MAX_OBSERVATIONS_FOR_SUMMARY {
-        &observations[observations.len() - MAX_OBSERVATIONS_FOR_SUMMARY..]
+        let start = observations
+            .len()
+            .saturating_sub(MAX_OBSERVATIONS_FOR_SUMMARY);
+        observations.get(start..).unwrap_or(observations)
     } else {
         observations
     }
@@ -257,12 +260,13 @@ impl SessionService {
                         .learned
                         .as_deref()
                         .is_some_and(|l| l == "processing");
-                    let stale_threshold =
-                        Utc::now() - TimeDelta::minutes(STALE_PLACEHOLDER_MINUTES);
+                    let stale_threshold = Utc::now()
+                        .checked_sub_signed(TimeDelta::minutes(STALE_PLACEHOLDER_MINUTES))
+                        .unwrap_or_else(Utc::now);
                     if is_processing && existing.created_at < stale_threshold {
                         tracing::warn!(
                             session_id = %session.session_id,
-                            age_minutes = (Utc::now() - existing.created_at).num_minutes(),
+                            age_minutes = Utc::now().signed_duration_since(existing.created_at).num_minutes(),
                             "Deleting stale processing placeholder"
                         );
                         let _ = self
