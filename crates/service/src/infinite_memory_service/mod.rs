@@ -13,6 +13,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use compression::init_compression_config;
 
+/// RAII guard that resets `migrations_pending` to `true` on drop.
+/// Prevents deadlock if the migration task panics after CAS lock acquisition.
+/// On successful migration, call `std::mem::forget(guard)` to keep the flag at `false`.
+struct MigrationGuard(Arc<AtomicBool>);
+
+impl Drop for MigrationGuard {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Release);
+    }
+}
+
 #[derive(Clone)]
 pub struct InfiniteMemoryService {
     pool: PgPool,
@@ -114,19 +125,19 @@ impl InfiniteMemoryService {
             return false;
         }
 
+        let guard = MigrationGuard(Arc::clone(&self.migrations_pending));
         match opencode_mem_storage::pg_storage::infinite_memory::run_infinite_memory_migrations(
             &self.pool,
         )
         .await
         {
             Ok(()) => {
-                // Flag stays false — migrations done
+                std::mem::forget(guard);
                 tracing::info!("Infinite Memory deferred migrations completed successfully");
                 true
             }
             Err(e) => {
-                // Restore flag so retry loop continues
-                self.migrations_pending.store(true, Ordering::Release);
+                drop(guard);
                 tracing::warn!("Infinite Memory deferred migration attempt failed: {e}");
                 false
             }
@@ -254,18 +265,20 @@ impl InfiniteMemoryService {
                     .is_ok()
                 {
                     tokio::spawn(async move {
+                        let guard = MigrationGuard(Arc::clone(&this.migrations_pending));
                         match opencode_mem_storage::pg_storage::infinite_memory::run_infinite_memory_migrations(
                             &this.pool,
                         )
                         .await
                         {
                             Ok(()) => {
+                                std::mem::forget(guard);
                                 tracing::info!(
                                     "Infinite Memory deferred migrations completed successfully"
                                 );
                             }
                             Err(e) => {
-                                this.migrations_pending.store(true, Ordering::Release);
+                                drop(guard);
                                 tracing::warn!(
                                     "Infinite Memory deferred migration attempt failed: {e}"
                                 );
@@ -296,18 +309,20 @@ impl InfiniteMemoryService {
                     .is_ok()
                 {
                     tokio::spawn(async move {
+                        let guard = MigrationGuard(Arc::clone(&this.migrations_pending));
                         match opencode_mem_storage::pg_storage::infinite_memory::run_infinite_memory_migrations(
                             &this.pool,
                         )
                         .await
                         {
                             Ok(()) => {
+                                std::mem::forget(guard);
                                 tracing::info!(
                                     "Infinite Memory deferred migrations completed successfully"
                                 );
                             }
                             Err(e) => {
-                                this.migrations_pending.store(true, Ordering::Release);
+                                drop(guard);
                                 tracing::warn!(
                                     "Infinite Memory deferred migration attempt failed: {e}"
                                 );

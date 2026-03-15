@@ -71,7 +71,7 @@ pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
 
     println!("Initializing embedding model (first run downloads ~100MB)...");
     let thread_count = opencode_mem_core::AppConfig::resolve_embedding_threads();
-    let embeddings = EmbeddingService::new(thread_count)?;
+    let embeddings = Arc::new(EmbeddingService::new(thread_count)?);
 
     let mut total = 0;
     let mut failed_ids_vec = Vec::new();
@@ -85,8 +85,10 @@ pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
 
         for obs in &all_observations {
             let text = observation_embedding_text(obs);
+            let emb_clone = Arc::clone(&embeddings);
+            let embed_result = tokio::task::spawn_blocking(move || emb_clone.embed(&text)).await?;
 
-            match embeddings.embed(&text) {
+            match embed_result {
                 Ok(vec) => {
                     if let Err(e) = storage.store_embedding(&obs.id, &vec).await {
                         eprintln!("Failed to store embedding for {}: {}", obs.id, e);
@@ -135,14 +137,14 @@ pub(crate) async fn run_backfill_metadata(batch_size: usize) -> Result<()> {
         config.model.clone(),
     )?;
 
-    let embeddings = if config.disable_embeddings {
+    let embeddings: Option<Arc<EmbeddingService>> = if config.disable_embeddings {
         println!("Embeddings disabled — skipping embedding regeneration");
         None
     } else {
         println!("Initializing embedding model (first run downloads ~100MB)...");
         let thread_count = AppConfig::resolve_embedding_threads();
         match EmbeddingService::new(thread_count) {
-            Ok(svc) => Some(svc),
+            Ok(svc) => Some(Arc::new(svc)),
             Err(e) => {
                 eprintln!(
                     "Warning: embedding init failed ({e}), metadata will be enriched without embedding regen"
@@ -160,6 +162,7 @@ pub(crate) async fn run_backfill_metadata(batch_size: usize) -> Result<()> {
     let mut total_success = 0_usize;
     let mut total_failed = 0_usize;
     let mut total_embeddings = 0_usize;
+    let mut embedding_failed_ids: Vec<String> = Vec::new();
     let mut skipped_ids: Vec<String> = Vec::new();
     let placeholder = opencode_mem_core::ObservationMetadata::placeholder();
     let mut consecutive_no_progress: u32 = 0;
@@ -213,8 +216,12 @@ pub(crate) async fn run_backfill_metadata(batch_size: usize) -> Result<()> {
                             match storage.get_by_id(obs.id.as_ref()).await {
                                 Ok(Some(updated_obs)) => {
                                     let text = observation_embedding_text(&updated_obs);
-                                    match emb_svc.embed(&text) {
-                                        Ok(vec) => {
+                                    let emb_clone = Arc::clone(emb_svc);
+                                    let embed_result =
+                                        tokio::task::spawn_blocking(move || emb_clone.embed(&text))
+                                            .await;
+                                    match embed_result {
+                                        Ok(Ok(vec)) => {
                                             if let Err(e) =
                                                 storage.store_embedding(obs.id.as_ref(), &vec).await
                                             {
@@ -222,20 +229,35 @@ pub(crate) async fn run_backfill_metadata(batch_size: usize) -> Result<()> {
                                                     "  Embedding store failed for {}: {e}",
                                                     obs.id
                                                 );
+                                                embedding_failed_ids.push(obs.id.to_string());
                                             } else {
                                                 total_embeddings += 1;
                                             }
                                         }
+                                        Ok(Err(e)) => {
+                                            eprintln!("  Embedding gen failed for {}: {e}", obs.id);
+                                            embedding_failed_ids.push(obs.id.to_string());
+                                        }
                                         Err(e) => {
-                                            eprintln!("  Embedding gen failed for {}: {e}", obs.id)
+                                            eprintln!(
+                                                "  Embedding spawn_blocking panicked for {}: {e}",
+                                                obs.id
+                                            );
+                                            embedding_failed_ids.push(obs.id.to_string());
                                         }
                                     }
                                 }
-                                Ok(None) => eprintln!(
-                                    "  Observation {} not found after metadata update",
-                                    obs.id
-                                ),
-                                Err(e) => eprintln!("  Re-fetch failed for {}: {e}", obs.id),
+                                Ok(None) => {
+                                    eprintln!(
+                                        "  Observation {} not found after metadata update",
+                                        obs.id
+                                    );
+                                    embedding_failed_ids.push(obs.id.to_string());
+                                }
+                                Err(e) => {
+                                    eprintln!("  Re-fetch failed for {}: {e}", obs.id);
+                                    embedding_failed_ids.push(obs.id.to_string());
+                                }
                             }
                         }
                     }
@@ -265,6 +287,12 @@ pub(crate) async fn run_backfill_metadata(batch_size: usize) -> Result<()> {
         eprintln!(
             "Warning: {} observations skipped or failed",
             skipped_ids.len()
+        );
+    }
+    if !embedding_failed_ids.is_empty() {
+        eprintln!(
+            "Warning: {} embedding regenerations failed — run `backfill-embeddings` to fix",
+            embedding_failed_ids.len()
         );
     }
     println!(

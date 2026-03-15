@@ -168,12 +168,20 @@ impl KnowledgeService {
                 tracing::debug!("Skipping knowledge usage increment: circuit breaker open");
                 return;
             }
-            if let Err(e) = storage.update_knowledge_usage_batch(&ids).await {
-                tracing::warn!(
-                    error = %e,
-                    count = ids.len(),
-                    "Failed to increment knowledge usage_count"
-                );
+            match storage.update_knowledge_usage_batch(&ids).await {
+                Ok(()) => {
+                    storage.circuit_breaker().record_success();
+                }
+                Err(e) => {
+                    if e.is_unavailable() {
+                        storage.circuit_breaker().record_failure();
+                    }
+                    tracing::warn!(
+                        error = %e,
+                        count = ids.len(),
+                        "Failed to increment knowledge usage_count"
+                    );
+                }
             }
         });
     }
@@ -239,9 +247,18 @@ impl KnowledgeService {
                 .find_similar(&embedding, PROVENANCE_SIMILARITY_THRESHOLD, None)
                 .await
             {
-                Ok(Some(m)) => m,
-                Ok(None) => return,
+                Ok(Some(m)) => {
+                    storage.circuit_breaker().record_success();
+                    m
+                }
+                Ok(None) => {
+                    storage.circuit_breaker().record_success();
+                    return;
+                }
                 Err(e) => {
+                    if e.is_unavailable() {
+                        storage.circuit_breaker().record_failure();
+                    }
                     tracing::warn!(
                         knowledge_id = %knowledge_id,
                         error = %e,
@@ -264,6 +281,7 @@ impl KnowledgeService {
                 .await
             {
                 Ok(true) => {
+                    storage.circuit_breaker().record_success();
                     tracing::info!(
                         knowledge_id = %knowledge_id,
                         observation_id = %similar.observation_id,
@@ -271,8 +289,13 @@ impl KnowledgeService {
                         "Auto-linked provenance via embedding similarity"
                     );
                 }
-                Ok(false) => {}
+                Ok(false) => {
+                    storage.circuit_breaker().record_success();
+                }
                 Err(e) => {
+                    if e.is_unavailable() {
+                        storage.circuit_breaker().record_failure();
+                    }
                     tracing::warn!(
                         knowledge_id = %knowledge_id,
                         error = %e,

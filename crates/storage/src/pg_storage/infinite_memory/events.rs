@@ -61,7 +61,7 @@ pub async fn release_infinite_events(pool: &PgPool, ids: &[i64]) -> Result<(), S
         return Ok(());
     }
     sqlx::query(
-        "UPDATE raw_events SET processing_instance_id = NULL, processing_started_at = NULL, retry_count = retry_count + 1 WHERE id = ANY($1)",
+        "UPDATE raw_events SET processing_instance_id = NULL, processing_started_at = NOW(), retry_count = retry_count + 1 WHERE id = ANY($1)",
     )
     .bind(ids)
     .execute(pool)
@@ -74,19 +74,17 @@ pub async fn get_unsummarized_infinite_events(
     limit: i64,
 ) -> Result<Vec<StoredInfiniteEvent>, StorageError> {
     let instance_id = uuid::Uuid::new_v4().to_string();
-    let visibility_timeout = chrono::Duration::minutes(5);
-    let stale_threshold = Utc::now() - visibility_timeout;
 
     let rows = sqlx::query_as::<_, StoredEventRow>(&format!(
         "UPDATE raw_events \
         SET processing_started_at = NOW(), \
-            processing_instance_id = $3, \
+            processing_instance_id = $2, \
             retry_count = CASE WHEN processing_started_at IS NOT NULL THEN retry_count + 1 ELSE retry_count END \
         WHERE id IN ( \
             SELECT id FROM raw_events \
             WHERE summary_5min_id IS NULL \
               AND retry_count < 3 \
-              AND (processing_started_at IS NULL OR processing_started_at < $2) \
+              AND (processing_started_at IS NULL OR processing_started_at < NOW() - INTERVAL '5 minutes') \
             ORDER BY ts ASC \
             LIMIT $1 \
             FOR UPDATE SKIP LOCKED \
@@ -95,7 +93,6 @@ pub async fn get_unsummarized_infinite_events(
         crate::pg_storage::EVENT_COLUMNS
     ))
     .bind(limit)
-    .bind(stale_threshold)
     .bind(&instance_id)
     .fetch_all(pool)
     .await?;
