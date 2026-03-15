@@ -45,12 +45,17 @@ pub async fn release_summaries_5min(
     if ids.is_empty() {
         return Ok(());
     }
-    let query = if increment_retry {
-        "UPDATE summaries_5min SET processing_started_at = NOW(), processing_instance_id = NULL, retry_count = retry_count + 1 WHERE id = ANY($1)"
-    } else {
-        "UPDATE summaries_5min SET processing_started_at = NOW(), processing_instance_id = NULL WHERE id = ANY($1)"
-    };
-    sqlx::query(query).bind(ids).execute(pool).await?;
+    sqlx::query(
+        "UPDATE summaries_5min \
+         SET processing_started_at = CASE WHEN $2 THEN NOW() ELSE NULL END, \
+             processing_instance_id = NULL, \
+             retry_count = CASE WHEN $2 THEN retry_count + 1 ELSE retry_count END \
+         WHERE id = ANY($1)",
+    )
+    .bind(ids)
+    .bind(increment_retry)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -62,12 +67,17 @@ pub async fn release_summaries_hour(
     if ids.is_empty() {
         return Ok(());
     }
-    let query = if increment_retry {
-        "UPDATE summaries_hour SET processing_started_at = NOW(), processing_instance_id = NULL, retry_count = retry_count + 1 WHERE id = ANY($1)"
-    } else {
-        "UPDATE summaries_hour SET processing_started_at = NOW(), processing_instance_id = NULL WHERE id = ANY($1)"
-    };
-    sqlx::query(query).bind(ids).execute(pool).await?;
+    sqlx::query(
+        "UPDATE summaries_hour \
+         SET processing_started_at = CASE WHEN $2 THEN NOW() ELSE NULL END, \
+             processing_instance_id = NULL, \
+             retry_count = CASE WHEN $2 THEN retry_count + 1 ELSE retry_count END \
+         WHERE id = ANY($1)",
+    )
+    .bind(ids)
+    .bind(increment_retry)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 

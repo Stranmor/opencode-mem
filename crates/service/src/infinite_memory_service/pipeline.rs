@@ -101,7 +101,7 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
                         "Failed to compress 5min bucket, skipping"
                     );
                     let ids: Vec<i64> = owned_events.iter().map(|e| e.id).collect();
-                    let _ = infinite_memory::release_infinite_events(pool, &ids).await;
+                    let _ = infinite_memory::release_infinite_events(pool, &ids, true).await;
                 } else {
                     let event_count = u32::try_from(owned_events.len()).map_err(|e| {
                         anyhow::anyhow!(

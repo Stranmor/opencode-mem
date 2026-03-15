@@ -56,14 +56,23 @@ pub async fn get_recent_infinite_events(
     Ok(rows.into_iter().filter_map(row_to_stored_event).collect())
 }
 
-pub async fn release_infinite_events(pool: &PgPool, ids: &[i64]) -> Result<(), StorageError> {
+pub async fn release_infinite_events(
+    pool: &PgPool,
+    ids: &[i64],
+    increment_retry: bool,
+) -> Result<(), StorageError> {
     if ids.is_empty() {
         return Ok(());
     }
     sqlx::query(
-        "UPDATE raw_events SET processing_instance_id = NULL, processing_started_at = NOW(), retry_count = retry_count + 1 WHERE id = ANY($1)",
+        "UPDATE raw_events \
+         SET processing_started_at = CASE WHEN $2 THEN NOW() ELSE NULL END, \
+             processing_instance_id = NULL, \
+             retry_count = CASE WHEN $2 THEN retry_count + 1 ELSE retry_count END \
+         WHERE id = ANY($1)",
     )
     .bind(ids)
+    .bind(increment_retry)
     .execute(pool)
     .await?;
     Ok(())
