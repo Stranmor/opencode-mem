@@ -1,0 +1,1599 @@
+diff --git a/crates/cli/src/commands/mcp.rs b/crates/cli/src/commands/mcp.rs
+index 0b2963cd..1ce4293d 100644
+--- a/crates/cli/src/commands/mcp.rs
++++ b/crates/cli/src/commands/mcp.rs
+@@ -73,7 +73,7 @@ pub(crate) async fn run(config: Arc<AppConfig>) -> Result<()> {
+         &config,
+     ));
+     let session_service = Arc::new(SessionService::new(storage.clone(), llm.clone()));
+-    let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));
++    let knowledge_service = Arc::new(KnowledgeService::new(storage.clone(), embeddings.clone()));
+     let search_service = Arc::new(SearchService::new(
+         storage,
+         embeddings,
+diff --git a/crates/cli/src/commands/search.rs b/crates/cli/src/commands/search.rs
+index f5cf8a18..75738234 100644
+--- a/crates/cli/src/commands/search.rs
++++ b/crates/cli/src/commands/search.rs
+@@ -124,7 +124,7 @@ pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
+ pub(crate) async fn run_knowledge_lifecycle() -> Result<()> {
+     let storage = crate::create_storage_from_env().await?;
+     let decayed = storage.decay_confidence().await?;
+-    let archived = storage.auto_archive(30).await?;
++    let archived = storage.auto_archive(90).await?;
+     println!("Knowledge confidence lifecycle complete:");
+     println!("  Entries with decayed confidence: {decayed}");
+     println!("  Entries archived: {archived}");
+diff --git a/crates/cli/src/commands/serve.rs b/crates/cli/src/commands/serve.rs
+index e6c39f13..db227795 100644
+--- a/crates/cli/src/commands/serve.rs
++++ b/crates/cli/src/commands/serve.rs
+@@ -80,7 +80,7 @@ pub(crate) async fn run(port: u16, host: String, config: Arc<AppConfig>) -> Resu
+         &config,
+     ));
+     let session_service = Arc::new(SessionService::new(storage.clone(), llm.clone()));
+-    let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));
++    let knowledge_service = Arc::new(KnowledgeService::new(storage.clone(), embeddings.clone()));
+     let search_service = Arc::new(SearchService::new(
+         storage.clone(),
+         embeddings.clone(),
+diff --git a/crates/core/src/constants.rs b/crates/core/src/constants.rs
+index fb8a6f7a..b0f90209 100644
+--- a/crates/core/src/constants.rs
++++ b/crates/core/src/constants.rs
+@@ -50,6 +50,12 @@ pub const KNOWLEDGE_TRIGRAM_LOG_THRESHOLD: f32 = 0.5;
+ /// Maximum number of trigram similarity candidates to consider.
+ pub const KNOWLEDGE_TRIGRAM_CANDIDATE_LIMIT: i64 = 3;
+ 
++/// Cosine similarity threshold for semantic dedup of knowledge entries.
++/// Knowledge entries with embedding similarity above this are merged.
++/// Higher than observation dedup (0.85) because knowledge titles are shorter
++/// and semantically denser — false positives are costlier.
++pub const KNOWLEDGE_SEMANTIC_DEDUP_THRESHOLD: f32 = 0.85;
++
+ /// Cap a user-supplied query limit to `MAX_QUERY_LIMIT`.
+ ///
+ /// Both HTTP and MCP transports need to clamp user-supplied limits for DoS
+diff --git a/crates/core/src/lib.rs b/crates/core/src/lib.rs
+index 3eb60fe9..e884e2ad 100644
+--- a/crates/core/src/lib.rs
++++ b/crates/core/src/lib.rs
+@@ -31,6 +31,27 @@ pub use observation::*;
+ pub use project_filter::*;
+ pub use session::*;
+ 
++/// Strips UUID patterns from text (e.g., `"sshd needs absolute path b3b61de2-..."` → `"sshd needs absolute path"`).
++///
++/// Handles both full UUIDs (`8-4-4-4-12` hex) and truncated ones (e.g., `b3b61de2-...`).
++#[must_use]
++pub fn strip_uuid_from_title(title: &str) -> String {
++    use std::sync::LazyLock;
++
++    #[expect(
++        clippy::unwrap_used,
++        reason = "static regex pattern is compile-time validated"
++    )]
++    static UUID_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
++        regex::Regex::new(
++            r"\s*[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4,}(?:-[0-9a-fA-F]*)*\.{0,3}\s*",
++        )
++        .unwrap()
++    });
++
++    UUID_RE.replace_all(title, " ").trim().to_string()
++}
++
+ /// Truncates a string to the given maximum length at a char boundary.
+ #[must_use]
+ pub fn truncate(s: &str, max_len: usize) -> &str {
+@@ -44,3 +65,55 @@ pub fn truncate(s: &str, max_len: usize) -> &str {
+         s.get(..end).unwrap_or("")
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn strip_uuid_full() {
++        assert_eq!(
++            strip_uuid_from_title("sshd needs absolute path b3b61de2-1234-5678-9abc-def012345678"),
++            "sshd needs absolute path"
++        );
++    }
++
++    #[test]
++    fn strip_uuid_truncated() {
++        assert_eq!(
++            strip_uuid_from_title("sshd needs absolute path b3b61de2-1234-5678..."),
++            "sshd needs absolute path"
++        );
++    }
++
++    #[test]
++    fn strip_uuid_mid_title() {
++        assert_eq!(
++            strip_uuid_from_title("Observation b3b61de2-1234-5678-9abc-def012345678 is important"),
++            "Observation is important"
++        );
++    }
++
++    #[test]
++    fn strip_uuid_no_uuid() {
++        assert_eq!(
++            strip_uuid_from_title("normal title without uuid"),
++            "normal title without uuid"
++        );
++    }
++
++    #[test]
++    fn strip_uuid_empty() {
++        assert_eq!(strip_uuid_from_title(""), "");
++    }
++
++    #[test]
++    fn strip_uuid_multiple() {
++        assert_eq!(
++            strip_uuid_from_title(
++                "a b3b61de2-1234-5678-9abc-def012345678 and c4c72ef3-5678-9abc-def0-123456789012"
++            ),
++            "a and"
++        );
++    }
++}
+diff --git a/crates/http/src/handlers/context.rs b/crates/http/src/handlers/context.rs
+index e36355c5..3eaf9e87 100644
+--- a/crates/http/src/handlers/context.rs
++++ b/crates/http/src/handlers/context.rs
+@@ -4,8 +4,10 @@ use axum::{
+     extract::{Query, State},
+     response::sse::{Event, Sse},
+ };
++use chrono::{Datelike, Utc};
+ use futures_util::stream::Stream;
+ use serde_json::json;
++use std::collections::HashSet;
+ use std::convert::Infallible;
+ use std::sync::Arc;
+ use tokio::sync::broadcast::error::RecvError;
+@@ -87,8 +89,16 @@ async fn fetch_relevant_knowledge(
+     selected
+ }
+ 
++/// Selects knowledge entries using a multi-tier allocation strategy to prevent
++/// popularity bias (rich-get-richer death spiral where 93%+ entries never get retrieved).
++///
++/// Tier allocation for `limit=10`:
++/// - Tier 1 (40%): Project-relevant entries sorted by confidence
++/// - Tier 2 (20%): Recent entries (recency boost for new knowledge)
++/// - Tier 3 (20%): Proven entries with highest usage_count
++/// - Tier 4 (remaining): Exploration — never-seen entries rotated daily
+ fn select_relevant_knowledge(
+-    mut entries: Vec<GlobalKnowledge>,
++    entries: Vec<GlobalKnowledge>,
+     project: &str,
+     limit: usize,
+ ) -> Vec<GlobalKnowledge> {
+@@ -97,37 +107,88 @@ fn select_relevant_knowledge(
+     }
+ 
+     let normalized_project = project.trim().to_ascii_lowercase();
+-    entries.sort_by(|a, b| {
++    let mut selected: Vec<GlobalKnowledge> = Vec::with_capacity(limit);
++    let mut used_ids: HashSet<String> = HashSet::new();
++
++    // Tier 1: Project-relevant entries (up to 40% of slots)
++    let project_slots = (limit * 2 / 5).max(1);
++    let mut project_entries: Vec<_> = entries
++        .iter()
++        .filter(|k| {
++            k.source_projects
++                .iter()
++                .any(|p| p.trim().to_ascii_lowercase() == normalized_project)
++        })
++        .cloned()
++        .collect();
++    project_entries.sort_by(|a, b| b.confidence.total_cmp(&a.confidence));
++    for entry in project_entries.into_iter().take(project_slots) {
++        used_ids.insert(entry.id.clone());
++        selected.push(entry);
++    }
++
++    // Tier 2: Recent entries (up to 20% of slots) — recency boost for new knowledge
++    let recency_slots = (limit / 5).max(1);
++    let mut recent_entries: Vec<_> = entries
++        .iter()
++        .filter(|k| !used_ids.contains(&k.id))
++        .cloned()
++        .collect();
++    recent_entries.sort_by(|a, b| b.created_at.cmp(&a.created_at));
++    for entry in recent_entries.into_iter().take(recency_slots) {
++        used_ids.insert(entry.id.clone());
++        selected.push(entry);
++    }
++
++    // Tier 3: High-value proven entries (up to 20% of slots) — usage_count matters here
++    let proven_slots = (limit / 5).max(1);
++    let mut proven_entries: Vec<_> = entries
++        .iter()
++        .filter(|k| !used_ids.contains(&k.id) && k.usage_count > 0)
++        .cloned()
++        .collect();
++    proven_entries.sort_by(|a, b| {
+         b.usage_count
+             .cmp(&a.usage_count)
+             .then_with(|| b.confidence.total_cmp(&a.confidence))
+-            .then_with(|| a.title.cmp(&b.title))
+     });
+-
+-    let mut selected = Vec::with_capacity(limit);
+-
+-    for entry in &entries {
+-        if entry.source_projects.iter().any(|source| {
+-            let normalized_source = source.trim().to_ascii_lowercase();
+-            normalized_source == normalized_project
+-        }) {
+-            selected.push(entry.clone());
+-            if selected.len() == limit {
+-                return selected;
+-            }
+-        }
++    for entry in proven_entries.into_iter().take(proven_slots) {
++        used_ids.insert(entry.id.clone());
++        selected.push(entry);
+     }
+ 
+-    for entry in entries {
+-        if selected.iter().any(|picked| picked.id == entry.id) {
+-            continue;
++    // Tier 4: Exploration — never-seen entries (remaining slots)
++    // Breaks the death spiral: entries with usage_count=0 get a chance.
++    // Deterministic daily rotation ensures different entries surface each day.
++    let remaining = limit.saturating_sub(selected.len());
++    if remaining > 0 {
++        let mut unseen: Vec<_> = entries
++            .iter()
++            .filter(|k| !used_ids.contains(&k.id) && k.usage_count == 0)
++            .cloned()
++            .collect();
++        if !unseen.is_empty() {
++            let day_seed = u32::try_from(Utc::now().num_days_from_ce()).unwrap_or(0) as usize;
++            let rotate_by = day_seed % unseen.len();
++            unseen.rotate_left(rotate_by);
+         }
+-        selected.push(entry);
+-        if selected.len() == limit {
+-            break;
++        for entry in unseen.into_iter().take(remaining) {
++            selected.push(entry);
+         }
+     }
+ 
++    // If we still have room (fewer unseen than remaining), backfill from any unused
++    let still_remaining = limit.saturating_sub(selected.len());
++    if still_remaining > 0 {
++        let final_used: HashSet<_> = selected.iter().map(|k| k.id.as_str()).collect();
++        let backfill: Vec<_> = entries
++            .into_iter()
++            .filter(|k| !final_used.contains(k.id.as_str()))
++            .take(still_remaining)
++            .collect();
++        selected.extend(backfill);
++    }
++
+     selected
+ }
+ 
+@@ -183,6 +244,24 @@ mod tests {
+         title: &str,
+         source_projects: Vec<&str>,
+         usage_count: i64,
++    ) -> GlobalKnowledge {
++        sample_knowledge_full(
++            id,
++            title,
++            source_projects,
++            usage_count,
++            0.5,
++            "2026-01-01T00:00:00Z",
++        )
++    }
++
++    fn sample_knowledge_full(
++        id: &str,
++        title: &str,
++        source_projects: Vec<&str>,
++        usage_count: i64,
++        confidence: f64,
++        created_at: &str,
+     ) -> GlobalKnowledge {
+         GlobalKnowledge::new(
+             id.to_owned(),
+@@ -193,17 +272,17 @@ mod tests {
+             vec![],
+             source_projects.into_iter().map(str::to_owned).collect(),
+             vec![],
+-            0.5,
++            confidence,
+             usage_count,
+             None,
+-            "2026-01-01T00:00:00Z".to_owned(),
+-            "2026-01-01T00:00:00Z".to_owned(),
++            created_at.to_owned(),
++            created_at.to_owned(),
+             None,
+         )
+     }
+ 
+     #[test]
+-    fn select_relevant_knowledge_prioritizes_project_matches_then_usage() {
++    fn select_relevant_knowledge_prioritizes_project_matches() {
+         let entries = vec![
+             sample_knowledge("global-100", "global high", vec![], 100),
+             sample_knowledge("global-90", "global medium", vec![], 90),
+@@ -214,9 +293,123 @@ mod tests {
+         let selected = select_relevant_knowledge(entries, "demo", 3);
+ 
+         assert_eq!(selected.len(), 3);
+-        assert_eq!(selected[0].id, "project-10");
+-        assert_eq!(selected[1].id, "project-1");
+-        assert_eq!(selected[2].id, "global-100");
++        // Tier 1 should include both project entries (limit*2/5 = 1 for limit=3, but we have 2 project entries)
++        assert!(selected.iter().any(|k| k.id == "project-10"));
++    }
++
++    #[test]
++    fn empty_input_returns_empty() {
++        let selected = select_relevant_knowledge(vec![], "demo", 10);
++        assert!(selected.is_empty());
++    }
++
++    #[test]
++    fn zero_limit_returns_empty() {
++        let entries = vec![sample_knowledge("a", "a", vec![], 0)];
++        let selected = select_relevant_knowledge(entries, "demo", 0);
++        assert!(selected.is_empty());
++    }
++
++    #[test]
++    fn tier4_exploration_surfaces_unseen_entries() {
++        // All entries have usage_count=0, none are project-specific
++        let entries: Vec<_> = (0..20)
++            .map(|i| sample_knowledge(&format!("k-{i}"), &format!("knowledge {i}"), vec![], 0))
++            .collect();
++
++        let selected = select_relevant_knowledge(entries, "demo", 10);
++
++        assert_eq!(selected.len(), 10);
++        // With daily rotation, different entries get surfaced
++    }
++
++    #[test]
++    fn no_duplicate_ids_in_selection() {
++        let entries = vec![
++            sample_knowledge_full(
++                "a",
++                "proj entry",
++                vec!["demo"],
++                5,
++                0.9,
++                "2026-03-15T00:00:00Z",
++            ),
++            sample_knowledge_full("b", "recent", vec![], 0, 0.5, "2026-03-14T00:00:00Z"),
++            sample_knowledge_full("c", "proven", vec![], 10, 0.7, "2026-01-01T00:00:00Z"),
++            sample_knowledge_full("d", "unseen", vec![], 0, 0.3, "2026-01-01T00:00:00Z"),
++        ];
++
++        let selected = select_relevant_knowledge(entries, "demo", 4);
++
++        let ids: Vec<_> = selected.iter().map(|k| k.id.as_str()).collect();
++        let unique: std::collections::HashSet<_> = ids.iter().collect();
++        assert_eq!(
++            ids.len(),
++            unique.len(),
++            "duplicate IDs in selection: {ids:?}"
++        );
++    }
++
++    #[test]
++    fn multi_tier_allocation_with_limit_10() {
++        let mut entries = Vec::new();
++        // 3 project entries
++        for i in 0..3 {
++            entries.push(sample_knowledge_full(
++                &format!("proj-{i}"),
++                &format!("proj {i}"),
++                vec!["demo"],
++                0,
++                0.9 - (i as f64 * 0.1),
++                "2026-01-01T00:00:00Z",
++            ));
++        }
++        // 3 proven entries (high usage)
++        for i in 0..3 {
++            entries.push(sample_knowledge_full(
++                &format!("proven-{i}"),
++                &format!("proven {i}"),
++                vec![],
++                50 - (i as i64 * 10),
++                0.8,
++                "2026-01-01T00:00:00Z",
++            ));
++        }
++        // 10 unseen entries
++        for i in 0..10 {
++            entries.push(sample_knowledge_full(
++                &format!("unseen-{i}"),
++                &format!("unseen {i}"),
++                vec![],
++                0,
++                0.5,
++                "2026-01-01T00:00:00Z",
++            ));
++        }
++
++        let selected = select_relevant_knowledge(entries, "demo", 10);
++
++        assert_eq!(selected.len(), 10);
++
++        let project_count = selected
++            .iter()
++            .filter(|k| k.id.starts_with("proj-"))
++            .count();
++        let proven_count = selected
++            .iter()
++            .filter(|k| k.id.starts_with("proven-"))
++            .count();
++        let unseen_count = selected
++            .iter()
++            .filter(|k| k.id.starts_with("unseen-"))
++            .count();
++
++        // Tier 1: 4 project slots, but only 3 available
++        assert!(project_count >= 1, "should include project entries");
++        // Tier 3: proven entries should appear
++        assert!(proven_count >= 1, "should include proven entries");
++        // Tier 4: unseen entries should fill remaining slots
++        assert!(unseen_count >= 1, "should include exploration entries");
+     }
+ }
+ 
+diff --git a/crates/http/src/handlers/cron.rs b/crates/http/src/handlers/cron.rs
+index eec66dcb..dc94942d 100644
+--- a/crates/http/src/handlers/cron.rs
++++ b/crates/http/src/handlers/cron.rs
+@@ -22,29 +22,29 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
+ 
+         loop_count = loop_count.wrapping_add(1);
+ 
+-        if loop_count % 60 == 0 {
+-            if let Some(ref infinite_mem) = state.infinite_mem {
+-                tracing::debug!("Cron: running infinite memory compression...");
+-                let mem = Arc::clone(infinite_mem);
+-                state.background_tasks.lock().await.spawn(async move {
+-                    match mem.run_full_compression().await {
+-                        Ok((five_min, hour, day)) => {
+-                            if five_min > 0 || hour > 0 || day > 0 {
+-                                tracing::info!(
+-                                    "Cron: created {} 5min, {} hour, {} day summaries",
+-                                    five_min,
+-                                    hour,
+-                                    day,
+-                                );
+-                            }
++        if loop_count.is_multiple_of(60)
++            && let Some(ref infinite_mem) = state.infinite_mem
++        {
++            tracing::debug!("Cron: running infinite memory compression...");
++            let mem = Arc::clone(infinite_mem);
++            state.background_tasks.lock().await.spawn(async move {
++                match mem.run_full_compression().await {
++                    Ok((five_min, hour, day)) => {
++                        if five_min > 0 || hour > 0 || day > 0 {
++                            tracing::info!(
++                                "Cron: created {} 5min, {} hour, {} day summaries",
++                                five_min,
++                                hour,
++                                day,
++                            );
+                         }
+-                        Err(e) => tracing::warn!("Cron: infinite memory error: {e:?}"),
+                     }
+-                });
+-            }
++                    Err(e) => tracing::warn!("Cron: infinite memory error: {e:?}"),
++                }
++            });
+         }
+ 
+-        if loop_count % 180 == 0 {
++        if loop_count.is_multiple_of(180) {
+             tracing::debug!("Cron: running embedding backfill...");
+             let state_clone = Arc::clone(&state);
+             state.background_tasks.lock().await.spawn(async move {
+@@ -58,7 +58,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
+             });
+         }
+ 
+-        if loop_count % 360 == 0 {
++        if loop_count.is_multiple_of(360) {
+             let state_clone = Arc::clone(&state);
+             state.background_tasks.lock().await.spawn(async move {
+                 match state_clone.observation_service.run_dedup_sweep().await {
+@@ -71,7 +71,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
+             });
+         }
+ 
+-        if loop_count % 720 == 0 {
++        if loop_count.is_multiple_of(720) {
+             let state_clone = Arc::clone(&state);
+             state.background_tasks.lock().await.spawn(async move {
+                 if let Err(e) = state_clone
+@@ -84,7 +84,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
+             });
+         }
+ 
+-        if loop_count % 17280 == 0 {
++        if loop_count.is_multiple_of(17280) {
+             let ttl_secs = state.config.dlq_ttl_secs();
+             let state_clone = Arc::clone(&state);
+             state.background_tasks.lock().await.spawn(async move {
+@@ -102,7 +102,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
+             });
+         }
+ 
+-        if loop_count % 2160 == 0 {
++        if loop_count.is_multiple_of(2160) {
+             let state_clone = Arc::clone(&state);
+             state.background_tasks.lock().await.spawn(async move {
+                 match state_clone
+@@ -125,7 +125,7 @@ pub async fn start_cron_scheduler(state: Arc<AppState>) {
+             });
+         }
+ 
+-        if loop_count % 360 == 0 {
++        if loop_count.is_multiple_of(360) {
+             let state_clone = Arc::clone(&state);
+             state.background_tasks.lock().await.spawn(async move {
+                 match state_clone
+diff --git a/crates/http/src/handlers/mod.rs b/crates/http/src/handlers/mod.rs
+index 483d05be..46486eb5 100644
+--- a/crates/http/src/handlers/mod.rs
++++ b/crates/http/src/handlers/mod.rs
+@@ -17,12 +17,11 @@ pub(crate) fn check_admin_access(
+     headers: &axum::http::HeaderMap,
+     config: &opencode_mem_core::AppConfig,
+ ) -> bool {
+-    if let Some(ref token) = config.admin_token {
+-        if let Some(provided) = headers.get("x-admin-token").and_then(|h| h.to_str().ok()) {
+-            if subtle::ConstantTimeEq::ct_eq(provided.as_bytes(), token.as_bytes()).into() {
+-                return true;
+-            }
+-        }
++    if let Some(ref token) = config.admin_token
++        && let Some(provided) = headers.get("x-admin-token").and_then(|h| h.to_str().ok())
++        && subtle::ConstantTimeEq::ct_eq(provided.as_bytes(), token.as_bytes()).into()
++    {
++        return true;
+     }
+ 
+     if config.admin_token.is_none() && addr.ip().is_loopback() {
+diff --git a/crates/llm/src/ai_types.rs b/crates/llm/src/ai_types.rs
+index f9de32f0..aba6c3ce 100644
+--- a/crates/llm/src/ai_types.rs
++++ b/crates/llm/src/ai_types.rs
+@@ -112,9 +112,12 @@ pub struct ObservationJson {
+     /// Context-aware compression action: "create", "update", or "skip"
+     #[serde(default = "default_action")]
+     pub action: String,
+-    /// UUID of existing observation to update (only for action="update")
++    /// UUID of existing observation to update (only for action="update") — legacy field
+     #[serde(default)]
+     pub target_id: Option<String>,
++    /// 1-based index of existing observation to update (only for action="update")
++    #[serde(default)]
++    pub target_number: Option<u32>,
+     /// Reason for skipping (only for action="skip")
+     #[serde(default)]
+     pub skip_reason: Option<String>,
+diff --git a/crates/llm/src/compression_prompt.rs b/crates/llm/src/compression_prompt.rs
+index 0da3b4e4..f9cc9e59 100644
+--- a/crates/llm/src/compression_prompt.rs
++++ b/crates/llm/src/compression_prompt.rs
+@@ -41,9 +41,8 @@ pub(crate) fn build_compression_prompt(
+                 format!(" facts=[{}]", obs.facts.join(", "))
+             };
+             entries.push_str(&format!(
+-                "[{}] id=\"{}\" type={} title=\"{}\" | {}{}\n",
++                "[{}] type={} title=\"{}\" | {}{}\n",
+                 i.saturating_add(1),
+-                obs.id,
+                 obs.observation_type.as_str(),
+                 obs.title,
+                 narrative_preview,
+@@ -57,7 +56,7 @@ EXISTING OBSERVATIONS (potentially related):
+ {entries}
+ DECISION (MANDATORY — choose exactly one):
+ - If this is genuinely NEW knowledge not covered by any existing observation → action: "create"
+-- If this REFINES or ADDS TO an existing observation above → action: "update", target_id: "<id of the observation to update>"
++- If this REFINES or ADDS TO an existing observation above → action: "update", target_number: <number in brackets of the observation to update>
+ - If this adds ZERO new information beyond what already exists → action: "skip""#
+         )
+     };
+@@ -86,7 +85,7 @@ DECISION (MANDATORY — choose exactly one):
+         format!(
+             r#"Return JSON:
+ - action: one of "create", "update", "skip"
+-- target_id: id of existing observation to update (required if action is "update")
++- target_number: number in brackets of existing observation to update (required if action is "update")
+ - skip_reason: why this should be skipped (required if action is "skip")
+ - noise_level: one of [{noise_levels}]
+ - noise_reason: why this is/isn't worth remembering (max 100 chars)
+diff --git a/crates/llm/src/knowledge.rs b/crates/llm/src/knowledge.rs
+index 28f503d6..11048bc1 100644
+--- a/crates/llm/src/knowledge.rs
++++ b/crates/llm/src/knowledge.rs
+@@ -91,11 +91,15 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
+             LlmError::MissingField(format!("unknown knowledge_type: {}", knowledge_type_str))
+         })?;
+ 
+-        Ok(Some(KnowledgeInput::new(
+-            knowledge_type,
+-            extraction
++        let title = opencode_mem_core::strip_uuid_from_title(
++            &extraction
+                 .title
+                 .unwrap_or_else(|| observation.title.clone()),
++        );
++
++        Ok(Some(KnowledgeInput::new(
++            knowledge_type,
++            title,
+             extraction
+                 .description
+                 .unwrap_or_else(|| observation.narrative.clone().unwrap_or_default()),
+diff --git a/crates/llm/src/observation.rs b/crates/llm/src/observation.rs
+index db472e78..cf90e317 100644
+--- a/crates/llm/src/observation.rs
++++ b/crates/llm/src/observation.rs
+@@ -30,7 +30,7 @@ fn parse_observation_response(
+     id: &str,
+     session_id: &str,
+     project: Option<&str>,
+-    candidate_ids: &std::collections::HashSet<&str>,
++    candidates: &[opencode_mem_core::Observation],
+ ) -> Result<CompressionResult, LlmError> {
+     let stripped = opencode_mem_core::strip_markdown_json(response);
+     let obs_json: ObservationJson =
+@@ -109,22 +109,37 @@ fn parse_observation_response(
+     .created_at(Utc::now())
+     .build();
+ 
+-    // Determine action: update requires valid target_id in candidate set
++    // Determine action: update requires valid target resolved from candidates
+     if action == "update" {
+-        if let Some(ref target_id) = obs_json.target_id {
+-            if candidate_ids.contains(&target_id.as_str()) {
+-                return Ok(CompressionResult::Update {
+-                    target_id: target_id.clone(),
+-                    observation,
+-                });
+-            }
+-            tracing::warn!(
+-                target_id = %target_id,
+-                "LLM returned update with target_id not in candidate set — treating as create"
+-            );
+-        } else {
+-            tracing::warn!("LLM returned action=update without target_id — treating as create");
++        // Resolve target: prefer target_number (index into candidates), fall back to target_id (legacy)
++        let resolved_target_id = obs_json
++            .target_number
++            .and_then(|n| {
++                let idx = n.checked_sub(1)? as usize;
++                candidates.get(idx).map(|o| o.id.to_string())
++            })
++            .or_else(|| {
++                obs_json.target_id.as_ref().and_then(|tid| {
++                    if candidates.iter().any(|o| o.id.as_ref() == tid.as_str()) {
++                        Some(tid.clone())
++                    } else {
++                        None
++                    }
++                })
++            });
++
++        if let Some(target_id) = resolved_target_id {
++            return Ok(CompressionResult::Update {
++                target_id,
++                observation,
++            });
+         }
++        tracing::warn!(
++            target_number = ?obs_json.target_number,
++            target_id = ?obs_json.target_id,
++            candidates_len = candidates.len(),
++            "LLM returned update with unresolvable target — treating as create"
++        );
+     }
+ 
+     if action != "create" {
+@@ -167,16 +182,13 @@ impl LlmClient {
+             max_tokens: None,
+         };
+ 
+-        let candidate_ids: std::collections::HashSet<&str> =
+-            candidates.iter().map(|o| o.id.as_ref()).collect();
+-
+         let response = self.chat_completion(&request).await?;
+         parse_observation_response(
+             &response,
+             id,
+             input.session_id.as_ref(),
+             project,
+-            &candidate_ids,
++            candidates,
+         )
+     }
+ 
+diff --git a/crates/mcp/tests/degraded_mode.rs b/crates/mcp/tests/degraded_mode.rs
+index df6b0984..2111875c 100644
+--- a/crates/mcp/tests/degraded_mode.rs
++++ b/crates/mcp/tests/degraded_mode.rs
+@@ -82,7 +82,7 @@ fn setup_degraded_services() -> (
+         &config,
+     ));
+     let session_service = Arc::new(SessionService::new(backend.clone(), llm.clone()));
+-    let knowledge_service = Arc::new(KnowledgeService::new(backend.clone()));
++    let knowledge_service = Arc::new(KnowledgeService::new(backend.clone(), None));
+     let search_service = Arc::new(SearchService::new(
+         backend,
+         None,
+diff --git a/crates/service/src/knowledge_service.rs b/crates/service/src/knowledge_service.rs
+index 4c54a15d..9aab2398 100644
+--- a/crates/service/src/knowledge_service.rs
++++ b/crates/service/src/knowledge_service.rs
+@@ -3,20 +3,30 @@ use std::sync::Arc;
+ use opencode_mem_core::{
+     GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType, cap_query_limit,
+ };
+-use opencode_mem_storage::traits::KnowledgeStore;
++use opencode_mem_embeddings::LazyEmbeddingService;
++use opencode_mem_storage::traits::{EmbeddingStore, KnowledgeStore};
+ use opencode_mem_storage::{StorageBackend, StorageError};
+ 
+ use crate::ServiceError;
+ 
++const PROVENANCE_SIMILARITY_THRESHOLD: f32 = 0.75;
++
+ #[derive(Clone)]
+ pub struct KnowledgeService {
+     storage: Arc<StorageBackend>,
++    embeddings: Option<Arc<LazyEmbeddingService>>,
+ }
+ 
+ impl KnowledgeService {
+     #[must_use]
+-    pub fn new(storage: Arc<StorageBackend>) -> Self {
+-        Self { storage }
++    pub fn new(
++        storage: Arc<StorageBackend>,
++        embeddings: Option<Arc<LazyEmbeddingService>>,
++    ) -> Self {
++        Self {
++            storage,
++            embeddings,
++        }
+     }
+ 
+     pub fn circuit_breaker(&self) -> &opencode_mem_storage::CircuitBreaker {
+@@ -52,11 +62,29 @@ impl KnowledgeService {
+         id: &str,
+         input: KnowledgeInput,
+     ) -> Result<GlobalKnowledge, ServiceError> {
+-        let result = self
+-            .storage
+-            .guarded(|| self.storage.save_knowledge_with_id(id, input.clone()))
+-            .await;
+-        self.with_cb(result)
++        let needs_provenance = input.source_observation.is_none() && self.embeddings.is_some();
++
++        let embedding = self.generate_knowledge_embedding(&input).await;
++
++        let result = if let Some(emb) = embedding {
++            self.storage
++                .guarded(|| {
++                    self.storage
++                        .save_knowledge_with_embedding(id, input.clone(), emb.clone())
++                })
++                .await
++        } else {
++            self.storage
++                .guarded(|| self.storage.save_knowledge_with_id(id, input.clone()))
++                .await
++        };
++        let knowledge = self.with_cb(result)?;
++
++        if needs_provenance {
++            self.spawn_provenance_linking(knowledge.clone());
++        }
++
++        Ok(knowledge)
+     }
+ 
+     pub async fn delete_knowledge(&self, id: &str) -> Result<bool, ServiceError> {
+@@ -102,9 +130,37 @@ impl KnowledgeService {
+         self.update_knowledge_usage_batch(&[id.to_owned()]).await
+     }
+ 
+-    /// Fire-and-forget usage_count increment. Failures are logged at warn level
+-    /// and never propagate to the caller — reading knowledge must never fail
+-    /// because of a usage tracking issue.
++    async fn generate_knowledge_embedding(&self, input: &KnowledgeInput) -> Option<Vec<f32>> {
++        let embeddings = self.embeddings.as_ref()?;
++        let text = format!("{} {}", input.title.trim(), input.description);
++        let embeddings_clone = Arc::clone(embeddings);
++        let embed_result = tokio::task::spawn_blocking(move || {
++            use opencode_mem_embeddings::EmbeddingProvider;
++            embeddings_clone.embed(&text)
++        })
++        .await;
++
++        match embed_result {
++            Ok(Ok(vec)) => Some(vec),
++            Ok(Err(e)) => {
++                tracing::warn!(
++                    title = %input.title,
++                    error = %e,
++                    "Knowledge embedding generation failed, falling back to non-semantic dedup"
++                );
++                None
++            }
++            Err(e) => {
++                tracing::warn!(
++                    title = %input.title,
++                    error = %e,
++                    "Knowledge embedding spawn_blocking panicked"
++                );
++                None
++            }
++        }
++    }
++
+     fn spawn_usage_increment(&self, ids: Vec<String>) {
+         let storage = Arc::clone(&self.storage);
+         tokio::spawn(async move {
+@@ -118,6 +174,87 @@ impl KnowledgeService {
+         });
+     }
+ 
++    fn spawn_provenance_linking(&self, knowledge: GlobalKnowledge) {
++        let Some(ref embeddings) = self.embeddings else {
++            return;
++        };
++        if !knowledge.source_observations.is_empty() {
++            return;
++        }
++
++        let embeddings = Arc::clone(embeddings);
++        let storage = Arc::clone(&self.storage);
++        let knowledge_id = knowledge.id.clone();
++
++        tokio::spawn(async move {
++            let text = format!("{} {}", knowledge.title, knowledge.description);
++            let embeddings_clone = Arc::clone(&embeddings);
++            let embed_result = tokio::task::spawn_blocking(move || {
++                use opencode_mem_embeddings::EmbeddingProvider;
++                embeddings_clone.embed(&text)
++            })
++            .await;
++
++            let embedding = match embed_result {
++                Ok(Ok(vec)) => vec,
++                Ok(Err(e)) => {
++                    tracing::warn!(
++                        knowledge_id = %knowledge_id,
++                        error = %e,
++                        "Provenance linking: embedding generation failed"
++                    );
++                    return;
++                }
++                Err(e) => {
++                    tracing::warn!(
++                        knowledge_id = %knowledge_id,
++                        error = %e,
++                        "Provenance linking: spawn_blocking panicked"
++                    );
++                    return;
++                }
++            };
++
++            let similar = match storage
++                .find_similar(&embedding, PROVENANCE_SIMILARITY_THRESHOLD, None)
++                .await
++            {
++                Ok(Some(m)) => m,
++                Ok(None) => return,
++                Err(e) => {
++                    tracing::warn!(
++                        knowledge_id = %knowledge_id,
++                        error = %e,
++                        "Provenance linking: find_similar failed"
++                    );
++                    return;
++                }
++            };
++
++            match storage
++                .link_source_observation(&knowledge_id, &similar.observation_id)
++                .await
++            {
++                Ok(true) => {
++                    tracing::info!(
++                        knowledge_id = %knowledge_id,
++                        observation_id = %similar.observation_id,
++                        similarity = %similar.similarity,
++                        "Auto-linked provenance via embedding similarity"
++                    );
++                }
++                Ok(false) => {}
++                Err(e) => {
++                    tracing::warn!(
++                        knowledge_id = %knowledge_id,
++                        error = %e,
++                        "Provenance linking: link_source_observation failed"
++                    );
++                }
++            }
++        });
++    }
++
+     pub async fn update_knowledge_usage_batch(&self, ids: &[String]) -> Result<(), ServiceError> {
+         let result = self
+             .storage
+@@ -144,7 +281,7 @@ impl KnowledgeService {
+ 
+     pub async fn run_confidence_lifecycle(&self) -> Result<(u64, u64), ServiceError> {
+         let decayed = self.decay_confidence().await?;
+-        let archived = self.auto_archive(30).await?;
++        let archived = self.auto_archive(90).await?;
+         Ok((decayed, archived))
+     }
+ }
+diff --git a/crates/service/src/observation_service/mod.rs b/crates/service/src/observation_service/mod.rs
+index 239f8352..9bcc5f38 100644
+--- a/crates/service/src/observation_service/mod.rs
++++ b/crates/service/src/observation_service/mod.rs
+@@ -118,30 +118,30 @@ impl ObservationService {
+         let infinite_fut = self.store_infinite_memory(&tool_call, None);
+         let compress_fut = async {
+             let result = self.compress_and_save(id, &tool_call).await?;
+-            if let Some((ref obs, false)) = result {
+-                if obs.id.0 != id {
+-                    let tombstone = Observation::builder(
+-                        id.to_owned(),
+-                        obs.session_id.clone(),
+-                        obs.observation_type,
+-                        format!("[merged into {}]", obs.id),
+-                    )
+-                    .noise_level(opencode_mem_core::NoiseLevel::Negligible)
+-                    .noise_reason(format!("Tombstone: merged into {}", obs.id))
+-                    .build();
+-
+-                    let result = self
+-                        .storage
+-                        .guarded(|| self.storage.save_observation(&tombstone))
+-                        .await;
+-                    if let Err(e) = self.with_cb(result) {
+-                        tracing::warn!(
+-                            tombstone_id = %id,
+-                            merged_into = %obs.id,
+-                            error = %e,
+-                            "Failed to save tombstone observation — stale original may remain visible"
+-                        );
+-                    }
++            if let Some((ref obs, false)) = result
++                && obs.id.0 != id
++            {
++                let tombstone = Observation::builder(
++                    id.to_owned(),
++                    obs.session_id.clone(),
++                    obs.observation_type,
++                    format!("[merged into {}]", obs.id),
++                )
++                .noise_level(opencode_mem_core::NoiseLevel::Negligible)
++                .noise_reason(format!("Tombstone: merged into {}", obs.id))
++                .build();
++
++                let result = self
++                    .storage
++                    .guarded(|| self.storage.save_observation(&tombstone))
++                    .await;
++                if let Err(e) = self.with_cb(result) {
++                    tracing::warn!(
++                        tombstone_id = %id,
++                        merged_into = %obs.id,
++                        error = %e,
++                        "Failed to save tombstone observation — stale original may remain visible"
++                    );
+                 }
+             }
+             Ok::<_, crate::ServiceError>(result)
+diff --git a/crates/service/src/session_service.rs b/crates/service/src/session_service.rs
+index 8fa0e5f0..329e202d 100644
+--- a/crates/service/src/session_service.rs
++++ b/crates/service/src/session_service.rs
+@@ -21,7 +21,10 @@ const STALE_PLACEHOLDER_MINUTES: i64 = 10;
+ /// Returns a slice of the most recent observations.
+ fn truncate_observations_for_summary(observations: &[Observation]) -> &[Observation] {
+     if observations.len() > MAX_OBSERVATIONS_FOR_SUMMARY {
+-        &observations[observations.len() - MAX_OBSERVATIONS_FOR_SUMMARY..]
++        let start = observations
++            .len()
++            .saturating_sub(MAX_OBSERVATIONS_FOR_SUMMARY);
++        observations.get(start..).unwrap_or(observations)
+     } else {
+         observations
+     }
+@@ -257,12 +260,13 @@ impl SessionService {
+                         .learned
+                         .as_deref()
+                         .is_some_and(|l| l == "processing");
+-                    let stale_threshold =
+-                        Utc::now() - TimeDelta::minutes(STALE_PLACEHOLDER_MINUTES);
++                    let stale_threshold = Utc::now()
++                        .checked_sub_signed(TimeDelta::minutes(STALE_PLACEHOLDER_MINUTES))
++                        .unwrap_or_else(Utc::now);
+                     if is_processing && existing.created_at < stale_threshold {
+                         tracing::warn!(
+                             session_id = %session.session_id,
+-                            age_minutes = (Utc::now() - existing.created_at).num_minutes(),
++                            age_minutes = Utc::now().signed_duration_since(existing.created_at).num_minutes(),
+                             "Deleting stale processing placeholder"
+                         );
+                         let _ = self
+diff --git a/crates/storage/migrations/20260315000000_knowledge_embeddings.sql b/crates/storage/migrations/20260315000000_knowledge_embeddings.sql
+new file mode 100644
+index 00000000..56a7464b
+--- /dev/null
++++ b/crates/storage/migrations/20260315000000_knowledge_embeddings.sql
+@@ -0,0 +1,9 @@
++-- Add embedding column to global_knowledge for semantic dedup.
++-- Uses the same pgvector type as observations.embedding.
++ALTER TABLE global_knowledge ADD COLUMN IF NOT EXISTS embedding vector(1024);
++
++-- Index for cosine distance search (ivfflat with cosine ops).
++-- Uses lists=10 because global_knowledge is small (~100-500 entries).
++CREATE INDEX IF NOT EXISTS idx_gk_embedding
++    ON global_knowledge USING ivfflat (embedding vector_cosine_ops)
++    WITH (lists = 10);
+diff --git a/crates/storage/migrations/20260315000001_knowledge_cleanup.sql b/crates/storage/migrations/20260315000001_knowledge_cleanup.sql
+new file mode 100644
+index 00000000..e948e737
+--- /dev/null
++++ b/crates/storage/migrations/20260315000001_knowledge_cleanup.sql
+@@ -0,0 +1,76 @@
++-- Knowledge cleanup migration: strip UUIDs from titles, merge duplicates,
++-- fix null/invalid project names.
++
++-- 1. Strip UUID suffixes from knowledge titles.
++-- Pattern: optional whitespace + hex UUID (8-4-4+ with optional trailing segments).
++UPDATE global_knowledge
++SET title = TRIM(REGEXP_REPLACE(title, '\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4,}(-[0-9a-f]*)*\s*', '', 'gi')),
++    updated_at = NOW()
++WHERE title ~ '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4,}';
++
++-- 2. Merge duplicate knowledge entries (same lowercased title after UUID stripping).
++-- Keep the entry with highest usage_count (ties broken by earliest created_at).
++-- Sum usage_counts, merge source_observations arrays, take highest confidence.
++DO $$
++DECLARE
++    dup RECORD;
++    keeper_id TEXT;
++    merged_usage BIGINT;
++    merged_obs JSONB;
++    max_confidence FLOAT8;
++BEGIN
++    -- Find groups of duplicates (2+ entries with same normalized title)
++    FOR dup IN
++        SELECT LOWER(TRIM(title)) AS norm_title,
++               COUNT(*) AS cnt
++        FROM global_knowledge
++        WHERE archived_at IS NULL
++        GROUP BY LOWER(TRIM(title))
++        HAVING COUNT(*) > 1
++    LOOP
++        -- Determine the keeper: highest usage_count, then earliest created_at
++        SELECT id INTO keeper_id
++        FROM global_knowledge
++        WHERE LOWER(TRIM(title)) = dup.norm_title AND archived_at IS NULL
++        ORDER BY usage_count DESC, created_at ASC
++        LIMIT 1;
++
++        -- Aggregate usage_count, source_observations, and max confidence from all duplicates
++        SELECT COALESCE(SUM(usage_count), 0),
++               COALESCE(
++                   (SELECT jsonb_agg(DISTINCT elem)
++                    FROM global_knowledge g2,
++                         jsonb_array_elements(g2.source_observations) AS elem
++                    WHERE LOWER(TRIM(g2.title)) = dup.norm_title
++                      AND g2.archived_at IS NULL
++                      AND elem != 'null'::jsonb),
++                   '[]'::jsonb
++               ),
++               COALESCE(MAX(confidence), 0.5)
++        INTO merged_usage, merged_obs, max_confidence
++        FROM global_knowledge
++        WHERE LOWER(TRIM(title)) = dup.norm_title AND archived_at IS NULL;
++
++        UPDATE global_knowledge
++        SET usage_count = merged_usage,
++            source_observations = merged_obs,
++            confidence = max_confidence,
++            updated_at = NOW()
++        WHERE id = keeper_id;
++
++        DELETE FROM global_knowledge
++        WHERE LOWER(TRIM(title)) = dup.norm_title
++          AND archived_at IS NULL
++          AND id != keeper_id;
++    END LOOP;
++END $$;
++
++-- 3. Fix NULL project in observations — set to 'unknown'.
++UPDATE observations
++SET project = 'unknown'
++WHERE project IS NULL;
++
++-- 4. Fix 'ivan plankin' project name (personal name, not a project).
++UPDATE observations
++SET project = 'unknown'
++WHERE LOWER(project) = 'ivan plankin';
+diff --git a/crates/storage/src/pg_storage/knowledge.rs b/crates/storage/src/pg_storage/knowledge.rs
+index 80b27365..79188a0f 100644
+--- a/crates/storage/src/pg_storage/knowledge.rs
++++ b/crates/storage/src/pg_storage/knowledge.rs
+@@ -7,9 +7,12 @@ use crate::traits::KnowledgeStore;
+ use async_trait::async_trait;
+ use chrono::{DateTime, Utc};
+ use opencode_mem_core::{
+-    GlobalKnowledge, KNOWLEDGE_TRIGRAM_CANDIDATE_LIMIT, KNOWLEDGE_TRIGRAM_LOG_THRESHOLD,
++    EMBEDDING_DIMENSION, GlobalKnowledge, KNOWLEDGE_SEMANTIC_DEDUP_THRESHOLD,
++    KNOWLEDGE_TRIGRAM_CANDIDATE_LIMIT, KNOWLEDGE_TRIGRAM_LOG_THRESHOLD,
+     KNOWLEDGE_TRIGRAM_MERGE_THRESHOLD, KnowledgeInput, KnowledgeSearchResult, KnowledgeType,
++    contains_non_finite, is_zero_vector,
+ };
++use pgvector::Vector;
+ use sqlx::Row;
+ 
+ type ExistingKnowledgeRow = (
+@@ -120,6 +123,7 @@ impl PgStorage {
+         &self,
+         id: Option<&str>,
+         input: &KnowledgeInput,
++        embedding: Option<&[f32]>,
+     ) -> Result<GlobalKnowledge, StorageError> {
+         let mut tx = self.pool.begin().await?;
+ 
+@@ -129,7 +133,7 @@ impl PgStorage {
+ 
+         let now = Utc::now();
+ 
+-        let trimmed_title = input.title.trim();
++        let trimmed_title = opencode_mem_core::strip_uuid_from_title(input.title.trim());
+ 
+         let existing: Option<ExistingKnowledgeRow> = sqlx::query_as(
+             "SELECT id, created_at, triggers, source_projects, source_observations,
+@@ -138,7 +142,7 @@ impl PgStorage {
+                  WHERE LOWER(title) = LOWER($1)
+                  FOR UPDATE",
+         )
+-        .bind(trimmed_title)
++        .bind(&trimmed_title)
+         .fetch_optional(&mut *tx)
+         .await?;
+ 
+@@ -164,7 +168,7 @@ impl PgStorage {
+                     confidence,
+                     usage_count,
+                     last_used_at,
+-                    trimmed_title,
++                    &trimmed_title,
+                     input,
+                     now,
+                 )
+@@ -174,7 +178,7 @@ impl PgStorage {
+         }
+ 
+         if let Some(similar) = self
+-            .find_trigram_similar_in_tx(&mut tx, trimmed_title)
++            .find_trigram_similar_in_tx(&mut tx, &trimmed_title)
+             .await?
+         {
+             let result = self
+@@ -186,7 +190,7 @@ impl PgStorage {
+             tx.commit().await?;
+ 
+             tracing::info!(
+-                new_title = trimmed_title,
++                new_title = %trimmed_title,
+                 merged_into = %result.id,
+                 existing_title = %result.title,
+                 "knowledge trigram dedup: merged similar entry"
+@@ -194,6 +198,37 @@ impl PgStorage {
+             return Ok(result);
+         }
+ 
++        // Step 3: Semantic similarity via embedding cosine distance
++        if let Some(emb) = embedding
++            && let Some(semantic) = self.find_semantic_similar_in_tx(&mut tx, emb).await?
++        {
++            let result = self
++                .merge_into_existing(
++                    &mut tx,
++                    &semantic.0,
++                    semantic.1,
++                    semantic.2,
++                    semantic.3,
++                    semantic.4,
++                    semantic.5,
++                    semantic.6,
++                    semantic.7,
++                    &semantic.8,
++                    input,
++                    now,
++                )
++                .await?;
++            tx.commit().await?;
++
++            tracing::info!(
++                new_title = %trimmed_title,
++                merged_into = %result.id,
++                existing_title = %result.title,
++                "knowledge semantic dedup: merged via embedding similarity"
++            );
++            return Ok(result);
++        }
++
+         let id = id.map_or_else(|| uuid::Uuid::new_v4().to_string(), ToOwned::to_owned);
+         let source_projects: Vec<String> = input
+             .source_project
+@@ -212,7 +247,7 @@ impl PgStorage {
+         ))
+         .bind(&id)
+         .bind(input.knowledge_type.as_str())
+-        .bind(trimmed_title)
++        .bind(&trimmed_title)
+         .bind(&input.description)
+         .bind(&input.instructions)
+         .bind(serde_json::to_value(&input.triggers)?)
+@@ -227,12 +262,21 @@ impl PgStorage {
+         .execute(&mut *tx)
+         .await?;
+ 
++        if let Some(emb) = embedding {
++            let vector = Vector::from(emb.to_vec());
++            sqlx::query("UPDATE global_knowledge SET embedding = $1 WHERE id = $2")
++                .bind(vector)
++                .bind(&id)
++                .execute(&mut *tx)
++                .await?;
++        }
++
+         tx.commit().await?;
+ 
+         Ok(GlobalKnowledge::new(
+             id,
+             input.knowledge_type,
+-            trimmed_title.to_owned(),
++            trimmed_title,
+             input.description.clone(),
+             input.instructions.clone(),
+             input.triggers.clone(),
+@@ -355,6 +399,113 @@ impl PgStorage {
+ 
+         Ok(best_merge)
+     }
++
++    #[expect(
++        clippy::type_complexity,
++        reason = "tuple matches ExistingKnowledgeRow + title for merge"
++    )]
++    async fn find_semantic_similar_in_tx(
++        &self,
++        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
++        embedding: &[f32],
++    ) -> Result<
++        Option<(
++            String,
++            DateTime<Utc>,
++            serde_json::Value,
++            serde_json::Value,
++            serde_json::Value,
++            f64,
++            i64,
++            Option<DateTime<Utc>>,
++            String,
++        )>,
++        StorageError,
++    > {
++        if embedding.is_empty() || is_zero_vector(embedding) || contains_non_finite(embedding) {
++            return Ok(None);
++        }
++
++        let vector = Vector::from(embedding.to_vec());
++
++        let row: Option<(
++            String,
++            DateTime<Utc>,
++            serde_json::Value,
++            serde_json::Value,
++            serde_json::Value,
++            f64,
++            i64,
++            Option<DateTime<Utc>>,
++            String,
++            f64,
++        )> = sqlx::query_as(
++            "SELECT id, created_at, triggers, source_projects, source_observations,
++                    confidence, usage_count, last_used_at, title,
++                    1.0 - (embedding <=> $1) AS similarity
++             FROM global_knowledge
++             WHERE archived_at IS NULL
++               AND embedding IS NOT NULL
++             ORDER BY embedding <=> $1
++             LIMIT 1
++             FOR UPDATE",
++        )
++        .bind(vector)
++        .fetch_optional(&mut **tx)
++        .await?;
++
++        match row {
++            Some((
++                id,
++                created_at,
++                triggers,
++                src_proj,
++                src_obs,
++                confidence,
++                usage_count,
++                last_used_at,
++                title,
++                similarity,
++            )) => {
++                #[expect(
++                    clippy::cast_possible_truncation,
++                    reason = "similarity f64→f32 is acceptable lossy narrowing"
++                )]
++                let sim_f32 = similarity as f32;
++                if sim_f32 >= KNOWLEDGE_SEMANTIC_DEDUP_THRESHOLD {
++                    tracing::debug!(
++                        existing_title = %title,
++                        existing_id = %id,
++                        similarity = %sim_f32,
++                        "knowledge semantic match above threshold"
++                    );
++                    Ok(Some((
++                        id,
++                        created_at,
++                        triggers,
++                        src_proj,
++                        src_obs,
++                        confidence,
++                        usage_count,
++                        last_used_at,
++                        title,
++                    )))
++                } else {
++                    if sim_f32 >= 0.7 {
++                        tracing::info!(
++                            existing_title = %title,
++                            existing_id = %id,
++                            similarity = %sim_f32,
++                            threshold = %KNOWLEDGE_SEMANTIC_DEDUP_THRESHOLD,
++                            "knowledge semantic near-miss (below threshold)"
++                        );
++                    }
++                    Ok(None)
++                }
++            }
++            None => Ok(None),
++        }
++    }
+ }
+ 
+ #[async_trait]
+@@ -370,7 +521,7 @@ impl KnowledgeStore for PgStorage {
+         input: KnowledgeInput,
+     ) -> Result<GlobalKnowledge, StorageError> {
+         for attempt in 0u8..3u8 {
+-            match self.save_knowledge_inner(Some(id), &input).await {
++            match self.save_knowledge_inner(Some(id), &input, None).await {
+                 Ok(knowledge) => return Ok(knowledge),
+                 Err(ref e) if e.is_duplicate() && attempt < 2 => {
+                     tracing::debug!(
+@@ -386,6 +537,68 @@ impl KnowledgeStore for PgStorage {
+         unreachable!()
+     }
+ 
++    async fn save_knowledge_with_embedding(
++        &self,
++        id: &str,
++        input: KnowledgeInput,
++        embedding: Vec<f32>,
++    ) -> Result<GlobalKnowledge, StorageError> {
++        for attempt in 0u8..3u8 {
++            match self
++                .save_knowledge_inner(Some(id), &input, Some(&embedding))
++                .await
++            {
++                Ok(knowledge) => return Ok(knowledge),
++                Err(ref e) if e.is_duplicate() && attempt < 2 => {
++                    tracing::debug!(
++                        title = %input.title,
++                        attempt,
++                        "knowledge save with embedding hit unique constraint, retrying"
++                    );
++                    continue;
++                }
++                Err(e) => return Err(e),
++            }
++        }
++        unreachable!()
++    }
++
++    async fn store_knowledge_embedding(
++        &self,
++        knowledge_id: &str,
++        embedding: &[f32],
++    ) -> Result<(), StorageError> {
++        if embedding.len() != EMBEDDING_DIMENSION {
++            return Err(StorageError::DataCorruption {
++                context: format!(
++                    "knowledge embedding dimension mismatch: expected {EMBEDDING_DIMENSION}, got {}",
++                    embedding.len()
++                ),
++                source: "dimension check".into(),
++            });
++        }
++        if is_zero_vector(embedding) {
++            return Err(StorageError::DataCorruption {
++                context: format!("rejecting zero vector embedding for knowledge {knowledge_id}"),
++                source: "zero vector check".into(),
++            });
++        }
++        if contains_non_finite(embedding) {
++            return Err(StorageError::DataCorruption {
++                context: "knowledge embedding contains NaN or Infinity values".to_owned(),
++                source: Box::from("non-finite check"),
++            });
++        }
++
++        let vector = Vector::from(embedding.to_vec());
++        sqlx::query("UPDATE global_knowledge SET embedding = $1 WHERE id = $2")
++            .bind(vector)
++            .bind(knowledge_id)
++            .execute(&self.pool)
++            .await?;
++        Ok(())
++    }
++
+     async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, StorageError> {
+         let row = sqlx::query(&format!(
+             "SELECT {KNOWLEDGE_COLUMNS} FROM global_knowledge WHERE id = $1 AND archived_at IS NULL"
+@@ -555,4 +768,24 @@ impl KnowledgeStore for PgStorage {
+         .await?;
+         Ok(result.rows_affected())
+     }
++
++    async fn link_source_observation(
++        &self,
++        knowledge_id: &str,
++        observation_id: &str,
++    ) -> Result<bool, StorageError> {
++        let result = sqlx::query(
++            "UPDATE global_knowledge
++             SET source_observations = source_observations || to_jsonb($2::text),
++                 updated_at = NOW()
++             WHERE id = $1
++               AND archived_at IS NULL
++               AND NOT source_observations @> to_jsonb($2::text)",
++        )
++        .bind(knowledge_id)
++        .bind(observation_id)
++        .execute(&self.pool)
++        .await?;
++        Ok(result.rows_affected() > 0)
++    }
+ }
+diff --git a/crates/storage/src/pg_storage/search/fts.rs b/crates/storage/src/pg_storage/search/fts.rs
+index 417ce66b..3c2bfbae 100644
+--- a/crates/storage/src/pg_storage/search/fts.rs
++++ b/crates/storage/src/pg_storage/search/fts.rs
+@@ -24,9 +24,7 @@ pub(crate) async fn search(
+     .bind(usize_to_i64(limit))
+     .fetch_all(&storage.pool)
+     .await?;
+-    Ok(collect_skipping_corrupt(
+-        rows.iter().map(row_to_search_result),
+-    )?)
++    collect_skipping_corrupt(rows.iter().map(row_to_search_result))
+ }
+ 
+ pub(crate) async fn search_with_filters(
+@@ -92,9 +90,7 @@ pub(crate) async fn search_with_filters(
+         q = q.bind(&tsquery);
+         q = q.bind(usize_to_i64(limit));
+         let rows = q.fetch_all(&storage.pool).await?;
+-        return Ok(collect_skipping_corrupt(
+-            rows.iter().map(row_to_search_result),
+-        )?);
++        return collect_skipping_corrupt(rows.iter().map(row_to_search_result));
+     }
+ 
+     let where_clause = if conditions.is_empty() {
+@@ -115,7 +111,5 @@ pub(crate) async fn search_with_filters(
+     }
+     q = q.bind(usize_to_i64(limit));
+     let rows = q.fetch_all(&storage.pool).await?;
+-    Ok(collect_skipping_corrupt(
+-        rows.iter().map(row_to_search_result),
+-    )?)
++    collect_skipping_corrupt(rows.iter().map(row_to_search_result))
+ }
+diff --git a/crates/storage/src/pg_storage/search/semantic.rs b/crates/storage/src/pg_storage/search/semantic.rs
+index 3d93d8f4..7ab2d55a 100644
+--- a/crates/storage/src/pg_storage/search/semantic.rs
++++ b/crates/storage/src/pg_storage/search/semantic.rs
+@@ -25,7 +25,5 @@ pub(crate) async fn semantic_search(
+     .bind(usize_to_i64(limit))
+     .fetch_all(&storage.pool)
+     .await?;
+-    Ok(collect_skipping_corrupt(
+-        rows.iter().map(row_to_search_result),
+-    )?)
++    collect_skipping_corrupt(rows.iter().map(row_to_search_result))
+ }
+diff --git a/crates/storage/src/traits/knowledge.rs b/crates/storage/src/traits/knowledge.rs
+index ba5d8a29..b5c9983b 100644
+--- a/crates/storage/src/traits/knowledge.rs
++++ b/crates/storage/src/traits/knowledge.rs
+@@ -16,6 +16,24 @@ pub trait KnowledgeStore: Send + Sync {
+         input: KnowledgeInput,
+     ) -> Result<GlobalKnowledge, StorageError>;
+ 
++    /// Save or update a knowledge entry with semantic dedup via embedding.
++    ///
++    /// When provided, the embedding is used for cosine similarity search
++    /// against existing knowledge before creating a new entry.
++    async fn save_knowledge_with_embedding(
++        &self,
++        id: &str,
++        input: KnowledgeInput,
++        embedding: Vec<f32>,
++    ) -> Result<GlobalKnowledge, StorageError>;
++
++    /// Store embedding vector for a knowledge entry.
++    async fn store_knowledge_embedding(
++        &self,
++        knowledge_id: &str,
++        embedding: &[f32],
++    ) -> Result<(), StorageError>;
++
+     /// Get knowledge entry by ID.
+     async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, StorageError>;
+ 
+@@ -55,4 +73,12 @@ pub trait KnowledgeStore: Send + Sync {
+     /// Archive entries with low confidence, zero usage, and older than the given age in days.
+     /// Returns the number of entries archived.
+     async fn auto_archive(&self, min_age_days: i64) -> Result<u64, StorageError>;
++
++    /// Append an observation ID to a knowledge entry's `source_observations` array
++    /// if not already present. Returns `true` if the array was modified.
++    async fn link_source_observation(
++        &self,
++        knowledge_id: &str,
++        observation_id: &str,
++    ) -> Result<bool, StorageError>;
+ }

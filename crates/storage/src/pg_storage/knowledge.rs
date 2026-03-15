@@ -660,6 +660,16 @@ impl KnowledgeStore for PgStorage {
             .collect())
     }
 
+    async fn knowledge_exists_by_title(&self, title: &str) -> Result<bool, StorageError> {
+        let row: (bool,) = sqlx::query_as(
+            "SELECT EXISTS(SELECT 1 FROM global_knowledge WHERE title = $1 AND archived_at IS NULL)",
+        )
+        .bind(title)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row.0)
+    }
+
     async fn list_knowledge(
         &self,
         knowledge_type: Option<KnowledgeType>,

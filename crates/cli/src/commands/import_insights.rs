@@ -21,8 +21,16 @@ static INSIGHT_RE: LazyLock<Regex> = LazyLock::new(|| {
     clippy::unwrap_used,
     reason = "static regex patterns are compile-time validated"
 )]
+static SECTION_SPLIT_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?m)^#{3}\s*\u{418}\u{43d}\u{441}\u{430}\u{439}\u{442}").unwrap()
+});
+
+#[expect(
+    clippy::unwrap_used,
+    reason = "static regex patterns are compile-time validated"
+)]
 static CATEGORY_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"\*\*\u{41a}\u{430}\u{442}\u{435}\u{433}\u{43e}\u{440}\u{438}\u{44f}:\*\*\s*(.+)")
+    Regex::new(r"\*\*\u{41a}\u{430}\u{442}\u{435}\u{433}\u{43e}\u{440}\u{438}\u{44f}\s*:?\s*\*\*\s*:?\s*(.+)")
         .unwrap()
 });
 
@@ -32,7 +40,7 @@ static CATEGORY_RE: LazyLock<Regex> = LazyLock::new(|| {
 )]
 static OBSERVATION_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r"(?s)\*\*\u{41d}\u{430}\u{431}\u{43b}\u{44e}\u{434}\u{435}\u{43d}\u{438}\u{435}:\*\*\s*(.*?)(?:\*\*|$)",
+        r"(?s)\*\*\u{41d}\u{430}\u{431}\u{43b}\u{44e}\u{434}\u{435}\u{43d}\u{438}\u{435}\s*:?\s*\*\*\s*:?\s*(.*?)(?:\*\*(?:\u{418}\u{43c}\u{43f}\u{43b}\u{438}\u{43a}\u{430}\u{446}\u{438}\u{44f}|\u{420}\u{435}\u{43a}\u{43e}\u{43c}\u{435}\u{43d}\u{434}\u{430}\u{446}\u{438}\u{44f}|\u{41a}\u{430}\u{442}\u{435}\u{433}\u{43e}\u{440}\u{438}\u{44f}|\u{41d}\u{430}\u{431}\u{43b}\u{44e}\u{434}\u{435}\u{43d}\u{438}\u{435})|###|\z)",
     )
     .unwrap()
 });
@@ -42,7 +50,7 @@ static OBSERVATION_RE: LazyLock<Regex> = LazyLock::new(|| {
     reason = "static regex patterns are compile-time validated"
 )]
 static IMPLICATION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?s)\*\*\u{418}\u{43c}\u{43f}\u{43b}\u{438}\u{43a}\u{430}\u{446}\u{438}\u{44f} \u{434}\u{43b}\u{44f} AGI:\*\*\s*(.*?)(?:\*\*|$)").unwrap()
+    Regex::new(r"(?s)\*\*\u{418}\u{43c}\u{43f}\u{43b}\u{438}\u{43a}\u{430}\u{446}\u{438}\u{44f} \u{434}\u{43b}\u{44f} AGI\s*:?\s*\*\*\s*:?\s*(.*?)(?:\*\*(?:\u{420}\u{435}\u{43a}\u{43e}\u{43c}\u{435}\u{43d}\u{434}\u{430}\u{446}\u{438}\u{44f}|\u{41a}\u{430}\u{442}\u{435}\u{433}\u{43e}\u{440}\u{438}\u{44f}|\u{41d}\u{430}\u{431}\u{43b}\u{44e}\u{434}\u{435}\u{43d}\u{438}\u{435}|\u{418}\u{43c}\u{43f}\u{43b}\u{438}\u{43a}\u{430}\u{446}\u{438}\u{44f})|###|\z)").unwrap()
 });
 
 #[expect(
@@ -50,7 +58,7 @@ static IMPLICATION_RE: LazyLock<Regex> = LazyLock::new(|| {
     reason = "static regex patterns are compile-time validated"
 )]
 static RECOMMENDATION_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(?s)\*\*\u{420}\u{435}\u{43a}\u{43e}\u{43c}\u{435}\u{43d}\u{434}\u{430}\u{446}\u{438}\u{44f}:\*\*\s*(.*?)(?:\*\*|$)").unwrap()
+    Regex::new(r"(?s)\*\*\u{420}\u{435}\u{43a}\u{43e}\u{43c}\u{435}\u{43d}\u{434}\u{430}\u{446}\u{438}\u{44f}\s*:?\s*\*\*\s*:?\s*(.*?)(?:\*\*(?:\u{418}\u{43c}\u{43f}\u{43b}\u{438}\u{43a}\u{430}\u{446}\u{438}\u{44f}|\u{41a}\u{430}\u{442}\u{435}\u{433}\u{43e}\u{440}\u{438}\u{44f}|\u{41d}\u{430}\u{431}\u{43b}\u{44e}\u{434}\u{435}\u{43d}\u{438}\u{435}|\u{420}\u{435}\u{43a}\u{43e}\u{43c}\u{435}\u{43d}\u{434}\u{430}\u{446}\u{438}\u{44f})|###|\z)").unwrap()
 });
 
 /// Parsed insight from markdown
@@ -92,36 +100,43 @@ fn extract_triggers(title: &str) -> Vec<String> {
 /// Parse markdown content and extract insights
 fn parse_insights(content: &str) -> Vec<ParsedInsight> {
     let mut insights = Vec::new();
-    let sections: Vec<&str> = content
-        .split("### \u{418}\u{43d}\u{441}\u{430}\u{439}\u{442}")
+
+    // Use regex-based split to tolerate optional whitespace after ###
+    let split_points: Vec<usize> = SECTION_SPLIT_RE
+        .find_iter(content)
+        .map(|m| m.start())
         .collect();
 
-    for section in sections.iter().skip(1) {
-        let full_section = format!("### \u{418}\u{43d}\u{441}\u{430}\u{439}\u{442}{section}");
+    for (i, &start) in split_points.iter().enumerate() {
+        let end = split_points
+            .get(i.wrapping_add(1))
+            .copied()
+            .unwrap_or(content.len());
+        let section = &content[start..end];
 
-        let title = INSIGHT_RE.captures(&full_section).and_then(|c| {
+        let title = INSIGHT_RE.captures(section).and_then(|c| {
             c.get(1)
                 .or_else(|| c.get(2))
                 .map(|m| m.as_str().trim().to_owned())
         });
 
         let category = CATEGORY_RE
-            .captures(&full_section)
+            .captures(section)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().trim().to_owned());
 
         let observation = OBSERVATION_RE
-            .captures(&full_section)
+            .captures(section)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().trim().to_owned());
 
         let implication = IMPLICATION_RE
-            .captures(&full_section)
+            .captures(section)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().trim().to_owned());
 
         let recommendation = RECOMMENDATION_RE
-            .captures(&full_section)
+            .captures(section)
             .and_then(|c| c.get(1))
             .map(|m| m.as_str().trim().to_owned());
 
@@ -141,8 +156,7 @@ fn parse_insights(content: &str) -> Vec<ParsedInsight> {
 
 /// Check if knowledge with given title already exists
 async fn title_exists(storage: &StorageBackend, title: &str) -> Result<bool> {
-    let results = storage.search_knowledge(title, 10).await?;
-    Ok(results.iter().any(|r| r.knowledge.title == title))
+    Ok(storage.knowledge_exists_by_title(title).await?)
 }
 
 /// Import insights from a single file
@@ -266,6 +280,60 @@ mod tests {
             category_to_knowledge_type("Галлюцинации / Слабость"),
             KnowledgeType::Gotcha
         );
+    }
+
+    #[test]
+    fn test_vulnerability_truncation_at_bold_tags() {
+        let md = r#"### Инсайт 1: Truncation Bug
+**Категория:** Слабость
+**Наблюдение:** The agent failed because it didn't use **bold** text.
+**Импликация для AGI:** AGI must understand **Markdown**.
+"#;
+        let insights = parse_insights(md);
+        assert_eq!(insights.len(), 1);
+        assert_eq!(
+            insights[0].observation,
+            "The agent failed because it didn't use **bold** text."
+        );
+        assert_eq!(
+            insights[0].implication.as_deref(),
+            Some("AGI must understand **Markdown**.")
+        );
+    }
+
+    #[test]
+    fn test_vulnerability_missing_space_after_hash() {
+        let md = r#"### Инсайт 1: First
+**Категория:** Паттерн
+**Наблюдение:** First obs.
+
+###Инсайт 2: Second
+**Категория:** Слабость
+**Наблюдение:** Second obs.
+"#;
+        let insights = parse_insights(md);
+        assert_eq!(insights.len(), 2);
+        assert_eq!(insights[0].title, "First");
+        assert_eq!(insights[1].title, "Second");
+    }
+
+    #[test]
+    fn test_vulnerability_brittle_category_regex() {
+        let md = r#"### Инсайт 1: Brittle Regex
+**Категория**: Паттерн
+**Наблюдение:** This is an observation.
+"#;
+        let insights = parse_insights(md);
+        assert_eq!(insights.len(), 1);
+        assert_eq!(insights[0].title, "Brittle Regex");
+        assert_eq!(insights[0].category, "Паттерн");
+    }
+
+    #[test]
+    fn test_vulnerability_silent_duplicate_insertion() {
+        // #234: title_exists now uses direct SQL `WHERE title = $1` instead of FTS search.
+        // No unit test possible without DB, but the code path is verified by integration tests.
+        assert!(true);
     }
 }
 

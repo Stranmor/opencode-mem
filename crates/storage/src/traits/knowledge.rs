@@ -53,6 +53,9 @@ pub trait KnowledgeStore: Send + Sync {
         limit: usize,
     ) -> Result<Vec<KnowledgeSearchResult>, StorageError>;
 
+    /// Check if a knowledge entry with the exact title exists (not archived).
+    async fn knowledge_exists_by_title(&self, title: &str) -> Result<bool, StorageError>;
+
     /// List knowledge entries, optionally filtered by type.
     async fn list_knowledge(
         &self,

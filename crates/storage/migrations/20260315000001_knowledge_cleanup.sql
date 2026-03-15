@@ -11,6 +11,13 @@ WHERE title ~* '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4,}';
 -- 2. Merge duplicate knowledge entries (same lowercased title after UUID stripping).
 -- Keep the entry with highest usage_count (ties broken by earliest created_at).
 -- Sum usage_counts, merge source_observations arrays, take highest confidence.
+--
+-- VULNERABILITY (Breaker Agent): JSON Scalar Exception
+-- If ANY row in `global_knowledge` contains a JSON `null` ('null'::jsonb), scalar (e.g., '123'::jsonb),
+-- or object ('{}'::jsonb) in `source_observations`, `jsonb_array_elements` will throw:
+-- "ERROR: cannot extract elements from a scalar/object".
+-- Since there is no CHECK constraint on `source_observations` enforcing it to be a JSON array,
+-- a rogue scalar completely bricks this migration, locking out the entire app from starting!
 DO $$
 DECLARE
     dup RECORD;
@@ -44,7 +51,12 @@ BEGIN
                COALESCE(
                    (SELECT jsonb_agg(DISTINCT elem)
                     FROM global_knowledge g2,
-                          jsonb_array_elements(COALESCE(g2.source_observations, '[]'::jsonb)) AS elem
+                          jsonb_array_elements(
+                              CASE WHEN jsonb_typeof(COALESCE(g2.source_observations, '[]'::jsonb)) = 'array'
+                                   THEN g2.source_observations
+                                   ELSE '[]'::jsonb
+                              END
+                          ) AS elem
                      WHERE LOWER(TRIM(g2.title)) = dup.norm_title
                        AND g2.knowledge_type IS NOT DISTINCT FROM dup.knowledge_type
                       AND g2.archived_at IS NULL

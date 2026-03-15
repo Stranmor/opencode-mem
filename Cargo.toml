@@ -9,7 +9,7 @@ members = [
     "crates/http",
     "crates/mcp",
 
-    "crates/cli",
+    "crates/cli", "regex-test",
 ]
 
 [workspace.package]
