@@ -4,7 +4,7 @@
 -- 1. Strip UUID suffixes from knowledge titles.
 -- Pattern: optional whitespace + hex UUID (8-4-4+ with optional trailing segments).
 UPDATE global_knowledge
-SET title = TRIM(REGEXP_REPLACE(title, '\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4,}(-[0-9a-f]*)*\s*', '', 'gi')),
+SET title = TRIM(REGEXP_REPLACE(title, '\\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4,}(-[0-9a-f]*)*\\s*', ' ', 'gi')),
     updated_at = NOW()
 WHERE title ~* '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4,}';
 
@@ -14,7 +14,7 @@ WHERE title ~* '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4,}';
 DO $$
 DECLARE
     dup RECORD;
-    keeper_id TEXT;
+    keeper_id global_knowledge.id%TYPE;
     merged_usage BIGINT;
     merged_obs JSONB;
     max_confidence FLOAT8;
@@ -44,7 +44,7 @@ BEGIN
                COALESCE(
                    (SELECT jsonb_agg(DISTINCT elem)
                     FROM global_knowledge g2,
-                         jsonb_array_elements(g2.source_observations) AS elem
+                          jsonb_array_elements(COALESCE(g2.source_observations, '[]'::jsonb)) AS elem
                     WHERE LOWER(TRIM(g2.title)) = dup.norm_title
                       AND g2.knowledge_type = dup.knowledge_type
                       AND g2.archived_at IS NULL
