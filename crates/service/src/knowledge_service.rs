@@ -3,20 +3,30 @@ use std::sync::Arc;
 use opencode_mem_core::{
     GlobalKnowledge, KnowledgeInput, KnowledgeSearchResult, KnowledgeType, cap_query_limit,
 };
-use opencode_mem_storage::traits::KnowledgeStore;
+use opencode_mem_embeddings::LazyEmbeddingService;
+use opencode_mem_storage::traits::{EmbeddingStore, KnowledgeStore};
 use opencode_mem_storage::{StorageBackend, StorageError};
 
 use crate::ServiceError;
 
+const PROVENANCE_SIMILARITY_THRESHOLD: f32 = 0.75;
+
 #[derive(Clone)]
 pub struct KnowledgeService {
     storage: Arc<StorageBackend>,
+    embeddings: Option<Arc<LazyEmbeddingService>>,
 }
 
 impl KnowledgeService {
     #[must_use]
-    pub fn new(storage: Arc<StorageBackend>) -> Self {
-        Self { storage }
+    pub fn new(
+        storage: Arc<StorageBackend>,
+        embeddings: Option<Arc<LazyEmbeddingService>>,
+    ) -> Self {
+        Self {
+            storage,
+            embeddings,
+        }
     }
 
     pub fn circuit_breaker(&self) -> &opencode_mem_storage::CircuitBreaker {
@@ -52,11 +62,29 @@ impl KnowledgeService {
         id: &str,
         input: KnowledgeInput,
     ) -> Result<GlobalKnowledge, ServiceError> {
-        let result = self
-            .storage
-            .guarded(|| self.storage.save_knowledge_with_id(id, input.clone()))
-            .await;
-        self.with_cb(result)
+        let needs_provenance = input.source_observation.is_none() && self.embeddings.is_some();
+
+        let embedding = self.generate_knowledge_embedding(&input).await;
+
+        let result = if let Some(emb) = embedding {
+            self.storage
+                .guarded(|| {
+                    self.storage
+                        .save_knowledge_with_embedding(id, input.clone(), emb.clone())
+                })
+                .await
+        } else {
+            self.storage
+                .guarded(|| self.storage.save_knowledge_with_id(id, input.clone()))
+                .await
+        };
+        let knowledge = self.with_cb(result)?;
+
+        if needs_provenance {
+            self.spawn_provenance_linking(knowledge.clone());
+        }
+
+        Ok(knowledge)
     }
 
     pub async fn delete_knowledge(&self, id: &str) -> Result<bool, ServiceError> {
@@ -102,9 +130,37 @@ impl KnowledgeService {
         self.update_knowledge_usage_batch(&[id.to_owned()]).await
     }
 
-    /// Fire-and-forget usage_count increment. Failures are logged at warn level
-    /// and never propagate to the caller — reading knowledge must never fail
-    /// because of a usage tracking issue.
+    async fn generate_knowledge_embedding(&self, input: &KnowledgeInput) -> Option<Vec<f32>> {
+        let embeddings = self.embeddings.as_ref()?;
+        let text = format!("{} {}", input.title.trim(), input.description);
+        let embeddings_clone = Arc::clone(embeddings);
+        let embed_result = tokio::task::spawn_blocking(move || {
+            use opencode_mem_embeddings::EmbeddingProvider;
+            embeddings_clone.embed(&text)
+        })
+        .await;
+
+        match embed_result {
+            Ok(Ok(vec)) => Some(vec),
+            Ok(Err(e)) => {
+                tracing::warn!(
+                    title = %input.title,
+                    error = %e,
+                    "Knowledge embedding generation failed, falling back to non-semantic dedup"
+                );
+                None
+            }
+            Err(e) => {
+                tracing::warn!(
+                    title = %input.title,
+                    error = %e,
+                    "Knowledge embedding spawn_blocking panicked"
+                );
+                None
+            }
+        }
+    }
+
     fn spawn_usage_increment(&self, ids: Vec<String>) {
         let storage = Arc::clone(&self.storage);
         tokio::spawn(async move {
@@ -114,6 +170,87 @@ impl KnowledgeService {
                     count = ids.len(),
                     "Failed to increment knowledge usage_count"
                 );
+            }
+        });
+    }
+
+    fn spawn_provenance_linking(&self, knowledge: GlobalKnowledge) {
+        let Some(ref embeddings) = self.embeddings else {
+            return;
+        };
+        if !knowledge.source_observations.is_empty() {
+            return;
+        }
+
+        let embeddings = Arc::clone(embeddings);
+        let storage = Arc::clone(&self.storage);
+        let knowledge_id = knowledge.id.clone();
+
+        tokio::spawn(async move {
+            let text = format!("{} {}", knowledge.title, knowledge.description);
+            let embeddings_clone = Arc::clone(&embeddings);
+            let embed_result = tokio::task::spawn_blocking(move || {
+                use opencode_mem_embeddings::EmbeddingProvider;
+                embeddings_clone.embed(&text)
+            })
+            .await;
+
+            let embedding = match embed_result {
+                Ok(Ok(vec)) => vec,
+                Ok(Err(e)) => {
+                    tracing::warn!(
+                        knowledge_id = %knowledge_id,
+                        error = %e,
+                        "Provenance linking: embedding generation failed"
+                    );
+                    return;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        knowledge_id = %knowledge_id,
+                        error = %e,
+                        "Provenance linking: spawn_blocking panicked"
+                    );
+                    return;
+                }
+            };
+
+            let similar = match storage
+                .find_similar(&embedding, PROVENANCE_SIMILARITY_THRESHOLD, None)
+                .await
+            {
+                Ok(Some(m)) => m,
+                Ok(None) => return,
+                Err(e) => {
+                    tracing::warn!(
+                        knowledge_id = %knowledge_id,
+                        error = %e,
+                        "Provenance linking: find_similar failed"
+                    );
+                    return;
+                }
+            };
+
+            match storage
+                .link_source_observation(&knowledge_id, &similar.observation_id)
+                .await
+            {
+                Ok(true) => {
+                    tracing::info!(
+                        knowledge_id = %knowledge_id,
+                        observation_id = %similar.observation_id,
+                        similarity = %similar.similarity,
+                        "Auto-linked provenance via embedding similarity"
+                    );
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    tracing::warn!(
+                        knowledge_id = %knowledge_id,
+                        error = %e,
+                        "Provenance linking: link_source_observation failed"
+                    );
+                }
             }
         });
     }
@@ -144,7 +281,7 @@ impl KnowledgeService {
 
     pub async fn run_confidence_lifecycle(&self) -> Result<(u64, u64), ServiceError> {
         let decayed = self.decay_confidence().await?;
-        let archived = self.auto_archive(30).await?;
+        let archived = self.auto_archive(90).await?;
         Ok((decayed, archived))
     }
 }
