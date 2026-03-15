@@ -13,14 +13,32 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 pub use compression::init_compression_config;
 
-/// RAII guard that resets `migrations_pending` to `true` on drop.
-/// Prevents deadlock if the migration task panics after CAS lock acquisition.
-/// On successful migration, call `std::mem::forget(guard)` to keep the flag at `false`.
-struct MigrationGuard(Arc<AtomicBool>);
+/// RAII guard that resets `migrations_pending` to `true` on drop (failure).
+/// On successful migration, call `guard.mark_success()` — Drop runs but
+/// doesn't reset the flag. No `std::mem::forget` needed (avoids Arc leak).
+struct MigrationGuard {
+    flag: Arc<AtomicBool>,
+    succeeded: bool,
+}
+
+impl MigrationGuard {
+    fn new(flag: Arc<AtomicBool>) -> Self {
+        Self {
+            flag,
+            succeeded: false,
+        }
+    }
+
+    fn mark_success(&mut self) {
+        self.succeeded = true;
+    }
+}
 
 impl Drop for MigrationGuard {
     fn drop(&mut self) {
-        self.0.store(true, Ordering::Release);
+        if !self.succeeded {
+            self.flag.store(true, Ordering::Release);
+        }
     }
 }
 
@@ -125,14 +143,14 @@ impl InfiniteMemoryService {
             return false;
         }
 
-        let guard = MigrationGuard(Arc::clone(&self.migrations_pending));
+        let mut guard = MigrationGuard::new(Arc::clone(&self.migrations_pending));
         match opencode_mem_storage::pg_storage::infinite_memory::run_infinite_memory_migrations(
             &self.pool,
         )
         .await
         {
             Ok(()) => {
-                std::mem::forget(guard);
+                guard.mark_success();
                 tracing::info!("Infinite Memory deferred migrations completed successfully");
                 true
             }
@@ -265,14 +283,14 @@ impl InfiniteMemoryService {
                     .is_ok()
                 {
                     tokio::spawn(async move {
-                        let guard = MigrationGuard(Arc::clone(&this.migrations_pending));
+                        let mut guard = MigrationGuard::new(Arc::clone(&this.migrations_pending));
                         match opencode_mem_storage::pg_storage::infinite_memory::run_infinite_memory_migrations(
                             &this.pool,
                         )
                         .await
                         {
                             Ok(()) => {
-                                std::mem::forget(guard);
+                                guard.mark_success();
                                 tracing::info!(
                                     "Infinite Memory deferred migrations completed successfully"
                                 );
@@ -309,14 +327,14 @@ impl InfiniteMemoryService {
                     .is_ok()
                 {
                     tokio::spawn(async move {
-                        let guard = MigrationGuard(Arc::clone(&this.migrations_pending));
+                        let mut guard = MigrationGuard::new(Arc::clone(&this.migrations_pending));
                         match opencode_mem_storage::pg_storage::infinite_memory::run_infinite_memory_migrations(
                             &this.pool,
                         )
                         .await
                         {
                             Ok(()) => {
-                                std::mem::forget(guard);
+                                guard.mark_success();
                                 tracing::info!(
                                     "Infinite Memory deferred migrations completed successfully"
                                 );
