@@ -124,7 +124,7 @@ pub(crate) async fn run_backfill_embeddings(batch_size: usize) -> Result<()> {
 pub(crate) async fn run_knowledge_lifecycle() -> Result<()> {
     let storage = crate::create_storage_from_env().await?;
     let decayed = storage.decay_confidence().await?;
-    let archived = storage.auto_archive(30).await?;
+    let archived = storage.auto_archive(90).await?;
     println!("Knowledge confidence lifecycle complete:");
     println!("  Entries with decayed confidence: {decayed}");
     println!("  Entries archived: {archived}");

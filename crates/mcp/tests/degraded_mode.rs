@@ -82,7 +82,7 @@ fn setup_degraded_services() -> (
         &config,
     ));
     let session_service = Arc::new(SessionService::new(backend.clone(), llm.clone()));
-    let knowledge_service = Arc::new(KnowledgeService::new(backend.clone()));
+    let knowledge_service = Arc::new(KnowledgeService::new(backend.clone(), None));
     let search_service = Arc::new(SearchService::new(
         backend,
         None,

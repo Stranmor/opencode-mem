@@ -73,7 +73,7 @@ pub(crate) async fn run(config: Arc<AppConfig>) -> Result<()> {
         &config,
     ));
     let session_service = Arc::new(SessionService::new(storage.clone(), llm.clone()));
-    let knowledge_service = Arc::new(KnowledgeService::new(storage.clone()));
+    let knowledge_service = Arc::new(KnowledgeService::new(storage.clone(), embeddings.clone()));
     let search_service = Arc::new(SearchService::new(
         storage,
         embeddings,
