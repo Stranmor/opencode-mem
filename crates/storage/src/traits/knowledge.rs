@@ -16,6 +16,24 @@ pub trait KnowledgeStore: Send + Sync {
         input: KnowledgeInput,
     ) -> Result<GlobalKnowledge, StorageError>;
 
+    /// Save or update a knowledge entry with semantic dedup via embedding.
+    ///
+    /// When provided, the embedding is used for cosine similarity search
+    /// against existing knowledge before creating a new entry.
+    async fn save_knowledge_with_embedding(
+        &self,
+        id: &str,
+        input: KnowledgeInput,
+        embedding: Vec<f32>,
+    ) -> Result<GlobalKnowledge, StorageError>;
+
+    /// Store embedding vector for a knowledge entry.
+    async fn store_knowledge_embedding(
+        &self,
+        knowledge_id: &str,
+        embedding: &[f32],
+    ) -> Result<(), StorageError>;
+
     /// Get knowledge entry by ID.
     async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, StorageError>;
 
@@ -55,4 +73,12 @@ pub trait KnowledgeStore: Send + Sync {
     /// Archive entries with low confidence, zero usage, and older than the given age in days.
     /// Returns the number of entries archived.
     async fn auto_archive(&self, min_age_days: i64) -> Result<u64, StorageError>;
+
+    /// Append an observation ID to a knowledge entry's `source_observations` array
+    /// if not already present. Returns `true` if the array was modified.
+    async fn link_source_observation(
+        &self,
+        knowledge_id: &str,
+        observation_id: &str,
+    ) -> Result<bool, StorageError>;
 }

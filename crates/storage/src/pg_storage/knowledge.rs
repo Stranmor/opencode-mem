@@ -7,9 +7,12 @@ use crate::traits::KnowledgeStore;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use opencode_mem_core::{
-    GlobalKnowledge, KNOWLEDGE_TRIGRAM_CANDIDATE_LIMIT, KNOWLEDGE_TRIGRAM_LOG_THRESHOLD,
+    EMBEDDING_DIMENSION, GlobalKnowledge, KNOWLEDGE_SEMANTIC_DEDUP_THRESHOLD,
+    KNOWLEDGE_TRIGRAM_CANDIDATE_LIMIT, KNOWLEDGE_TRIGRAM_LOG_THRESHOLD,
     KNOWLEDGE_TRIGRAM_MERGE_THRESHOLD, KnowledgeInput, KnowledgeSearchResult, KnowledgeType,
+    contains_non_finite, is_zero_vector,
 };
+use pgvector::Vector;
 use sqlx::Row;
 
 type ExistingKnowledgeRow = (
@@ -120,6 +123,7 @@ impl PgStorage {
         &self,
         id: Option<&str>,
         input: &KnowledgeInput,
+        embedding: Option<&[f32]>,
     ) -> Result<GlobalKnowledge, StorageError> {
         let mut tx = self.pool.begin().await?;
 
@@ -129,7 +133,7 @@ impl PgStorage {
 
         let now = Utc::now();
 
-        let trimmed_title = input.title.trim();
+        let trimmed_title = opencode_mem_core::strip_uuid_from_title(input.title.trim());
 
         let existing: Option<ExistingKnowledgeRow> = sqlx::query_as(
             "SELECT id, created_at, triggers, source_projects, source_observations,
@@ -138,7 +142,7 @@ impl PgStorage {
                  WHERE LOWER(title) = LOWER($1)
                  FOR UPDATE",
         )
-        .bind(trimmed_title)
+        .bind(&trimmed_title)
         .fetch_optional(&mut *tx)
         .await?;
 
@@ -164,7 +168,7 @@ impl PgStorage {
                     confidence,
                     usage_count,
                     last_used_at,
-                    trimmed_title,
+                    &trimmed_title,
                     input,
                     now,
                 )
@@ -174,7 +178,7 @@ impl PgStorage {
         }
 
         if let Some(similar) = self
-            .find_trigram_similar_in_tx(&mut tx, trimmed_title)
+            .find_trigram_similar_in_tx(&mut tx, &trimmed_title)
             .await?
         {
             let result = self
@@ -186,10 +190,41 @@ impl PgStorage {
             tx.commit().await?;
 
             tracing::info!(
-                new_title = trimmed_title,
+                new_title = %trimmed_title,
                 merged_into = %result.id,
                 existing_title = %result.title,
                 "knowledge trigram dedup: merged similar entry"
+            );
+            return Ok(result);
+        }
+
+        // Step 3: Semantic similarity via embedding cosine distance
+        if let Some(emb) = embedding
+            && let Some(semantic) = self.find_semantic_similar_in_tx(&mut tx, emb).await?
+        {
+            let result = self
+                .merge_into_existing(
+                    &mut tx,
+                    &semantic.0,
+                    semantic.1,
+                    semantic.2,
+                    semantic.3,
+                    semantic.4,
+                    semantic.5,
+                    semantic.6,
+                    semantic.7,
+                    &semantic.8,
+                    input,
+                    now,
+                )
+                .await?;
+            tx.commit().await?;
+
+            tracing::info!(
+                new_title = %trimmed_title,
+                merged_into = %result.id,
+                existing_title = %result.title,
+                "knowledge semantic dedup: merged via embedding similarity"
             );
             return Ok(result);
         }
@@ -212,7 +247,7 @@ impl PgStorage {
         ))
         .bind(&id)
         .bind(input.knowledge_type.as_str())
-        .bind(trimmed_title)
+        .bind(&trimmed_title)
         .bind(&input.description)
         .bind(&input.instructions)
         .bind(serde_json::to_value(&input.triggers)?)
@@ -227,12 +262,21 @@ impl PgStorage {
         .execute(&mut *tx)
         .await?;
 
+        if let Some(emb) = embedding {
+            let vector = Vector::from(emb.to_vec());
+            sqlx::query("UPDATE global_knowledge SET embedding = $1 WHERE id = $2")
+                .bind(vector)
+                .bind(&id)
+                .execute(&mut *tx)
+                .await?;
+        }
+
         tx.commit().await?;
 
         Ok(GlobalKnowledge::new(
             id,
             input.knowledge_type,
-            trimmed_title.to_owned(),
+            trimmed_title,
             input.description.clone(),
             input.instructions.clone(),
             input.triggers.clone(),
@@ -355,6 +399,113 @@ impl PgStorage {
 
         Ok(best_merge)
     }
+
+    #[expect(
+        clippy::type_complexity,
+        reason = "tuple matches ExistingKnowledgeRow + title for merge"
+    )]
+    async fn find_semantic_similar_in_tx(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        embedding: &[f32],
+    ) -> Result<
+        Option<(
+            String,
+            DateTime<Utc>,
+            serde_json::Value,
+            serde_json::Value,
+            serde_json::Value,
+            f64,
+            i64,
+            Option<DateTime<Utc>>,
+            String,
+        )>,
+        StorageError,
+    > {
+        if embedding.is_empty() || is_zero_vector(embedding) || contains_non_finite(embedding) {
+            return Ok(None);
+        }
+
+        let vector = Vector::from(embedding.to_vec());
+
+        let row: Option<(
+            String,
+            DateTime<Utc>,
+            serde_json::Value,
+            serde_json::Value,
+            serde_json::Value,
+            f64,
+            i64,
+            Option<DateTime<Utc>>,
+            String,
+            f64,
+        )> = sqlx::query_as(
+            "SELECT id, created_at, triggers, source_projects, source_observations,
+                    confidence, usage_count, last_used_at, title,
+                    1.0 - (embedding <=> $1) AS similarity
+             FROM global_knowledge
+             WHERE archived_at IS NULL
+               AND embedding IS NOT NULL
+             ORDER BY embedding <=> $1
+             LIMIT 1
+             FOR UPDATE",
+        )
+        .bind(vector)
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        match row {
+            Some((
+                id,
+                created_at,
+                triggers,
+                src_proj,
+                src_obs,
+                confidence,
+                usage_count,
+                last_used_at,
+                title,
+                similarity,
+            )) => {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "similarity f64→f32 is acceptable lossy narrowing"
+                )]
+                let sim_f32 = similarity as f32;
+                if sim_f32 >= KNOWLEDGE_SEMANTIC_DEDUP_THRESHOLD {
+                    tracing::debug!(
+                        existing_title = %title,
+                        existing_id = %id,
+                        similarity = %sim_f32,
+                        "knowledge semantic match above threshold"
+                    );
+                    Ok(Some((
+                        id,
+                        created_at,
+                        triggers,
+                        src_proj,
+                        src_obs,
+                        confidence,
+                        usage_count,
+                        last_used_at,
+                        title,
+                    )))
+                } else {
+                    if sim_f32 >= 0.7 {
+                        tracing::info!(
+                            existing_title = %title,
+                            existing_id = %id,
+                            similarity = %sim_f32,
+                            threshold = %KNOWLEDGE_SEMANTIC_DEDUP_THRESHOLD,
+                            "knowledge semantic near-miss (below threshold)"
+                        );
+                    }
+                    Ok(None)
+                }
+            }
+            None => Ok(None),
+        }
+    }
 }
 
 #[async_trait]
@@ -370,7 +521,7 @@ impl KnowledgeStore for PgStorage {
         input: KnowledgeInput,
     ) -> Result<GlobalKnowledge, StorageError> {
         for attempt in 0u8..3u8 {
-            match self.save_knowledge_inner(Some(id), &input).await {
+            match self.save_knowledge_inner(Some(id), &input, None).await {
                 Ok(knowledge) => return Ok(knowledge),
                 Err(ref e) if e.is_duplicate() && attempt < 2 => {
                     tracing::debug!(
@@ -384,6 +535,68 @@ impl KnowledgeStore for PgStorage {
             }
         }
         unreachable!()
+    }
+
+    async fn save_knowledge_with_embedding(
+        &self,
+        id: &str,
+        input: KnowledgeInput,
+        embedding: Vec<f32>,
+    ) -> Result<GlobalKnowledge, StorageError> {
+        for attempt in 0u8..3u8 {
+            match self
+                .save_knowledge_inner(Some(id), &input, Some(&embedding))
+                .await
+            {
+                Ok(knowledge) => return Ok(knowledge),
+                Err(ref e) if e.is_duplicate() && attempt < 2 => {
+                    tracing::debug!(
+                        title = %input.title,
+                        attempt,
+                        "knowledge save with embedding hit unique constraint, retrying"
+                    );
+                    continue;
+                }
+                Err(e) => return Err(e),
+            }
+        }
+        unreachable!()
+    }
+
+    async fn store_knowledge_embedding(
+        &self,
+        knowledge_id: &str,
+        embedding: &[f32],
+    ) -> Result<(), StorageError> {
+        if embedding.len() != EMBEDDING_DIMENSION {
+            return Err(StorageError::DataCorruption {
+                context: format!(
+                    "knowledge embedding dimension mismatch: expected {EMBEDDING_DIMENSION}, got {}",
+                    embedding.len()
+                ),
+                source: "dimension check".into(),
+            });
+        }
+        if is_zero_vector(embedding) {
+            return Err(StorageError::DataCorruption {
+                context: format!("rejecting zero vector embedding for knowledge {knowledge_id}"),
+                source: "zero vector check".into(),
+            });
+        }
+        if contains_non_finite(embedding) {
+            return Err(StorageError::DataCorruption {
+                context: "knowledge embedding contains NaN or Infinity values".to_owned(),
+                source: Box::from("non-finite check"),
+            });
+        }
+
+        let vector = Vector::from(embedding.to_vec());
+        sqlx::query("UPDATE global_knowledge SET embedding = $1 WHERE id = $2")
+            .bind(vector)
+            .bind(knowledge_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     async fn get_knowledge(&self, id: &str) -> Result<Option<GlobalKnowledge>, StorageError> {
@@ -554,5 +767,25 @@ impl KnowledgeStore for PgStorage {
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected())
+    }
+
+    async fn link_source_observation(
+        &self,
+        knowledge_id: &str,
+        observation_id: &str,
+    ) -> Result<bool, StorageError> {
+        let result = sqlx::query(
+            "UPDATE global_knowledge
+             SET source_observations = source_observations || to_jsonb($2::text),
+                 updated_at = NOW()
+             WHERE id = $1
+               AND archived_at IS NULL
+               AND NOT source_observations @> to_jsonb($2::text)",
+        )
+        .bind(knowledge_id)
+        .bind(observation_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
     }
 }

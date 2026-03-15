@@ -50,6 +50,12 @@ pub const KNOWLEDGE_TRIGRAM_LOG_THRESHOLD: f32 = 0.5;
 /// Maximum number of trigram similarity candidates to consider.
 pub const KNOWLEDGE_TRIGRAM_CANDIDATE_LIMIT: i64 = 3;
 
+/// Cosine similarity threshold for semantic dedup of knowledge entries.
+/// Knowledge entries with embedding similarity above this are merged.
+/// Higher than observation dedup (0.85) because knowledge titles are shorter
+/// and semantically denser — false positives are costlier.
+pub const KNOWLEDGE_SEMANTIC_DEDUP_THRESHOLD: f32 = 0.85;
+
 /// Cap a user-supplied query limit to `MAX_QUERY_LIMIT`.
 ///
 /// Both HTTP and MCP transports need to clamp user-supplied limits for DoS
