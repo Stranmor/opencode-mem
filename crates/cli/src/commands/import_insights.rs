@@ -88,12 +88,11 @@ fn category_to_knowledge_type(category: &str) -> KnowledgeType {
 fn extract_triggers(title: &str) -> Vec<String> {
     title
         .split_whitespace()
-        .filter(|w| w.len() > 3)
         .map(|w| {
             w.trim_matches(|c: char| !c.is_alphanumeric())
                 .to_lowercase()
         })
-        .filter(|w| !w.is_empty())
+        .filter(|w| !w.is_empty() && w.chars().count() > 3)
         .collect()
 }
 
@@ -169,7 +168,8 @@ async fn import_file(storage: &StorageBackend, path: &Path) -> Result<(usize, us
     let mut skipped = 0;
 
     for insight in insights {
-        if title_exists(storage, &insight.title).await? {
+        let sanitized_title = opencode_mem_core::sanitize_input(&insight.title);
+        if title_exists(storage, &sanitized_title).await? {
             skipped += 1;
             continue;
         }
@@ -186,7 +186,7 @@ async fn import_file(storage: &StorageBackend, path: &Path) -> Result<(usize, us
 
         let input = KnowledgeInput::new(
             category_to_knowledge_type(&insight.category),
-            opencode_mem_core::sanitize_input(&insight.title),
+            sanitized_title,
             opencode_mem_core::sanitize_input(&description),
             insight
                 .recommendation
