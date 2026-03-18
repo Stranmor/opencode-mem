@@ -30,6 +30,7 @@ Last reviewed commit: `eea4f599c0c54eb8d7dcc0d81a9364f2302fd1e6`
 | Save Memory | ✅ 100% | Direct observation storage (MCP + HTTP), bypasses LLM compression |
 | Circuit Breaker | ✅ 100% | Graceful degradation when PostgreSQL unavailable — MCP tools return empty results, HTTP returns 200 + X-Memory-Degraded header, auto-recovery on reconnect |
 | Memory Quality | ✅ | Cross-project dedup, metadata enrichment, knowledge extraction for all types, usage tracking, trigram similarity dedup for knowledge |
+| Structured Summaries | ✅ 100% | response_format: json_object, 9 typed fields (request, investigated, completed, next_steps, files_read, files_modified, decisions, discoveries) |
 
 ### NOT Implemented
 
@@ -280,3 +281,12 @@ LLM always creates NEW observations even when near-identical ones exist. The `ex
 - ~~Knowledge duplicates (4x Telegram MTProto entries)~~ — cleaned up, kept entry with highest usage_count
 - ~~5 observations with empty metadata from manual import~~ — backfilled via CLI
 - ~~`/api/semantic-search` route inconsistency~~ — added alias alongside existing `/semantic-search`
+- ~~Background processor not started in MCP mode~~ — added shared MaintenanceServices + run_maintenance_tick(), both HTTP and MCP use same scheduler
+- ~~Admin endpoints CSRF via missing Json extractor~~ — added Json(()) body to destructive admin endpoints
+- ~~Admin auth bypass via loopback trust behind reverse proxy~~ — dual-mode: token required if set, loopback-only if unset
+- ~~Infinite memory compression poison pill on >200 events~~ — pipeline fetches up to 10K events, chunks at 200 per LLM call
+- ~~strip_markdown_json forward scan truncates JSON with embedded backticks~~ — uses rfind for closing fence
+- ~~MCP background loop SPOT violation (only ran compression)~~ — extracted shared MaintenanceServices, all 7 tasks run in both modes
+- ~~Pipeline dead code (chunking unreachable due to batch limit)~~ — removed per-iteration batch limit, proper chunking for large buckets
+- ~~run_full_compression bypassed circuit breaker~~ — routes through CB with should_allow/record_success/failure
+- ~~Session summaries unstructured free text~~ — structured via response_format: json_object with 9 typed fields
