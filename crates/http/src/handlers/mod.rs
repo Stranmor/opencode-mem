@@ -13,7 +13,7 @@
 )]
 
 pub(crate) fn check_admin_access(
-    addr: &std::net::SocketAddr,
+    _addr: &std::net::SocketAddr,
     headers: &axum::http::HeaderMap,
     config: &opencode_mem_core::AppConfig,
 ) -> bool {
@@ -21,10 +21,6 @@ pub(crate) fn check_admin_access(
         && let Some(provided) = headers.get("x-admin-token").and_then(|h| h.to_str().ok())
         && subtle::ConstantTimeEq::ct_eq(provided.as_bytes(), token.as_bytes()).into()
     {
-        return true;
-    }
-
-    if config.admin_token.is_none() && addr.ip().is_loopback() {
         return true;
     }
 
