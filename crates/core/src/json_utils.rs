@@ -20,14 +20,18 @@ pub fn strip_markdown_json(content: &str) -> &str {
 
     let content_start = open_pos.saturating_add(3);
 
-    // Find the NEXT occurrence of ``` after the opening block.
-    // This isolates the actual JSON block even if subsequent prose contains code blocks.
-    let Some(close_pos) = trimmed[content_start..].find("```") else {
+    // Find the LAST occurrence of ``` in the entire string.
+    // Using rfind prevents truncation when JSON content contains embedded triple backticks
+    // (e.g., code snippet fields). The outermost closing fence is always the last one.
+    let Some(close_pos) = trimmed.rfind("```") else {
         return trimmed;
     };
-    let close_pos = close_pos.saturating_add(content_start);
 
-    // Content between opening ``` (skip past the ```) and closing ```
+    // rfind must find a position strictly after the opening fence's content start
+    if close_pos < content_start {
+        return trimmed;
+    }
+
     let after_open = &trimmed[content_start..close_pos];
 
     // Skip the language identifier on the first line (e.g. "json", "json5", " json")
@@ -92,6 +96,15 @@ mod tests {
     fn test_preamble_plain_block() {
         let input = "Result:\n```\n{\"key\": \"value\"}\n```";
         assert_eq!(strip_markdown_json(input), "{\"key\": \"value\"}");
+    }
+
+    #[test]
+    fn test_embedded_backticks_in_json_content() {
+        let input = "```json\n{\"code\": \"```rust\\nfn main() {}\\n```\"}\n```";
+        assert_eq!(
+            strip_markdown_json(input),
+            "{\"code\": \"```rust\\nfn main() {}\\n```\"}"
+        );
     }
 
     #[test]
