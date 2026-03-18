@@ -9,6 +9,30 @@ use opencode_mem_service::{
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
+fn start_mcp_background_tasks(infinite_mem: Option<Arc<InfiniteMemoryService>>) {
+    if let Some(mem) = infinite_mem {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+            loop {
+                interval.tick().await;
+                match mem.run_full_compression().await {
+                    Ok((five_min, hour, day)) => {
+                        if five_min > 0 || hour > 0 || day > 0 {
+                            tracing::info!(
+                                "MCP cron: created {} 5min, {} hour, {} day summaries",
+                                five_min,
+                                hour,
+                                day,
+                            );
+                        }
+                    }
+                    Err(e) => tracing::warn!("MCP cron: infinite memory error: {e:?}"),
+                }
+            }
+        });
+    }
+}
+
 pub(crate) async fn run(config: Arc<AppConfig>) -> Result<()> {
     opencode_mem_storage::init_queue_config(config.max_retry, config.visibility_timeout_secs);
     opencode_mem_service::init_compression_config(
@@ -84,6 +108,8 @@ pub(crate) async fn run(config: Arc<AppConfig>) -> Result<()> {
     let handle = tokio::runtime::Handle::current();
 
     let pending_writes = Arc::new(opencode_mem_service::PendingWriteQueue::new());
+
+    start_mcp_background_tasks(infinite_mem.clone());
 
     run_mcp_server(
         infinite_mem,
