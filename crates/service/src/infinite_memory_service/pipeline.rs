@@ -9,6 +9,32 @@ use sqlx::PgPool;
 const MIN_5MIN_SUMMARIES_FOR_HOUR: usize = 6;
 const MIN_HOUR_SUMMARIES_FOR_DAY: usize = 12;
 const MAX_EVENTS_PER_BATCH: usize = 100;
+const MAX_EVENTS_PER_LLM_CHUNK: usize = 200;
+
+async fn compress_events_chunked(
+    llm: &LlmClient,
+    events: &[StoredInfiniteEvent],
+) -> Result<(String, Option<SummaryEntities>)> {
+    if events.len() <= MAX_EVENTS_PER_LLM_CHUNK {
+        return compress_events(llm, events).await;
+    }
+
+    let mut all_summaries = Vec::new();
+    let mut all_entities: Vec<Option<SummaryEntities>> = Vec::new();
+
+    for chunk in events.chunks(MAX_EVENTS_PER_LLM_CHUNK) {
+        let (summary, entities) = compress_events(llm, chunk).await?;
+        all_summaries.push(summary);
+        all_entities.push(entities);
+    }
+
+    let merged_summary = all_summaries.join(" ");
+
+    let entity_refs: Vec<Option<SummaryEntities>> = all_entities;
+    let merged_entities = SummaryEntities::merge(&entity_refs);
+
+    Ok((merged_summary, merged_entities))
+}
 
 /// Check if a timestamp is older than `n` hours from now.
 /// Uses `signed_duration_since` to avoid arithmetic overflow on `DateTime` subtraction.
@@ -81,7 +107,7 @@ pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<
                 );
 
                 let result: Result<()> = async {
-                    let (summary, entities) = compress_events(llm, &owned_events).await?;
+                    let (summary, entities) = compress_events_chunked(llm, &owned_events).await?;
                     infinite_memory::create_5min_summary(
                         pool,
                         &owned_events,
