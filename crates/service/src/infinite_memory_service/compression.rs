@@ -3,6 +3,7 @@ use opencode_mem_core::{
     InfiniteSummary, StoredInfiniteEvent, SummaryEntities, strip_markdown_json,
 };
 use opencode_mem_llm::LlmClient;
+use serde_json::Value;
 use std::sync::OnceLock;
 
 static MAX_CONTENT_CHARS: OnceLock<usize> = OnceLock::new();
@@ -40,6 +41,36 @@ fn max_events() -> Result<usize> {
         .ok_or_else(|| anyhow::anyhow!("init_compression_config must be called before use"))
 }
 
+/// Truncate string values inside a `serde_json::Value` in-place.
+///
+/// This prevents JSON corruption: instead of serializing to string and
+/// cutting off closing braces/quotes, we truncate the *content* of
+/// individual text fields before serialization, keeping the JSON
+/// structure valid.
+fn truncate_json_values(value: &mut Value, max_chars: usize) {
+    match value {
+        Value::String(s) => {
+            let truncated = opencode_mem_core::truncate(s, max_chars);
+            if truncated.len() < s.len() {
+                let mut owned = truncated.to_owned();
+                owned.push('…');
+                *s = owned;
+            }
+        }
+        Value::Array(arr) => {
+            for item in arr {
+                truncate_json_values(item, max_chars);
+            }
+        }
+        Value::Object(map) => {
+            for (_key, val) in map.iter_mut() {
+                truncate_json_values(val, max_chars);
+            }
+        }
+        _ => {}
+    }
+}
+
 pub async fn compress_events(
     llm: &LlmClient,
     events: &[StoredInfiniteEvent],
@@ -63,20 +94,14 @@ pub async fn compress_events(
     let mut total_chars = 0usize;
 
     for e in events {
-        let content_str = serde_json::to_string(&e.content).unwrap_or_default();
-        let truncated = if content_str.chars().count() > max_content {
-            format!(
-                "{}...(truncated)",
-                content_str.chars().take(max_content).collect::<String>()
-            )
-        } else {
-            content_str
-        };
+        let mut content = e.content.clone();
+        truncate_json_values(&mut content, max_content);
+        let content_str = serde_json::to_string(&content).unwrap_or_default();
         let line = format!(
             "[{}] {}: {}",
             e.event_type,
             e.ts.format("%H:%M:%S"),
-            truncated
+            content_str
         );
         total_chars = total_chars.saturating_add(line.chars().count());
         if total_chars > max_total {
@@ -180,7 +205,7 @@ pub async fn compress_summaries(llm: &LlmClient, summaries: &[InfiniteSummary]) 
         response_format: opencode_mem_llm::ResponseFormat {
             format_type: opencode_mem_llm::ResponseFormatType::Text,
         },
-        max_tokens: Some(300),
+        max_tokens: Some(1500),
     };
 
     llm.chat_completion(&request)

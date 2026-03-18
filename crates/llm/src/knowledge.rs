@@ -47,6 +47,8 @@ Observation:
 If this contains a reusable skill, pattern, or gotcha that applies broadly:
 Return JSON: {{"extract": true, "knowledge_type": "{}", "title": "...", "description": "...", "instructions": "...", "triggers": [...]}}
 
+PLAIN TEXT ONLY: The "description" and "instructions" fields MUST contain plain text. Do NOT include markdown formatting (headers, bold, italic, code fences, horizontal rules like `---`), session headers (like `## Session`), or any markup. Write clear prose sentences.
+
 If this is project-specific and not generalizable:
 Return JSON: {{"extract": false, "reason": "..."}}"#,
             observation.title,
@@ -75,7 +77,7 @@ Return JSON: {{"extract": false, "reason": "..."}}"#,
             serde_json::from_str(stripped).map_err(|e| LlmError::JsonParse {
                 context: format!(
                     "knowledge extraction (content: {})",
-                    content.chars().take(300).collect::<String>()
+                    opencode_mem_core::truncate(&content, 300)
                 ),
                 source: e,
             })?;

@@ -5,6 +5,7 @@ pub(crate) fn build_compression_prompt(
     title: &str,
     output: &str,
     candidates: &[opencode_mem_core::Observation],
+    current_session_id: &str,
 ) -> String {
     let mut types_prompt = String::new();
     for (i, variant) in opencode_mem_core::ObservationType::ALL_VARIANTS
@@ -28,20 +29,21 @@ pub(crate) fn build_compression_prompt(
     } else {
         let mut entries = String::new();
         for (i, obs) in candidates.iter().enumerate() {
-            let narrative_preview = obs
-                .narrative
-                .as_deref()
-                .unwrap_or("")
-                .chars()
-                .take(200)
-                .collect::<String>();
+            let narrative_preview =
+                opencode_mem_core::truncate(obs.narrative.as_deref().unwrap_or(""), 800);
             let facts_preview = if obs.facts.is_empty() {
                 String::new()
             } else {
                 format!(" facts=[{}]", obs.facts.join(", "))
             };
+            let session_tag = if obs.session_id.as_ref() == current_session_id {
+                "[SAME_SESSION_MATCH] "
+            } else {
+                ""
+            };
             entries.push_str(&format!(
-                "[{}] type={} title=\"{}\" | {}{}\n",
+                "{}[{}] type={} title=\"{}\" | {}{}\n",
+                session_tag,
                 i.saturating_add(1),
                 obs.observation_type.as_str(),
                 obs.title,
@@ -57,7 +59,9 @@ EXISTING OBSERVATIONS (potentially related):
 DECISION (MANDATORY — choose exactly one):
 - If this is genuinely NEW knowledge not covered by any existing observation → action: "create"
 - If this REFINES or ADDS TO an existing observation above → action: "update", target_number: <number in brackets of the observation to update>
-- If this adds ZERO new information beyond what already exists → action: "skip""#
+- If this adds ZERO new information beyond what already exists → action: "skip"
+
+Candidates marked [SAME_SESSION_MATCH] belong to the current session. Strongly prefer UPDATE over CREATE for same-session candidates unless the topic is entirely unrelated."#
         )
     };
 

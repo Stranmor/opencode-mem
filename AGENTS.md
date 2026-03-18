@@ -290,3 +290,5 @@ LLM always creates NEW observations even when near-identical ones exist. The `ex
 - ~~Pipeline dead code (chunking unreachable due to batch limit)~~ — removed per-iteration batch limit, proper chunking for large buckets
 - ~~run_full_compression bypassed circuit breaker~~ — routes through CB with should_allow/record_success/failure
 - ~~Session summaries unstructured free text~~ — structured via response_format: json_object with 9 typed fields
+- ~~JSON corruption in infinite memory compression pipeline~~ — serialized JSON string was truncated by `.chars().take(N)`, breaking closing braces/quotes and poisoning LLM prompts. Fixed by `truncate_json_values()` which truncates text fields *inside* the `serde_json::Value` before serialization, preserving valid JSON structure
+- ~~`.chars().take(N).collect()` SPOT violation (5 call sites)~~ — all replaced with `opencode_mem_core::truncate()` which handles char boundaries correctly. Affected: `compression_prompt.rs`, `compression.rs`, `save_memory.rs`, `knowledge.rs`, `observations.rs`, `unified.rs`

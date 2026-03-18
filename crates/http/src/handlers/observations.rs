@@ -82,7 +82,7 @@ pub async fn save_memory(
 
     let title_str = match req.title.as_deref() {
         Some(t) if !t.trim().is_empty() => opencode_mem_core::sanitize_input(t.trim()),
-        _ => text.chars().take(50).collect::<String>(),
+        _ => opencode_mem_core::truncate(text, 50).to_owned(),
     };
 
     let observation_type = match req

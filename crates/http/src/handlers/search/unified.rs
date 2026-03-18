@@ -114,7 +114,7 @@ pub async fn unified_search(
         };
         ranked.push(RankedItem {
             id: prompt.id.clone(),
-            title: prompt.prompt_text.chars().take(100).collect(),
+            title: opencode_mem_core::truncate(&prompt.prompt_text, 100).to_owned(),
             subtitle: prompt.project.as_ref().map(|p| p.to_string()),
             collection: "prompt".to_owned(),
             score: position_score,

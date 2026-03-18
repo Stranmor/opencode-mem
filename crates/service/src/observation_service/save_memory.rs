@@ -59,7 +59,7 @@ impl ObservationService {
 
         let title_str = match title {
             Some(t) if !t.trim().is_empty() => sanitize_input(t.trim()),
-            _ => text.chars().take(50).collect(),
+            _ => opencode_mem_core::truncate(&text, 50).to_owned(),
         };
 
         let project_str = project_trimmed.map(ToOwned::to_owned);
