@@ -31,6 +31,7 @@
 pub mod error;
 mod infinite_memory_service;
 mod knowledge_service;
+pub mod maintenance;
 mod observation_service;
 mod pending_write_queue;
 mod queue_service;

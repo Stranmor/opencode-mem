@@ -205,7 +205,22 @@ impl InfiniteMemoryService {
     }
 
     pub async fn run_compression_pipeline(&self) -> Result<u32> {
-        pipeline::run_compression_pipeline(&self.pool, &self.llm).await
+        if !self.circuit_breaker.should_allow() {
+            return Err(anyhow::anyhow!(
+                "circuit breaker open, {} seconds until probe",
+                self.circuit_breaker.seconds_until_probe()
+            ));
+        }
+        let result = pipeline::run_compression_pipeline(&self.pool, &self.llm).await;
+        match &result {
+            Ok(_) => {
+                self.circuit_breaker.record_success();
+            }
+            Err(_) => {
+                self.circuit_breaker.record_failure();
+            }
+        }
+        result
     }
 
     pub async fn create_hour_summary(
@@ -253,7 +268,22 @@ impl InfiniteMemoryService {
     }
 
     pub async fn run_full_compression(&self) -> Result<(u32, u32, u32)> {
-        pipeline::run_full_compression(&self.pool, &self.llm).await
+        if !self.circuit_breaker.should_allow() {
+            return Err(anyhow::anyhow!(
+                "circuit breaker open, {} seconds until probe",
+                self.circuit_breaker.seconds_until_probe()
+            ));
+        }
+        let result = pipeline::run_full_compression(&self.pool, &self.llm).await;
+        match &result {
+            Ok(_) => {
+                self.circuit_breaker.record_success();
+            }
+            Err(_) => {
+                self.circuit_breaker.record_failure();
+            }
+        }
+        result
     }
 
     pub async fn guarded<F, Fut, T>(&self, op_f: F) -> Result<T, StorageError>

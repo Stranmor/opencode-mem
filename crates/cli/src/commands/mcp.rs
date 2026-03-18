@@ -3,34 +3,24 @@ use opencode_mem_core::AppConfig;
 use opencode_mem_embeddings::LazyEmbeddingService;
 use opencode_mem_llm::LlmClient;
 use opencode_mem_mcp::run_mcp_server;
+use opencode_mem_service::maintenance::{MaintenanceServices, run_maintenance_tick};
 use opencode_mem_service::{
-    InfiniteMemoryService, KnowledgeService, ObservationService, SearchService, SessionService,
+    InfiniteMemoryService, KnowledgeService, ObservationService, QueueService, SearchService,
+    SessionService,
 };
 use std::sync::Arc;
 use tokio::sync::broadcast;
 
-fn start_mcp_background_tasks(infinite_mem: Option<Arc<InfiniteMemoryService>>) {
-    if let Some(mem) = infinite_mem {
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
-            loop {
-                interval.tick().await;
-                match mem.run_full_compression().await {
-                    Ok((five_min, hour, day)) => {
-                        if five_min > 0 || hour > 0 || day > 0 {
-                            tracing::info!(
-                                "MCP cron: created {} 5min, {} hour, {} day summaries",
-                                five_min,
-                                hour,
-                                day,
-                            );
-                        }
-                    }
-                    Err(e) => tracing::warn!("MCP cron: infinite memory error: {e:?}"),
-                }
-            }
-        });
-    }
+fn start_mcp_background_tasks(services: Arc<MaintenanceServices>) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+        let mut loop_count: u64 = 0;
+        loop {
+            interval.tick().await;
+            loop_count = loop_count.wrapping_add(1);
+            run_maintenance_tick(&services, loop_count).await;
+        }
+    });
 }
 
 pub(crate) async fn run(config: Arc<AppConfig>) -> Result<()> {
@@ -99,7 +89,7 @@ pub(crate) async fn run(config: Arc<AppConfig>) -> Result<()> {
     let session_service = Arc::new(SessionService::new(storage.clone(), llm.clone()));
     let knowledge_service = Arc::new(KnowledgeService::new(storage.clone(), embeddings.clone()));
     let search_service = Arc::new(SearchService::new(
-        storage,
+        storage.clone(),
         embeddings,
         infinite_mem.clone(),
         config.dedup_threshold,
@@ -109,7 +99,19 @@ pub(crate) async fn run(config: Arc<AppConfig>) -> Result<()> {
 
     let pending_writes = Arc::new(opencode_mem_service::PendingWriteQueue::new());
 
-    start_mcp_background_tasks(infinite_mem.clone());
+    let queue_service = Arc::new(QueueService::new(storage, pending_writes.clone(), &config));
+
+    let maintenance = Arc::new(MaintenanceServices {
+        observation_service: observation_service.clone(),
+        session_service: session_service.clone(),
+        knowledge_service: knowledge_service.clone(),
+        search_service: search_service.clone(),
+        queue_service,
+        infinite_mem: infinite_mem.clone(),
+        config: config.clone(),
+    });
+
+    start_mcp_background_tasks(maintenance);
 
     run_mcp_server(
         infinite_mem,

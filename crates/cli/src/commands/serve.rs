@@ -140,7 +140,9 @@ pub(crate) async fn run(port: u16, host: String, config: Arc<AppConfig>) -> Resu
                 "Port {} is already in use.\n\n\
 Another instance of opencode-mem is likely running.\n\
 To stop it, run:\n\
-  curl -X POST http://127.0.0.1:{}/api/admin/shutdown\n\
+  curl -X POST -H 'Content-Type: application/json' -d 'null' \
+http://127.0.0.1:{}/api/admin/shutdown\n\
+If OPENCODE_MEM_ADMIN_TOKEN is set, add: -H 'X-Admin-Token: <token>'\n\
 Or kill the process manually before starting a new server.",
                 port,
                 port

@@ -8,8 +8,13 @@ use sqlx::PgPool;
 
 const MIN_5MIN_SUMMARIES_FOR_HOUR: usize = 6;
 const MIN_HOUR_SUMMARIES_FOR_DAY: usize = 12;
-const MAX_EVENTS_PER_BATCH: usize = 100;
+/// Maximum events sent to LLM in a single compression call.
+/// Larger buckets are chunked and their summaries merged.
 const MAX_EVENTS_PER_LLM_CHUNK: usize = 200;
+/// Upper bound on events fetched per pipeline run. High enough to capture
+/// entire session buckets without artificial splitting that causes overlapping
+/// summaries. The DB query uses `FOR UPDATE SKIP LOCKED` for concurrency.
+const MAX_EVENTS_PER_PIPELINE_RUN: i64 = 10_000;
 
 async fn compress_events_chunked(
     llm: &LlmClient,
@@ -49,111 +54,93 @@ fn is_older_than_days(ts: &DateTime<Utc>, n: i64) -> bool {
 
 pub async fn run_compression_pipeline(pool: &PgPool, llm: &LlmClient) -> Result<u32> {
     let mut total_processed = 0u32;
-    let batch_limit = i64::try_from(MAX_EVENTS_PER_BATCH)
-        .map_err(|e| anyhow::anyhow!("MAX_EVENTS_PER_BATCH exceeds i64::MAX: {e}"))?;
-    loop {
-        let events = infinite_memory::get_unsummarized_infinite_events(pool, batch_limit)
+    let events =
+        infinite_memory::get_unsummarized_infinite_events(pool, MAX_EVENTS_PER_PIPELINE_RUN)
             .await
             .map_err(anyhow::Error::from)?;
-        if events.is_empty() {
-            break;
+    if events.is_empty() {
+        return Ok(0);
+    }
+
+    let mut seen_sessions: Vec<String> = Vec::new();
+    for event in &events {
+        if !seen_sessions.contains(&event.session_id) {
+            seen_sessions.push(event.session_id.clone());
+        }
+    }
+
+    for session_id in seen_sessions {
+        let mut session_events: Vec<&StoredInfiniteEvent> = events
+            .iter()
+            .filter(|e| e.session_id == session_id)
+            .collect();
+
+        if session_events.is_empty() {
+            continue;
         }
 
-        let mut seen_sessions: Vec<String> = Vec::new();
-        for event in &events {
-            if !seen_sessions.contains(&event.session_id) {
-                seen_sessions.push(event.session_id.clone());
+        session_events.sort_by_key(|e| e.ts);
+
+        let mut current_bucket: Vec<StoredInfiniteEvent> = Vec::new();
+        let Some(first_event) = session_events.first() else {
+            continue;
+        };
+        let mut bucket_start = first_event.ts;
+        let mut buckets = Vec::new();
+
+        for event in session_events {
+            if event.ts.timestamp() / 300 != bucket_start.timestamp() / 300 {
+                buckets.push(current_bucket.clone());
+                current_bucket.clear();
+                bucket_start = event.ts;
             }
+            current_bucket.push((*event).clone());
+        }
+        if !current_bucket.is_empty() {
+            buckets.push(current_bucket);
         }
 
-        let mut processed_this_iteration = 0u32;
-
-        for session_id in seen_sessions {
-            let mut session_events: Vec<&StoredInfiniteEvent> = events
-                .iter()
-                .filter(|e| e.session_id == session_id)
-                .collect();
-
-            if session_events.is_empty() {
-                continue;
-            }
-
-            session_events.sort_by_key(|e| e.ts);
-
-            let mut current_bucket: Vec<StoredInfiniteEvent> = Vec::new();
-            let Some(first_event) = session_events.first() else {
-                continue;
-            };
-            let mut bucket_start = first_event.ts;
-            let mut buckets = Vec::new();
-
-            for event in session_events {
-                if event.ts.timestamp() / 300 != bucket_start.timestamp() / 300 {
-                    buckets.push(current_bucket.clone());
-                    current_bucket.clear();
-                    bucket_start = event.ts;
-                }
-                current_bucket.push((*event).clone());
-            }
-            if !current_bucket.is_empty() {
-                buckets.push(current_bucket);
-            }
-
-            for owned_events in buckets {
-                tracing::info!(
-                    "Compressing {} events for session {} (time window)",
-                    owned_events.len(),
-                    session_id
-                );
-
-                let result: Result<()> = async {
-                    let (summary, entities) = compress_events_chunked(llm, &owned_events).await?;
-                    infinite_memory::create_5min_summary(
-                        pool,
-                        &owned_events,
-                        &summary,
-                        entities.as_ref(),
-                    )
-                    .await
-                    .map_err(anyhow::Error::from)?;
-                    Ok(())
-                }
-                .await;
-
-                if let Err(e) = result {
-                    tracing::error!(
-                        session_id = %session_id,
-                        error = %e,
-                        "Failed to compress 5min bucket, skipping"
-                    );
-                    let ids: Vec<i64> = owned_events.iter().map(|e| e.id).collect();
-                    let _ = infinite_memory::release_infinite_events(pool, &ids, true).await;
-                } else {
-                    let event_count = u32::try_from(owned_events.len()).map_err(|e| {
-                        anyhow::anyhow!(
-                            "owned_events.len() {} exceeds u32::MAX: {}",
-                            owned_events.len(),
-                            e
-                        )
-                    })?;
-                    total_processed =
-                        total_processed.checked_add(event_count).ok_or_else(|| {
-                            anyhow::anyhow!("total_processed overflow at {}", total_processed)
-                        })?;
-                    processed_this_iteration = processed_this_iteration.saturating_add(event_count);
-                }
-            }
-        }
-
-        if processed_this_iteration == 0 {
-            tracing::warn!(
-                "Compression pipeline made zero progress this iteration, breaking to avoid infinite loop"
+        for owned_events in buckets {
+            tracing::info!(
+                "Compressing {} events for session {} (time window)",
+                owned_events.len(),
+                session_id
             );
-            break;
-        }
 
-        if events.len() < MAX_EVENTS_PER_BATCH {
-            break;
+            let result: Result<()> = async {
+                let (summary, entities) = compress_events_chunked(llm, &owned_events).await?;
+                infinite_memory::create_5min_summary(
+                    pool,
+                    &owned_events,
+                    &summary,
+                    entities.as_ref(),
+                )
+                .await
+                .map_err(anyhow::Error::from)?;
+                Ok(())
+            }
+            .await;
+
+            if let Err(e) = result {
+                tracing::error!(
+                    session_id = %session_id,
+                    error = %e,
+                    "Failed to compress 5min bucket, skipping"
+                );
+                let ids: Vec<i64> = owned_events.iter().map(|e| e.id).collect();
+                let _ = infinite_memory::release_infinite_events(pool, &ids, true).await;
+            } else {
+                let event_count = u32::try_from(owned_events.len()).map_err(|e| {
+                    anyhow::anyhow!(
+                        "owned_events.len() {} exceeds u32::MAX: {}",
+                        owned_events.len(),
+                        e
+                    )
+                })?;
+                total_processed = total_processed.checked_add(event_count).ok_or_else(|| {
+                    anyhow::anyhow!("total_processed overflow at {}", total_processed)
+                })?;
+            }
         }
     }
 
