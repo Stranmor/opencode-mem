@@ -4,21 +4,16 @@ use chrono::{TimeDelta, Utc};
 use opencode_mem_core::{
     Observation, ProjectId, Session, SessionId, SessionStatus, SessionSummary,
 };
-use opencode_mem_llm::LlmClient;
+use opencode_mem_llm::{LlmClient, StructuredSummaryJson};
 use opencode_mem_storage::traits::{ObservationStore, SessionStore, SummaryStore};
 use opencode_mem_storage::{StorageBackend, StorageError};
 
 use crate::ServiceError;
 
-/// Maximum observations sent to LLM for session summary generation.
-/// Keeps the last N observations (most recent context).
 const MAX_OBSERVATIONS_FOR_SUMMARY: usize = 150;
 
-/// Stale "processing" placeholder threshold.
 const STALE_PLACEHOLDER_MINUTES: i64 = 10;
 
-/// Truncate observations to the last [`MAX_OBSERVATIONS_FOR_SUMMARY`] items.
-/// Returns a slice of the most recent observations.
 fn truncate_observations_for_summary(observations: &[Observation]) -> &[Observation] {
     if observations.len() > MAX_OBSERVATIONS_FOR_SUMMARY {
         let start = observations
@@ -28,6 +23,28 @@ fn truncate_observations_for_summary(observations: &[Observation]) -> &[Observat
     } else {
         observations
     }
+}
+
+fn build_session_summary(
+    session_id: SessionId,
+    project: ProjectId,
+    structured: &StructuredSummaryJson,
+) -> SessionSummary {
+    SessionSummary::new(
+        session_id,
+        project,
+        structured.request.clone(),
+        structured.investigated.clone(),
+        Some(structured.summary.clone()),
+        structured.completed.clone(),
+        structured.next_steps.clone(),
+        structured.notes_text(),
+        structured.files_read.clone(),
+        structured.files_modified.clone(),
+        None,
+        None,
+        Utc::now(),
+    )
 }
 
 pub struct SessionService {
@@ -108,12 +125,14 @@ impl SessionService {
             .await;
         let observations = self.with_cb(observations)?;
 
-        let summary_text = if observations.is_empty() {
+        let structured = if observations.is_empty() {
             None
         } else {
             let bounded = truncate_observations_for_summary(&observations);
             Some(self.generate_summary(bounded).await?)
         };
+
+        let summary_text = structured.as_ref().map(|s| s.summary.clone());
 
         let result = self
             .storage
@@ -127,26 +146,12 @@ impl SessionService {
             .await;
         self.with_cb(result)?;
 
-        if let Some(ref text) = summary_text {
+        if let Some(ref s) = structured {
             let project = observations
                 .first()
                 .and_then(|o| o.project.clone())
                 .unwrap_or_else(|| ProjectId::new("unknown"));
-            let summary = SessionSummary::new(
-                SessionId::from(session_id.to_owned()),
-                project,
-                None,
-                None,
-                Some(text.clone()),
-                None,
-                None,
-                None,
-                Vec::new(),
-                Vec::new(),
-                None,
-                None,
-                Utc::now(),
-            );
+            let summary = build_session_summary(SessionId::from(session_id.to_owned()), project, s);
             let result = self
                 .storage
                 .guarded(|| self.storage.save_summary(&summary))
@@ -162,7 +167,7 @@ impl SessionService {
     pub async fn generate_summary(
         &self,
         observations: &[Observation],
-    ) -> Result<String, ServiceError> {
+    ) -> Result<StructuredSummaryJson, ServiceError> {
         Ok(self.llm.generate_session_summary(observations).await?)
     }
 
@@ -192,7 +197,7 @@ impl SessionService {
             return Ok("No observations in this session.".to_owned());
         }
         let bounded = truncate_observations_for_summary(&observations);
-        let summary_text = self.llm.generate_session_summary(bounded).await?;
+        let structured = self.llm.generate_session_summary(bounded).await?;
 
         let result = self
             .storage
@@ -200,7 +205,7 @@ impl SessionService {
                 self.storage.update_session_status_with_summary(
                     session_id,
                     SessionStatus::Completed,
-                    Some(&summary_text),
+                    Some(&structured.summary),
                 )
             })
             .await;
@@ -210,21 +215,8 @@ impl SessionService {
             .first()
             .and_then(|o| o.project.clone())
             .unwrap_or_else(|| ProjectId::new("unknown"));
-        let summary = SessionSummary::new(
-            SessionId::from(session_id.to_owned()),
-            project,
-            None,
-            None,
-            Some(summary_text.clone()),
-            None,
-            None,
-            None,
-            Vec::new(),
-            Vec::new(),
-            None,
-            None,
-            Utc::now(),
-        );
+        let summary =
+            build_session_summary(SessionId::from(session_id.to_owned()), project, &structured);
         let result = self
             .storage
             .guarded(|| self.storage.save_summary(&summary))
@@ -233,7 +225,7 @@ impl SessionService {
             tracing::warn!(session_id, error = %e, "Failed to persist session summary via save_summary");
         }
 
-        Ok(summary_text)
+        Ok(structured.summary)
     }
 
     pub async fn generate_pending_summaries(&self, limit: usize) -> Result<usize, ServiceError> {
@@ -249,126 +241,25 @@ impl SessionService {
 
         let mut generated: usize = 0;
         for session in &sessions {
-            let exists_result = self
-                .storage
-                .guarded(|| self.storage.get_session_summary(&session.session_id))
-                .await;
-
-            match self.with_cb(exists_result) {
-                Ok(Some(existing)) => {
-                    let is_processing = existing
-                        .learned
-                        .as_deref()
-                        .is_some_and(|l| l == "processing");
-                    let stale_threshold = Utc::now()
-                        .checked_sub_signed(TimeDelta::minutes(STALE_PLACEHOLDER_MINUTES))
-                        .unwrap_or_else(Utc::now);
-                    if is_processing && existing.created_at < stale_threshold {
-                        tracing::warn!(
-                            session_id = %session.session_id,
-                            age_minutes = Utc::now().signed_duration_since(existing.created_at).num_minutes(),
-                            "Deleting stale processing placeholder"
-                        );
-                        let _ = self
-                            .storage
-                            .guarded(|| self.storage.delete_summary(&session.session_id))
-                            .await;
-                    } else {
-                        continue;
-                    }
-                }
-                Ok(None) => {}
-                Err(_) => continue,
-            }
-
-            let placeholder = SessionSummary::new(
-                SessionId::from(session.session_id.clone()),
-                ProjectId::new("processing"),
-                None,
-                None,
-                Some("processing".to_owned()),
-                None,
-                None,
-                None,
-                Vec::new(),
-                Vec::new(),
-                None,
-                None,
-                Utc::now(),
-            );
-
-            let claim_result = self
-                .storage
-                .guarded(|| self.storage.save_summary(&placeholder))
-                .await;
-
-            if self.with_cb(claim_result).is_err() {
+            if self
+                .check_existing_summary(session)
+                .await?
+                .is_some_and(|skip| skip)
+            {
                 continue;
             }
 
-            let obs_result = self
-                .storage
-                .guarded(|| self.storage.get_session_observations(&session.session_id))
-                .await;
-            let mut observations = match self.with_cb(obs_result) {
+            if !self.claim_summary_slot(session).await {
+                continue;
+            }
+
+            let mut observations = match self.fetch_session_observations(session).await {
                 Ok(obs) => obs,
-                Err(e) => {
-                    tracing::warn!(
-                        session_id = %session.session_id,
-                        error = %e,
-                        "Failed to fetch observations for session summary"
-                    );
-                    let error_summary = SessionSummary::new(
-                        SessionId::from(session.session_id.clone()),
-                        session
-                            .project
-                            .clone()
-                            .unwrap_or_else(|| ProjectId::new("unknown")),
-                        None,
-                        None,
-                        Some(format!(
-                            "Summary generation failed: unable to fetch observations ({e})"
-                        )),
-                        None,
-                        None,
-                        None,
-                        Vec::new(),
-                        Vec::new(),
-                        None,
-                        None,
-                        Utc::now(),
-                    );
-                    let _ = self
-                        .storage
-                        .guarded(|| self.storage.save_summary(&error_summary))
-                        .await;
-                    continue;
-                }
+                Err(()) => continue,
             };
 
             if observations.len() < 2 {
-                let skip_summary = SessionSummary::new(
-                    SessionId::from(session.session_id.clone()),
-                    session
-                        .project
-                        .clone()
-                        .unwrap_or_else(|| ProjectId::new("unknown")),
-                    None,
-                    None,
-                    Some("Session had insufficient observations for summarization.".to_owned()),
-                    None,
-                    None,
-                    None,
-                    Vec::new(),
-                    Vec::new(),
-                    None,
-                    None,
-                    Utc::now(),
-                );
-                let _ = self
-                    .storage
-                    .guarded(|| self.storage.save_summary(&skip_summary))
-                    .await;
+                self.save_skip_summary(session).await;
                 continue;
             }
 
@@ -385,7 +276,7 @@ impl SessionService {
                 observations = observations.into_iter().skip(start_idx).collect();
             }
 
-            let summary_text = match self.llm.generate_session_summary(&observations).await {
+            let structured = match self.llm.generate_session_summary(&observations).await {
                 Ok(s) => s,
                 Err(e) => {
                     tracing::warn!(
@@ -406,20 +297,10 @@ impl SessionService {
                 .clone()
                 .unwrap_or_else(|| ProjectId::new("unknown"));
 
-            let summary = SessionSummary::new(
+            let summary = build_session_summary(
                 SessionId::from(session.session_id.clone()),
                 project,
-                None,
-                None,
-                Some(summary_text),
-                None,
-                None,
-                None,
-                Vec::new(),
-                Vec::new(),
-                None,
-                None,
-                Utc::now(),
+                &structured,
             );
 
             let result = self
@@ -448,5 +329,138 @@ impl SessionService {
         }
 
         Ok(generated)
+    }
+
+    async fn check_existing_summary(
+        &self,
+        session: &opencode_mem_core::UnsummarizedSession,
+    ) -> Result<Option<bool>, ServiceError> {
+        let exists_result = self
+            .storage
+            .guarded(|| self.storage.get_session_summary(&session.session_id))
+            .await;
+
+        match self.with_cb(exists_result) {
+            Ok(Some(existing)) => {
+                let is_processing = existing
+                    .learned
+                    .as_deref()
+                    .is_some_and(|l| l == "processing");
+                let stale_threshold = Utc::now()
+                    .checked_sub_signed(TimeDelta::minutes(STALE_PLACEHOLDER_MINUTES))
+                    .unwrap_or_else(Utc::now);
+                if is_processing && existing.created_at < stale_threshold {
+                    tracing::warn!(
+                        session_id = %session.session_id,
+                        age_minutes = Utc::now().signed_duration_since(existing.created_at).num_minutes(),
+                        "Deleting stale processing placeholder"
+                    );
+                    let _ = self
+                        .storage
+                        .guarded(|| self.storage.delete_summary(&session.session_id))
+                        .await;
+                    Ok(Some(false))
+                } else {
+                    Ok(Some(true))
+                }
+            }
+            Ok(None) => Ok(None),
+            Err(_) => Ok(Some(true)),
+        }
+    }
+
+    async fn claim_summary_slot(&self, session: &opencode_mem_core::UnsummarizedSession) -> bool {
+        let placeholder = SessionSummary::new(
+            SessionId::from(session.session_id.clone()),
+            ProjectId::new("processing"),
+            None,
+            None,
+            Some("processing".to_owned()),
+            None,
+            None,
+            None,
+            Vec::new(),
+            Vec::new(),
+            None,
+            None,
+            Utc::now(),
+        );
+
+        let claim_result = self
+            .storage
+            .guarded(|| self.storage.save_summary(&placeholder))
+            .await;
+
+        self.with_cb(claim_result).is_ok()
+    }
+
+    async fn fetch_session_observations(
+        &self,
+        session: &opencode_mem_core::UnsummarizedSession,
+    ) -> Result<Vec<Observation>, ()> {
+        let obs_result = self
+            .storage
+            .guarded(|| self.storage.get_session_observations(&session.session_id))
+            .await;
+        match self.with_cb(obs_result) {
+            Ok(obs) => Ok(obs),
+            Err(e) => {
+                tracing::warn!(
+                    session_id = %session.session_id,
+                    error = %e,
+                    "Failed to fetch observations for session summary"
+                );
+                let error_summary = SessionSummary::new(
+                    SessionId::from(session.session_id.clone()),
+                    session
+                        .project
+                        .clone()
+                        .unwrap_or_else(|| ProjectId::new("unknown")),
+                    None,
+                    None,
+                    Some(format!(
+                        "Summary generation failed: unable to fetch observations ({e})"
+                    )),
+                    None,
+                    None,
+                    None,
+                    Vec::new(),
+                    Vec::new(),
+                    None,
+                    None,
+                    Utc::now(),
+                );
+                let _ = self
+                    .storage
+                    .guarded(|| self.storage.save_summary(&error_summary))
+                    .await;
+                Err(())
+            }
+        }
+    }
+
+    async fn save_skip_summary(&self, session: &opencode_mem_core::UnsummarizedSession) {
+        let skip_summary = SessionSummary::new(
+            SessionId::from(session.session_id.clone()),
+            session
+                .project
+                .clone()
+                .unwrap_or_else(|| ProjectId::new("unknown")),
+            None,
+            None,
+            Some("Session had insufficient observations for summarization.".to_owned()),
+            None,
+            None,
+            None,
+            Vec::new(),
+            Vec::new(),
+            None,
+            None,
+            Utc::now(),
+        );
+        let _ = self
+            .storage
+            .guarded(|| self.storage.save_summary(&skip_summary))
+            .await;
     }
 }

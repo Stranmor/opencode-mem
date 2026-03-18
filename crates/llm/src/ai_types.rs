@@ -123,9 +123,73 @@ pub struct ObservationJson {
     pub skip_reason: Option<String>,
 }
 
-#[derive(Deserialize)]
-pub struct SummaryJson {
+/// Structured session summary response from LLM.
+///
+/// Maps directly to the `SessionSummary` storage fields so that each
+/// column receives purpose-specific content instead of free-text dumped
+/// into a single `learned` column.
+#[derive(Debug, Deserialize)]
+pub struct StructuredSummaryJson {
+    /// Narrative overview (2-3 sentences).
+    #[serde(default, deserialize_with = "null_as_default")]
     pub summary: String,
+    /// What the user originally requested.
+    #[serde(default)]
+    pub request: Option<String>,
+    /// What was investigated / explored.
+    #[serde(default)]
+    pub investigated: Option<String>,
+    /// What was completed / accomplished.
+    #[serde(default)]
+    pub completed: Option<String>,
+    /// Recommended next steps.
+    #[serde(default)]
+    pub next_steps: Option<String>,
+    /// Files that were read during the session.
+    #[serde(default, deserialize_with = "null_or_invalid_as_default_vec")]
+    pub files_read: Vec<String>,
+    /// Files that were modified during the session.
+    #[serde(default, deserialize_with = "null_or_invalid_as_default_vec")]
+    pub files_modified: Vec<String>,
+    /// Key architectural / design decisions made.
+    #[serde(default, deserialize_with = "null_or_invalid_as_default_vec")]
+    pub decisions: Vec<String>,
+    /// Gotchas, findings, and learned facts.
+    #[serde(default, deserialize_with = "null_or_invalid_as_default_vec")]
+    pub discoveries: Vec<String>,
+}
+
+impl StructuredSummaryJson {
+    #[must_use]
+    pub fn empty() -> Self {
+        Self {
+            summary: "No observations in this session.".to_owned(),
+            request: None,
+            investigated: None,
+            completed: None,
+            next_steps: None,
+            files_read: Vec::new(),
+            files_modified: Vec::new(),
+            decisions: Vec::new(),
+            discoveries: Vec::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn notes_text(&self) -> Option<String> {
+        let mut parts = Vec::new();
+        if !self.decisions.is_empty() {
+            parts.push(format!("Decisions: {}", self.decisions.join("; ")));
+        }
+        if !self.discoveries.is_empty() {
+            parts.push(format!("Discoveries: {}", self.discoveries.join("; ")));
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join("\n"))
+        }
+    }
 }
 
 /// LLM response for metadata enrichment of save_memory observations.
