@@ -172,6 +172,7 @@ pub async fn admin_restart(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
+    Json(()): Json<()>,
 ) -> Result<Json<AdminResponse>, ApiError> {
     if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
@@ -192,6 +193,7 @@ pub async fn rebuild_embeddings(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
+    Json(()): Json<()>,
 ) -> Result<Json<AdminResponse>, ApiError> {
     if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
@@ -212,6 +214,7 @@ pub async fn admin_shutdown(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
     State(state): State<Arc<AppState>>,
+    Json(()): Json<()>,
 ) -> Result<Json<AdminResponse>, ApiError> {
     if !super::check_admin_access(&addr, &headers, &state.config) {
         return Err(ApiError::Forbidden("Forbidden".into()));
