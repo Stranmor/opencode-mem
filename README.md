@@ -2,9 +2,10 @@
 
 # opencode-mem
 
-**Persistent, semantic memory for AI coding agents.**
+**Persistent memory infrastructure for AI coding agents.**
 
-Give your AI agents long-term memory that actually works — hybrid search, hierarchical summaries, and infinite recall, all from a single Rust binary.
+A Rust MCP server combining PostgreSQL full-text search, optional vector
+retrieval, and hierarchical summaries.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Stranmor/opencode-mem/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/Stranmor/opencode-mem/actions)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
@@ -16,34 +17,29 @@ Give your AI agents long-term memory that actually works — hybrid search, hier
 
 ---
 
-`opencode-mem` is a type-safe Rust [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server that gives AI coding agents persistent memory. It combines full-text BM25 search with BGE-M3 1024-dimensional vector embeddings for semantic retrieval, backed by PostgreSQL and pgvector. A hierarchical infinite memory system lets agents recall context across sessions, drill down from daily summaries to 5-minute event intervals, and maintain long-term project coherence.
+`opencode-mem` is a Rust [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server for storing and retrieving agent observations. PostgreSQL is the canonical store; pgvector-backed embeddings and hierarchical summaries provide additional retrieval paths when configured.
 
 Inspired by [claude-mem](https://github.com/thedotmack/claude-mem), with a PostgreSQL-first architecture for OpenCode and MCP clients.
 
-## Why opencode-mem?
+## Core design
 
-| Feature | opencode-mem | Typical TS/SQLite |
-|---------|-------------|-------------------|
-| **Runtime** | Native binary (Rust) | Node.js / Bun |
-| **Database** | PostgreSQL + pgvector | SQLite + ChromaDB |
-| **Search** | Hybrid FTS BM25 + Vector | Separate engines |
-| **Memory model** | Infinite (never deleted) | Fixed window / FIFO |
-| **Crash recovery** | DLQ + visibility timeout | None |
-| **Privacy** | Built-in `<private>` filtering | None |
-| **Multilingual** | 100+ languages (BGE-M3) | English-centric |
+| Area | Current implementation |
+|------|------------------------|
+| Runtime | Rust workspace with MCP stdio, HTTP, and CLI entrypoints |
+| Storage | PostgreSQL, with pgvector used for vector retrieval |
+| Retrieval | Full-text, keyword, semantic, and hybrid search paths |
+| Memory pipeline | Queued observations, structured summaries, and drill-down |
+| Privacy boundary | `<private>` filtering before persistence and model calls |
+| Recovery | Visibility timeouts, dead-letter handling, and degraded-mode responses |
 
-## Key Features
+## Implemented paths
 
-- **Infinite Memory & Deep Zoom** — Raw events are never deleted. A hierarchical summarization pipeline (5min → hour → day) creates readable overviews, while the drill-down API lets you zoom from any summary back to raw events.
-- **Hybrid Search** — Combines FTS BM25 (50%) and vector similarity (50%) directly within PostgreSQL. Powered by `fastembed-rs` using BGE-M3 (1024d, 100+ languages).
-- **Structured Metadata Extraction** — The LLM extracts `SummaryEntities` (files, functions, libraries, errors, decisions) via strict JSON schema, enabling fact-based search even when text summaries are vague.
-- **Context-Aware Compression** — The AI agent analyzes existing observations before creating new ones. It decides to **CREATE**, **UPDATE**, or **SKIP**, eliminating duplicates before they hit the database.
-- **18 MCP Tools** for seamless AI agent integration (search, fetch, analyze, drill-down).
-- **65+ HTTP API endpoints** for external integrations and dashboards.
-- **CLI with full hook system** (context injection, session init, observation, summarization).
-- **Privacy tags** — Built-in `<private>` content filtering across all ingest paths.
-- **Circuit breaker** — Graceful degradation when PostgreSQL is unavailable, with automatic recovery on reconnect.
-- **Single binary** — Zero runtime dependencies beyond PostgreSQL.
+- Hierarchical summaries can be expanded back to their stored source events.
+- Hybrid retrieval combines PostgreSQL full-text results with vector similarity when embeddings are enabled.
+- Structured metadata extraction records files, functions, libraries, errors, and decisions from model output.
+- Context-aware compression can create a new observation, update a supplied candidate, or skip a low-value result.
+- MCP, HTTP, and CLI entrypoints share the same PostgreSQL-backed service layer.
+- Database connection failures are surfaced through circuit-breaker and degraded-mode paths.
 
 ## Architecture
 
@@ -138,7 +134,7 @@ environment variables at runtime, so the config remains safe to commit:
 
 ## MCP Tools
 
-The server exposes 18 MCP tools. The recommended workflow is the **3-Layer Pattern** — Search → Timeline → Get Observations — to minimize token usage.
+The server exposes MCP tools for search, retrieval, knowledge, and summary drill-down. The recommended workflow is **Search → Timeline → Get Observations** so clients fetch full records only when needed.
 
 | Tool | Description |
 |------|-------------|
@@ -163,7 +159,7 @@ The server exposes 18 MCP tools. The recommended workflow is the **3-Layer Patte
 
 ## HTTP API
 
-65+ endpoints organized across 11 handler modules:
+HTTP endpoints are organized across the following handler modules:
 
 - **`observations`** — CRUD and bulk operations for observations
 - **`sessions`** / **`sessions_api`** — Session lifecycle, summaries, retrieval
@@ -252,12 +248,12 @@ cargo fmt --all
 cargo clippy --workspace -- -D warnings
 ```
 
-### Architecture Principles
+### Development constraints
 
-- **SPOT** — Single Point of Truth. No data duplication.
-- **Zero Fallback** — Missing data returns `Error` or `None`, never dummy values.
-- **Compile-time query validation** — SQLx verifies all queries against the live DB schema.
-- **Modular workspace** — 10 crates with enforced domain boundaries.
+- PostgreSQL remains the canonical persistence path.
+- Missing or invalid data returns an explicit error or absence, not a fabricated value.
+- Schema changes use forward migrations and preserve existing data.
+- Privacy filtering must remain ahead of persistence, queues, embeddings, summaries, logs, and external model calls.
 
 ## Project Status
 
