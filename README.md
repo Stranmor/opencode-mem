@@ -18,7 +18,7 @@ Give your AI agents long-term memory that actually works — hybrid search, hier
 
 `opencode-mem` is a type-safe Rust [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) server that gives AI coding agents persistent memory. It combines full-text BM25 search with BGE-M3 1024-dimensional vector embeddings for semantic retrieval, backed by PostgreSQL and pgvector. A hierarchical infinite memory system lets agents recall context across sessions, drill down from daily summaries to 5-minute event intervals, and maintain long-term project coherence.
 
-A Rust port of [claude-mem](https://github.com/thedotmack/claude-mem) with full feature parity and additional capabilities.
+Inspired by [claude-mem](https://github.com/thedotmack/claude-mem), with a PostgreSQL-first architecture for OpenCode and MCP clients.
 
 ## Why opencode-mem?
 
@@ -93,10 +93,14 @@ cargo build --release
 ### 1. Configure
 
 ```bash
-export DATABASE_URL="postgres://user:pass@localhost/opencode_mem"
-export OPENCODE_MEM_API_KEY="your-openai-compatible-api-key"
+export DATABASE_URL="postgresql://localhost/opencode_mem"
+read -rsp "Provider API key: " OPENCODE_MEM_API_KEY && printf '\n'
+export OPENCODE_MEM_API_KEY
 export OPENCODE_MEM_API_URL="https://api.openai.com"  # or any compatible endpoint
 ```
+
+Use a credential manager or protected environment file for persistent secrets;
+do not commit database passwords or provider keys to `opencode.json`.
 
 Migrations run automatically on first start.
 
@@ -112,19 +116,20 @@ opencode-mem-cli serve
 
 ### 3. Integrate with OpenCode
 
-Add to your `opencode.json`:
+Add to your `opencode.json`. OpenCode substitutes the already exported
+environment variables at runtime, so the config remains safe to commit:
 
 ```json
 {
-  "mcpServers": {
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
     "memory": {
-      "type": "stdio",
-      "command": "/path/to/opencode-mem-cli",
-      "args": ["mcp"],
-      "env": {
-        "DATABASE_URL": "postgres://user:pass@localhost/opencode_mem",
-        "OPENCODE_MEM_API_KEY": "your-api-key",
-        "OPENCODE_MEM_API_URL": "https://api.openai.com"
+      "type": "local",
+      "command": ["/path/to/opencode-mem-cli", "mcp"],
+      "environment": {
+        "DATABASE_URL": "{env:DATABASE_URL}",
+        "OPENCODE_MEM_API_KEY": "{env:OPENCODE_MEM_API_KEY}",
+        "OPENCODE_MEM_API_URL": "{env:OPENCODE_MEM_API_URL}"
       }
     }
   }
@@ -231,7 +236,7 @@ All configuration is via environment variables:
 ### Running Tests
 
 ```bash
-export DATABASE_URL="postgres://postgres:postgres@localhost:5432/opencode_mem_test"
+export DATABASE_URL="postgresql://localhost/opencode_mem_test"
 
 # Unit tests (no DB required)
 cargo test --workspace
@@ -256,7 +261,7 @@ cargo clippy --workspace -- -D warnings
 
 ## Project Status
 
-Production-ready. Full feature parity with the upstream [claude-mem](https://github.com/thedotmack/claude-mem) TypeScript implementation (excluding IDE-specific hooks). Infinite memory and semantic search are enabled by default.
+Active pre-release project. Core MCP, HTTP, PostgreSQL, queue, and search paths are implemented, but release readiness depends on the current CI result and validation against a real OpenCode consumer. IDE-specific hooks remain outside the current scope. Infinite memory and semantic search should be treated as experimental until their deployment requirements and failure modes are documented and exercised end to end.
 
 ## Contributing
 

@@ -1,294 +1,40 @@
-# opencode-mem
+# Repository instructions
 
-Rust port of [claude-mem](https://github.com/thedotmack/claude-mem) for OpenCode.
+`opencode-mem` is a public Rust workspace for a PostgreSQL-backed MCP memory
+server. Keep repository instructions short, durable, and limited to constraints
+that affect contributors and automated coding agents.
 
-## TARGET GOAL
+## Invariants
 
-**Full feature parity with claude-mem (TypeScript).**
+- PostgreSQL and pgvector are the canonical persistence and vector-search path.
+- Preserve `<private>` filtering at every ingest boundary before persistence,
+  queues, embeddings, summaries, logs, or external model calls.
+- MCP stdio must emit protocol messages only; diagnostics belong on stderr.
+- Database migrations are forward-only and must preserve existing data.
+- Invalid or unavailable state must remain explicit; do not fabricate fallback
+  observations, scores, identifiers, or successful results.
 
-Upstream: https://github.com/thedotmack/claude-mem
-Last reviewed commit: `eea4f599c0c54eb8d7dcc0d81a9364f2302fd1e6`
+## Repository hygiene
 
-## Current Status: Feature Parity Achieved (excluding IDE hooks)
+- Keep README capability and readiness claims aligned with current CI and a
+  reproducible consumer path.
+- Never commit credentials, private endpoints, machine-specific paths, raw
+  production data, generated diffs, command output, or one-off scratch files.
+- Add or update focused tests when behavior, parsing, persistence, privacy, or
+  recovery semantics change.
+- Preserve unrelated work and avoid history rewrites on shared branches.
 
-### Implemented
+## Verification
 
-| Component | Status | Details |
-|-----------|--------|---------|
-| MCP Tools | ✅ 18 tools | search, timeline, get_observations, memory_*, knowledge_*, infinite_*, save_memory |
-| Database | ✅ | PostgreSQL only (pgvector + tsvector/GIN), direct PgStorage (no dispatch enum) |
-| CLI | ✅ 100% | serve, mcp, search, stats, projects, recent, get, hook (context, session-init, observe, summarize) |
-| HTTP API | ✅ 100% | 65 endpoints (upstream has 56) |
-| Storage | ✅ 100% | Core tables, session_summaries, pending queue |
-| AI Agent | ✅ 100% | compress_to_observation(), generate_session_summary() |
-| Web Viewer | ✅ 100% | Dark theme UI, SSE real-time updates |
-| Privacy Tags | ✅ 100% | `<private>` content filtering applied in all paths (save_memory, compress_and_save, store_infinite_memory) |
-| Pending Queue | ✅ 100% | Crash recovery, visibility timeout, dead letter queue |
-| Hook System | ✅ 100% | CLI hooks: context, session-init, observe, summarize |
-| Hybrid Capture | ✅ 100% | Per-turn observation via `session.idle` + debounce + batch endpoint |
-| Project Exclusion | ✅ 100% | OPENCODE_MEM_EXCLUDED_PROJECTS env var, glob patterns, ~ expansion |
-| Save Memory | ✅ 100% | Direct observation storage (MCP + HTTP), bypasses LLM compression |
-| Circuit Breaker | ✅ 100% | Graceful degradation when PostgreSQL unavailable — MCP tools return empty results, HTTP returns 200 + X-Memory-Degraded header, auto-recovery on reconnect |
-| Memory Quality | ✅ | Cross-project dedup, metadata enrichment, knowledge extraction for all types, usage tracking, trigram similarity dedup for knowledge |
-| Structured Summaries | ✅ 100% | response_format: json_object, 9 typed fields (request, investigated, completed, next_steps, files_read, files_modified, decisions, discoveries) |
+Before committing code changes, run:
 
-### NOT Implemented
-
-| # | Feature | Priority | Effort |
-|---|---------|----------|--------|
-| 1 | **Cursor/IDE hooks** — IDE integration | LOW | Medium |
-
-### Experimental (Ready)
-
-| Feature | Status | Notes |
-|---------|--------|-------|
-| **Infinite Memory** | ✅ Ready | PostgreSQL + pgvector backend for long-term AGI memory. Session isolation, hierarchical summaries (5min→hour→day), content truncation. Enabled via INFINITE_MEMORY_URL. **Raw events are NEVER deleted** — drill-down API allows zooming from any summary back to original events. |
-| **Dynamic Memory** | ✅ Ready | Solves "static summaries" problem. **Deep Zoom:** 4 HTTP endpoints (`/api/infinite/expand_summary/:id`, `/time_range`, `/drill_hour/:id`, `/drill_minute/:id`) for drilling down from summaries to raw events. **Structured Metadata:** `SummaryEntities` (files, functions, libraries, errors, decisions) extracted via `response_format: json_object`. Enables fact-based search even when text summary is vague. |
-| **Semantic Search** | ✅ Ready | fastembed-rs (BGE-M3, 1024d, 100+ languages). PostgreSQL: pgvector. Hybrid search: FTS BM25 (50%) + vector similarity (50%). HTTP endpoint: `/semantic-search?q=...`. |
-
-## Upstream Sync
-
-- repo: thedotmack/claude-mem
-- watch: src/services/, src/constants/
-- ignore: *.test.ts, README*, docs/
-- last_reviewed: eea4f599c0c54eb8d7dcc0d81a9364f2302fd1e6
-
-## Architecture
-
-```
-crates/
-├── core/        # Domain types (Observation, Session, etc.)
-├── storage/     # PostgreSQL + pgvector + migrations + circuit breaker (circuit_breaker.rs: 3-state Closed/Open/HalfOpen, exponential backoff 30s-300s)
-├── embeddings/  # Vector embeddings (fastembed BGE-M3, 1024d, multilingual)
-├── search/      # Hybrid search (FTS + keyword + semantic)
-├── llm/         # LLM compression (Antigravity API)
-├── service/     # Business logic layer (ObservationService, SessionService, QueueService)
-├── http/        # HTTP API (Axum)
-├── mcp/         # MCP server (stdio)
-├── infinite-memory/ # PostgreSQL + pgvector backend
-└── cli/         # CLI binary
+```bash
+cargo fmt --all -- --check
+cargo clippy --workspace -- -D warnings
+cargo test --workspace
+cargo build --workspace --release
+cargo +1.88.0 check --workspace
 ```
 
-## Key Files
-
-- `crates/storage/src/pg_storage/` — modular PG storage (mod.rs + domain modules)
-- `crates/storage/src/pg_migrations.rs` — PostgreSQL schema migrations
-- `crates/mcp/src/` — MCP server: lib.rs + tools.rs + handlers/
-- `crates/http/src/handlers/` — HTTP handlers (11 modules)
-- `crates/core/src/observation/low_value_filter.rs` — configurable noise filter (SPOT), env: `OPENCODE_MEM_FILTER_PATTERNS`
-- `crates/llm/src/` — AI agent: client, observation, summary, knowledge, insights
-
-## ADR: Context-Aware Compression (CREATE/UPDATE/SKIP)
-
-**Status: ✅ Fully Implemented**
-
-### Problem
-LLM always creates NEW observations even when near-identical ones exist. The `existing_titles` dedup hint in the prompt only lists titles — the LLM lacks enough context to confidently mark duplicates as negligible. Post-facto dedup (cosine similarity merge, background sweep) catches some duplicates but is fundamentally reactive: duplicates are created, then cleaned.
-
-### Constraints
-- API calls are free (zero cost concern)
-- ~100 observations in DB, growing slowly
-- FTS + GIN index exists on `search_vec` tsvector column
-- `response_format: json_object` is required for all LLM calls
-- Raw events preserved in Infinite Memory (observations are derived views)
-
-### Decision: Enrich compression prompt with candidate observations, let LLM decide CREATE/UPDATE/SKIP
-
-**One code path, three outcomes.** Before LLM compression, retrieve top 5 candidate observations via FTS on raw input text. Feed their full content to the LLM alongside the new tool interaction. LLM returns a discriminated result:
-
-- **CREATE**: Genuinely new knowledge → full observation (current behavior)
-- **UPDATE(target_id)**: Refines existing observation → full replacement of target's content fields
-- **SKIP**: Zero new information → log and discard
-
-### Alternatives Considered
-
-1. **Merge-or-create gate (separate pre-search → conditional prompt branching)** — Rejected. Two code paths, two prompt templates, patch parsing, false positive recovery. Over-engineered for a context starvation problem.
-
-2. **Aggressive post-facto dedup only (lower thresholds, more frequent sweeps)** — Rejected. Treats symptoms. Duplicates still created, wasting LLM calls and storage churn.
-
-3. **Pre-embed raw input for semantic search** — Rejected. Raw tool output has low similarity to compressed observations (different vocabulary, length, structure). FTS keyword matching is sufficient for candidate retrieval.
-
-### Implementation Plan
-
-**Phase 1: Candidate retrieval** (in `ObservationService`, before LLM call)
-- Extract keywords from raw input via `plainto_tsquery`
-- Query `observations` via existing `search_vec` GIN index, limit 5
-- Also include 2-3 most recent observations from same session (most likely merge targets)
-
-**Phase 2: Prompt modification** (`crates/llm/src/observation.rs`)
-- Replace `existing_titles` with full candidate observations (id + title + narrative + facts)
-- Add DECISION section: CREATE / UPDATE(id) / SKIP
-- Response schema becomes discriminated union with `action` field
-
-**Phase 3: Response handling** (`crates/service/src/observation_service/`)
-- Parse `action` field from LLM response
-- CREATE → existing `persist_and_notify` path
-- UPDATE → validate target_id exists and was in candidate set → full field replacement → regenerate embedding
-- SKIP → log at debug, return early
-
-**Phase 4: Simplify dedup layers**
-- Post-facto cosine dedup becomes safety net only (keep threshold at 0.85)
-- Background sweep remains as defense-in-depth (30 min interval)
-- Echo detection (0.80) stays unchanged (different purpose: injection recursion prevention)
-
-### Watch Out For
-- **Candidate retrieval quality**: if FTS misses the relevant observation, LLM creates a duplicate. Mitigate by also including recent same-session observations.
-- **LLM hallucinating target_id**: validate returned ID exists AND was in candidate set. If not → treat as CREATE.
-- **Token growth**: 5 candidates × ~500 tokens = ~2500 extra tokens per call. Negligible for current models.
-
-## Tech Debt & Known Issues
-
-- Gate MCP review tooling intermittently returns 429/502 or "Max retries exceeded", blocking automated code review.
-- Test coverage: ~40% of critical paths. Service layer, HTTP handlers, infinite-memory, CLI still have zero tests.
-- **CUDA GPU acceleration blocked on Pascal** — ort-sys 2.0.0-rc.11 pre-built CUDA provider includes only SM 7.0+ (Volta+). GTX 1060 (SM 6.1 Pascal) gets `cudaErrorSymbolNotFound` at inference. CUDA EP registers successfully but all inference ops fail. CUDA 12 compat libs cleaned up from home-server. Workaround: CPU-only embeddings with `OPENCODE_MEM_DISABLE_EMBEDDINGS=1` for throttling. To resolve: either build ONNX Runtime from source with `CMAKE_CUDA_ARCHITECTURES=61`, or upgrade to Volta+ GPU.
-### Resolved
-- ~~Permissive CORS on HTTP server~~ — fixed by removing CorsLayer
-- ~~Local HTTP server fails to start if port 37777 is already in use~~ — fixed by returning a clear error message with a shutdown command, and removing SO_REUSEPORT to prevent load balancing with zombie instances.
-- ~~`std::env::set_var` will become unsafe in edition 2024~~ — fixed by moving env var setting to CLI `main()` before tokio runtime init and wrapping in unsafe.
-- ~~Infinite Memory drops filtered observations~~ — fixed by calling `store_infinite_memory` concurrently with `compress_and_save`
-- ~~pg_migrations non-transactional~~ — fixed
-- ~~pg_migrations .ok() swallows index errors~~ — fixed
-- ~~KnowledgeType SPOT violation~~ — fixed
-- ~~strip_markdown_json duplicated~~ — fixed
-- ~~save_memory bypasses Infinite Memory~~ — fixed
-- ~~admin_restart uses exit(0)~~ — fixed
-- ~~Infinite Memory migrations not evolutionary~~ — fixed
-- ~~Infinite Memory double connection pool~~ — fixed
-- ~~search_by_file missing GIN index~~ — fixed
-- ~~parse_pg_vector_text string parsing overhead~~ — fixed by using pgvector crate
-- ~~Hybrid search stop-words fallback~~ — fixed
-- ~~sqlx missing uuid feature~~ — fixed
-- ~~sqlx missing TLS feature~~ — fixed
-- ~~Inconsistent HTTP error responses~~ — fixed
-- ~~Pagination limit inconsistency~~ — fixed
-- ~~save_memory ambiguous 422~~ — fixed
-- ~~CLI hook.rs swallows JSON parse errors~~ — fixed
-- ~~import_insights.rs regex truncation~~ — fixed
-- ~~import_insights.rs title_exists swallows DB errors~~ — fixed
-- ~~session_service hardcoded opencode binary~~ — fixed
-- ~~session_service inconsistent empty-session handling~~ — fixed
-- ~~build_tsquery empty string crash~~ — fixed
-- ~~parse_json_value unnecessary clone~~ — fixed
-- ~~get_all_pending_messages unfiltered~~ — fixed
-- ~~get_queue_stats dead 'processed' count~~ — fixed
-- ~~Infinite memory compression pipeline starvation~~ — `run_full_compression` now queries per-session via `get_sessions_with_unaggregated_*` + `get_unaggregated_*_for_session`, eliminating fixed cross-session batch that caused threshold starvation
-- ~~Code Duplication in observation_service.rs~~ — extracted shared `persist_and_notify` method
-- ~~Blocking I/O in observation_service.rs~~ — embedding calls wrapped in `spawn_blocking`
-- ~~Data Loss on Update in knowledge.rs~~ — implemented provenance merging logic
-- ~~SQLITE_LOCKED in knowledge.rs~~ — SQLite backend removed
-- ~~Hardcoded filter patterns~~ — extracted to `low_value_filter.rs` with `OPENCODE_MEM_FILTER_PATTERNS` env support
-- ~~Pre-commit hooks fail on LLM integration tests~~ — marked with `#[ignore]`, run explicitly via `cargo test -- --ignored`
-- ~~Silent data loss in embedding storage~~ — atomic DELETE+INSERT via transaction
-- ~~PG/SQLite dedup divergence~~ — SQLite backend removed
-- ~~SQLite crash durability~~ — SQLite backend removed
-- ~~Silent data fabrication in type parsing~~ — 18 enum parsers now log warnings on invalid values
-- ~~Silent error swallowing in service layer~~ — knowledge extraction, infinite memory errors at warn level
-- ~~LLM empty summary stored silently~~ — now returns error, prevents hierarchy corruption
-- ~~Env var parse failures invisible~~ — `env_parse_with_default` helper logs warnings
-- ~~MCP handlers accept empty required fields~~ — now reject with error
-- ~~MCP stdout silent write failures~~ — error paths now break cleanly
-- ~~Unbounded query limits (DoS)~~ — SearchQuery/Timeline/Pagination capped at 1000, BatchRequest.ids at 500
-- ~~pg_storage.rs monolith (1826 lines)~~ — split into modular directory: mod.rs + 9 domain modules
-- ~~4-way SPOT violation in save+embed~~ — centralized through ObservationService::save_observation()
-- ~~Blocking async in embedding calls~~ — wrapped in spawn_blocking
-- ~~\~70 unsafe `as` casts in pg_storage~~ — replaced with TryFrom/checked conversions (3 intentional casts with #[allow(reason)])
-- ~~sqlite_async.rs boilerplate (62 self.clone())~~ — SQLite backend removed entirely
-- ~~Zero-vector embedding corruption~~ — guard in store_embedding + find_similar
-- ~~Stale embedding after dedup merge~~ — re-generate from merged content
-- ~~merge_into_existing not transactional (SQLite)~~ — SQLite backend removed
-- ~~Nullable project crash in session summary (PG)~~ — handle Option<Option<String>> correctly
-- ~~Infinite Memory missing schema initialization~~ — added `migrations.rs` with auto-run in `InfiniteMemory::new()`
-- ~~Privacy leak: tool inputs stored unfiltered in infinite memory~~ — `filter_private_content` applied to inputs before storage
-- ~~SPOT: ObservationType/NoiseLevel parsing duplicated 10+ times~~ — extracted `parse_pg_observation_type()` and `parse_pg_noise_level()` helpers
-- ~~SPOT: hybrid_search_v2 inline row parsing copy-pasted from row_to_search_result~~ — uses `row_to_search_result_with_score` now
-- ~~SPOT: map_search_result + map_search_result_default_score duplicate~~ — merged into single function with `score_col: Option<usize>`
-- ~~rebuild_embeddings false claim about automatic re-embedding~~ — now states to run backfill CLI command
-- ~~Inconsistent default query limits (20/50/10) across HTTP/MCP~~ — unified via `DEFAULT_QUERY_LIMIT` in core/constants.rs
-- ~~MCP tool name unwrap_or("") silently accepts empty~~ — explicit rejection with error message
-- ~~Score fabrication: missing score defaulted to 1.0 (perfect)~~ — changed to 0.0 (no match)
-- ~~MAX_BATCH_IDS duplicated between http and mcp~~ — unified in core/constants.rs
-- ~~5x Regex::new().unwrap() in import_insights.rs~~ — wrapped in LazyLock statics
-- ~~LlmClient::new() panics on TLS init failure~~ — returns Result, callers handle with ?
-- ~~Unsafe `as` casts in pipeline.rs, pending.rs~~ — replaced with TryFrom/checked conversions
-- ~~HTTP→Service layer violation~~ — all 9 handlers migrated to use `QueueService`, `SessionService`, `SearchService`. Zero direct `state.storage.*` calls in handlers.
-- ~~dedup_tests.rs monolith (1050 lines)~~ — split into 4 modules: union_dedup_tests, merge_tests, find_similar_tests, embedding_text_tests. 3 misplaced tests relocated.
-- ~~StoredEvent.event_type String~~ — changed to `EventType` enum with `FromStr` parser. Unknown types logged as warning and skipped (Zero Fallback).
-- ~~No newtypes for prompt_number/discovery_tokens~~ — `PromptNumber(u32)` and `DiscoveryTokens(u32)` newtypes in core, used in Observation, SessionSummary, UserPrompt.
-- ~~No typed error enums in leaf crates~~ — `CoreError` (4 variants), `EmbeddingError` (4 variants), `LlmError` (7 variants with `is_transient()`) defined and used in public APIs.
-- ~~SQLite timeline query missing noise_level~~ — SQLite backend removed
-- ~~PG search/hybrid_search empty-query fallback type mismatch~~ — fallback returned `Vec<Observation>` where `Vec<SearchResult>` was expected. Wrapped with `SearchResult::from_observation`.
-- ~~PG knowledge usage_count INT4 vs i64 mismatch~~ — `global_knowledge.usage_count` was `INT4` in PG but decoded as `i64`. ALTERed column to `BIGINT`.
-- ~~Memory injection recursion~~ — observe hook re-processed `<memory-*>` blocks injected by IDE plugin, creating duplicate observations that got re-injected in a loop. Added `filter_injected_memory()` at all entry points: HTTP observe/observe_batch (before queue), session observation endpoints, CLI hook observe, save_memory, plus service-layer defense-in-depth.
-- ~~Dedup threshold env var without bounds validation~~ — `OPENCODE_MEM_DEDUP_THRESHOLD` and `OPENCODE_MEM_INJECTION_DEDUP_THRESHOLD` now clamped to [0.0, 1.0] on parse. Values outside cosine similarity range no longer silently disable detection.
-- ~~NaN/Inf embedding validation~~ — `store_embedding` accepts NaN/Infinity vectors. Added `contains_non_finite()` guard. Non-finite floats now rejected with error.
-- ~~SQLite PRAGMA synchronous mismatch~~ — SQLite backend removed
-- ~~SearchService bypasses HybridSearch abstraction~~ — fixed, correctly delegates to internal struct
-- ~~Queue processor UUID entropy & format violation~~ — fixed, uses strict UUIDv5 namespace over SHA-256 string input
-- ~~ObservationType SPOT violation~~ — fixed, LLM prompt string dynamically generated from enum variants
-- ~~Queueprocessor bottleneck~~ — fixed, background tasks spawned as fire-and-forget to avoid head-of-line blocking
-- ~~Settings state ignored~~ — fixed, API updates propagated to `LlmClient::update_config` and `std::env::set_var`
-- ~~Privacy leak in title~~ — fixed, applied `filter_private_content` inside `save_memory` title param
-- ~~Privacy filter omission in queues~~ — fixed, `observe` and `observe_batch` handlers apply filter before database insertion
-- ~~Infinite Memory LLM request bypasses retry logic~~ — already fixed (uses LlmClient::chat_completion with backoff)
-- ~~Knowledge extraction skips updated observations~~ — already fixed (extracts from `save_result` regardless of is_new flag)
-- ~~Dedup sweep overwrite bug~~ — already fixed (compute_merge resolves by noise_level importance)
-- ~~Infinite memory time hierarchy violation~~ — already fixed (pipeline buckets strictly by 300s window)
-- ~~Double-quoted observation_type/noise_level corruption (733/904 records)~~ — fixed by DB migration (`TRIM(BOTH '"')`) + `FromStr` defense-in-depth normalization (`trim().trim_matches('"')`) in `ObservationType`, `NoiseLevel`, `Concept`
-- ~~Infinite Memory call_id UNIQUE constraint breaks pipeline on 2nd event~~ — fixed by using deterministic UUID (observation ID) as call_id instead of `String::new()`
-- ~~Queue UUID hash omits tool_input — silent data loss on same-second calls~~ — fixed by including `tool_input` in UUIDv5 hash
-- ~~save_and_notify title collision retry exhaustion silently drops data~~ — fixed: returns `Err` (goes to DLQ) instead of `Ok` when all 5 retries fail
-- ~~Knowledge extraction noise level inversion (skipped Critical/High instead of Low/Negligible)~~ — fixed: now skips `Low | Negligible`, extracts knowledge from high-value observations
-- ~~get_events_by_time_range broken fallback query (ILIKE instead of time range)~~ — fixed: correct `WHERE ts >= $1 AND ts <= $2` with proper parameter binding
-- ~~get_session_by_content_id non-deterministic on duplicate content_session_id~~ — fixed: added `ORDER BY started_at DESC LIMIT 1`
-- ~~Vector search string serialization overhead (10KB string per query)~~ — fixed: uses `pgvector::Vector` binary protocol in semantic and hybrid search
-- ~~FTS split-on-punctuation in tsquery builders~~ — `build_tsquery` and `build_or_tsquery` now split on non-alphanumeric chars instead of filtering, preventing fused tokens like `srcutilsrs`
-- ~~Global observations invisible in project-scoped searches~~ — all `WHERE project = $1` queries now include `OR project IS NULL`
-- ~~SQL operator precedence fragility~~ — `project = $1 OR project IS NULL` wrapped in parentheses in all queries
-- ~~CJK single-char filter killed non-Latin search~~ — removed `chars().count() < 2` filter, added DoS guard (100 term truncate)
-- ~~Infinite Memory data loss on LLM compression failure~~ — `store_infinite_memory` now runs concurrently with `compress_and_save` via `tokio::join!`
-- ~~SPOT violation in tsquery builders~~ — extracted `tokenize_tsquery` and `build_joined_tsquery` shared helpers
-- ~~Circuit breaker never trips on DB connection failures~~ — `StorageError::is_transient()` now covers `PoolClosed`, `WorkerCrashed`, and connection-refused `Database` errors. `is_unavailable()` delegates to `is_transient()`. `ServiceError::is_db_unavailable()` checks `Search(anyhow)` and `System(anyhow)` via string inspection for connection patterns. Service layer `with_cb()` records success/failure on every storage call. HTTP handlers use `From<ServiceError> for ApiError` (not `anyhow` wrapping) so the `Degraded` variant is triggered correctly.
-- ~~Circuit breaker bypass in infinite memory MCP handlers~~ — fixed by adding `cb_fast_fail_infinite` guards to all infinite memory MCP tool handlers
-- ~~strip_markdown_json fails on LLM preamble~~ — fixed by `find`/`rfind`-based extraction instead of regex, handles arbitrary preamble text before JSON
-- ~~parse_limit SPOT violation (hardcoded DEFAULT_QUERY_LIMIT)~~ — fixed by accepting per-tool defaults, each MCP tool specifies its own default limit
-- ~~Zero Fallback in parse_pg_observation_type/parse_pg_noise_level~~ — fixed by returning `DataCorruption` errors instead of silently defaulting to fallback values
-- ~~ResponseFormat.format_type raw String~~ — fixed by `ResponseFormatType` enum with typed variants
-- ~~KnowledgeQuery/SaveKnowledgeRequest knowledge_type raw String~~ — fixed by using `KnowledgeType` enum directly in query/request types
-- ~~Raw `as` casts in pipeline.rs~~ — fixed by checked conversions (`TryFrom`, `try_into`)
-- ~~Files >300 lines (memory.rs 488, search_service.rs 471, pg_storage/mod.rs 470, observation_service/mod.rs 459)~~ — fixed by module splits into focused submodules
-- ~~Infinite Memory spin-loop~~ — `release_events()` and `release_summaries_*()` now set `processing_started_at = NOW()` instead of NULL, providing cooldown via the existing 5-minute visibility timeout
-- ~~deduplicate_by_embedding O(N²) blocks async runtime~~ — O(N²) comparison loop moved into `spawn_blocking`
-- ~~Unstable pagination in get_observations_paginated~~ — added `id` as secondary `ORDER BY` tie-breaker
-- ~~Tombstone save silent discard~~ — `save_observation(&tombstone)` errors now logged at warn level with context
-- ~~Cross-project dedup failure (5x duplicate noise-classification observations)~~ — `find_candidate_observations` now searches across all projects instead of current-only, preventing cross-project knowledge duplication
-- ~~save_memory metadata poverty (empty facts/concepts/keywords)~~ — background LLM enrichment extracts structured metadata after persist, with re-fetch from DB before knowledge extraction
-- ~~Knowledge extraction gate too restrictive (Gotcha-only)~~ — removed observation_type filter, all non-Low/Negligible observations now eligible for LLM-driven knowledge extraction
-- ~~MCP knowledge usage_count always zero~~ — increment moved from MCP handlers to KnowledgeService (SPOT), both MCP and HTTP paths now track usage
-- ~~Multi-byte truncation OOM in LLM error messages~~ — replaced `response.get(..300).unwrap_or(&response)` with `core::truncate()` char-boundary-safe helper
-- ~~Panic in spawned tokio tasks aborts server~~ — removed `.expect()` and `.unwrap()` from queue_processor, queue, serve spawned tasks
-- ~~Enrichment clobbers concurrent observation updates~~ — `update_observation_metadata` checks `rows_affected()`, logs and skips on concurrent modification
-- ~~save_memory enrichment silently failing (all 53 manual observations had empty metadata)~~ — root cause: `OPENCODE_MEM_API_URL` missing from both systemd service and opencode MCP config, causing LLM calls to go to `api.openai.com` with an Antigravity API key (silent auth failure). Fixed by adding `OPENCODE_MEM_API_URL=https://antigravity.quantumind.ru` to both configs. Added `backfill-metadata` CLI command for re-enrichment.
-- ~~MCP binary split-brain (opencode-memory SQLite vs opencode-mem PostgreSQL)~~ — fixed by unifying MCP config to use opencode-mem with explicit DATABASE_URL, INFINITE_MEMORY_URL env vars in opencode.json
-- ~~Missing OPENCODE_MEM_API_URL in systemd and MCP config~~ — fixed by adding https://antigravity.quantumind.ru to both configs, enabling LLM enrichment
-- ~~Outdated model in systemd (gemini-3-pro-high)~~ — fixed: updated to gemini-3.1-pro-high
-- ~~observation_type search filter case-sensitive~~ — fixed: lowercased at service layer in hybrid_ops.rs
-- ~~CLI search bypasses SearchService~~ — fixed: uses smart_search() for semantic/hybrid routing
-- ~~backfill-metadata single-batch truncation~~ — fixed: proper loop with progress tracking and infinite-loop prevention
-- ~~Session summaries never generated (0/2168 sessions)~~ — `get_sessions_without_summaries` joined on `sessions.id` (UUID) but observations store IDE content session IDs (`ses_*`) that never match. Fixed: query now groups observations by `session_id` directly, bypassing the sessions table. `generate_pending_summaries` uses `save_summary` instead of `update_session_status_with_summary`.
-- ~~Infinite Memory migration 20260314000000 references `events` instead of `raw_events`~~ — fixed table name in normalize_project_names migration
-- ~~Semantic search poor relevance (scores 0.48-0.55)~~ — root cause: IVFFlat index with lists=100 on 959 vectors, probes=1 searched only 1% of vector space. Fixed by replacing with HNSW(m=16, ef_construction=64). Scores improved to 0.55-0.94 with correct semantic ranking.
-- ~~Missing `updated_at` column on observations table~~ — added migration 20260315000003
-- ~~Knowledge duplicates (4x Telegram MTProto entries)~~ — cleaned up, kept entry with highest usage_count
-- ~~5 observations with empty metadata from manual import~~ — backfilled via CLI
-- ~~`/api/semantic-search` route inconsistency~~ — added alias alongside existing `/semantic-search`
-- ~~Background processor not started in MCP mode~~ — added shared MaintenanceServices + run_maintenance_tick(), both HTTP and MCP use same scheduler
-- ~~Admin endpoints CSRF via missing Json extractor~~ — added Json(()) body to destructive admin endpoints
-- ~~Admin auth bypass via loopback trust behind reverse proxy~~ — dual-mode: token required if set, loopback-only if unset
-- ~~Infinite memory compression poison pill on >200 events~~ — pipeline fetches up to 10K events, chunks at 200 per LLM call
-- ~~strip_markdown_json forward scan truncates JSON with embedded backticks~~ — uses rfind for closing fence
-- ~~MCP background loop SPOT violation (only ran compression)~~ — extracted shared MaintenanceServices, all 7 tasks run in both modes
-- ~~Pipeline dead code (chunking unreachable due to batch limit)~~ — removed per-iteration batch limit, proper chunking for large buckets
-- ~~run_full_compression bypassed circuit breaker~~ — routes through CB with should_allow/record_success/failure
-- ~~Session summaries unstructured free text~~ — structured via response_format: json_object with 9 typed fields
-- ~~JSON corruption in infinite memory compression pipeline~~ — serialized JSON string was truncated by `.chars().take(N)`, breaking closing braces/quotes and poisoning LLM prompts. Fixed by `truncate_json_values()` which truncates text fields *inside* the `serde_json::Value` before serialization, preserving valid JSON structure
-- ~~`.chars().take(N).collect()` SPOT violation (5 call sites)~~ — all replaced with `opencode_mem_core::truncate()` which handles char boundaries correctly. Affected: `compression_prompt.rs`, `compression.rs`, `save_memory.rs`, `knowledge.rs`, `observations.rs`, `unified.rs`
+Ignored integration tests require their documented PostgreSQL or provider
+dependencies and must be reported separately from the default test result.

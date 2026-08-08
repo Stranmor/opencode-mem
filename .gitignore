@@ -16,3 +16,9 @@ fix_*.py
 fix_*.js
 patch_*.py
 patch_*.js
+
+# Local audit and scratch artifacts
+/diff.patch
+/git_diff_output.txt
+/test_candidates.rs
+/test_vulnerabilities.sh

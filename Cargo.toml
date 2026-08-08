@@ -15,11 +15,11 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.88"
 license = "MIT"
-authors = ["Stranmor <stranmor@gmail.com>"]
+authors = ["Stranmor"]
 repository = "https://github.com/Stranmor/opencode-mem"
-description = "High-performance MCP memory server for AI coding agents with hybrid search and hierarchical summarization"
+description = "PostgreSQL-backed MCP memory server with hybrid search and hierarchical summaries"
 keywords = ["mcp", "llm", "memory", "pgvector", "ai-agent"]
 categories = ["command-line-utilities", "database"]
 

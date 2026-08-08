@@ -167,8 +167,13 @@ impl LlmClient {
         let filtered_output = sanitize_input(&input.output.output);
         let filtered_title = sanitize_input(&input.output.title);
 
-        let prompt =
-            build_compression_prompt(&input.tool, &filtered_title, &filtered_output, candidates);
+        let prompt = build_compression_prompt(
+            &input.tool,
+            &filtered_title,
+            &filtered_output,
+            candidates,
+            input.session_id.as_ref(),
+        );
 
         let request = ChatRequest {
             model: self.model(),

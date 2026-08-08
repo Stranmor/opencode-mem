@@ -160,3 +160,47 @@ ANTI-DEFAULT RULE: If you choose noise_level="medium", you MUST explain in noise
         json_schema = json_schema,
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use opencode_mem_core::{Observation, ObservationType};
+
+    fn candidate(session_id: &str) -> Observation {
+        Observation::builder(
+            "observation-1",
+            session_id,
+            ObservationType::Discovery,
+            "Existing observation".to_owned(),
+        )
+        .narrative("Existing context")
+        .build()
+    }
+
+    #[test]
+    fn marks_candidates_from_the_current_session() {
+        let prompt = build_compression_prompt(
+            "tool",
+            "title",
+            "output",
+            &[candidate("current-session")],
+            "current-session",
+        );
+
+        assert!(prompt.contains("[SAME_SESSION_MATCH] [1] type=discovery"));
+    }
+
+    #[test]
+    fn does_not_mark_candidates_from_other_sessions() {
+        let prompt = build_compression_prompt(
+            "tool",
+            "title",
+            "output",
+            &[candidate("other-session")],
+            "current-session",
+        );
+
+        assert!(!prompt.contains("[SAME_SESSION_MATCH] [1] type=discovery"));
+        assert!(prompt.contains("[1] type=discovery"));
+    }
+}
