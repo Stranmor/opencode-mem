@@ -1,0 +1,24 @@
+name: Feature request
+description: Propose a bounded memory, retrieval, or integration improvement.
+title: "feature: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: User need
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: textarea
+    id: boundaries
+    attributes:
+      label: Data, privacy, and recovery boundaries
+    validations:
+      required: true

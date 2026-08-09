@@ -1,0 +1,45 @@
+name: Bug report
+description: Report a reproducible storage, retrieval, MCP, HTTP, or CLI defect.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: input
+    id: revision
+    attributes:
+      label: Version or commit
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Rust, PostgreSQL, pgvector, client, and operating-system versions. Redact credentials and private paths.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Use synthetic observations and configuration.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy
+      options:
+        - label: I removed database credentials, provider keys, private observations, user identifiers, and local paths.
+          required: true
