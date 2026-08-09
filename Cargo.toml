@@ -47,7 +47,7 @@ reqwest = { version = "0.12", features = ["json"] }
 # Utils
 uuid = { version = "1", features = ["v4", "v5"] }
 chrono = { version = "0.4", features = ["serde"] }
-dirs = "5"
+dirs = "6"
 regex = "1"
 globset = "0.4"
 
