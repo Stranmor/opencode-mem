@@ -42,7 +42,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # HTTP client
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 
 # Utils
 uuid = { version = "1", features = ["v4", "v5"] }
