@@ -9,6 +9,18 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # Breaking upgrades are intentional migrations, not unattended bumps.
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+      # Cargo treats these as minor updates, but pre-1.0 releases may break APIs.
+      - dependency-name: reqwest
+        update-types:
+          - version-update:semver-minor
+      - dependency-name: sqlx
+        update-types:
+          - version-update:semver-minor
 
   - package-ecosystem: github-actions
     directory: /
