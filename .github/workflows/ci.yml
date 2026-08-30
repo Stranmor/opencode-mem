@@ -32,7 +32,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
         with:
-          toolchain: 1.93.1
+          toolchain: stable
           components: rustfmt
           
       - name: Check code formatting
@@ -51,7 +51,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
         with:
-          toolchain: 1.93.1
+          toolchain: stable
           components: clippy
           
       - name: Setup Rust caching
@@ -73,7 +73,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
         with:
-          toolchain: 1.93.1
+          toolchain: stable
         
       - name: Setup Rust caching
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
@@ -95,7 +95,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
         with:
-          toolchain: 1.93.1
+          toolchain: stable
         
       - name: Setup Rust caching
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
@@ -103,8 +103,8 @@ jobs:
       - name: Build release binaries
         run: cargo build --workspace --release
 
-  msrv:
-    name: MSRV
+  stable-compatibility:
+    name: Stable compatibility
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -113,13 +113,13 @@ jobs:
         with:
           persist-credentials: false
         
-      - name: Install MSRV toolchain (1.88.0)
+      - name: Install latest stable Rust toolchain
         uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
         with:
-          toolchain: 1.88.0
+          toolchain: stable
           
       - name: Setup Rust caching
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         
-      - name: Check workspace against MSRV
+      - name: Check workspace with latest stable
         run: cargo check --workspace

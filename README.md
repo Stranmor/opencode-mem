@@ -9,7 +9,7 @@ retrieval, and hierarchical summaries.
 
 [![CI](https://img.shields.io/github/actions/workflow/status/Stranmor/opencode-mem/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/Stranmor/opencode-mem/actions)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.88%2B-orange.svg?style=flat-square)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-latest%20stable-orange.svg?style=flat-square)](https://www.rust-lang.org)
 [![GitHub Stars](https://img.shields.io/github/stars/Stranmor/opencode-mem?style=flat-square)](https://github.com/Stranmor/opencode-mem/stargazers)
 [![GitHub Issues](https://img.shields.io/github/issues/Stranmor/opencode-mem?style=flat-square)](https://github.com/Stranmor/opencode-mem/issues)
 
@@ -84,7 +84,7 @@ cargo build --release
 
 ## Quick Start
 
-**Prerequisites:** Rust 1.88+ · PostgreSQL with [`pgvector`](https://github.com/pgvector/pgvector) extension
+**Prerequisites:** latest stable Rust · PostgreSQL with [`pgvector`](https://github.com/pgvector/pgvector) extension
 
 ### 1. Configure
 
@@ -225,7 +225,7 @@ All configuration is via environment variables:
 
 ### Prerequisites
 
-- Rust 1.88+
+- latest stable Rust
 - PostgreSQL with `pgvector` extension
 - An OpenAI-compatible LLM API (for compression features)
 

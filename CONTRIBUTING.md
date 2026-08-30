@@ -3,7 +3,7 @@
 Rust workspace with 10 crates. PostgreSQL + pgvector backend.
 
 ## Development Setup
-Prerequisites include Rust 1.85+ and a running PostgreSQL instance with the pgvector extension.
+Prerequisites include the latest stable Rust toolchain and a running PostgreSQL instance with the pgvector extension.
 - Clone the repository to your local machine.
 - Run `cargo build --workspace` to compile the project.
 
