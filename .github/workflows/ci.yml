@@ -55,7 +55,7 @@ jobs:
           components: clippy
           
       - name: Setup Rust caching
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         
       - name: Run clippy checks across workspace
         run: cargo clippy --workspace -- -D warnings
@@ -76,7 +76,7 @@ jobs:
           toolchain: stable
         
       - name: Setup Rust caching
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         
       - name: Run unit tests
         # Runs unit tests only (no DB needed). Skips #[ignore] tests by default.
@@ -98,7 +98,7 @@ jobs:
           toolchain: stable
         
       - name: Setup Rust caching
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         
       - name: Build release binaries
         run: cargo build --workspace --release
@@ -119,7 +119,7 @@ jobs:
           toolchain: stable
           
       - name: Setup Rust caching
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         
       - name: Check workspace with latest stable
         run: cargo check --workspace
